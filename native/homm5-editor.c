@@ -112,6 +112,11 @@
 // relay, and this is one file compiled top to bottom.
 #include "net/relay.c"
 #include "net/agent.c"
+// The other half of multiplayer, and a stranger to the one above it: agent.c
+// carries the peers, lobby.c carries the desks. It is here rather than beside
+// relay.c because it borrows that file's URL reader and WinHTTP entry points —
+// plumbing that belongs to neither feature — and nothing else.
+#include "net/lobby.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -264,6 +269,12 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // and it is gated on the flag like everything else here: with it clear the
   // game's own `sendto` is the one in the slot.
   if (g_qol[QOL_NET_AGENT] && install_agent()) log_line("agent: the game's peer socket is watched");
+  // The lobby half, and a separate switch on purpose: it hooks nothing at all —
+  // it listens on the loopback and the game comes to it — so it can be on while
+  // the agent is off, or the other way round, and neither has an opinion about
+  // the other. Unlike the agent it needs no import slot, so the moment does not
+  // matter; what it does need is a config line naming where to carry the desks.
+  if (g_qol[QOL_NET_DESKS] && install_lobby()) log_line("lobby: the game's desks are carried out");
   return TRUE;
 }
 

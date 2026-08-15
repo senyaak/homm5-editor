@@ -325,6 +325,20 @@ export const QOL_FLAGS = [
       + ' the hook was proven would have two things to blame at once. It costs nothing while no'
       + ' multiplayer game is running, and it needs a build whose log includes net/agent.',
   },
+  {
+    name: 'net-desks',
+    tab: 'network',
+    title: 'Reach our lobby through a tunnel',
+    detail: 'The other half of multiplayer, and a separate thing from the agent above: that one'
+      + ' carries the other PLAYERS\' datagrams, this one carries the LOBBY — the server list, the'
+      + ' rooms, the chat, the CD-key and NAT desks. It is needed because a tunnel of the'
+      + ' cloudflared family speaks HTTP and WebSocket while the game\'s desks are raw TCP and UDP,'
+      + ' so no setting of a tunnel can put them behind one. This listens on the loopback instead,'
+      + ' the game connects to it of its own accord — nothing is hooked and no call of the game\'s'
+      + ' is touched — and everything it hears crosses one outgoing WebSocket to our lobby.'
+      + ' It needs the desk tunnel filled in below, and the local port it names has to be the one'
+      + ' in this copy\'s http_proxy. With it off the game dials the desks itself, as it always did.',
+  },
 ] as const;
 
 export type QolName = (typeof QOL_FLAGS)[number]['name'];

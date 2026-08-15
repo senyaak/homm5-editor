@@ -15,7 +15,7 @@ import { APP_ROOT, gameData, gameRoot } from '#electron/paths.ts';
 import { isQolName } from '#src/mods/qol.ts';
 import type { QolSettings } from '#src/mods/qol.ts';
 import { qolPath, readQol, writeQolFile } from '#src/mods/qol-file.ts';
-import { netPath, readNet, writeNetFile } from '#src/mods/net-config.ts';
+import { DEFAULT_DESKS_PORT, netPath, readNet, writeNetFile } from '#src/mods/net-config.ts';
 import { removeQolArchive, writeQolArchive } from '#src/mods/qol-ui.ts';
 import { removeGameplayArchive, writeGameplayArchive } from '#src/mods/gameplay.ts';
 import { profilesRoot, setResolution, setWindowed } from '#src/game/video-config.ts';
@@ -79,13 +79,18 @@ export function registerQol(): void {
     const g = install();
     const wanted = clean(settings);
 
-    // The agent's one answer, in its own file beside the flags. Written
-    // BEFORE the flags for the same reason the flags come before the install:
-    // they are what was asked for, and nothing later in this handler is allowed
-    // to lose them. Written every time, even empty — an empty relay is a real
-    // state and it is the one that says "set up, and not filled in".
+    // Multiplayer's answers, in their own file beside the flags. Written BEFORE
+    // the flags for the same reason the flags come before the install: they are
+    // what was asked for, and nothing later in this handler is allowed to lose
+    // them. Written every time, even empty — an empty answer is a real state and
+    // it is the one that says "set up, and not filled in".
     if (net) {
-      writeNetFile(g, { relay: String(net['relay'] ?? '').trim() });
+      const port = Number(net['desksPort']);
+      writeNetFile(g, {
+        relay: String(net['relay'] ?? '').trim(),
+        desks: String(net['desks'] ?? '').trim(),
+        desksPort: Number.isInteger(port) && port > 0 && port <= 0xffff ? port : DEFAULT_DESKS_PORT,
+      });
     }
 
     // THE SETTINGS FIRST, and on their own. They are what the person asked for,

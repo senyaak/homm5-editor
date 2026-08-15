@@ -287,6 +287,60 @@ have sent service traffic into the relay later. The ports now come from
 at the first datagram rather than at load, because this DLL's entry point runs
 before the executable's and the file is downloaded after that.
 
+## The lobby half: the desks, from inside the game
+
+`native/net/lobby.c`, and a separate feature from the agent above — its own
+switch (`net-desks`), its own config line, its own connection, no shared state.
+The agent carries the PEERS; this carries the LOBBY.
+
+**Why it has to exist.** A tunnel of the cloudflared family carries HTTP and
+WebSocket. The game speaks HTTP to us exactly once, for the list above, and raw
+TCP and UDP for every desk after it — so no configuration of a tunnel can put
+the desks behind one (h5e-lobby, `SLICE_over_the_internet.md` §1). The way out is
+the one the peer half already took: hold the traffic inside the game and carry it
+out over a WebSocket of our own.
+
+**Why it hooks nothing.** Unlike the agent it needs no import slot and replaces
+no call. The game learns every desk address from the ini we serve, and it asks
+for that ini through `http_proxy` — so pointing both at `127.0.0.1` makes the
+game open ordinary sockets to a listener of ours, in its own process, of its own
+accord. That is a whole class of hook — `connect`, `send`, `recv`, and the
+non-blocking semantics under them — that never has to be written.
+
+**The shape.** One loopback listener takes the desk connections and the desk
+datagrams; each becomes a numbered stream or channel inside one WebSocket to
+`services/desks` at the far end, which opens the real connection to the real
+gateway. Three bytes in front of everything:
+
+```
+0x01 [id:u16] payload   bytes on a stream, either direction
+0x02 [id:u16]           open a stream                      (the game's side says it)
+0x03 [id:u16]           the stream ended, either direction
+0x04 [id:u16] payload   one datagram, on a channel, either direction
+```
+
+A **channel is one of our source addresses**, because two desks answer datagrams
+— the NAT mirror and the CD-key window — and the game may ask them from two
+sockets of its own. Without a number on the frame an answer coming back would
+have nothing to say which socket it belonged to.
+
+**What it is configured with**, in `bin/homm5-editor-net.txt` beside the relay:
+
+```
+desks wss://host/desks
+desks-port 8080
+```
+
+The port is what the listener binds on the loopback, and it has to be the number
+that copy's `http_proxy` names.
+
+**What is not settled.** The ini a tunnelled client is served still advertises
+`H5E_HOST`, and for such a client every desk address has to be its own
+`127.0.0.1` instead — otherwise the game reads the list and dials straight past
+the tunnel. The same is true of the addresses handed over at runtime
+(`PROXY_HANDLER`, the join hand-off), which come from the same setting. That is a
+question for the lobby's side and it is open.
+
 ### What is still the game's side to find
 
 - **Registration has no screen.** `UI/MPRegister` is the progress window

@@ -15,6 +15,18 @@ one.
 
 ### Added
 
+- **A second multiplayer switch: the lobby itself can now come through a tunnel.**
+  The agent above carries the other PLAYERS' traffic; this carries the LOBBY — the
+  server list, the rooms, the chat, and the two desks that answer datagrams. It
+  exists because a tunnel of the cloudflared family speaks HTTP and WebSocket while
+  the game's desks are raw TCP and UDP, so no setting of a tunnel can put them
+  behind one. With the switch on, the extension listens on the loopback and the game
+  connects to it of its own accord — nothing is hooked, and no call the game makes is
+  touched — while everything it hears crosses one outgoing WebSocket to our lobby.
+  The Network tab gained the address it needs and the local port it listens on, which
+  has to be the one in that copy's `http_proxy`. Off unless ticked, and the two
+  switches are independent: either can be on without the other.
+
 - **A Network tab in Game settings, with the multiplayer agent's switch on it.**
   Playing against somebody over the internet needs the game's own peer datagrams
   to be able to travel through a relay of ours, and deciding that has to happen

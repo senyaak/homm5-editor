@@ -106,6 +106,52 @@ test('which the panel reads back from the install @nodata', async () => {
   }
 });
 
+test('the lobby half is a second answer, not a second use of the first @nodata', async () => {
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
+  try {
+    await ed.page.locator('#qolbtn').click();
+    await ed.page.locator('#qol-tab-network').click();
+
+    // Its own switch, beside the agent's and not instead of it: the two carry
+    // different traffic and either is allowed to be on alone.
+    await expect(ed.page.locator('#qol-net-agent')).toBeVisible();
+    await expect(ed.page.locator('#qol-net-desks'), 'the switch').toBeVisible();
+    await expect(ed.page.locator('#qol-net-desks-url'), 'and the address it needs').toBeVisible();
+
+    await ed.page.locator('#qol-net-desks-url').fill('ws://127.0.0.1:40300/desks');
+    await ed.page.locator('#qol-net-desks-port').fill('8080');
+    await ed.page.locator('#qol-apply').click();
+    await expect(ed.page.locator('#qol-msg')).toContainText('settings written', { timeout: 30_000 });
+
+    const written = readFileSync(NET_FILE, 'utf8');
+    expect(written, 'the desk tunnel is in the file the extension reads').toMatch(
+      /^desks ws:\/\/127\.0\.0\.1:40300\/desks$/m,
+    );
+    expect(written, 'and so is the port it listens on').toMatch(/^desks-port 8080$/m);
+    // THE POINT OF THE TEST: writing one answer must not lose the other. The file
+    // is rewritten whole on every Apply, so the relay is exactly what a careless
+    // rewrite would drop.
+    expect(written, 'and the relay the earlier test wrote is still there').toMatch(
+      /^relay ws:\/\/127\.0\.0\.1:40200\/agent$/m,
+    );
+  } finally {
+    await closeEditor(ed);
+  }
+});
+
+test('and both answers come back into the panel from the install @nodata', async () => {
+  const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
+  try {
+    await ed.page.locator('#qolbtn').click();
+    await ed.page.locator('#qol-tab-network').click();
+    await expect(ed.page.locator('#qol-net-relay')).toHaveValue('ws://127.0.0.1:40200/agent');
+    await expect(ed.page.locator('#qol-net-desks-url')).toHaveValue('ws://127.0.0.1:40300/desks');
+    await expect(ed.page.locator('#qol-net-desks-port')).toHaveValue('8080');
+  } finally {
+    await closeEditor(ed);
+  }
+});
+
 test('and the install can be read back into the panel @nodata', async () => {
   const ed = await launchEditor({ HOMM5_ROOT: BARE, HOMM5_DOCUMENTS: DOCS, HOMM5_DATA: DATA });
   try {

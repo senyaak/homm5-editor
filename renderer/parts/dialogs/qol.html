@@ -40,10 +40,25 @@
             <span>Relay</span>
             <input id="qol-net-relay" type="text" spellcheck="false" placeholder="ws://127.0.0.1:40200/agent" />
           </label>
+          <label class="qol-field">
+            <span>Desk tunnel</span>
+            <!-- `-url`, because the switch built from the flag `net-desks` is already
+                 `qol-net-desks` — two elements under one id, and every locator that
+                 named it would resolve to both. -->
+            <input id="qol-net-desks-url" type="text" spellcheck="false" placeholder="ws://127.0.0.1:40300/desks" />
+          </label>
+          <label class="qol-field">
+            <span>Local desk port</span>
+            <input id="qol-net-desks-port" type="number" min="1" max="65535" step="1" placeholder="8080" />
+          </label>
           <div class="qol-detail-open">
-            That is the whole of it. The agent tells the relay which address and port this
-            game plays on, and the lobby answers whether anybody is playing there — so there
-            is no secret to keep here and nothing to be issued one.
+            Two answers for two things. The relay carries the other PLAYERS' traffic; the desk
+            tunnel carries the LOBBY, because a tunnel speaks HTTP and WebSocket and the game's
+            desks are raw TCP and UDP. Either can be filled in without the other.
+            The local port is where this copy listens for its own game, so it has to be the one
+            in <code>http_proxy</code> in this copy's bat file — 8080 unless something else took it.
+            No secret anywhere: the agent says which address and port this game plays on, and the
+            lobby answers whether anybody is playing there.
           </div>
           <div id="qol-net-file" class="qol-file"></div>
         </div>

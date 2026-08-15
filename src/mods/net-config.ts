@@ -25,7 +25,26 @@ export const NET_FILE = 'bin/homm5-editor-net.txt';
 export interface NetSettings {
   /** `ws://host:port/agent`, or `wss://…` behind a tunnel. Empty means "not set up". */
   relay: string;
+  /**
+   * Where the game's DESKS are carried — `ws://host:port/desks`, or `wss://…`.
+   *
+   * A second answer and not a second use of the first: the relay carries the
+   * peers and this carries the lobby, they are two services and two features,
+   * and either may be set while the other is not.
+   */
+  desks: string;
+  /**
+   * Which loopback port the lobby half listens on for the game.
+   *
+   * It has to be the number the game is told to use — `http_proxy=http://127.0.0.1:<this>`
+   * in the copy's bat file, and the desk addresses in the ini the lobby serves. The
+   * gateway's own default is 8080, so leaving all three alone keeps them agreeing.
+   */
+  desksPort: number;
 }
+
+/** What the gateway listens on when nobody says otherwise. */
+export const DEFAULT_DESKS_PORT = 8080;
 
 export function netPath(gameRoot: string): string {
   return join(gameRoot, NET_FILE);
@@ -40,7 +59,7 @@ export function netPath(gameRoot: string): string {
  * carrying the `secret` line nothing reads any more.
  */
 export function readNet(gameRoot: string): NetSettings {
-  const out: NetSettings = { relay: '' };
+  const out: NetSettings = { relay: '', desks: '', desksPort: DEFAULT_DESKS_PORT };
   let text = '';
   try {
     text = readFileSync(netPath(gameRoot), 'utf8');
@@ -55,6 +74,13 @@ export function readNet(gameRoot: string): NetSettings {
     const word = trimmed.slice(0, at);
     const value = trimmed.slice(at + 1).trim();
     if (word === 'relay') out.relay = value;
+    if (word === 'desks') out.desks = value;
+    if (word === 'desks-port') {
+      const port = Number(value);
+      // A port that is not one is left at the default rather than carried: the C side
+      // would refuse it too, and a listener on port 0 is a listener nobody can find.
+      if (Number.isInteger(port) && port > 0 && port <= 0xffff) out.desksPort = port;
+    }
   }
   return out;
 }
@@ -70,16 +96,25 @@ export function readNet(gameRoot: string): NetSettings {
  */
 export function writeNetFile(gameRoot: string, net: NetSettings): string {
   const lines = [
-    '# The multiplayer agent, written by homm5-editor.',
-    '# Read by homm5-editor.dll when the game first talks to another player.',
+    '# Multiplayer, written by homm5-editor. Read by homm5-editor.dll.',
     '#',
-    '# relay — our lobby relay: ws://host:port/agent, or wss:// behind a tunnel.',
+    '# TWO FEATURES, TWO ANSWERS. They share this file and nothing else — either can',
+    '# be set while the other is empty, and each has its own switch on the Network tab.',
     '#',
-    '# Nothing else belongs here. The agent tells the relay which address and port',
-    '# this game plays on, and the lobby decides whether that is anybody — so there',
-    '# is no secret to keep and nothing to issue.',
+    '# relay      — where the PEERS are carried: ws://host:port/agent, or wss:// behind',
+    '#              a tunnel. Read by native/net/agent.c.',
+    '# desks      — where the LOBBY is carried: ws://host:port/desks, likewise. Read by',
+    '#              native/net/lobby.c, which needs it because a tunnel carries HTTP and',
+    '#              WebSocket and the game\'s desks are raw TCP and UDP.',
+    '# desks-port — the loopback port the lobby half listens on for the game. It has to',
+    '#              match the http_proxy in this copy\'s bat file.',
+    '#',
+    '# There is no secret here. The agent tells the relay which address and port this',
+    '# game plays on, and the lobby decides whether that is anybody.',
     '',
     `relay ${net.relay.trim()}`,
+    `desks ${net.desks.trim()}`,
+    `desks-port ${String(net.desksPort || DEFAULT_DESKS_PORT)}`,
     '',
   ];
   const path = netPath(gameRoot);
@@ -88,7 +123,14 @@ export function writeNetFile(gameRoot: string, net: NetSettings): string {
   return path;
 }
 
-/** Whether this install has been set up — what the panel says out loud. */
+/**
+ * Whether this install has been set up — what the panel says out loud.
+ *
+ * EITHER answer counts. The two halves are separate features and a copy that
+ * carries only its desks, or only its peers, is set up for what it was asked to
+ * do; requiring both would call a working install unfinished.
+ */
 export function netReady(gameRoot: string): boolean {
-  return !!readNet(gameRoot).relay && existsSync(netPath(gameRoot));
+  const net = readNet(gameRoot);
+  return (!!net.relay || !!net.desks) && existsSync(netPath(gameRoot));
 }

@@ -602,8 +602,8 @@ export interface QolState {
   extension: boolean;
   /** Is there a copy of the executable to load it? */
   patchedExe: boolean;
-  /** The multiplayer agent's two answers, from `bin/homm5-editor-net.txt`. */
-  net: { relay: string };
+  /** What multiplayer was told, from `bin/homm5-editor-net.txt` — the peers, then the lobby. */
+  net: { relay: string; desks: string; desksPort: number };
   /** And where that file is, for the panel to name beside the other one. */
   netFile: string;
 }
