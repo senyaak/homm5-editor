@@ -231,6 +231,35 @@ static int lobby_dial(void) {
     return 0;
   }
 
+  /**
+   * Tell the far end which port OUR listener took, in the door's own query.
+   *
+   * The ini is answered here and already names it — but three addresses are
+   * not the ini's: the wait module at login, the proxy, and the lobby server
+   * at join all come from the router's replies, and without this they name
+   * the SERVER'S port, which on this machine is nobody. Measured: the login
+   * through the door succeeded and the wait-module connect then died. Our
+   * sockets are opened before this thread is made, so the number is settled —
+   * even when the system picked it.
+   */
+  {
+    int qat = 0;
+    while (path[qat]) qat++;
+    int hasQuery = 0;
+    for (int i = 0; i < qat; i++) {
+      if (path[i] == '?') hasQuery = 1;
+    }
+    const char *tail = hasQuery ? "&port=" : "?port=";
+    char digits[12];
+    int digitLen = 0;
+    num_to_dec(g_uLobbyPort, digits, &digitLen);
+    if (qat + 6 + digitLen + 1 <= (int)sizeof(path)) {
+      for (const char *p = tail; *p; p++) path[qat++] = *p;
+      for (int i = 0; i < digitLen; i++) path[qat++] = digits[i];
+      path[qat] = 0;
+    }
+  }
+
   WCHAR hostW[128], pathW[192];
   relay_widen(host, hostW, 128);
   relay_widen(path, pathW, 192);

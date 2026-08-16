@@ -393,13 +393,18 @@ added here. Since the merge to one number what could go stale is the LIST and no
 the address, and a missing prefix shows up as the game failing to reach a service
 by name.
 
-**What is not settled.** Two addresses are still the server's to give and still
-come from `H5E_HOST`: the proxy handed over at `PROXY_HANDLER`, and the lobby
-server handed over when a room is joined. For a tunnelled client both have to be
-its own `127.0.0.1`. The cheapest answer while every client is tunnelled is to set
-`H5E_HOST=127.0.0.1` and be done; the answer for a lobby with both kinds of client
-in it is for those endpoints to come from the door a connection arrived on, which
-is a small change — a session already carries its own copy of them.
+**The hand-offs come from the door now — settled 16.08.2026.** Three addresses
+were never the ini's to answer: the wait module at login, the proxy at
+`PROXY_HANDLER`, and the lobby server when a room is joined all arrive in the
+router's replies, from the far end. The mod therefore tells the door which port
+its listener took — `?port=` on the upgrade URL, appended after the bind so the
+number is settled even when the system picked it — and a session made of a
+carried connection hands out `127.0.0.1:<that port>` instead of the server's
+own numbers (h5e-lobby, `carriedPortOf` in `services/u-lobby/tunnel.ts`). What
+forced it: with an auto-picked port the login through the door succeeded and
+the wait-module connect then died, because the client had walked off to a port
+of the server's that on its machine was nobody. A direct client is untouched —
+no door, server defaults, as before.
 
 ### What is still the game's side to find
 
