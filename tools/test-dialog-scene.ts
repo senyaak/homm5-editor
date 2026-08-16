@@ -41,6 +41,25 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
+/**
+ * A check this install carries nothing to answer with — said out loud, and not
+ * counted as passed.
+ *
+ * Only ever decided by a missing FILE, never by a count that came out zero: a
+ * reader that stopped working reports zero too, and telling those two apart is
+ * the whole value of the checks below. So the caller names the archive it
+ * looked for, and a install that HAS the archive and still finds nothing fails
+ * exactly as it did before.
+ *
+ * What this is for: a copy of the game made deliberately partial. The RMG
+ * branch keeps a vanilla install with no campaigns in it (docs/RMG.md), and
+ * pointing the suite at one used to fail twice over on content nobody had
+ * claimed was there.
+ */
+function skip(name: string, why: string): void {
+  console.log(`  skip  ${name} — ${why}`);
+}
+
 const DATA = process.env.HOMM5_DATA ?? join(import.meta.dirname, '..', 'data-unpacked');
 /**
  * The install, SAID rather than guessed — `gameDirIfAny()`, the same answer the
@@ -810,9 +829,18 @@ if (!GAME || !existsSync(GAME)) {
     .filter((d) => d.name !== d.path && /\/DialogScene\.xdb$/i.test(d.path))
     .map((d) => d.path.replace(/\/DialogScene\.xdb$/i, '').toLowerCase()));
   const missed = [...fromArchives].filter((p) => !offered.has(p));
-  check('every scene this suite read out of an archive is findable in one',
-    fromArchives.size > 0 && missed.length === 0,
-    `${fromArchives.size} read, ${offered.size} findable${missed.length ? `, missing ${missed.slice(0, 3).join(', ')}` : ''}`);
+  // The documents this cross-checks are the campaigns' — 185 of them live in
+  // `All_campaigns.data.h5u` and none of them anywhere else. Without that file
+  // there is nothing to cross-check rather than nothing found, and with it the
+  // check is the same one it always was, `> 0` included.
+  if (!containers.some((f) => /All_campaigns\.data\.h5u$/i.test(f))) {
+    skip('every scene this suite read out of an archive is findable in one',
+      'no All_campaigns.data.h5u here, and the archived scenes are its');
+  } else {
+    check('every scene this suite read out of an archive is findable in one',
+      fromArchives.size > 0 && missed.length === 0,
+      `${fromArchives.size} read, ${offered.size} findable${missed.length ? `, missing ${missed.slice(0, 3).join(', ')}` : ''}`);
+  }
 
   // A folder is one entry however many members an archive holds under it.
   const dupes = [...found.values()].filter((s) => new Set(s.map((x) => x.toLowerCase())).size !== s.length);
@@ -832,8 +860,13 @@ if (!GAME || !existsSync(GAME)) {
   // six Maya-baked AnimScenes (`Maps/Cutscenes/<mission>/_.(AnimScene).xdb`)
   // and not one DialogScene, so the window has something to say about it other
   // than "no scene", which reads as a reader that failed on the file.
-  check('a file of the OTHER kind of cutscene is recognised as such',
-    animOnly.length > 0, animOnly.join(', ') || 'none on this install');
+  if (!containers.some((f) => /\.cutscenes\.h5u$/i.test(f))) {
+    skip('a file of the OTHER kind of cutscene is recognised as such',
+      'no *.cutscenes.h5u here — that kind of archive ships with the campaigns');
+  } else {
+    check('a file of the OTHER kind of cutscene is recognised as such',
+      animOnly.length > 0, animOnly.join(', ') || 'none on this install');
+  }
 
   // The promise the whole module rests on: a dozen archives, one of them 1.3 GB,
   // answered from their central directories. Unpacking to list would be seconds.
