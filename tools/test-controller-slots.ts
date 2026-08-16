@@ -27,7 +27,7 @@ import { join } from 'node:path';
 import { PEFile } from '../src/exe/pe.ts';
 import { disassemble } from '../src/exe/disasm.ts';
 import { CLEAN_EXE } from '../src/exe/exe-unwrap.ts';
-import { gameDir } from './game-dir.ts';
+import { gameDirIfAny } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -97,9 +97,16 @@ check('every measured slot is filled in by name', ours.size === 9, `${ours.size}
 
 // --- and what the engine's own controller has there --------------------------
 
-const exe = join(gameDir(), CLEAN_EXE);
-if (!existsSync(exe)) {
-  console.log(`\n  (no ${CLEAN_EXE} — the engine's half was not checked)`);
+// `gameDirIfAny`, not `gameDir`: this suite runs inside `npm test`, which does
+// not forward `--game` to it, so the refusing form failed the whole run on any
+// checkout that had not set HOMM5_GAME — for a half that was already written to
+// be skippable two lines below. Nobody having said is the same situation as the
+// executable not being there, and it gets the same answer.
+const said = gameDirIfAny();
+const exe = said ? join(said, CLEAN_EXE) : null;
+if (!exe || !existsSync(exe)) {
+  console.log(`\n  (no ${CLEAN_EXE}${said ? '' : ' — nobody said where the game is'};`
+    + " the engine's half was not checked)");
   process.exit(failures ? 1 : 0);
 }
 const game = PEFile.read(exe);
