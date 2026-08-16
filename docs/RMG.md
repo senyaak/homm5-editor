@@ -144,6 +144,13 @@ npm run install-native -- --game game  # into game/bin, never the shared install
 npm run rmg-oracle -- --game game      # …and check the copy is consistent
 ```
 
+**This copy is for the generator, not for `npm test`.** Point the suite at it —
+`HOMM5_GAME=…/game npm test` — and `test-dialog-scene` fails on two checks, both
+saying "none on this install": the campaign archives it reads scenes out of were
+never copied. That is the copy being what it is meant to be, not a fault. The
+whole suite belongs against a real install; only the RMG suites and the oracle
+belong here.
+
 **A half-copied install is a broken one**, and it does not look broken until the
 game refuses to start. The executable carries two raised ceilings — 181
 creatures, 100 artifacts — and the creatures and artifacts that fill them live
