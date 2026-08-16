@@ -15,6 +15,7 @@ import { APP_ROOT, gameData, gameRoot } from '#electron/paths.ts';
 import { isQolName } from '#src/mods/qol.ts';
 import type { QolSettings } from '#src/mods/qol.ts';
 import { qolPath, readQol, writeQolFile } from '#src/mods/qol-file.ts';
+import { netPath, readNet, writeNetFile } from '#src/mods/net-config.ts';
 import { removeQolArchive, writeQolArchive } from '#src/mods/qol-ui.ts';
 import { removeGameplayArchive, writeGameplayArchive } from '#src/mods/gameplay.ts';
 import { profilesRoot, setResolution, setWindowed } from '#src/game/video-config.ts';
@@ -60,6 +61,9 @@ export function registerQol(): void {
       // file nothing will ever read.
       extension: ext.installed,
       patchedExe: existsSync(join(g, PATCHED_EXE)),
+      // Read from the install like everything else here.
+      net: readNet(g),
+      netFile: netPath(g),
     };
   });
 
@@ -71,9 +75,25 @@ export function registerQol(): void {
    * safe to run twice — a second call finds the import already there and writes
    * nothing.
    */
-  ipcMain.handle('qol:apply', (_e: IpcMainInvokeEvent, { settings }: { settings: Record<string, unknown> }): QolApplyResult => {
+  ipcMain.handle('qol:apply', (_e: IpcMainInvokeEvent, { settings, net }: { settings: Record<string, unknown>; net?: Record<string, unknown> }): QolApplyResult => {
     const g = install();
     const wanted = clean(settings);
+
+    // Multiplayer's answers, in their own file beside the flags. Written BEFORE
+    // the flags for the same reason the flags come before the install: they are
+    // what was asked for, and nothing later in this handler is allowed to lose
+    // them. Written every time, even empty — an empty answer is a real state and
+    // it is the one that says "set up, and not filled in".
+    if (net) {
+      const port = Number(net['uLobbyPort']);
+      writeNetFile(g, {
+        relay: String(net['relay'] ?? '').trim(),
+        uLobby: String(net['uLobby'] ?? '').trim(),
+        // Zero is the ordinary answer — the extension picks a free port at
+        // bind — so an empty field stays empty instead of becoming a number.
+        uLobbyPort: Number.isInteger(port) && port > 0 && port <= 0xffff ? port : 0,
+      });
+    }
 
     // THE SETTINGS FIRST, and on their own. They are what the person asked for,
     // and an install that cannot take the extension yet is a reason to say so

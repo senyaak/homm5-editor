@@ -101,8 +101,23 @@
 #include "qol/fix-book-of-power.c"
 #include "qol/fix-master-of-fire.c"
 #include "qol/fix-imbue-ballista.c"
+#include "qol/second-instance.c"
+#include "qol/run-in-background.c"
 #include "qol/pandora-box.c"
 #include "qol/pandora-notify.c"
+#include "net/ubi-log.c"
+#include "net/ubi-module-probe.c"
+#include "net/ubi-friends-probe.c"
+#include "net/ubi-room-probe.c"
+// The way out before the thing that decides to use it: agent.c calls into the
+// relay, and this is one file compiled top to bottom.
+#include "net/relay.c"
+#include "net/agent.c"
+// The other half of multiplayer, and a stranger to the one above it: agent.c
+// carries the peers, lobby.c carries the u-lobby. It is here rather than beside
+// relay.c because it borrows that file's URL reader and WinHTTP entry points —
+// plumbing that belongs to neither feature — and nothing else.
+#include "net/lobby.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -132,6 +147,20 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // launch each time. This changes nothing about the crash — it writes down the
   // registers and the return addresses first.
   install_fault_report(self);
+  // Before the config, because what this mirrors starts talking the moment the
+  // game does: the engine's own log, in our file. Only in a build that asked for
+  // it — `--log net/ubi-log` — and it says so when it goes in.
+  if (install_ubi_log()) log_line("the engine's own log is mirrored here");
+  // A probe, and only in a build that asks for it — `--log net/ubi-module-probe`.
+  // It watches the three points a module reply has to pass, because reading them
+  // has been wrong twice and each wrong reading costs a launch.
+  if (install_module_probe()) log_line("the module reply path is being watched");
+  // And another — `--log net/ubi-friends-probe`. A friend the server says is online
+  // is drawn as offline, and the two things that could mean have different fixes.
+  if (install_friends_probe()) log_line("the friends list is being watched");
+  // And a third — `--log net/ubi-room-probe`. A game in the list that cannot be
+  // joined is either a flag we sent or a row nobody can select, and reading says both.
+  if (install_room_probe()) log_line("the games list is being watched");
   load_config();
   if (g_rowCount || g_skillRowCount) install_hooks();
   // Independent of the config: the functions are ours to offer whether or not
@@ -220,6 +249,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // AFTER the flags are read, and gated whole: with it off not a byte moves.
   if (g_qol[QOL_MASS_SPELL_ELEMENT_FIX]) install_whole_field_element();
   if (g_qol[QOL_BORDERLESS]) install_borderless();
+  // BEFORE WinMain, which is the whole reason it can be done at all: the guard
+  // it takes off is the first thing WinMain does, and a DllMain of an imported
+  // library runs before the executable's entry point.
+  if (g_qol[QOL_SECOND_INSTANCE]) install_second_instance();
+  if (g_qol[QOL_RUN_IN_BACKGROUND]) install_run_in_background();
   // Before the game asks, which it does early: the profile it loads decides
   // what the main menu already shows.
   if (g_qol[QOL_OWN_PROFILE]) install_own_profile(self);
@@ -249,6 +283,21 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (g_qol[QOL_BOOK_OF_POWER_FIX]) install_book_of_power_fix();
   if (g_qol[QOL_MASTER_OF_FIRE_FIX]) install_master_of_fire_fix();
   if (g_qol[QOL_IMBUE_BALLISTA_FIX]) install_imbue_ballista_fix();
+  // The multiplayer agent. An import table entry, so it has to be in before the
+  // game makes its socket — which is long after this, WinMain not having run —
+  // and it is gated on the flag like everything else here: with it clear the
+  // game's own `sendto` is the one in the slot.
+  if (g_qol[QOL_NET_AGENT] && install_agent()) log_line("agent: the game's peer socket is watched");
+  // The lobby half, and a separate switch on purpose: it hooks nothing at all —
+  // it listens on the loopback and the game comes to it — so it can be on while
+  // the agent is off, or the other way round, and neither has an opinion about
+  // the other. Unlike the agent it needs no import slot, so the moment does not
+  // matter; what it does need is a config line naming where to carry the u-lobby.
+  // What this says is only that it STARTED — the sockets, the tunnel and the
+  // redirection all happen on a thread of its own and report themselves. The
+  // line used to be "the u-lobby is carried out", the same sentence the thread
+  // logs when it has actually done it, and one run was read wrong because of it.
+  if (g_qol[QOL_NET_U_LOBBY] && install_lobby()) log_line("lobby: starting");
   return TRUE;
 }
 

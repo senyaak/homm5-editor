@@ -51,8 +51,12 @@
   font-weight: 600;
 }
 
-/* A group of fixes: crashes, mechanics, the AI. Small caps over the rows. */
-.qol-group {
+/* A group of fixes: crashes, mechanics, the AI. Small caps over the rows.
+   `.qol-heading` is the same words for a section that is NOT a fix group — the
+   panel's own e2e spec counts `.qol-group` to check that an empty group is
+   never shown, and a network heading wearing that class made it miscount. */
+.qol-group,
+.qol-heading {
   margin: 10px 0 2px;
   font-size: 11px;
   color: #6e7681;
@@ -60,7 +64,8 @@
   letter-spacing: 0.04em;
 }
 
-.qol-group:first-child {
+.qol-group:first-child,
+.qol-heading:first-child {
   margin-top: 0;
 }
 
@@ -133,4 +138,33 @@
 .qol-msg {
   margin-right: auto;
   opacity: 0.75;
+}
+
+/* The network tab's two fields. Not flags — a relay address and a secret —
+   so they are laid out as a form rather than as a row with a switch. */
+.qol-field {
+  display: grid;
+  grid-template-columns: 72px 1fr;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.qol-field span {
+  opacity: 0.75;
+  font-size: 12px;
+}
+
+.qol-field input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* The same words as a folded detail, but shown: two fields with no explanation
+   are two fields nobody can fill in. */
+.qol-detail-open {
+  opacity: 0.6;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 8px 0 0;
 }

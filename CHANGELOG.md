@@ -15,6 +15,43 @@ one.
 
 ### Added
 
+- **A Network tab in Game settings: multiplayer through a lobby, one switch.**
+  Playing over the internet needs two things carried, and the tick asks for both
+  at once. The game's own peer datagrams travel through a relay, decided one
+  datagram at a time from inside the game — because behind carrier-grade NAT the
+  address a peer is told is useless. And Ubisoft's lobby — the server list, the
+  rooms, the chat, and the two services that answer datagrams — comes through a
+  tunnel: those are raw TCP and UDP, a tunnel of the cloudflared family carries
+  HTTP and WebSocket and nothing else, so the extension holds the lobby's sockets
+  on this machine's loopback and carries them out over one WebSocket of its own.
+  Nothing is hooked for that half and no launcher script exists: the extension
+  points the game at its own loopback by rewriting the one address the game asks
+  for its server list at, then answers that question itself, and the game is
+  started the way it always was. The tab holds a lobby picked by name — which
+  fills the two addresses — or Custom and the addresses by hand, plus the local
+  port this copy listens on. The port is optional and empty is the ordinary
+  answer: the extension picks a free one when the game starts, so any number of
+  copies on one machine just work — naming one is for a capture filter that
+  wants a stable number. No secret to keep anywhere: an agent tells the relay
+  which address and port the game plays on, and the lobby answers whether
+  anybody is playing there. In the file the switch is still two flags,
+  `net-agent` and `net-u-lobby`, so a hand can set one without the other — the
+  panel shows such a file as the mixed state it is.
+
+- **Two quality-of-life switches for playing against yourself.** *Let a second
+  copy of the game run* takes off the guard that refuses to start while another
+  instance is open — the shipped game says "You can't run game and editor or two
+  instances of any of then at the same time" and quits — and *Keep running when
+  another window is in front* stops the game throttling itself to a frame every
+  40 ms when you tab away. Together they are a second player at the same
+  machine; separately, the second one is what anybody with two monitors wants.
+
+  The prices are in the panel and worth reading: with the first on, nothing will
+  tell you that you left an instance running; with the second, an unfocused game
+  keeps its sound and costs what a focused one costs. A second install also
+  needs its own `net_game_port` — two of them cannot share 8888 — which lives in
+  its profile, so it wants *Keep settings and saves with the mod* on as well.
+
 - **The Pandora's Box can be filled in.** The box now lists under **Treasures**
   in the object palette, and a placed one carries contents of its own: a
   message, experience, gold and the six resources, artifacts, spells, creatures

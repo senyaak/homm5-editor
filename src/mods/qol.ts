@@ -50,6 +50,9 @@ export const QOL_FILE = 'bin/homm5-editor-qol.txt';
  * preference on is not a thing. Fixes carry a `group` (see FIX_GROUPS).
  * `gameplay` is the third kind: things the game never had — new objects, new
  * rules — where a fix takes something wrong OUT and these put something new IN.
+ * `network` is the fourth, and it is apart from the others because what it
+ * touches is not this machine: playing over the internet is the one thing here
+ * that needs a server, an account and somebody at the other end.
  *
  * `native: false` marks a flag the C extension has no hand in: what it installs
  * is an ARCHIVE (like the health bar's), and the config line exists so the
@@ -126,6 +129,27 @@ export const QOL_FLAGS = [
       + " editor's palette only offers it while it is installed. The extension has a hand in"
       + " it too: without it the engine runs the treasure chest's own pickup beside ours —"
       + ' its dialog, its goods, and the box gone before the question is answered.',
+  },
+  {
+    name: 'second-instance',
+    tab: 'qol',
+    title: 'Let a second copy of the game run',
+    detail: 'The shipped game refuses to start while another instance of it — or the editor — is'
+      + ' already running, and says so in a message box. This takes that guard off, which is what'
+      + ' a multiplayer game needs when both players are at this machine: a second install of the'
+      + ' game, this flag on in it, and its own net_game_port in its profile, since two instances'
+      + ' cannot share port 8888. The price is that the message is gone: with this on nothing will'
+      + ' tell you that you left an instance running.',
+  },
+  {
+    name: 'run-in-background',
+    tab: 'qol',
+    title: 'Keep running when another window is in front',
+    detail: 'Unfocused, the game throttles itself to a frame every 40 ms and tells its own tick it'
+      + ' is in the background. With this on it behaves as though it were always the window in'
+      + ' front, so a second client — or a game on the other monitor — keeps going while you work'
+      + ' elsewhere. Its sound keeps playing too, and an unfocused instance costs what a focused'
+      + ' one costs.',
   },
   {
     name: 'combat-ai-fix',
@@ -287,7 +311,55 @@ export const QOL_FLAGS = [
     credit: 'Uses the work of H5_DLL by dredknight, with permission'
       + ' — https://github.com/dredknight/H5_DLL',
   },
+  {
+    name: 'net-agent',
+    tab: 'network',
+    title: 'Carry the other players\' traffic through the relay',
+    detail: 'Half of one decision — the panel offers this and net-u-lobby as a single switch, and'
+      + ' they stay two flags here so a hand can still set one without the other. Over the'
+      + ' internet the address a peer is told is often useless — behind carrier-grade NAT there'
+      + ' is no address to tell — so every game datagram is carried through the relay instead,'
+      + ' decided one datagram at a time from inside the game. It needs `relay` filled in in'
+      + ' homm5-editor-net.txt, and costs nothing while no multiplayer game is running.',
+  },
+  {
+    name: 'net-u-lobby',
+    tab: 'network',
+    title: 'Reach the lobby through a tunnel',
+    detail: 'The other half: the agent above carries the other PLAYERS\' datagrams, this one'
+      + ' carries the LOBBY — the server list, the rooms, the chat, the CD-key and NAT services.'
+      + ' A tunnel of the cloudflared family speaks HTTP and WebSocket while the u-lobby\'s'
+      + ' services are raw TCP and UDP, so no setting of a tunnel can put them behind one. This'
+      + ' listens on the loopback instead, the game connects to it of its own accord — nothing'
+      + ' is hooked and no call of the game\'s is touched — and everything it hears crosses one'
+      + ' outgoing WebSocket to the u-lobby\'s own door. It needs `u-lobby` filled in in'
+      + ' homm5-editor-net.txt, and it points the game at itself by rewriting the address the'
+      + ' game asks for its server list at — so there is no launcher script to set up and'
+      + ' nothing that can disagree about the port. With it off nothing is rewritten and the'
+      + ' game dials the u-lobby itself, as it always did.',
+  },
 ] as const;
+
+/**
+ * The network tab's one switch, drawn by the panel in place of the two flags'
+ * own rows. To somebody deciding, playing through a lobby is ONE thing — half
+ * of it on is a diagnosis, not a choice: the lobby without the agent joins a
+ * game that then cannot start, and the agent without the lobby was a staging
+ * step. So the panel asks once and writes both flags; they stay two flags in
+ * the file, and a file written by hand to one of them shows on the switch as
+ * the mixed state it is.
+ */
+export const NET_SWITCH = {
+  title: 'Play multiplayer through a lobby',
+  detail: 'Two carriers under one switch. The agent carries the other players\' datagrams'
+    + ' through the relay, because over the internet the address a peer is told is often'
+    + ' useless — behind carrier-grade NAT there is no address to tell. The lobby half holds'
+    + ' the u-lobby sockets on this machine\'s loopback and carries them out over one'
+    + ' WebSocket, because a tunnel of the cloudflared family speaks HTTP and WebSocket while'
+    + ' the u-lobby\'s services are raw TCP and UDP. Nothing is hooked: the game is pointed at'
+    + ' its own loopback by rewriting the address it fetches its server list from, and it'
+    + ' connects of its own accord. Pick a lobby below, or fill the addresses in by hand.',
+} as const;
 
 export type QolName = (typeof QOL_FLAGS)[number]['name'];
 export type QolSettings = Partial<Record<QolName, boolean>>;

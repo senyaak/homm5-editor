@@ -22,6 +22,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { PEFile } from '../src/exe/pe.ts';
+import { disassemble } from '../src/exe/disasm.ts';
 import { CLEAN_EXE } from '../src/exe/exe-unwrap.ts';
 import { gameDirIfAny } from './game-dir.ts';
 
@@ -54,6 +55,8 @@ interface Anchor {
   file: string;
   rva: number;
   head: number[];
+  /** True when a detour DISPLACES this head, rather than merely recognising it. */
+  detoured: boolean;
 }
 
 const anchors: Anchor[] = [];
@@ -80,11 +83,17 @@ for (const file of sources(NATIVE)) {
     if (bytes.length && bytes.every((b) => Number.isInteger(b))) heads.set(m[1]!, bytes);
   }
 
+  // Which heads a detour DISPLACES. Only those have to end where an instruction
+  // ends; the rest are recognised in place and then called, and their length is
+  // nobody's business but the recogniser's.
+  const displaced = new Set<string>();
+  for (const m of text.matchAll(/detour(?:_relocated)?\(\s*([A-Z0-9_]+)_RVA/g)) displaced.add(m[1]!);
+
   const rvaOf = /#define ([A-Z0-9_]+)_RVA (0x[0-9a-f]+)u/g;
   for (const m of text.matchAll(rvaOf)) {
     const name = m[1]!;
     const head = heads.get(name);
-    if (head) anchors.push({ name, file: short, rva: Number(m[2]), head });
+    if (head) anchors.push({ name, file: short, rva: Number(m[2]), head, detoured: displaced.has(name) });
     else headless.push(`${short}: ${name}`);
   }
 }
@@ -116,6 +125,27 @@ for (const a of anchors.sort((x, y) => x.name.localeCompare(y.name))) {
   check(a.name, same, same
     ? `0x${(a.rva + IMAGE_BASE).toString(16)} reads ${hex(found)}`
     : `0x${(a.rva + IMAGE_BASE).toString(16)} reads ${hex(found)}, expected ${hex(a.head)} (${a.file})`);
+  if (!same || !a.detoured) continue;
+
+  // AND IT HAS TO END WHERE AN INSTRUCTION ENDS. A detour's trampoline is the
+  // copied head followed by a jump to what comes after it (core/detour.c), so a
+  // head that stops halfway through an instruction resumes the original inside
+  // one — and the game dies at once, in the trampoline, at an address that
+  // belongs to nothing. Matching bytes do not catch that: five correct bytes of
+  // a function whose fifth is the first of a three-byte `mov` read perfectly.
+  // This is the check that would have saved a launch.
+  const boundaries = new Set<number>([0]);
+  for (const ins of disassemble(exe.buf.subarray(at, at + a.head.length + 16), a.rva + IMAGE_BASE)) {
+    boundaries.add(ins.address - (a.rva + IMAGE_BASE) + ins.length);
+    if (ins.address - (a.rva + IMAGE_BASE) > a.head.length) break;
+  }
+  check(
+    `${a.name} — the head ends on an instruction`,
+    boundaries.has(a.head.length),
+    boundaries.has(a.head.length)
+      ? `${a.head.length} bytes`
+      : `${a.head.length} bytes cuts one in half; whole heads end at ${[...boundaries].filter((b) => b > 0).sort((x, y) => x - y).slice(0, 4).join(', ')} (${a.file})`,
+  );
 }
 
 // A VTABLE HAS NO HEAD — but it has a NAME, and that is a better check than
