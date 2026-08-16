@@ -173,7 +173,7 @@ So the bonus is **native code**, added on top of the engine's own arithmetic
 rather than replacing any of it: the necromancy percentage is one sum whose last
 term is "count worn pieces of a set, if enough add a number from data", and a
 term of ours is the same shape. The plan and the reverse-engineering behind it
-are [SLICE_artifact_effects.md](../SLICE_artifact_effects.md) and
+are [SLICE_artifact_effects.md](_slices_done/SLICE_artifact_effects.md) and
 [ENGINE_INTERNALS.md](ENGINE_INTERNALS.md), and it works in game as of
 2026-07-29. A script was the earlier answer here
 and is not one: it has no equip event, cannot take back a spell it granted, and

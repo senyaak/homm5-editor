@@ -1,6 +1,24 @@
 # SLICE — a spell of ours resolves ITSELF
 
-> **Status: THE DAMAGE LANDS, 08.08.2026 (run 3). The visual does not yet.**
+> **Status: landed. The damage on 08.08.2026 (run 3), the visual and the
+> Master's mark on 09–10.08.2026.** A spell of ours no longer borrows a shipped
+> branch: it walks the field itself, calls the engine's leaves through entry
+> points of its own, plays both visuals, and picks the applier that matches the
+> element so the mark appears the way a shipped spell's does. All of it is folded
+> into [docs/engineInternals/SPELLS.md](../engineInternals/SPELLS.md), which is
+> what to keep in step; what follows is the run-by-run record of how it was
+> found, kept because each run cost a launch and says what the reading alone
+> could not settle.
+>
+> ---
+>
+> **The visual, and the mark.** Both were open when the damage first landed and
+> both are closed: `SpellVisualFn`/`g_spellVisual` and `UNIT_PLAY_SLOT 0x280` in
+> `native/combat/spell-resolve.c` play the cast and then the hit on every stack,
+> and `applier_for`/`air_applier_for`/`water_applier_for` route to the fire, air
+> and water appliers instead of the element-less `0xBD1980` that left no mark.
+> All three were watched in a battle.
+>
 >
 > Calling the applier per stack was the fix. Eight… seven stacks, twenty each,
 > and in game the creatures die.

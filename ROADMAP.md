@@ -960,6 +960,15 @@ Two constraints shape the design, both learned the hard way:
       this creature have that one" where it matters, which is why Undead is a flag rather
       than a behaviour — so an ability nobody asks about is exactly what a tag is, and the
       question can then be asked from a rule of ours, from a script, or from both.
+- [ ] ⬜ **The six stats a SET grants** — "+2 Attack while two pieces are worn". A set has
+      no `HeroStatsModif`, so this needs a native term the way necromancy and the dark
+      energy ceiling did, and the place to add it is not found yet: the six are cached in
+      bitfields, and the recompute that fills them (`0xd06fb0`, ending in the writer at
+      `0xc7bd40`) is the candidate to read. What the search already ruled out, and the
+      `GetHeroStat` dispatch it did find, are in
+      `docs/engineInternals/ARTIFACTS_AND_EQUIPMENT.md` — "The six stats a SET cannot grant
+      yet". Until then a set that wants those carries a script row, and the dialog offers
+      only what works.
 - [ ] ⬜ **Model picker** over `Characters/Creatures/**` and `_(Model)/**`, with a preview —
       the renderer can already draw geometry.
 - [ ] ⬜ **Fetch Steamless on request**, pinned and checksummed, never "latest":

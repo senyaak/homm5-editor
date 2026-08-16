@@ -210,19 +210,21 @@ Estimates are for the way this repo is actually worked: written here, held by
 the e2e suite, argued about on screenshots where the suite cannot judge.
 
 **The suite already covers this ground**, which is what makes the cheap steps
-cheap: `e2e/effects.spec.ts`, `e2e/effect-timing.spec.ts` and
-`e2e/glued-effects.spec.ts`, plus the `fxSystems()` debug hook in
-`renderer/viewport/fx.ts`, which reports `alive`, `visible` and the world position of
-every system on the active floor. "The campfire went out", "the wrong thing got
-culled" and "the glued eye stopped following the head" are assertions, not
-screenshot reviews.
+cheap: `e2e/object-effects.spec.ts` (placing, gluing and timing — the three
+specs this page first named separately are one file), `e2e/shipped-map-scene.spec.ts`
+and `e2e/undo.spec.ts`, plus the `fxSystems()` debug hook, which reports `alive`,
+`visible` and the world position of every system on the active floor. It is
+exposed from `renderer/app.ts` (declared at :541, implemented at :753) and reads
+the `uid` that `renderer/viewport/fx.ts:52` stamps on each mesh. "The campfire
+went out", "the wrong thing got culled" and "the glued eye stopped following the
+head" are assertions, not screenshot reviews.
 
 | Step | Size | Risk | Held by |
 | --- | --- | --- | --- |
 | §5 measurements | 30–40 min | none | is itself the result |
 | 3.1 atlas dedupe | ~1 h | medium | `fxSystems().alive` + deleting a placed object |
 | 3.3 `addUpdateRange` | 15 min | none | nothing visible may change |
-| 3.4 30 Hz step | 20 min | low | `effect-timing.spec.ts` |
+| 3.4 30 Hz step | 20 min | low | the timing half of `object-effects.spec.ts` |
 | 3.2 bounds + culling | 2–3 h | medium | `test-effects` + `visible` from the hook + eyes on smoke |
 | 3.5 alive index | ~1.5 h | low | `test-effects` |
 | 3.5 one draw per effect | half a day – a day | high | all of the above |

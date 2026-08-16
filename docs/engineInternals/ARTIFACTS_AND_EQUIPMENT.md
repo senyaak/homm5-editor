@@ -295,3 +295,36 @@ where the engine finished its own.
 impersonate.** Thirty-six functions is where an artifact effect can live at all
 in this engine; each one is a place our config may add a term, and every one we
 do not touch keeps behaving exactly as it shipped.
+
+### The six stats a SET cannot grant yet
+
+"+2 Attack while two pieces are worn" has no door. A set has no
+`HeroStatsModif` — that field belongs to an artifact record — so the six an
+artifact grants directly (attack, defence, spellpower, knowledge, luck, morale)
+need a native term the way necromancy and the dark energy ceiling did, and where
+that term goes is **not found**. What the search did establish, so the next
+attempt starts further along than the last:
+
+- **They are not in the `CountEquipped` catalogue.** Its thirty-six functions
+  are special behaviours — movement points, spell immunities, luck riders — and
+  none of them sums `HeroStatsModif`.
+- **They are not read off the record at the point of use.** The only callers of
+  the record getter (`0xb1ef70`) that touch `+0x44 … +0x58` are the AI's
+  valuation, already ruled out once.
+- **They are cached, packed into bitfields.** The hero's Luck reads
+  `[this-0x78] >> 0x14 & 0xF` — four bits of a dword holding other stats beside
+  it (masks `0x3ff`, `0xffc00`, `0xf00000` appear in the writer at `0xc7bd40`),
+  and the getters in `CAdvMapHero`'s vtable are that narrow. So a recompute
+  fills them, and `0xd06fb0` — 246 instructions ending in that writer — is the
+  candidate to read.
+- **The dispatch behind `GetHeroStat` is at `0x108db90`**, not `0x108db8c`:
+  twelve-byte entries of `{thunk, 0, 0}`, each thunk two instructions
+  (`mov eax,[ecx]; jmp [eax+SLOT]`) — Attack `+0x10`, Defence `+0x14`,
+  SpellPower `+0x18`, Knowledge `+0x1c`, Experience `+0x1a4`, and two more at
+  `+0xf4`/`+0xfc`.
+
+The next step is to read that recompute and find where the artifact contribution
+enters it, the way the necromancy sum was read. Until then a set of ours offers
+only what works — a bonus listed in a dialog and doing nothing is exactly what
+the extension exists to prevent — and a set that wants those six carries a
+script row instead.

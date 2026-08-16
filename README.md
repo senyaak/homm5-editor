@@ -231,8 +231,9 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
   those ids — the necromancy sum, artifact sets addressed by enum value, and the
   command layer every change goes through — is in
   [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md), read out of the binary
-  with the tools in `tools/reverse/`. Giving our own artifacts real properties is
-  planned in [SLICE_artifact_effects.md](SLICE_artifact_effects.md).
+  with the tools in `tools/reverse/`. Our own artifacts carry real properties as
+  of 2026-07-29 — how that was found and built is
+  [docs/_slices_done/SLICE_artifact_effects.md](docs/_slices_done/SLICE_artifact_effects.md).
 - **New spells** ([docs/engineInternals/SPELLS.md](docs/engineInternals/SPELLS.md)) —
   **Spells…** in the toolbar adds a page to the spellbook the game will let a hero
   cast: school, rank, mana, the four damage entries the four masteries use, and

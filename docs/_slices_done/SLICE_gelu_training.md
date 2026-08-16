@@ -1,10 +1,17 @@
 # SLICE — Gelu, and a specialization that ACTS
 
-> **Status: step 1 is DONE and seen in game, 07.08.2026.** Gelu's specialization
-> puts a spell of the mod's in his book, on the map, at run time — the page is
-> there. What runs when it is CAST is the next step and is not written.
+> **Status: landed, 08.08.2026.** Gelu's specialization puts a spell of the
+> mod's in his book, on the map, at run time; casting it opens a count window,
+> takes the gold and turns that many elves into sharpshooters. The stand it was
+> built on is gone — the rule and its Lua live in
+> `src/mods/sharpshooter-training.ts`, the generator writes them
+> (`src/mods/creature-mod.ts`), and `e2e/mod-009-installed.spec.ts` reads them
+> back out of the packed archive.
 >
-> The count window is built and unproven (`native/ui/count-window.c`).
+> One cosmetic thing was left: the count window's second icon draws the source
+> creature rather than the target, because the engine asks side 0 only and uses
+> one picture for both. That is recorded where it lives —
+> `native/ui/count-window.c` and `docs/UI_INTERNALS.md`.
 
 ## Two classes of hero, and the offset that belongs to each
 
@@ -121,7 +128,7 @@ the one it calls** — its `+0x20` is `0xd06040`, which is not a level getter.
 
 `native/ui/count-window.c`: the engine's own split slider driven by a controller
 of ours, and `AskTroopCount(most, from, creature)` in Lua over it. See
-[docs/UI_INTERNALS.md](docs/UI_INTERNALS.md#a-window-of-ours-out-of-the-engines-own).
+[docs/UI_INTERNALS.md](../UI_INTERNALS.md#a-window-of-ours-out-of-the-engines-own).
 
 The picture turned out to want a **number**, not an army: the engine's own
 controller answers `+0x00` by taking `stack->+0x1C` — which creature — and
@@ -154,7 +161,7 @@ ceiling those abilities are known for — written in two instructions.)
 Ours answers for itself now, shipped spells are untouched, and the page takes a
 click.
 
-Full write-up: [docs/engineInternals/SPELLS.md](docs/engineInternals/SPELLS.md).
+Full write-up: [docs/engineInternals/SPELLS.md](../engineInternals/SPELLS.md).
 
 ## The click reaches the map's own Lua — 07.08.2026
 
@@ -451,7 +458,7 @@ and does not end the block, so the caller gets whatever the last `return`
 executed left behind, which read as yes every time. The version that worked put
 the call in the CONDITION (`if H5EWhoCanTrain() == nil then return nil; end;`)
 and never met the shape. Full write-up:
-[LUA.md](docs/engineInternals/LUA.md#the-dialect-return-f-from-inside-a-block-does-not-return).
+[LUA.md](../engineInternals/LUA.md#the-dialect-return-f-from-inside-a-block-does-not-return).
 
 **The method lesson, which cost as much as the bug.** "The game's own scripts do
 this 108 times" was the count that nearly closed the case in the construct's
@@ -465,11 +472,15 @@ regression test for the rule itself: zero false positives across all 47.
 
 ## Open questions
 
-- Nothing outstanding on the rule; the remaining work is moving the stand into
-  the editor (`src/mods/artifact-scripts.ts` still writes only the ability
-  block) and drawing the target creature in the count window's second icon.
+- Nothing outstanding on the rule. Moving the stand into the editor is **done**:
+  `patchCommonScript` takes the spell's Lua as an argument and
+  `src/mods/creature-mod.ts` hands it `trainingLua()` for any creature the mod
+  says trains, so what used to reach the game through a hand tool in `_tmp/`
+  now reaches it through the generator, checked by
+  `e2e/mod-009-installed.spec.ts` reading the packed archive back.
 - The second icon in the count window draws the source creature: the engine asks
-  side 0 only and uses one picture for both.
+  side 0 only and uses one picture for both. Cosmetic, left open, and noted in
+  `native/ui/count-window.c` beside the `g_askBecomes` it would use.
 - `ControlHeroCustomAbility` is undocumented in the manuals and is not used here,
   but Zehir's script is the only worked example of a hero ability in the shipped
   data and is worth keeping in view: `scripts/A2_Zehir/A2_Zehir.lua`.
