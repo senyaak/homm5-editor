@@ -120,12 +120,21 @@ export async function dragTiles(page: Page, from: [number, number], to: [number,
 }
 
 async function dragTilesNow(page: Page, from: [number, number], to: [number, number], steps = 8): Promise<void> {
-  const a = await screenOf(page, from[0], from[1]);
+  // ONE camera for the whole gesture. `screenOf` recentres a tile that sits too
+  // close to the window's edge — right for a lone click, poison for a drag: the
+  // second endpoint's refocus moves the world under a held button, so the two
+  // ends belong to different views. That is how 002's bulk rect went wrong and
+  // its vertex strokes landed on nothing (16.08.2026). The fitted plan view
+  // holds every tile of the map, so both ends are pixels of the SAME view.
+  const [a, b] = await page.evaluate(([fx, fy, tx, ty]) => {
+    window.view.plan(true);
+    window.view.fit();
+    return [window.view.tileToScreen(fx!, fy!), window.view.tileToScreen(tx!, ty!)];
+  }, [from[0], from[1], to[0], to[1]]);
   await page.mouse.move(a.x, a.y);
   await page.mouse.down();
   // Intermediate moves matter: the brush acts per pointermove, so a jump from
   // one end to the other paints the ends and nothing between them.
-  const b = await screenOf(page, to[0], to[1]);
   for (let i = 1; i <= steps; i++) {
     await page.mouse.move(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps);
   }

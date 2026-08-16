@@ -12,7 +12,7 @@ import { test, expect } from '@playwright/test';
 import { launchEditor } from '../launch.ts';
 import type { Launched } from '../launch.ts';
 import { armBrush, setRiverStrength } from '../tiles.ts';
-import { cellPixels, clickAt } from '../pointer.ts';
+import { clickCell } from '../pointer.ts';
 import { fixture, mismatches, openMap, requireFixture, saveTerrain } from './shared.ts';
 import { readHeights, readWaterPlane } from '../../src/terrain/terrain.ts';
 
@@ -31,7 +31,8 @@ test('C1M1 rivers, on the half-tile grid', async () => {
   const V = await openMap(page);
   // The ground before this stage: carving is off, so it must not move.
   const heightsBefore = await page.evaluate(() => window.view.heights());
-  const pixels = await cellPixels(page, target.W);
+  // The whole map on screen; each click maps its cell when the mouse moves.
+  await page.evaluate(() => window.view.fit());
 
   const byStrength = new Map<number, number[]>();
   for (let i = 0; i < target.data.length; i++) {
@@ -46,7 +47,7 @@ test('C1M1 rivers, on the half-tile grid', async () => {
   await armBrush(page, 'river', '1');
   for (const [value, cells] of byStrength) {
     await setRiverStrength(page, value, false);
-    for (const c of cells) await clickAt(page, pixels[c]!);
+    for (const c of cells) await clickCell(page, c % target.W, (c / target.W) | 0);
   }
 
   const built = await saveTerrain(page);

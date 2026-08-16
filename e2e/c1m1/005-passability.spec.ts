@@ -16,8 +16,7 @@
 import { test, expect } from '@playwright/test';
 import { launchEditor } from '../launch.ts';
 import type { Launched } from '../launch.ts';
-import { armBrush } from '../tiles.ts';
-import { dragAt, tilePixels } from '../pointer.ts';
+import { armBrush, dragTiles } from '../tiles.ts';
 import {
   currentTerrain, fixture, mismatches, openMap, requireFixture, saveTerrain,
 } from './shared.ts';
@@ -52,8 +51,6 @@ test('C1M1 passability, masked run by run', async () => {
   const riverBefore = readWaterPlane(before);
   const masksBefore = readTextureLayers(before).map((l) => ({ path: l.path, data: Uint8Array.from(readMask(before, l)) }));
 
-  const pixels = await tilePixels(page, T);
-
   // The mask is stored vertex-sized but addressed per tile: entry y*V + x is
   // tile (x, y), and the last row and column are filler — zero blocked across
   // every shipped map, and zero here too.
@@ -86,7 +83,7 @@ test('C1M1 passability, masked run by run', async () => {
     const started = Date.now();
     let done = 0;
     for (const [y, x0, x1] of pending) {
-      await dragAt(page, pixels[y * T + x0]!, pixels[y * T + x1]!);
+      await dragTiles(page, [x0, y], [x1, y]);
       if (++done % 100 === 0) {
         console.log(`  ${done}/${pending.length} runs (${(done / ((Date.now() - started) / 1000)).toFixed(0)}/s)`);
       }

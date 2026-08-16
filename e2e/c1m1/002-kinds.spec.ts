@@ -12,7 +12,7 @@ import { test, expect } from '@playwright/test';
 import { launchEditor } from '../launch.ts';
 import type { Launched } from '../launch.ts';
 import { armBrush, dragTiles, setGroundKind } from '../tiles.ts';
-import { clickAt, vertexPixels } from '../pointer.ts';
+import { clickVertex } from '../pointer.ts';
 import { fixture, mismatches, openMap, requireFixture, saveTerrain } from './shared.ts';
 import { readGroundFlags, readHeights, tierOf, RAMP_BIT } from '../../src/terrain/terrain.ts';
 
@@ -33,7 +33,8 @@ test('C1M1 tiers and ramps, painted without moving the ground', async () => {
   // Taken from the map rather than from the original, so the check holds even
   // when this stage is run on its own, before the heights are finished.
   const heightsBefore = await page.evaluate(() => window.view.heights());
-  const pixels = await vertexPixels(page, V);
+  // The whole map on screen; each click maps its vertex when the mouse moves.
+  await page.evaluate(() => window.view.fit());
 
   const byKind = new Map<number, number[]>();
   for (let i = 0; i < target.length; i++) {
@@ -56,7 +57,7 @@ test('C1M1 tiers and ramps, painted without moving the ground', async () => {
   let painted = 0;
   for (const [kind, verts] of kinds.slice(1)) {
     await paint(kind);
-    for (const v of verts) { await clickAt(page, pixels[v]!); painted++; }
+    for (const v of verts) { await clickVertex(page, v % V, (v / V) | 0); painted++; }
   }
   console.log(`  ${painted} vertices painted one at a time`);
 
