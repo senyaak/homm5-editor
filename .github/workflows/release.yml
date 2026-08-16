@@ -93,4 +93,7 @@ jobs:
           '@
 
           ($body -join "`n") + "`n" + $standing | Out-File -FilePath notes.md -Encoding utf8
-          gh release create "$env:TAG" "homm5-editor-$env:TAG-win-x64.zip" --title "homm5-editor $env:TAG" --notes-file notes.md
+          # A dash in the version is a pre-release (-alpha.1, -rc.1) and GitHub
+          # should say so on the release itself, not only in the notes.
+          $pre = if ($version -match '-') { @('--prerelease') } else { @() }
+          gh release create "$env:TAG" "homm5-editor-$env:TAG-win-x64.zip" --title "homm5-editor $env:TAG" --notes-file notes.md @pre

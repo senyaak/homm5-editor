@@ -9,9 +9,19 @@ would have seen.
 
 `## Unreleased` collects what has landed since the last tag. `release.yml` finds
 its section by version number, so this heading is inert until it is renamed to
-one.
+one. A version with a `-` in it (`-alpha.1`, `-rc.1`) is published as a GitHub
+pre-release.
 
-## Unreleased
+## 0.10.0-alpha.1 — 2026-08-16
+
+**An alpha, and the reason is multiplayer.** The online half below works and has
+carried real games — through a tunnel, over a phone hotspot, with every peer
+datagram on our own relay — but it is not finished: two players from two
+different home networks will announce the same address and port, and the lobby
+will refuse the second (§4.2 of the plan; it is the next piece of work). One
+household, one LAN, or one player per network is what works today. The
+`senyaak.work` lobby the Network tab offers is the author's own machine —
+online when it is online.
 
 ### Added
 
