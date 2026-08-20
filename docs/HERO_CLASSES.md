@@ -155,9 +155,11 @@ patches by that pattern, never by address.
 
 Twelve one-line `mov eax,N; ret` functions sit together at `0xa9ef30`…`0xa9f330`,
 one per table, and the creature and artifact patchers both write theirs.
-**Nothing references any of the twelve** — not a call, not a jump, not a pointer,
-searched for all of them. From that the conclusion "these one-liners are dead"
-was drawn, and it was drawn too wide.
+Nothing was found referencing them, and from that the conclusion "these
+one-liners are dead" was drawn — too wide **twice over**: the faction survey
+(engineInternals/FACTIONS.md) later found the one returning 11 — the town-type
+count, at `0xa9f0e0` — has six live call sites. Dead is a property of one
+accessor, proven by its own caller search, never of the block.
 
 The skill table has **another one**, far from that block, at `0xb1ef80`, and
 fifteen call sites reach it:
