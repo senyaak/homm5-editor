@@ -19,6 +19,7 @@ beside it, because they are read one at a time and the pile was 700 lines.
 | [engineInternals/FIRST_AID_TENT.md](engineInternals/FIRST_AID_TENT.md) | The tent: what it heals, how many uses it has, where each number is decided, and reaching a hero from a war machine. |
 | [engineInternals/LUA.md](engineInternals/LUA.md) | How the script API is registered, why the manuals disagree with it, and what adding a function costs. |
 | [engineInternals/MODS_AND_MAPS.md](engineInternals/MODS_AND_MAPS.md) | Where the game looks for mods, why a map archive can override anything, and where the generator writes. |
+| [engineInternals/FACTIONS.md](engineInternals/FACTIONS.md) | What a faction is to the engine — a dimension, not a list: `__RACE_COUNT`, the town-type table's two numbers, how the town hall really resolves, and what a ninth faction would cost. Survey only; nothing implemented. |
 | [engineInternals/EXTENSION.md](engineInternals/EXTENSION.md) | The three layers of our own extension, and what we deliberately do not do. |
 | [engineInternals/BATTLE_SCRIPTING.md](engineInternals/BATTLE_SCRIPTING.md) | How the extension reaches a fight's Lua, the moment it fires on, and what a mod must not do to `combat-startup.lua`. Its reference side is [api/combat.md](api/combat.md). |
 

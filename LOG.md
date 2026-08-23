@@ -98,8 +98,8 @@ This is the one place the per-file switch is coarser than one might want, and it
 was left that way on purpose: sorting "report" from "chatter" line by line
 across forty-five files is exactly the per-subject judgement that the per-file
 switch exists to avoid. If a launch has to be repeated twice for want of a
-report, that is the signal to revisit it — see
-[SLICE_native_logging.md](SLICE_native_logging.md) §3.2.
+report, that is the signal to revisit it — once is a rebuild, twice is a
+pattern.
 
 ## Which file to ask for
 
@@ -148,10 +148,51 @@ reads is a build with no warnings.
 it matches its own path, that no two share a name, and that the `#undef` is
 there. It runs as part of `npm test`.
 
+## What was deliberately left undone
+
+Three things this could have and does not, each deferred on purpose rather than
+forgotten. Each says what would settle it, so a decision made once does not have
+to be argued again from scratch.
+
+**Whether the crash report ships.** `core/faults.c` and the roll-call are on by
+default, and `--log none` silences even them for a build meant purely for
+playing. *What would settle it:* the first time this mod is handed to somebody
+who is not building it. Until then the question is theoretical — the author
+rebuilds for every change, so nothing is ever shipped that could not be rebuilt
+louder.
+
+**Writing from a thread of its own.** Proposed and turned down. With the volume
+cut, a run writes tens of lines rather than hundreds, and the file open per line
+that was drowning a spell cast is no longer inside a loop. A queue is not free
+in the direction that matters either: lines still in it when the game faults are
+the lines nobody gets to read, which is the opposite of what the crash report is
+for. *What would settle it:* a run, with one unit asked for, that still stutters.
+Then the queue has to be drained synchronously from the fault handler before it
+hands the crash on, and from `DLL_PROCESS_DETACH`.
+
+**`console_line` still re-enters the engine's Lua.** The gate cuts how often it
+happens — from every line to only the lines of the one file being debugged — and
+it cuts where, since somebody asking for `combat/spell-resolve` knows they are
+asking for lines from inside a battle. It does not make the re-entry safe. It
+stays because the console echo is how a log reaches a screenshot, and a
+screenshot is how it reaches somebody who is not at the machine; the volume was
+the part that could be fixed without taking anything away. Note that nothing has
+PROVED the re-entry ever hung anything — it is read off the code, and the volume
+alone explains what was seen. *What would settle it:* the game hanging in a
+battle on a build with one unit asked for. Then this is the first suspect and
+the test is cheap — comment out the `console_line` call in `log_line_now` and
+run the same battle.
+
+Versioning the log's format is not foreclosed by anything here: a header line at
+the top of each file is where a version would go. A version *prefix* on the name
+would break the pruning, which sorts by name; a version inside the file would
+not.
+
 ## Where the rest of it is written down
 
 - The bottom of [native/core/log.c](native/core/log.c) — what the gate is, and
   why it is per file rather than per subject.
-- [SLICE_native_logging.md](SLICE_native_logging.md) — what was deliberately
-  NOT done and what would settle each: whether the crash report ships, the
-  console echo still re-entering the engine's Lua, a writer thread.
+- [docs/_slices_done/SLICE_native_logging.md](docs/_slices_done/SLICE_native_logging.md)
+  — what the logging was before the gate (395 unconditional sites, a file open
+  per line, one file for every launch ever) and the measurements that chose the
+  shape it has now.

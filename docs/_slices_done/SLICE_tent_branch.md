@@ -155,7 +155,7 @@ registered function. No new enum, no data file of the game's edited.
 all** — a `return;` that failed a whole file, and a hero record whose
 `OverrideMask` of 0 quietly ignored every stat the stand wrote. Both are written
 down where the next person meets them: the linter, and
-[docs/OBJECT_DEFAULTS.md](docs/OBJECT_DEFAULTS.md).
+[docs/OBJECT_DEFAULTS.md](../OBJECT_DEFAULTS.md).
 
 ## Still worth knowing, from the same session
 

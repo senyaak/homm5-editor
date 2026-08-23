@@ -564,17 +564,22 @@ that exempt it, then hands a number to `SPELL_EFFECT_FIRE_DAMAGE` (202).
 
 **THE FOUR ARE NOT INTERCHANGEABLE, and this is the thing to know before calling
 any of them.** Their `ret`s are `10h` (fire), `14h` (air), `18h` (water) and
-`10h` (plain) — four, five, six and four stack arguments — and fire even swaps
-the roles of `ecx` and `edx` against the plain one (`ecx->vt[8]` where the plain
-does `edx->vt[8]`). A call written for one and pointed at another returns with
-the stack short, and the crash lands somewhere with nothing to do with spells.
-That is what `mass-spell-element-fix` used to risk; see below.
+`10h` (plain) — four, five, six and four stack arguments. A call written for one
+and pointed at another returns with the stack short, and the crash lands
+somewhere with nothing to do with spells. That is what `mass-spell-element-fix`
+used to risk; see below. (What differs is the stack arguments only. Fire was
+once read here as swapping the roles of `ecx` and `edx` against the plain one —
+that was wrong, and §1 of "What is not done yet" says what it cost.)
 
-**Our own resolver calls the PLAIN one**, whose argument list is decoded from the
-resolver's own single-target branch: `ecx` the caster, `edx` the stack aimed at,
-then (damage, chain, spell id, `Resolve`'s own first argument). So a spell of
-ours builds its entry and leaves **no Master's mark** — each of the other three
-needs its own reading first. Named, not hidden.
+**Our own resolver started on the PLAIN one**, whose argument list is decoded
+from the resolver's own single-target branch: `ecx` the caster, `edx` the stack
+aimed at, then (damage, chain, spell id, `Resolve`'s own first argument) — and
+while it did, a spell of ours left **no Master's mark**. That is history: it now
+picks the applier from the document's element for all three shapes, and all
+three were watched in a battle. The arities and what each extra argument means
+are in "What is not done yet" §1 below, which also corrects the `ecx`/`edx`
+claim made two paragraphs up: at the area routine's dispatch all four are handed
+`mov edx,ebx` and `mov ecx,[esp+60h]`, and only the extra arguments differ.
 
 Five places call the fire one, and two of them are routines a spell of ours used
 to borrow — which behave differently:

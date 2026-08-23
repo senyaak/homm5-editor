@@ -27,7 +27,7 @@
 > [docs/ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md); what stays here is why the
 > shape is what it is.
 
-Reading first: [SLICE_artifact_effects.md](../../SLICE_artifact_effects.md) (the same
+Reading first: [SLICE_artifact_effects.md](SLICE_artifact_effects.md) (the same
 three layers, one rung down), [docs/ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md)
 (what the binary does), [docs/CONTENT_FORMS.md](../CONTENT_FORMS.md) (what a
 window that MAKES something has to do).

@@ -1,19 +1,22 @@
 # SLICE — Artifact effects that the engine treats as its own
 
-> **Status:** built, and waiting to be seen in game. Adding an artifact already
-> worked ([docs/ARTIFACTS.md](docs/ARTIFACTS.md)) but a new id got **no
+> **Status: landed, and seen in game 2026-07-29.** Adding an artifact already
+> worked ([docs/ARTIFACTS.md](../ARTIFACTS.md)) but a new id got **no
 > properties**: every special behaviour the shipped artifacts have is compiled
-> against a specific id. This slice makes our own artifacts carry real
+> against a specific id. This slice made our own artifacts carry real
 > properties — our own set, our own effect id, our own numbers — through the
-> engine's own arithmetic rather than a script imitating it from outside. Two
-> stats are live now: the necromancy percentage, and the dark energy ceiling
-> a set of ours raises. When the second is confirmed in game, fold the findings
-> into [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md) and retire this
-> file.
+> engine's own arithmetic rather than a script imitating it from outside. Both
+> stats it set out to prove are live and were watched in a battle: the necromancy
+> percentage, and the dark energy ceiling a set of ours raises. The machine it
+> built outgrew it — `EFFECT_STATS` now carries seventeen numbers and the
+> specializations, skills and spells of later slices ride the same rows.
+>
+> One thing it did NOT solve outlived it: the six stats an artifact record
+> grants directly, when a SET wants to grant them (§6.6).
 
-Reading first: [docs/ARTIFACT_EFFECTS.md](docs/ARTIFACT_EFFECTS.md) (what data
-and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
-(what the binary does), [docs/EXE_LUA_REGISTRY.md](docs/EXE_LUA_REGISTRY.md)
+Reading first: [docs/ARTIFACT_EFFECTS.md](../ARTIFACT_EFFECTS.md) (what data
+and script can express), [docs/ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md)
+(what the binary does), [docs/EXE_LUA_REGISTRY.md](../EXE_LUA_REGISTRY.md)
 (every function the engine hands to Lua).
 
 ---
@@ -26,7 +29,7 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
   the answer, through one function, `0xb4c270`. It has 77 call sites in 36
   functions naming 50 artifacts, and no rival — that is the entire per-id
   behaviour the executable owns.
-  [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md) carries the catalogue.
+  [docs/ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md) carries the catalogue.
   Still open, and only for §1.1(д): the write site for dark energy, and
   whatever grants a Scroll's spell (it is not `0xb4a560`, which turned out to
   be a property-bag writer).
@@ -38,7 +41,7 @@ and script can express), [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md)
   twelfth effect value, an eleventh set is reached — no compiled ceiling — the
   set is named on the hero screen, and the game counts the worn pieces itself.
   The probe is retired; the Cloak of the Undead King is ordinary data in the
-  port now, authored through the dialog and held by [e2e/mods.ts](e2e/mods.ts).
+  port now, authored through the dialog and held by [e2e/mods.ts](../../e2e/mods.ts).
 - в) ~~**Prove the native path.**~~ **Done, 2026-07-28.** Not a proxy DLL in the
   end: `H5_Game_H5E.exe` is our copy already, so it names our library in its
   import table and no file of the game's is touched. The detour on the
@@ -125,21 +128,21 @@ an artifact depends on.
 | ---- | ------ |
 | `types.xml` (in the mod archive) | ✅ Append `ARTFSET_EFFECT_<ours> = 11` to the `ArtifactSetEffect` enum. Append-only: the value is what saves and maps store. |
 | `GameMechanics/RPGStats/DefaultStats.xdb` | ✅ A `<Sets>` entry using that effect — members, per-count texts and icons. |
-| [src/mods/creature-mod.ts](src/mods/creature-mod.ts) | ✅ `addArtifactSet` and the two patches above, in the existing single pass over types.xml. |
-| [e2e/mods.ts](e2e/mods.ts) | ✅ The Cloak of the Undead King as a fixture — ordinary data now that §1.1(б) is answered, authored through the dialog like everything else. The probe that proved it is retired. |
-| [renderer/index.html](renderer/index.html), [renderer/app.ts](renderer/app.ts) | ✅ A Sets pane inside the Artifacts dialog, not a dialog of its own: one mod, one install. Members are ticked from a list, never typed. |
-| [electron/main.ts](electron/main.ts), [electron/ipc.ts](electron/ipc.ts) | ✅ `mods:install-set`, and `sets` in `ModListEntry` so an installed set is visible. |
-| [e2e/mod-003-artifacts-create.spec.ts](e2e/mod-003-artifacts-create.spec.ts) | ✅ Builds two pieces and the set they belong to; checks that borrowing a shipped effect is refused. |
+| [src/mods/creature-mod.ts](../../src/mods/creature-mod.ts) | ✅ `addArtifactSet` and the two patches above, in the existing single pass over types.xml. |
+| [e2e/mods.ts](../../e2e/mods.ts) | ✅ The Cloak of the Undead King as a fixture — ordinary data now that §1.1(б) is answered, authored through the dialog like everything else. The probe that proved it is retired. |
+| [renderer/index.html](../../renderer/index.html), [renderer/app.ts](../../renderer/app.ts) | ✅ A Sets pane inside the Artifacts dialog, not a dialog of its own: one mod, one install. Members are ticked from a list, never typed. |
+| [electron/main.ts](../../electron/main.ts), [electron/ipc.ts](../../electron/ipc.ts) | ✅ `mods:install-set`, and `sets` in `ModListEntry` so an installed set is visible. |
+| [e2e/mod-003-artifacts-create.spec.ts](../../e2e/mod-003-artifacts-create.spec.ts) | ✅ Builds two pieces and the set they belong to; checks that borrowing a shipped effect is refused. |
 | new: the proxy DLL | Forwards `zlib1.dll`, registers Lua functions, installs detours, reads the config. Built outside this repo; the editor ships and configures it. |
 | new: `src/mods/artifact-effects.ts` | The config model + writer — what the DLL reads. |
-| [src/mods/artifacts.ts](src/mods/artifacts.ts) | Emit the enum entry and the set alongside the existing artifact records. |
-| [src/exe/artifact-limit.ts](src/exe/artifact-limit.ts) | Unchanged in shape; the ceiling still gates whether new ids resolve at all. |
-| [docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md) | Fold in what §1.1(а) finds; drop the hunt notes once the answer is in. |
+| [src/mods/artifacts.ts](../../src/mods/artifacts.ts) | Emit the enum entry and the set alongside the existing artifact records. |
+| [src/exe/artifact-limit.ts](../../src/exe/artifact-limit.ts) | Unchanged in shape; the ceiling still gates whether new ids resolve at all. |
+| [docs/ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md) | Fold in what §1.1(а) finds; drop the hunt notes once the answer is in. |
 | the editor UI | Editing effects per artifact and per set — the point of §1.1(г). |
 
 Verification is in game, with a control: a shipped artifact on the same hero by
 the same route. Three of the four wrong answers last time would have been
-skipped by having one ([docs/ARTIFACTS.md](docs/ARTIFACTS.md)).
+skipped by having one ([docs/ARTIFACTS.md](../ARTIFACTS.md)).
 
 ## 5. Open questions (need a call before code)
 
@@ -170,7 +173,7 @@ give.
 read where it is used, and every read goes through `0xb4c270`. So there is no
 single hook that covers everything, and the fallback named here — a detour per
 sum, adding our term after the engine's — is the plan. The catalogue in
-[docs/ENGINE_INTERNALS.md](docs/ENGINE_INTERNALS.md) bounds it: 36 functions is
+[docs/ENGINE_INTERNALS.md](../ENGINE_INTERNALS.md) bounds it: 36 functions is
 every place an artifact effect can live, so the work is finite and known.
 
 5.4. ~~**Dark energy — how to write it.**~~ **Answered, and nothing needs
@@ -287,33 +290,14 @@ engine's, which is the point of the design:
   the engine recalculates. Its own four terms behave the same way. Сеня, on
   seeing it: «пока не мешает».
 
-6.6. **Open: the six an artifact record holds, granted by a SET.** A set has no
-`HeroStatsModif` — that field belongs to an artifact record — so "+2 Attack while
-two pieces are worn" needs a native term like the other two, and the place to add
-it is not found yet. What the search establishes, so the next attempt starts
-further along:
-
-- The six are NOT in the `CountEquipped` catalogue. Its 36 functions are special
-  behaviours (movement points, spell immunities, luck riders); none of them adds
-  up `HeroStatsModif`.
-- They are not read off the record at the point of use either: the only callers
-  of the record getter (`0xb1ef70`) that touch `+0x44 … +0x58` are the AI's
-  valuation, which was already ruled out once.
-- **They are cached, packed into bitfields.** The hero's Luck reads
-  `[this-0x78] >> 0x14 & 0xF` — four bits of a dword that also holds other stats
-  (masks `0x3ff`, `0xffc00`, `0xf00000` appear in the writer at `0xc7bd40`), and
-  the getters in `CAdvMapHero`'s vtable are that narrow. So there IS a recompute
-  that fills them, and `0xd06fb0` — 246 instructions ending in that writer — is
-  the candidate.
-- The dispatch behind `GetHeroStat` is at **`0x108db90`**, not `0x108db8c`:
-  twelve-byte entries of `{thunk, 0, 0}`, each thunk two instructions
-  (`mov eax,[ecx]; jmp [eax+SLOT]`) — Attack `+0x10`, Defence `+0x14`, SpellPower
-  `+0x18`, Knowledge `+0x1c`, Experience `+0x1a4`, and two more at `+0xf4`/`+0xfc`.
-
-The next step is to read that recompute and find where the artifact contribution
-enters it, the way the necromancy sum was read. Until then the set dialog offers
-only what works — a bonus that appears in a list and does nothing is exactly what
-the extension banner exists to prevent.
+6.6. **The six an artifact record holds, granted by a SET: still open, and it
+outlived this slice.** A set has no `HeroStatsModif`, so those six need a native
+term like the other two, and the place to add it is not found. The reconnaissance
+that narrowed it — what is ruled out, the bitfield cache, the recompute at
+`0xd06fb0`, the `GetHeroStat` dispatch at `0x108db90` — moved to
+[docs/engineInternals/ARTIFACTS_AND_EQUIPMENT.md](../engineInternals/ARTIFACTS_AND_EQUIPMENT.md),
+and the work itself is a ROADMAP entry. A set that wants those carries a script row
+meanwhile, and the dialog offers only what works.
 
 6.7. **What the set SAYS it gives** is a text per number of pieces worn, and it
 follows the game's own convention rather than ours: the sentence names the

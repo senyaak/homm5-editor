@@ -153,7 +153,8 @@ paths with a user name in them, and the person reads it before it goes anywhere.
 | File | What happens to it |
 | --- | --- |
 | [tools/test-renderer-ids.ts](tools/test-renderer-ids.ts) *(new)* | §1.1(а). Parses the markup, fails on a repeated `id`, naming both lines. Registered in `package.json` so `npm test` runs it. |
-| [renderer/app.ts](renderer/app.ts) | `$()` grows the dev-only duplicate check (§1.1(б)); the three loose sections leave for `renderer/<name>.ts` (§1.1(д)); the five `.catch(() => {})` report instead of swallowing (§6.5). |
+| [renderer/core/dom.ts](renderer/core/dom.ts) | `$()` grows the dev-only duplicate check (§1.1(б)) — it moved here when the renderer was split. |
+| [renderer/features/mods/*.ts](renderer/features/mods) | The thirteen `.catch(() => {})` report instead of swallowing (§6.5). |
 | [renderer/page.html](renderer/page.html) | Gains a CSP (§6.2). The shell, now that the dialogs have moved out to `renderer/parts/` (done). |
 | [electron/log.ts](electron/log.ts) *(new)* | §1.1(в). Opens the run's file, subscribes to both processes, writes tagged lines. |
 | [electron/crash.ts](electron/crash.ts) *(new)* | §1.1(е). The dialog, the signature-per-session rule, the issue URL, the debugger check. |
@@ -247,11 +248,18 @@ the splat textures on the main thread is almost certainly the whole of it.
 6.4. **`[ipc] map:open-archive 14119ms`** for a 23-file map. Fourteen seconds on
 first open. The largest number found and the least understood.
 
-6.5. **Five `.catch(() => {})` in `renderer/app.ts`** — around
-`showExtensionState` and the two mod-preset loaders. An error there reaches
-neither the log nor the dialog, so "no warnings" would be true by omission.
+6.5. **Thirteen `.catch(() => {})`, and the count is going up.** Five when this
+was written, all in `renderer/app.ts` around `showExtensionState` and the two
+mod-preset loaders; thirteen as of 2026-08-16, spread across
+`renderer/features/mods/{artifacts,artifact-sets,heroes,specializations,spells,units}.ts`
+— the split moved them and every mod window since has copied the idiom. An error
+there reaches neither the log nor the dialog, so "no warnings" would be true by
+omission. That it multiplied while nobody was looking is the argument for doing
+this: a swallow that is easy to copy gets copied.
 
-6.6. **A literal NUL byte in `renderer/app.ts`**, in the tree-path key
-separator: written as the raw byte instead of `'\0'`. Every `grep` over the file
-stops there and reports "binary file matches" — a tool that lies quietly, which
-this project has paid for once already.
+6.6. ~~**A literal NUL byte in `renderer/app.ts`**~~ — **gone.** It sat in the
+tree-path key separator, written as the raw byte instead of `'\0'`, so every
+`grep` over the file stopped there and reported "binary file matches". The
+renderer split took it out; checked byte by byte over `renderer/`, `electron/`
+and `src/` on 2026-08-16 and there is not one left. Kept here because the shape
+of the bug is worth remembering: a tool that lies quietly.
