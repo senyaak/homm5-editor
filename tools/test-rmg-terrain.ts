@@ -16,7 +16,7 @@ import { fillZones } from '../src/rmg/fill-zones.ts';
 import { loadTemplate } from '../src/rmg/load-template.ts';
 import { mapSetup } from '../src/rmg/map-setup.ts';
 import { readParams } from '../src/rmg/params.ts';
-import { readPresetTiles, readTileInfo } from '../src/rmg/preset-table.ts';
+import { readPresets, readTileInfo } from '../src/rmg/preset-table.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
 import { readTemplate } from '../src/rmg/template.ts';
 import { fillTerrain } from '../src/rmg/terrain.ts';
@@ -40,7 +40,7 @@ console.log('the reference chain, painted');
 
 const t = readTemplate(join(dir, 'RMG', 'Templates', 'S1P2Z2M1.xdb'));
 const p = readParams(join(dir, 'RMG', 'Params', 'Default.xdb'));
-const presets = readPresetTiles(dir);
+const presets = readPresets(dir);
 const transitive = p.defaultTransitiveTile ? readTileInfo(dir, p.defaultTransitiveTile) : null;
 check('the transitive tile resolves to the Necropolis dark ground',
   transitive !== null && transitive.path.includes('Necropolis/DarkGround') && transitive.priority === 70,

@@ -34,7 +34,7 @@
 // it standing.
 
 import type { RmgRandom } from './random.ts';
-import type { RacePresetTiles, TerrainTileInfo } from './preset-table.ts';
+import type { RacePreset, TerrainTileInfo } from './preset-table.ts';
 
 export interface TerrainZone {
   index: number;
@@ -121,7 +121,7 @@ export function dwarvenCoarse(rng: RmgRandom): number {
 
 /**
  * @param floors zone grids exactly as fillZones left them, grid[a][b]
- * @param presets each race's Tiles block (readPresetTiles)
+ * @param presets each race's preset (readPresets)
  * @param transitiveTile RMGParameters.DefaultTransitiveTile, resolved
  * @returns per floor, the texture layers in the order the file will hold them
  */
@@ -130,7 +130,7 @@ export function fillTerrain(
   height: number,
   zones: TerrainZone[],
   floors: Int32Array[][],
-  presets: Map<number, RacePresetTiles>,
+  presets: Map<number, RacePreset>,
   transitiveTile: TerrainTileInfo | null,
 ): TerrainLayer[][] {
   if (width !== height) throw new Error('fillTerrain: the engine is only ever run square — rectangle semantics unread');

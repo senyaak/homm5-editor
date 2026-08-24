@@ -280,7 +280,7 @@ is what it is belongs next to the number.
 | `border-tiles.ts` | `CalcBorderTiles` | **done** — drawless, held to the definition and the reference chain |
 | `preset-table.ts` | `RMGPresetTable` Tiles + AdvMapTile documents | **done** for what the painter reads |
 | `terrain.ts` | `FillTerrain` | **done** — held to the reference file's masks byte for byte |
-| `towns.ts` | `PlaceTowns` | |
+| `towns.ts` + `town-data.ts` | `PlaceTowns` | **done** — 16 draws, and both towns land where the engine put them |
 | `connections.ts` | `ZoneConnections`, guards and teleports | |
 | `objects/*.ts` | `MainObjects`, one file per placement step | |
 | `treasure.ts` | `CTreasureBlockDistributor` | |
@@ -595,6 +595,43 @@ that makes this work is pinned by probing the file at the corners and zone
 starts: the plane lies plane[a·(size+1)+b] in the port grid's own
 coordinates.
 
+### Phase 7 — PlaceTowns, and the three points that are not the same point
+
+Read from `0xEA5B70` with `CGameZone::PlaceTown` (0xEB4CB0); ported in
+`src/rmg/towns.ts`, with `town-data.ts` reading the building documents and
+the specialisation pool. Sixteen draws on the reference run, and the port
+spends the same sixteen and lands where the engine landed: both towns
+(22,33 and 68,59), both rotations, both specialisations (Styx, Mans), the
+decoration over Inferno's entrance — and all three `item_<id>` instance
+names, which are minted from two draws apiece and therefore prove the draw
+ORDER, not just the count.
+
+The phase walks the TEMPLATE's zones in file order, and a zone without a
+town gets its centroid computed instead (single precision, the tile list's
+mean). A zone with one runs a retry loop: a tile from the pool — the zone's
+tiles, in the order FillZones collected them, keeping only depth > R/2 — and
+a quarter-turn, both drawn. Then three gates, none of which draws: a frame,
+a depth of at least (2·R)/3, and the rotated footprint (inside the zone, on
+free tiles, none of them against the border). A frame or depth refusal keeps
+the tile in the pool; a footprint refusal drops it.
+
+**Three points, and telling them apart is the whole phase.** The drawn TILE
+is the town's Pos, its footprint anchor and what gets reserved. The MARK —
+tile + rot(the building's possession-marker offset) — is what the frame and
+depth gates measure, and what the next phase grows its wave from. The ENTRY
+— tile + rot(1,-1), a literal — only positions the decoration. The reference
+forced this apart: zone 1's town stands on a depth-9 tile with the gate at
+10, and only its mark (depth 11) passes; zone 2's refused attempt sat on a
+depth-9 tile whose mark was 8 deep. Reading the gate as measuring the town's
+own tile would have refused the town the engine placed.
+
+Named holes: the document offset the mark comes from is read but not yet
+named (possession marker, or another one-element list — the two agree for
+Inferno, whose marker IS (1,-1), and the reference does not separate them
+for Academy either); the neutral-town guard (a town in a zone with no
+player) draws and is unported, since every reference town belongs to
+someone.
+
 ## Tools
 
 ```bash
@@ -608,6 +645,7 @@ npm run test-rmg-fill-zones # FillZones: sweeps, the drawless first sweep, deter
 npm run test-rmg-load-template # the engine sort, the full chain, run 3's races from the seed
 npm run test-rmg-border-tiles # CalcBorderTiles: the definition by hand, the reference table
 npm run test-rmg-terrain   # FillTerrain: the masks against the real GroundTerrain.bin
+npm run test-rmg-towns     # PlaceTowns: the towns, against the reference map.xdb
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals
