@@ -116,6 +116,7 @@
     "test-lua-registry": "node tools/reverse/lua-registry.ts --check",
     "rmg-oracle": "node tools/rmg-oracle.ts",
     "rmg-diff-draws": "node tools/rmg-diff-draws.ts",
+    "rmg-decode-draws": "node tools/rmg-decode-draws.ts",
     "rmg-reference": "node tools/rmg-reference.ts",
     "rmg-map": "node tools/reverse/rmg-map.ts",
     "test-rmg-map": "node tools/reverse/rmg-map.ts --check",

@@ -43,9 +43,19 @@ when the oracle config says `trace`) is what `npm run rmg-diff-draws`
 replays, and it is the instrument to reach for the moment a phase's counter
 disagrees.
 
-**A new phase needs a new trace** once it draws past 18491: the log the
-current suites lean on ends there, so measuring MainObjects means another
-ordered editor run with `trace` on.
+**That trace now exists, and the whole run is measured.** Seed 1785351845 end
+to end is **92,438 draws**, and where they go is no longer a guess:
+
+| | draws |
+| --- | --- |
+| everything through ZoneConnections — ported | 18,491 |
+| MainObjects, fourteen steps in each of four zones | 1,548 |
+| roads | 381 |
+| statics, the second loop over the zones | **69,378** |
+| treasure blocks | 2,640 |
+
+The statics are three quarters of the generator's whole number stream, which
+is worth knowing before deciding what to port in what order.
 
 That log ended there for a reason that was in our own code, not the engine's:
 the trace switched itself off at the twelfth counter reading, and the twelfth
@@ -900,10 +910,61 @@ That last rule is what the reference map shows: Ore_Pit at 6:23 with its guard
 at 6:21 has its two Ore piles at 5:21 and 7:21, both against the guard, and
 every other mine in the map agrees.
 
-**Where this reading stops.** `0xEC3510`, the "does it fit here" test, and
-`0xEB3990`, which creates the object, were not opened. If either draws, the
-cost per attempt is more than two, and the first traced run will say so — this
-is exactly the kind of thing the step boundaries exist to catch.
+**Both of those doors are now closed by measurement.** `0xEC3510` draws
+nothing — a failed fit is followed straight by the next pair — and `0xEB3990`
+draws exactly two, which are the object's name. The traced run says so
+directly, and how it can be read that precisely is the next section.
+
+#### The mines step, draw for draw
+
+Every object the generator creates is named `item_<signed int32>`, minted from
+two `below(65535)` draws, and the reference map records that name. So a pair
+of consecutive draws composing a name the map has IS the moment that object
+was created — and **all 1,556 objects in the reference find their pair**. That
+is what `npm run rmg-decode-draws` does with the trace, and it turns an
+anonymous stream into a labelled one.
+
+Zone 1's 75 draws, in full:
+
+```
+18492  n  1893595527              the loop's prologue draw, thrown away
+18493  b         587              the tile
+18494  b           3              the quadrant
+18495  b       33794  Mine Sawmill
+18496  b       23405     "
+18497  f      0.0737              the guard's roll — under 0.6, so several stacks
+18498  b           0              which army template
+18499  b        1214  Monster Footman
+18500  b        3701     "
+18501  f      0.1886              a pile is rolled for — under 0.8, so it lands
+18502  b       47730  Treasure Wood
+18503  b        9017     "
+18504  f      0.8662              the second neighbour rolls over 0.8: no pile
+18505  b          36              the next mine's tile
+...
+18541  b          42              a tile that did NOT fit
+18542  b           3              its quadrant, drawn before the fit was tested
+18543  b         123              so the candidate is struck out and a pair drawn again
+18544  b           3
+18545  b       26211  Mine Sulfur_Dune
+```
+
+Which gives the cost exactly: **1** for the loop's prologue, **2 per attempt**
+at a tile, **2** for the mine's name, **4 or 5** for the guard, **1** per pile
+rolled and **2** more for each that lands. Zone 1: 1 + 14 + 12 + 24 + 10 + 14
+= 75, and the boundary says 75.
+
+Two things the data settles that the code only suggested. Every pile that
+landed rolled 0.1886, 0.7641, 0.3076, 0.5571, 0.1160, 0.4472 or 0.2214, and
+every one that did not rolled 0.8662, 0.8545 or 0.9702 — the 0.8 is not just a
+constant in the image, it is the constant this run obeyed, with no exception.
+And all six guard rolls came out under 0.6, which is why every guard here cost
+four draws rather than five.
+
+What is still needed to PORT it is not the accounting but the candidate list:
+`below(587)` only reproduces if the list has the same 588 entries in the same
+order, which means the rings, the `+0xE4` grid and the two-fifths room
+threshold have to be right. That is the next piece of work.
 
 **The instrument for measuring it** is the step boundary — see below. Until
 that first traced run exists, none of the above has a draw count against it.
@@ -928,6 +989,9 @@ npm run test-rmg-connections # ZoneConnections: the passages, against the refere
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste
+
+npm run rmg-decode-draws -- --step mines   # the draws, with the objects they made
+npm run rmg-decode-draws -- --from 18491 --to 18566 --count
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals
