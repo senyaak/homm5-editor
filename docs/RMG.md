@@ -260,8 +260,8 @@ is what it is belongs next to the number.
 | `random.ts` | the 64-bit LCG, five entry points, the draw counter | **done**, constants verified against the binary |
 | `template.ts` | reading `RMGTemplate` | **done**, all 22 shipped templates parse |
 | `create-map.ts` | `CreateMap` — players and size | **done**, three draws |
-| `params.ts` | reading `RMGParameters` | next |
-| `zones.ts` | `GenerateGameZones` + `FillZones` | |
+| `params.ts` | reading `RMGParameters` | **done**, held to `Params/Default.xdb` field by field |
+| `zones.ts` | `GenerateGameZones` + `FillZones` | next |
 | `terrain.ts` | `CalcBorderTiles` + `FillTerrain` | |
 | `towns.ts` | `PlaceTowns` | |
 | `connections.ts` | `ZoneConnections`, guards and teleports | |
@@ -396,6 +396,8 @@ table above — 96 tiles is index 1. What that range measures is open.
 npm run rmg-map            # rewrite docs/RMG_CODE_MAP.md from the executable
 npm run test-rmg-map       # fail if it drifted
 npm run test-rmg-random    # the number stream, against the binary's constants
+npm run test-rmg-template  # the template reader and CreateMap, against the 22 shipped templates
+npm run test-rmg-params    # the RMGParameters reader, against Params/Default.xdb
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals

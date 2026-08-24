@@ -119,6 +119,7 @@
     "test-rmg-map": "node tools/reverse/rmg-map.ts --check",
     "test-rmg-random": "node tools/test-rmg-random.ts",
     "test-rmg-template": "node tools/test-rmg-template.ts",
+    "test-rmg-params": "node tools/test-rmg-params.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "test-e2e-setup": "node tools/test-e2e-setup.ts",
