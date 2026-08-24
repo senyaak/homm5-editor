@@ -148,12 +148,6 @@ static RmgBetweenFloatFn g_rmgBetweenFloatOrig = NULL;
 typedef void *(__fastcall *RmgGetZoneFn)(void *self, void *edx, void **out, int index);
 static RmgGetZoneFn g_rmgGetZoneOrig = NULL;
 
-static void *__fastcall rmg_get_zone_trace(void *self, void *edx, void **out, int index) {
-  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
-  if (g_rmgRunActive) rmg_log_pair("gz ", *(int *)(base + g_rmgCounterFieldRva), index);
-  return g_rmgGetZoneOrig(self, edx, out, index);
-}
-
 /** The five places the oracle needs, whichever executable this is. */
 static DWORD g_rmgTimeCallRva = RMG_TIME_CALL_RVA;
 static DWORD g_rmgSeedCallRva = RMG_SEED_CALL_RVA;
@@ -352,6 +346,12 @@ static int __fastcall rmg_below_trace(int n) {
   int v = g_rmgBelowOrig(n);
   if (*(int *)(base + g_rmgCounterFieldRva) != before) rmg_trace_draw("tb ", v);
   return v;
+}
+
+static void *__fastcall rmg_get_zone_trace(void *self, void *edx, void **out, int index) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  if (g_rmgRunActive) rmg_log_pair("gz ", *(int *)(base + g_rmgCounterFieldRva), index);
+  return g_rmgGetZoneOrig(self, edx, out, index);
 }
 
 static float __stdcall rmg_between_float_trace(float a, float b) {
