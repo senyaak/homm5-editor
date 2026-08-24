@@ -106,6 +106,13 @@ for (let i = 0; i < guards.length; i++) {
     guard ? `${guard.branch}: ${guard.stacks.map((s) => `${s.amount} ${s.creature}`).join(', ')}` : 'none');
 }
 
+/** The creature an `AdvMapMonsterShared` file stands for, asked of the file. */
+function creatureOf(href: string): string {
+  const path = join(dir, href.replace(/^\//, ''));
+  if (!existsSync(path)) return href.split('/').pop() ?? href;
+  return /<Creature>([^<]*)<\/Creature>/.exec(readFileSync(path, 'utf8'))?.[1] ?? href;
+}
+
 console.log('\nagainst the monsters in the reference map.xdb');
 
 if (!hasReference()) {
@@ -120,12 +127,16 @@ if (!hasReference()) {
     //   <Item href="#n:inline(AdvMapMonster)" id="item_-668470647">
     const before = xml.slice(Math.max(0, m.index! - 200), m.index!);
     const name = /id="([^"]+)"\s*>\s*$/.exec(before)?.[1] ?? '';
-    // The first stack is named by its AdvMapMonsterShared file; the rest
-    // carry their CREATURE_* enum outright.
+    // The first stack is named by its AdvMapMonsterShared FILE; the rest carry
+    // their CREATURE_* enum outright. Those two do not always spell the same
+    // creature the same way — the file is `Centaur_Marauder` where the enum is
+    // `CREATURE_CENTAUR_MARADEUR`, and `Blood_Witch_upg2` where the enum is
+    // `CREATURE_BLOOD_WITCH_2` — so the file is opened and asked, rather than
+    // its name being compared to one.
     const stacks: Array<{ creature: string; amount: number }> = [];
-    const lead = /<Shared href="[^"]*\/([A-Za-z_0-9]+)\.\(AdvMapMonsterShared\)/.exec(body)?.[1];
+    const leadFile = /<Shared href="([^"#]*)/.exec(body)?.[1];
     const leadAmount = Number(/<Amount>(\d+)<\/Amount>/.exec(body)?.[1] ?? 0);
-    if (lead) stacks.push({ creature: lead, amount: leadAmount });
+    if (leadFile) stacks.push({ creature: creatureOf(leadFile), amount: leadAmount });
     const additional = /<AdditionalStacks>([^]*?)<\/AdditionalStacks>/.exec(body);
     if (additional) {
       for (const s of additional[1]!.matchAll(/<Creature>([^<]*)<\/Creature>[^]*?<Amount>(\d+)<\/Amount>/g)) {
@@ -151,6 +162,76 @@ if (!hasReference()) {
     check(`guard ${i + 1} carries the name the draws minted`, ours.name === ref.name,
       `${ours.name} vs ${ref.name}`);
   }
+
+  // -------------------------------------------------------------------------
+  // The eighteen guards of the mines step
+  //
+  // Same function, eighteen more times, and they are here for two reasons.
+  //
+  // They widen the check: three guards took two of the branches between them,
+  // and these take both again and again — five of them are single stacks,
+  // which is the branch the three barely touched. That is how the strength
+  // scaling turned out to truncate where the product lands rather than at the
+  // nearest float (see setMonster): seventeen of these hold either way, and
+  // the Familiar guard is the one whose division comes out exact, so it is the
+  // only place in the run where the difference is visible at all.
+  //
+  // And they are what PROVES the guard power. The step reads three parameter
+  // fields by offset — `+0x60`, `+0x68`/`+0x6C`/`+0x70` — and which name sits
+  // at which offset was a reading of the structure's layout, not of the
+  // parser. If that reading were wrong, these armies would not come out.
+  // BasicLeverGuardPower is 1000, Mine1LevelGuardLevel 2, Mine2LevelGuardLevel
+  // 9, MineGoldGuardLevel 18, all from Params/Default.xdb.
+  const MINE_GUARD_LEVEL: Record<string, number> = {
+    Sawmill: 2, Ore_Pit: 2,
+    Alchemist_Lab: 9, Crystal_Cavern: 9, Sulfur_Dune: 9, Gem_Pond: 9,
+    Gold_Mine: 18,
+  };
+  const BASIC_LEVER_GUARD_POWER = 1000;
+
+  // Straight out of bin/homm5-editor-rmg.log, the mines steps of all four
+  // zones: the roll's bits, then the branch's picks, then the two name draws.
+  const mineGuards: Array<[string, ...number[]]> = [
+    ['Sawmill', 1033305466, 0, 1214, 3701],
+    ['Ore_Pit', 1048522466, 2, 53815, 26644],
+    ['Alchemist_Lab', 1057697529, 29, 62076, 42191],
+    ['Crystal_Cavern', 1031125036, 41, 57315, 61189],
+    ['Sulfur_Dune', 1057310366, 52, 51269, 27123],
+    ['Gem_Pond', 1058019624, 53, 55248, 28042],
+    ['Sawmill', 1046338872, 4, 5077, 59515],
+    ['Ore_Pit', 1063026921, 11, 14, 44225, 19477],
+    ['Alchemist_Lab', 1039906647, 42, 44550, 39699],
+    ['Crystal_Cavern', 1052536744, 38, 22918, 19961],
+    ['Sulfur_Dune', 1062411387, 26, 15, 15825, 34810],
+    ['Gem_Pond', 1035736761, 58, 48892, 1775],
+    ['Sawmill', 1042696958, 3, 48348, 9754],
+    ['Ore_Pit', 1037622470, 0, 34598, 65491],
+    ['Gold_Mine', 1055079263, 2, 18922, 12828],
+    ['Sawmill', 1058098985, 1, 39141, 64800],
+    ['Ore_Pit', 1064321293, 15, 1, 51720, 47695],
+    ['Gold_Mine', 1064024738, 19, 25, 64760, 5330],
+  ];
+
+  console.log('\nthe eighteen guards of the mines step');
+  const byName = new Map(refs.map((r) => [r.name, r]));
+  let matched = 0;
+  for (const [mine, bits, ...picks] of mineGuards) {
+    const draws = [
+      { kind: 'f' as const, value: floatFromBits(bits!) },
+      ...picks.map((v) => ({ kind: 'b' as const, value: v })),
+    ];
+    const power = BASIC_LEVER_GUARD_POWER * MINE_GUARD_LEVEL[mine]!;
+    const ours = setMonster(power, 1, tables, replay(draws));
+    // Which monster on the map this is comes from the name the draws minted,
+    // not from any position — the guard names itself.
+    const ref = ours && byName.get(ours.name);
+    const oursShort = ours ? ours.stacks.map(short).join(' ') : 'none';
+    const refShort = ref ? ref.stacks.map(short).join(' ') : 'no monster of that name';
+    if (oursShort === refShort) matched++;
+    else check(`${mine} at power ${power}`, false, `${oursShort} vs ${refShort}`);
+  }
+  check('every mine guard is the engine\'s own, creature for creature',
+    matched === mineGuards.length, `${matched} of ${mineGuards.length}`);
 }
 
 console.log(failures ? `\n${failures} failed` : '\nall good');

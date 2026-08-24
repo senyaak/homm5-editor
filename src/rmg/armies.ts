@@ -2,8 +2,9 @@
 //
 // Read from 0xED1DC0 with its two branches, 0xED2880 (an army from a
 // template) and 0xED26B0 (one stack of one creature). The reading is held to
-// the reference map three times over: every guard the connections phase
-// placed matches down to the creature counts.
+// the reference map twenty-one times over: the three guards the connections
+// phase placed and the eighteen the mines step did, every one of them rebuilt
+// from its recorded draws and matching down to the creature counts.
 //
 //   power < 100                        no monster, and no draws at all
 //   power = trunc(power * strength)    the map's monster level scales it
@@ -135,7 +136,16 @@ export interface GuardTables {
 export function setMonster(power: number, strengthLevel: number, tables: GuardTables, rng: DrawSource): Guard | null {
   if (power < MIN_GUARD_POWER) return null; // no draws on this path
 
-  const scaled = Math.trunc(fl(power * (STRENGTH_MULTIPLIER[strengthLevel] ?? 1)));
+  // The product is truncated where it lands, NOT rounded back to a float
+  // first — and the difference is a whole creature. `0.9f` is a shade under
+  // nine tenths (0.89999997615814208984375), so 2000 of guard power is
+  // 1799.99995…, which truncates to 1799; rounding to the nearest float first
+  // makes it exactly 1800. The reference run settles it: its Familiar guard is
+  // 23 strong, and 1799/75 is 23 where 1800/75 is 24. Three other single
+  // stacks in the same run (17, 42 and 25) hold either way, so this one guard
+  // is the whole of the evidence — and it is the only one whose division comes
+  // out exact, which is why it is the only one that could show the difference.
+  const scaled = Math.trunc(power * (STRENGTH_MULTIPLIER[strengthLevel] ?? 1));
   const roll = rng.betweenFloat(0, 1);
 
   if (roll < fl(0.6)) {

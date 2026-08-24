@@ -865,19 +865,33 @@ types 0–1 and the far one for 2–6, each a ring around the zone centre bounde
 by a min and a max radius from `RMGParameters`. A tile qualifies when it is
 inside the map, belongs to this zone, and its `+0xE4` grid value is above 1.
 
-Which parameter is at which offset was settled by LAYOUT, not by reading the
-xdb parser: eleven consecutive ints in the loaded structure line up with the
-eleven the reader takes in order, and the two the mines step actually uses
-land where they have to.
+Which parameter is at which offset started as a reading of the structure's
+LAYOUT — eleven consecutive ints against the eleven the xdb reader takes in
+order — and the guards then settled it.
 
-| offset | field |
-| --- | --- |
-| `+0x48` `+0x4C` | `Mine1LevelMinRadius` / `MaxRadius` — the near ring, types 0–1 |
-| `+0x50` `+0x54` | `Mine2LevelMinRadius` / `MaxRadius` — the far ring, types 2–6 |
-| `+0x58` `+0x5C` | `Mine3Level…` — never read here; presumably the abandoned mines |
-| `+0x60` | `BasicLeverGuardPower` |
-| `+0x64` | `ConnectionGuardLevel` |
-| `+0x68` `+0x6C` `+0x70` | `Mine1LevelGuardLevel`, `Mine2LevelGuardLevel`, `MineGoldGuardLevel` |
+| offset | field | value in `Default.xdb` |
+| --- | --- | --- |
+| `+0x48` `+0x4C` | `Mine1LevelMinRadius` / `MaxRadius` — the near ring, types 0–1 | 7, 20 |
+| `+0x50` `+0x54` | `Mine2LevelMinRadius` / `MaxRadius` — the far ring, types 2–6 | 15, 40 |
+| `+0x58` `+0x5C` | `Mine3LevelMinRadius` / `MaxRadius` — not read by this step | 25, 45 |
+| `+0x60` | `BasicLeverGuardPower` | 1000 |
+| `+0x64` | `ConnectionGuardLevel` | 2 |
+| `+0x68` `+0x6C` `+0x70` | `Mine1LevelGuardLevel`, `Mine2LevelGuardLevel`, `MineGoldGuardLevel` | 2, 9, 18 |
+
+**The three guard offsets are no longer a reading of layout, they are
+measured.** Every one of the eighteen mine guards in the reference run was
+rebuilt from its recorded draws at `BasicLeverGuardPower × the type's level` —
+2000, 9000 and 18000 — and all eighteen came out the engine's own army,
+creature for creature (`test-rmg-armies`). A wrong offset does not survive
+that eighteen times.
+
+It also caught a bug in `SetMonster` that three guards could not. The strength
+multiply **truncates where the product lands**, and does not round back to a
+float first: `0.9f` is 0.89999997615814208984375, so a guard power of 2000
+scales to 1799.99995… and truncates to **1799**, not 1800. Only one guard in
+the whole run can show that — the Familiar at 23, because 1799/75 is 23 while
+1800/75 is exactly 24, and it is the only single stack whose division comes
+out exact. The other three (17, 42, 25) hold either way.
 **A zone with no town (`zone->0xF8 == 0`) skips the rings entirely** and puts
 every one of its tiles into both lists.
 
