@@ -9,6 +9,44 @@ one's templates, and there is no way to tell a misreading from a design choice.
 So the shape of this work is: read a phase out of the executable, write it down
 here, port it, check it against a real run, move to the next phase.
 
+## Where this stands, and how to pick it back up
+
+**Nine phases run in lockstep with the engine**, from the seed to draw
+18491: CreateMap, the map-created step, LoadTemplate, GenerateGameZones,
+FillZones, CalcBorderTiles, FillTerrain, PlaceTowns, FillDistToTownsTable
+and ZoneConnections. Every one that draws matches the traced editor run
+draw for draw; the two that do not draw are held to the engine's output
+instead — the terrain masks byte for byte, the towns and guards to their
+positions, armies, moods and minted instance names in `map.xdb`.
+
+**Next is `MainObjects`** — the per-zone fill, fourteen steps deep (mines,
+hero, dwellings, upgrade buildings, prisons, cartographer, shrines, resource
+and treasury buildings, luck/morale, shops, road, statics, then treasures
+and chests), and after it the roads, the additional objects, the treasure
+blocks and finally emitting the `.h5m`. The roads phase is also what closes
+the one open difference in the terrain masks: Inferno's Dead_Land is a
+secondary ROAD tile of land class, and it steals weight from Lava wherever a
+road runs.
+
+**The reference the suites compare against** is an ordered editor run of
+seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
+water). It is game content, so it is not committed:
+
+```bash
+npm run rmg-reference                       # is it in place?
+npm run rmg-reference -- game/Maps/<run>.h5m  # lay it out again
+```
+
+Without it the comparison halves of the suites say so and skip; the draw
+counts still run. The draw trace itself (`bin/homm5-editor-rmg.log`, written
+when the oracle config says `trace`) is what `npm run rmg-diff-draws`
+replays, and it is the instrument to reach for the moment a phase's counter
+disagrees.
+
+**A new phase needs a new trace** once it draws past 18491: the log the
+current suites lean on ends there, so measuring MainObjects means another
+ordered editor run with `trace` on.
+
 ## Where everything is
 
 **The algorithm is compiled into two executables, and no data file describes it.**

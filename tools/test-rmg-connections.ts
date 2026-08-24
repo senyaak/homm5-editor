@@ -31,6 +31,7 @@ import type { TownShared } from '../src/rmg/town-data.ts';
 import { placeTowns } from '../src/rmg/towns.ts';
 import { generateGameZones } from '../src/rmg/zones.ts';
 import { dataDir } from './game-dir.ts';
+import { hasReference, REFERENCE_MAP, REFERENCE_MISSING } from './rmg-reference.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -104,11 +105,10 @@ check('three guards placed', result.guards.length === 3,
 
 console.log('\nagainst the reference map.xdb');
 
-const mapFile = join('_tmp', 'gt-b', 'Maps', 'RMG', '906422BB-D3D0-4E69-B49F-F28029C6FCE5', 'map.xdb');
-if (!existsSync(mapFile)) {
-  console.log(`  no ${mapFile} — extract the reference map to compare; skipping`);
+if (!hasReference()) {
+  console.log(`  ${REFERENCE_MISSING}`);
 } else {
-  const xml = readFileSync(mapFile, 'utf8');
+  const xml = readFileSync(REFERENCE_MAP, 'utf8');
   interface RefMonster { name: string; x: number; y: number; mood: string; stacks: string }
   const refs: RefMonster[] = [];
   for (const m of xml.matchAll(/<AdvMapMonster>([^]*?)<\/AdvMapMonster>/g)) {

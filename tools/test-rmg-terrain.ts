@@ -23,6 +23,7 @@ import { fillTerrain } from '../src/rmg/terrain.ts';
 import { generateGameZones } from '../src/rmg/zones.ts';
 import { parseTerrain, readMask, readTextureLayers } from '../src/terrain/terrain.ts';
 import { dataDir } from './game-dir.ts';
+import { hasReference, REFERENCE_MISSING, REFERENCE_TERRAIN } from './rmg-reference.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -68,11 +69,10 @@ check('ordered by ascending priority', layers.every((l, i) => i === 0 || layers[
 
 console.log('\nagainst the real GroundTerrain.bin');
 
-const reference = join('_tmp', 'oracle', 'run-3-editor', 'GroundTerrain.bin');
-if (!existsSync(reference)) {
-  console.log(`  no ${reference} — the byte diff needs the reference run; skipping`);
+if (!hasReference()) {
+  console.log(`  ${REFERENCE_MISSING}`);
 } else {
-  const terr = parseTerrain(readFileSync(reference));
+  const terr = parseTerrain(readFileSync(REFERENCE_TERRAIN));
   const fileLayers = readTextureLayers(terr);
   // Matched by PATH: the roads phase interleaves its layers by priority
   // (Dead_Land at 60 lands between our 23 and 64), so position cannot align.
