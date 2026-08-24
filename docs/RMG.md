@@ -271,7 +271,8 @@ is what it is belongs next to the number.
 | `template.ts` | reading `RMGTemplate` | **done**, all 22 shipped templates parse |
 | `create-map.ts` | `CreateMap` — players and size | **done**, three draws |
 | `params.ts` | reading `RMGParameters` | **done**, held to `Params/Default.xdb` field by field |
-| `zones.ts` | `GenerateGameZones` + `FillZones` | GenerateGameZones **done** (reconciled against run 1); FillZones next |
+| `zones.ts` | `GenerateGameZones` | **done**, reconciled against run 1 |
+| `fill-zones.ts` | `FillZones` | **done**, structure reconciled; jitter awaits a lockstep run |
 | `terrain.ts` | `CalcBorderTiles` + `FillTerrain` | |
 | `towns.ts` | `PlaceTowns` | |
 | `connections.ts` | `ZoneConnections`, guards and teleports | |
@@ -463,9 +464,38 @@ how many floors exist; whether template item+0x10 is truly the XML `<Size>`
 the exact meaning of `+0x1D` versus the floor count — the port takes both as
 separate inputs until the relation is read.
 
-FillZones is `0xEA94C0` — mapped but not yet read in depth: per-tile loops
-over the floor vector, two `below(2)` coin flips at 0xea9974/0xea9984 and a
-`betweenFloat(0,1)` probability test at 0xeaa3ba.
+### Phase 4 — FillZones, where the blobs get their shape
+
+Read from `0xEA94C0`; ported in `src/rmg/fill-zones.ts`. Run 1 spent 106,717
+draws here, and the structural half reconciles exactly: `⌈fl(width·√3f)⌉`
+sweeps — 305 on 176×176 — at two `below(2)` coins each (the scan direction
+per axis), leaving 106,107 jitter draws that only a lockstep run can confirm
+number by number.
+
+Three steps own a tile: **paint** — strictly inside a zone's circle (distance
+from the truncated start point, single precision), first zone in the floor's
+hash order wins, everything else −1; **grow** — an unassigned tile joins the
+zone owning ≥3 of its 8 neighbours, no draw; **jitter** — an assigned tile ≥6
+from the border with no unassigned neighbour and ≥3 neighbours of one other
+zone flips to it with probability ~0.6 (`betweenFloat(0,1) > 0.4f`, the draw
+spent either way), but only while that zone is under quota:
+`sizeOther/sizeOwn > countOther/countOwn`, both divisions single precision.
+Decisions queue up per sweep and apply at its end, and the areas the jitter
+reads are the *previous* sweep's snapshot — zero before the first, where the
+ratio is NaN and a strict `comiss` refuses without drawing: **sweep one costs
+exactly two draws**, a prediction the first editor-oracle run can check.
+Areas converge to the template's Size proportions; on the reference map the
+port ends with 2285/2321/2314/2296 tiles for four Size-10 zones, zero left
+unassigned, and a FillZones total of 18,529 draws — the number to hold
+against the editor.
+
+Tie-breaks are the same 13-bucket hash containers as the zone order, down to
+`-1` hashing into bucket 8, and the port models them rather than taking a
+plain maximum. Named holes: the grid's initial −1 is assumed (whoever builds
+the floor writes it; unread), and the engine checks the jitter's 6-tile
+margin against the dimension pair SWAPPED relative to the neighbour bounds —
+indistinguishable on the square maps it makes, so the port refuses rectangles
+rather than guess which reading is faithful.
 
 ## Tools
 
@@ -476,6 +506,7 @@ npm run test-rmg-random    # the number stream, against the binary's constants
 npm run test-rmg-template  # the template reader and CreateMap, against the 22 shipped templates
 npm run test-rmg-params    # the RMGParameters reader, against Params/Default.xdb
 npm run test-rmg-zones     # GenerateGameZones: budgets, radii, the hash order model
+npm run test-rmg-fill-zones # FillZones: sweeps, the drawless first sweep, determinism
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals
