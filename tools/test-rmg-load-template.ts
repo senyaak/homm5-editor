@@ -101,11 +101,11 @@ console.log(`  (drawn as ${pair})`);
 const placed = generateGameZones(96, 96,
   loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng);
 check('GenerateGameZones ends at 388 — one pass, 366 spent', rng.draws === 388, `${rng.draws}`);
-// The FillZones half of this number is DATA (the jitter draws depend on the
-// stream), recorded so a change to any phase upstream is noticed. The editor
-// oracle is what holds the whole chain to the engine.
+// Not merely recorded any more: the editor oracle traced this very chain and
+// the port matched it DRAW FOR DRAW — 18459 is the engine's own number.
 fillZones(96, 96, placed.zones, made.twoFloors, rng);
-check('FillZones ends at 19116, as recorded', rng.draws === 19116, `${rng.draws}`);
+check('FillZones ends at 18459 — the engine\'s own count, matched in lockstep',
+  rng.draws === 18459, `${rng.draws}`);
 console.log(`  (boundary chain for the oracle: 3, 9, 22, 388, ${rng.draws})`);
 
 console.log(failures ? `\n${failures} failed` : '\nall good');

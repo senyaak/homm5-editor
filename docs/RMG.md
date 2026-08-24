@@ -276,7 +276,7 @@ is what it is belongs next to the number.
 | `load-template.ts` | `LoadTemplate` — floors, races, players, zone classes | **done**, 22 draws reconciled; derives run 3's races |
 | `params.ts` | reading `RMGParameters` | **done**, held to `Params/Default.xdb` field by field |
 | `zones.ts` | `GenerateGameZones` | **done**, reconciled against run 1 |
-| `fill-zones.ts` | `FillZones` | **done**, structure reconciled; jitter awaits a lockstep run |
+| `fill-zones.ts` | `FillZones` | **done, held in lockstep**: an editor trace matched all 18,459 draws |
 | `terrain.ts` | `CalcBorderTiles` + `FillTerrain` | |
 | `towns.ts` | `PlaceTowns` | |
 | `connections.ts` | `ZoneConnections`, guards and teleports | |

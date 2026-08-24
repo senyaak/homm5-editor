@@ -56,7 +56,10 @@ rng.onDraw = (kind, value) => port.push({ kind, value });
 const jitterTiles = new Map<number, { sweep: number; a: number; b: number }>();
 
 const made = createMap(template, { players: 2, size: 8 }, rng);
-const setup = mapSetup(params, {}, rng);
+// The dialog SUPPLIES both — its dropdowns have no "random" — so the engine
+// spends discarded next()s here, and the first traced run proved it: draws
+// 4-5 are tn, not tb. Medium strength, water off, the dialog's defaults.
+const setup = mapSetup(params, { monsterStrength: 1, water: false }, rng);
 const loaded = loadTemplate(template, {
   twoFloors: made.twoFloors,
   dwarvenUnderground: setup.dwarvenUnderground,

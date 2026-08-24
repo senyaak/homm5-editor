@@ -217,13 +217,23 @@ export function fillZones(
       const grow = new HashQueue();
       const flip = new HashQueue();
 
-      const dirA = rng.below(2);
-      const dirB = rng.below(2);
-      const scanA = dirA !== 0 ? { from: 0, step: 1 } : { from: size - 1, step: -1 };
-      const scanB = dirB !== 0 ? { from: 0, step: 1 } : { from: size - 1, step: -1 };
+      // The FIRST coin drives the OUTER loop, and the outer loop walks the
+      // SECOND coordinate — the engine scans row by row where a row is a `b`.
+      // The sets a sweep decides are scan-order-blind (everything is queued
+      // and applied at the end), but the ORDER matters all the same: it pairs
+      // each jitter candidate with its draw, and a transposed scan hands the
+      // same values to different tiles — which is how the port flipped 76:37
+      // where the engine flipped 75:37 and every grid after sweep 5 quietly
+      // diverged while the draw counts kept agreeing for three more sweeps.
+      // Read off the engine's own candidate order (`gz` pairs), then pinned
+      // by the full trace.
+      const dirOuter = rng.below(2);
+      const dirInner = rng.below(2);
+      const scanB = dirOuter !== 0 ? { from: 0, step: 1 } : { from: size - 1, step: -1 };
+      const scanA = dirInner !== 0 ? { from: 0, step: 1 } : { from: size - 1, step: -1 };
 
-      for (let ia = 0, a = scanA.from; ia < size; ia++, a += scanA.step) {
-        for (let ib = 0, b = scanB.from; ib < size; ib++, b += scanB.step) {
+      for (let ib = 0, b = scanB.from; ib < size; ib++, b += scanB.step) {
+        for (let ia = 0, a = scanA.from; ia < size; ia++, a += scanA.step) {
           const own = grid[a]![b]!;
           if (own === -1) {
             const cnt = new HashCounts();
@@ -248,8 +258,11 @@ export function fillZones(
             }
             if (cnt.has(-1) || cnt.size === 0) continue;
             const best = cnt.best();
+            // The engine looks both zones up BEFORE checking the neighbour
+            // threshold (GetZone×2 at 0xeaa2ca, the checks at 0xeaa347) — the
+            // spy sits where the engine's own trace hook does.
+            if (best) spy?.candidate?.(counter, a, b, own, best.key);
             if (!best || best.count <= 2) continue;
-            spy?.candidate?.(counter, a, b, own, best.key);
             const zOwn = byIndex.get(own);
             const zOther = byIndex.get(best.key);
             if (!zOwn || !zOther) continue;
