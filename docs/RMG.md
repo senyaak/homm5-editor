@@ -282,7 +282,7 @@ is what it is belongs next to the number.
 | `terrain.ts` | `FillTerrain` | **done** — held to the reference file's masks byte for byte |
 | `towns.ts` + `town-data.ts` | `PlaceTowns` | **done** — 16 draws, and both towns land where the engine put them |
 | `dist-to-towns.ts` | `FillDistToTownsTable` | **done** — drawless; its side effect is what later phases see |
-| `connections.ts` | `ZoneConnections`, guards and teleports | next |
+| `connections.ts` | `ZoneConnections`, land passages and guards | **done** — three guards on the engine's own tiles; teleports unported |
 | `objects/*.ts` | `MainObjects`, one file per placement step | |
 | `treasure.ts` | `CTreasureBlockDistributor` | |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
@@ -656,6 +656,40 @@ is disowned (all four zones are connected to their centres), so the
 behaviour is implemented from the reading and exercised only by the suite's
 own split-zone case.
 
+### Phase 9 — ZoneConnections, where the zones are joined
+
+Read from `0xEA3930` (the passages proper are `0xEC1630`); ported in
+`src/rmg/connections.ts`, with the guards coming from `armies.ts`. Sixteen
+draws, and the port spends them on the engine's own tiles: all three guards
+land where the map has them (49:51, 63:34, 41:89), with the same armies, the
+same instance names and the same moods — and the counter ends at 18491,
+exactly where the trace has it.
+
+A passage is found by SCANNING, not by any distance table. A tile qualifies
+when it keeps 5 tiles from the map edge (`JunctionMinBorderDistance`), has
+exactly ONE foreign value among its eight neighbours, and that value appears
+3 to 5 times — a straight stretch of border, not a corner and not a place
+where three zones meet. Unassigned tiles count as a value of their own, so a
+tile touching both a neighbour and a hole is not a candidate. Candidates
+collect per neighbour in scan order and live in a hash map, so a zone
+bordering several others visits them in bucket order; a neighbour with 7
+candidates or fewer is skipped. One draw picks the tile, the guard costs
+four or five more, and both sides mark the pair done — the neighbour adopts
+the tile of its own adjacent to the mouth, orthogonals before diagonals.
+
+**Both sides stamp depth 1** on the mouth and its own-zone orthogonal
+neighbours, which is how the later phases learn to keep a passage clear.
+
+The reference forced the passage rule into shape the same way the towns
+were: with three positions to hit and 16, 35 and 28 candidates to hit them
+in, no wrong rule survives.
+
+Unported and named: **teleports**. A connection with no land passage — a
+different floor, or a border too thin — gets a monolith or a gate pair from
+the phase's second pass. Every reference connection was dug on land, so that
+path has never been measured; the port reports the connections it could not
+dig rather than inventing what the engine would do with them.
+
 ## Tools
 
 ```bash
@@ -672,6 +706,7 @@ npm run test-rmg-terrain   # FillTerrain: the masks against the real GroundTerra
 npm run test-rmg-towns     # PlaceTowns: the towns, against the reference map.xdb
 npm run test-rmg-dist-to-towns # FillDistToTownsTable: the 2-and-3 wave, and what it disowns
 npm run test-rmg-armies    # SetMonster: the recorded draws replayed into the recorded guards
+npm run test-rmg-connections # ZoneConnections: the passages, against the reference map.xdb
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals
