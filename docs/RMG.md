@@ -163,18 +163,27 @@ It also states its own types, through RTTI: `CRandomMapGenerator`, `CRandomMap`,
 `CGameZone` with `Subterra`/`Dwarven`/`SubInferno`/`WaterBordered` subclasses,
 `CTerrainProcessor`, `CMonsterSetter`, `CTreasureBlockDistributor`.
 
-## This branch works against its own copy of the game
+## The oracle needs a VANILLA install, and the real one is not
 
-`game/` — a whole install, copied, ignored by git, and named to every tool as
-`--game game`. Everything here reads and writes that one.
+`C:\Projects\homm5-editor-rmg\game` — a whole install, copied, ignored by
+git, and named to every tool as `--game <that path>`. The work itself now
+lives in `main`, in the worktree beside the real install; the vanilla copy
+stayed where it was, because what it is for has not changed.
 
-The reason is not tidiness. Getting anything out of the generator means
-installing a native extension and reading what it wrote, and the real install is
-**shared**: another session, another branch, the editor someone has open right
-now. Installing from a branch into it replaces a DLL that somebody else's work
-depends on, and the first sign of it is their session breaking. A worktree
-isolates the repository and nothing else; the install needs isolating
-separately.
+The reason is not tidiness — it is that **the generator reads the data the
+install has mounted**. The real install carries the editor's own mod: the
+creature ceiling is 181 rather than the shipped 180, artifacts 103 rather
+than 97, and ten archives are mounted between `H5E/` and `UserMODs/`. A
+guard-setting branch that walks creature ids to the ceiling would therefore
+see a creature the reference run never could, and any map ordered there
+diverges from the port for reasons that have nothing to do with the port.
+`npm run rmg-oracle -- --game <dir>` says all of this in seven lines and
+costs a second; it is the thing to run BEFORE asking anyone to launch
+anything.
+
+So: tools and tests run from wherever the checkout is, and `--game` points
+at the vanilla copy. The two are independent — the copy is an install, not a
+branch.
 
 The copy is **vanilla on purpose** — no `UserMODs`, no `h3-mod`, no `H5E`, and
 the extension's effects config removed. A mod can change the very data the
