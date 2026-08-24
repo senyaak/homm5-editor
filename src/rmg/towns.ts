@@ -26,25 +26,26 @@
 //
 // THREE POINTS, and telling them apart is the whole difficulty of this phase:
 //
-//   tile — the drawn one. The town's Pos, the footprint's anchor, and what
-//          gets reserved. The reference proves it: both towns stand exactly
-//          on their drawn tiles, under two different rotations.
-//   MARK — tile + rot_q(PossessionMarkerTile), where the flag would stand.
-//          The FRAME and DEPTH gates read this, and it is also the point the
-//          next phase grows its distance-to-town wave from. Without it the
-//          reading cannot be squared with the reference: zone 1's town sits
-//          on a depth-9 tile with the gate at 10, and only its marker (11
-//          deep) passes; zone 2's refused attempt sat on depth 9 with a
-//          marker 8 deep.
-//   entry — tile + rot_q(1,-1), a literal in the code. Only the decoration
-//          uses it.
+//   tile  — the drawn one. The town's Pos, the footprint's anchor, and what
+//           gets reserved. The reference proves it: both towns stand exactly
+//           on their drawn tiles, under two different rotations.
+//   ENTRY — tile + rot_q(activeTiles[0]), the tile a hero walks in through
+//           ((1,-6) for every shipped town). The FRAME and DEPTH gates read
+//           THIS, and it is also where the next phase grows its
+//           distance-to-town wave from. Reading the gates as measuring the
+//           town's own tile cannot be squared with the reference: zone 1's
+//           town stands on a depth-9 tile with the gate at 10, while its
+//           entry is 15 deep — and zone 2's refused attempt sat on depth 9
+//           with an entry 8 deep.
+//   flag  — tile + rot_q(1,-1), a literal in the code, race-independent.
+//           Only the decoration over the entrance uses it.
 //
-// OPEN, and named rather than hidden: MARK is read out of the document at an
-// offset the disassembly reached but has not yet named (the field could be
-// PossessionMarkerTile or another one-element list). The two candidates agree
-// for Inferno — whose marker IS (1,-1) — and the reference happens not to
-// separate them for Academy either, so this port follows the disassembly's
-// "from the document" and takes the marker.
+// The offsets were pinned through the document's generated reader, the way
+// the template's were: +0x54 blockedTiles, +0x60 holeTiles, +0x6C
+// activeTiles, +0x84 PossessionMarkerTile. The footprint checks three of
+// them at three depths — blockedTiles and activeTiles at 1, the possession
+// marker at 3 — and holeTiles, despite being the largest list, is not
+// checked at all.
 
 import type { RmgRandom } from './random.ts';
 import type { RacePreset } from './preset-table.ts';
@@ -182,45 +183,53 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
     const r = radii.get(zone.index) ?? 0;
     const pool = tiles.filter(([a, b]) => dist[a]![b]! > Math.trunc(r / 2));
     const depthGate = Math.trunc((2 * r) / 3);
-    const footprint: Offset[] = [[0, 0], ...proto.blockedTiles, ...proto.holeTiles, ...proto.activeTiles];
+    // Three lists, three depths — and holeTiles is in none of them.
+    const footprint: Array<{ offs: readonly Offset[]; minDepth: number }> = [
+      { offs: proto.blockedTiles, minDepth: 1 },
+      { offs: proto.activeTiles, minDepth: 1 },
+      { offs: [proto.possessionMarker], minDepth: 3 },
+    ];
 
     let retries = 0;
     while (pool.length) {
       const pick = rng.below(pool.length);
       const [ta, tb] = pool[pick]!;
       const q = rng.below(4);
-      // MARK: what the frame and depth gates measure, and the zone's centre.
-      const [mx, my] = rotate(q, proto.possessionMarker);
-      const ma = ta + my;
-      const mb = tb + mx;
+      // ENTRY: what the frame and depth gates measure, and the zone's centre.
+      const entry = proto.activeTiles[0] ?? ([0, 0] as Offset);
+      const [nx, ny] = rotate(q, entry);
+      const na = ta + ny;
+      const nb = tb + nx;
       // The decoration's point, from the code's own literal.
       const [ex, ey] = rotate(q, [1, -1]);
       const ea = ta + ey;
       const eb = tb + ex;
 
-      const inFrame = mb >= 1 && mb < size - 1 && ma >= 1 && ma < size - 1;
-      const deepEnough = retries >= 100
-        || (inFrame && dist[ma]![mb]! >= depthGate);
+      const inFrame = nb >= 1 && nb < size - 1 && na >= 1 && na < size - 1;
+      const deepEnough = retries >= 100 || (inFrame && dist[na]![nb]! >= depthGate);
       if (!inFrame || !deepEnough) { retries++; continue; } // the tile stays in the pool
 
       let fits = true;
-      for (const off of footprint) {
-        const [dx, dy] = rotate(q, off);
-        const fa = ta + dy;
-        const fb = tb + dx;
-        if (fa < 0 || fa >= size || fb < 0 || fb >= size
-          || grid[fa]![fb] !== zone.index || occ[fa * size + fb] !== 0 || dist[fa]![fb]! < 1) {
-          fits = false;
-          break;
+      for (const { offs, minDepth } of footprint) {
+        for (const off of offs) {
+          const [dx, dy] = rotate(q, off);
+          const fa = ta + dy;
+          const fb = tb + dx;
+          if (fa < 0 || fa >= size || fb < 0 || fb >= size
+            || grid[fa]![fb] !== zone.index || occ[fa * size + fb] !== 0 || dist[fa]![fb]! < minDepth) {
+            fits = false;
+            break;
+          }
         }
+        if (!fits) break;
       }
       if (!fits) { pool.splice(pick, 1); retries++; continue; } // this tile is done for
 
       const rot = q * HALF_PI;
       const name = mintName(rng);
-      // Reserve: the blocked list marks 2, everything else 4 — the engine's
-      // own two values, kept because later phases read them back.
-      const mark = (offs: Offset[], value: number): void => {
+      // Reserve: blockedTiles mark 2, the active tiles and the marker 4 —
+      // the engine's own two values, kept because later phases read them.
+      const mark = (offs: readonly Offset[], value: number): void => {
         for (const off of offs) {
           const [dx, dy] = rotate(q, off);
           const fa = ta + dy;
@@ -228,8 +237,8 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
           if (fa >= 0 && fa < size && fb >= 0 && fb < size) occ[fa * size + fb] = value;
         }
       };
-      mark([[0, 0], ...proto.blockedTiles], 2);
-      mark([...proto.holeTiles, ...proto.activeTiles], 4);
+      mark(proto.blockedTiles, 2);
+      mark([...proto.activeTiles, proto.possessionMarker], 4);
 
       const specs = specializations.filter((s) => s.townType === proto.townType && s.randomTown === 'TOWN_RANDOM');
       objects.push({
@@ -242,8 +251,8 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
         hasTavern: zone.playerNo !== 0,
       });
       const town = objects[objects.length - 1]!;
-      // The wave the next phase runs starts at the MARK, not at the town.
-      centres.set(zone.index, { a: ma, b: mb });
+      // The wave the next phase runs starts at the ENTRY, not at the town.
+      centres.set(zone.index, { a: na, b: nb });
 
       // The decoration over the entrance — skipped WHOLE, draws included,
       // when the race lists none.

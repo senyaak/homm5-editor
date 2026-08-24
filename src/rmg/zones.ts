@@ -86,11 +86,11 @@ export interface GeneratedZones {
  * old elements, which has not been read out of the executable — and no
  * shipped template reaches it (the suite checks). A named hole, not a guess.
  */
-export function floorIterationOrder(seeds: ZoneSeed[]): ZoneSeed[] {
+export function floorIterationOrder<T extends { index: number }>(seeds: T[]): T[] {
   const bucketCount = [13, 29, 53].find((p) => seeds.length <= p);
   if (!bucketCount) throw new Error('floorIterationOrder: >53 zones — grow the prime table when something needs it');
   const rehashed = seeds.length > 13;
-  const buckets: ZoneSeed[][] = Array.from({ length: bucketCount }, () => []);
+  const buckets: T[][] = Array.from({ length: bucketCount }, () => []);
   for (const s of seeds) {
     const bucket = buckets[s.index % bucketCount]!;
     if (rehashed && bucket.length) {

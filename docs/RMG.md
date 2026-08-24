@@ -616,21 +616,24 @@ free tiles, none of them against the border). A frame or depth refusal keeps
 the tile in the pool; a footprint refusal drops it.
 
 **Three points, and telling them apart is the whole phase.** The drawn TILE
-is the town's Pos, its footprint anchor and what gets reserved. The MARK —
-tile + rot(the building's possession-marker offset) — is what the frame and
-depth gates measure, and what the next phase grows its wave from. The ENTRY
-— tile + rot(1,-1), a literal — only positions the decoration. The reference
-forced this apart: zone 1's town stands on a depth-9 tile with the gate at
-10, and only its mark (depth 11) passes; zone 2's refused attempt sat on a
-depth-9 tile whose mark was 8 deep. Reading the gate as measuring the town's
-own tile would have refused the town the engine placed.
+is the town's Pos, its footprint anchor and what gets reserved. The ENTRY —
+tile + rot(activeTiles[0]), the tile a hero walks in through, (1,-6) on
+every shipped town — is what the frame and depth gates measure, and what the
+next phase grows its wave from. The FLAG point — tile + rot(1,-1), a literal
+in the code — only positions the decoration. The reference forced this
+apart: zone 1's town stands on a depth-9 tile with the gate at 10, while its
+entry is 15 deep, and zone 2's refused attempt sat on a depth-9 tile whose
+entry was 8. Reading the gate as measuring the town's own tile would have
+refused the town the engine placed.
 
-Named holes: the document offset the mark comes from is read but not yet
-named (possession marker, or another one-element list — the two agree for
-Inferno, whose marker IS (1,-1), and the reference does not separate them
-for Academy either); the neutral-town guard (a town in a zone with no
-player) draws and is unported, since every reference town belongs to
-someone.
+The offsets are pinned through the building's generated reader, the same way
+the template's were: +0x54 blockedTiles, +0x60 holeTiles, +0x6C activeTiles,
++0x84 PossessionMarkerTile. The footprint checks three lists at three
+depths — blockedTiles and activeTiles at 1, the marker at 3 — and holeTiles,
+the largest list of the three, is checked by nothing.
+
+One named hole: the neutral-town guard (a town in a zone with no player)
+draws and is unported, since every reference town belongs to someone.
 
 ## Tools
 
