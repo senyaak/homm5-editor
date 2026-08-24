@@ -801,7 +801,7 @@ takes its own field of it. The steps, in the order the code runs them:
 | treasury buildings | `0xEBECB0` | `+0x60` | — |
 | luck/morale | `0xEBF090` | `+0x58` | — |
 | shops | `0xEBF540` | `+0x50` | — |
-| road, and the treasures with it | `0xEBF930`, `0xEA57B0`, `0xEC05B0` | `+0x70`, whole element | treasures and chests only when `zone->0xF4 == 0` |
+| road, and the treasures with it | `0xEBF930`, `0xEA57B0`, `0xEC05B0` | `+0x70`, whole element | treasures and chests only on the surface |
 | big statics | virtual, zone vtable `+0x34` | — | second loop |
 | one tile statics | virtual, zone vtable `+0x30` | — | second loop |
 
@@ -824,10 +824,86 @@ Sawmill 32:21, guard of 3 Footmen at 30:21, Wood at 30:20. The guard is
 `SetMonster`, which is ported and checked already, so what this step still
 needs is where the mine goes and which one it is.
 
-**Not read out of the code, only observed**: what `zone->0xF4` gates, and what
-`this->0xB5` and `this->0xB0` mean. The addresses of individual draws inside
-the workers were attributed by address range rather than by walking each
-function, so a draw listed under a worker may belong to a small callee of it.
+`zone->0xF4` is the FLOOR, read rather than guessed: every use of it indexes
+the level array by `0x120` (`lea ecx,[eax+eax*8]; shl ecx,5`). So "treasures
+and chests only when it is zero" means only on the surface.
+
+**Not read out of the code, only observed**: what `this->0xB5` and `this->0xB0`
+mean. The addresses of individual draws inside the workers were attributed by
+address range rather than by walking each function, so a draw listed under a
+worker may belong to a small callee of it.
+
+#### The first step — mines, read out of `0xEB5C50`
+
+The function is two near-identical halves: types 0–1 in one, 2–6 in the other.
+Addresses below are the first half's; the second's mirror them.
+
+**The types are a table, and the order is just its indices.** Seven strings at
+`0x121C670` (0x20 apart, filled by the static initialiser at `0x4D5810`):
+Sawmill, Ore_Pit, Alchemist_Lab, Crystal_Cavern, Sulfur_Dune, Gem_Pond,
+Gold_Mine. The count of each comes from the zone's parameter field `+0x20` —
+a vector of ints, of which only `begin` is ever read, because the number of
+types is the hardcoded 7. A count of zero skips that type, which is the whole
+of why a town zone gets six mines and a zone without one gets three: the
+counts differ, the order does not.
+
+The only place a type is asked about at all is `0xEB6F8D` — index 6 takes its
+guard from `MineGoldGuardLevel`, everything else from `Mine2LevelGuardLevel`.
+
+**Candidates are gathered once per zone**, into two lists: the near one for
+types 0–1 and the far one for 2–6, each a ring around the zone centre bounded
+by a min and a max radius from `RMGParameters`. A tile qualifies when it is
+inside the map, belongs to this zone, and its `+0xE4` grid value is above 1.
+
+Which parameter is at which offset was settled by LAYOUT, not by reading the
+xdb parser: eleven consecutive ints in the loaded structure line up with the
+eleven the reader takes in order, and the two the mines step actually uses
+land where they have to.
+
+| offset | field |
+| --- | --- |
+| `+0x48` `+0x4C` | `Mine1LevelMinRadius` / `MaxRadius` — the near ring, types 0–1 |
+| `+0x50` `+0x54` | `Mine2LevelMinRadius` / `MaxRadius` — the far ring, types 2–6 |
+| `+0x58` `+0x5C` | `Mine3Level…` — never read here; presumably the abandoned mines |
+| `+0x60` | `BasicLeverGuardPower` |
+| `+0x64` | `ConnectionGuardLevel` |
+| `+0x68` `+0x6C` `+0x70` | `Mine1LevelGuardLevel`, `Mine2LevelGuardLevel`, `MineGoldGuardLevel` |
+**A zone with no town (`zone->0xF8 == 0`) skips the rings entirely** and puts
+every one of its tiles into both lists.
+
+**Then, per mine**, the zone recomputes a "room" grid — distance to the nearest
+already-placed object — takes its maximum over the candidates, and keeps only
+tiles with more than two fifths of it. So each mine is placed in what is left
+of the open space, and the space shrinks as the zone fills.
+
+**Two draws per ATTEMPT, not per mine**: `below(number of candidates)` picks a
+tile and `below(4)` picks a quadrant of rotation. If the object does not fit
+there, that candidate is struck out of the list and the pair is drawn again;
+an empty list is the `cant place mine %s at zone %d` line.
+
+**The guard costs no draws to place** — its tile is the first of the mine
+footprint's four orthogonal neighbours, starting from the quadrant the mine
+was rotated to, that is free. If none is, there is no guard at all and
+`SetMonster` is never called. It is called as `SetMonster(&out, power,
+&guardPos, angle)` with `power = <that level> × BasicLeverGuardPower`, and its
+own four or five draws are already ported (`armies.ts`).
+
+**The piles are eight neighbours and an 80% coin.** Their type is a parallel
+table at `0x121C830` — Wood, Ore, Mercury, Crystal, Sulfur, Gems, Gold, the
+same indices. Starting two past the guard's direction, each of the eight
+neighbours of the mine's last footprint tile is tried: it must be free, it
+must be **within 2.0 of the GUARD** — which is why the piles hug the guard and
+not the mine — and then `betweenFloat(0,1)` must come out under 0.8. Two is
+the hard ceiling.
+
+That last rule is what the reference map shows: Ore_Pit at 6:23 with its guard
+at 6:21 has its two Ore piles at 5:21 and 7:21, both against the guard, and
+every other mine in the map agrees.
+
+**Where this reading stops.** `0xEC3510`, the "does it fit here" test, and
+`0xEB3990`, which creates the object, were not opened. If either draws, the
+cost per attempt is more than two, and the first traced run will say so — this
+is exactly the kind of thing the step boundaries exist to catch.
 
 **The instrument for measuring it** is the step boundary — see below. Until
 that first traced run exists, none of the above has a draw count against it.
