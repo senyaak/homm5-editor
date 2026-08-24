@@ -30,8 +30,8 @@
 // so, otherwise one unconditional coin decides Subterra against SubInferno —
 // for the whole map, not per zone. Water makes floor-0 zones WaterBordered
 // and copies the template's Shipyard bit. No subclass constructor draws more
-// than the base one's single next() into zone+0x13C, whose purpose is unread
-// — the value is kept in the output because the engine keeps it.
+// than the base one's single next() into zone+0x13C — the roll FillTerrain
+// later reads to pick the zone's ground tile.
 //
 // Named holes: the tie order of the Size sort is exact by construction but
 // no oracle has held a two-floor run to it yet; the concrete-race branch
