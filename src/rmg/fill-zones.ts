@@ -129,14 +129,17 @@ export interface FilledZones {
 /**
  * @param zones every placed zone, exactly as generateGameZones returned them —
  *              engine iteration order, floor by floor
+ * @param twoFloors gen+0x1D — the floor count is this bit plus one, the same
+ *              contract generateGameZones takes
  */
 export function fillZones(
   width: number,
   height: number,
   zones: PlacedZone[],
-  floorCount: number,
+  twoFloors: boolean,
   rng: RmgRandom,
 ): FilledZones {
+  const floorCount = twoFloors ? 2 : 1;
   // The engine checks the jitter's 6-tile margin against the dimensions
   // SWAPPED relative to the neighbour bounds. On the square maps it makes the
   // two readings agree; on a rectangle they would not, and porting either one

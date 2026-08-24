@@ -73,6 +73,8 @@ check('and its treasure block budget is 10000', s1.zones[0]!.treasureBlocksTotal
 check('the guarded passage between the towns is the strong one',
   Math.max(...s1.connections.map((c) => c.guardStrenght)) === 12);
 
+check('shipyard defaults to true where no template writes it', s1.zones.every((z) => z.shipyard));
+
 console.log('\nCreateMap');
 
 // Both reference runs supplied players and size, so both must spend three
@@ -80,7 +82,8 @@ console.log('\nCreateMap');
 const supplied = new RmgRandom(1785351845);
 const made = createMap(s1, { players: 2, size: 8 }, supplied);
 check('it spends exactly three draws', supplied.draws === 3, `${supplied.draws}`);
-check('and returns what it was given', made.players === 2 && made.size === 8, JSON.stringify(made));
+check('and returns what it was given, one floor', made.players === 2 && made.size === 8 && !made.twoFloors,
+  JSON.stringify(made));
 
 // Unsupplied, it draws inside the template's own range — and spends the same
 // three, which is the whole point of the phase.
@@ -90,11 +93,23 @@ check('unsupplied, it still spends three', drawn.draws === 3, `${drawn.draws}`);
 check('players land inside 2..2', rolled.players === 2);
 check('size lands inside 5..14', rolled.size >= 5 && rolled.size <= 14, `${rolled.size}`);
 
-// The clamp, as the engine wrote it: too big does NOT become the maximum.
-const clamped = createMap(s1, { players: 2, size: 99 }, new RmgRandom(1));
-check('a size above the maximum falls back to the MINIMUM', clamped.size === s1.minMapSize, `${clamped.size}`);
-const small = createMap(s1, { players: 2, size: 1 }, new RmgRandom(1));
-check('and so does one below it', small.size === s1.minMapSize, `${small.size}`);
+// The clamp, as the engine wrote it, lands on the PLAYERS — and too many
+// does NOT become the maximum.
+const clamped = createMap(s1, { players: 99, size: 8 }, new RmgRandom(1));
+check('a player count above the maximum falls back to the MINIMUM',
+  clamped.players === s1.minPlayers, `${clamped.players}`);
+const few = createMap(s1, { players: 1, size: 8 }, new RmgRandom(1));
+check('and so does one below it', few.players === s1.minPlayers, `${few.players}`);
+
+// The underground coin REPLACES the first discarded draw — three either way.
+const coin = new RmgRandom(7);
+createMap(s1, { players: 2, size: 8, randomUnderground: true }, coin);
+check('a random underground still costs three draws', coin.draws === 3, `${coin.draws}`);
+
+// Two floors halve a DRAWN size before it becomes an index.
+const halved = createMap(s1, { players: 2, underground: true }, new RmgRandom(1));
+check('a drawn size halves when two floors share the map',
+  halved.twoFloors && halved.size >= 2 && halved.size <= 7, `${halved.size}`);
 
 console.log(failures ? `\n${failures} failed` : '\nall good');
 process.exit(failures ? 1 : 0);

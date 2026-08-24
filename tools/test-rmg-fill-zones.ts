@@ -6,8 +6,9 @@
 // sweeps on 176x176, two coins each); the jitter's exact draw count is data,
 // so what this suite holds the port to is the reading's shape: the sweep
 // count, the draw arithmetic, the drawless first sweep, and determinism. The
-// end-to-end number for the reference map is recorded here as the port
-// computes it — the editor oracle will hold it to the engine.
+// chain here is SYNTHETIC — zones straight from the seed, skipping the
+// phases before them — which is fine for properties; the true engine chain,
+// boundary by boundary, lives in test-rmg-load-template.ts.
 
 import { RmgRandom } from '../src/rmg/random.ts';
 import { fillZones } from '../src/rmg/fill-zones.ts';
@@ -20,15 +21,15 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
-console.log('the reference map, end to end through both phases');
+console.log('both phases end to end, on a synthetic chain');
 
-// Run 3's setup: seed 1785351845, S1P2Z2M1 — four zones of Size 10, 96x96.
+// Run 3's shape: seed 1785351845, S1P2Z2M1 — four zones of Size 10, 96x96.
 const zones: ZoneSeed[] = [1, 2, 3, 4].map((index) => ({ index, size: 10, floor: 0 }));
 const rng = new RmgRandom(1785351845);
-const placed = generateGameZones(96, 96, zones, 1, false, rng);
+const placed = generateGameZones(96, 96, zones, false, rng);
 const afterZones = rng.draws;
 
-const filled = fillZones(96, 96, placed.zones, 1, rng);
+const filled = fillZones(96, 96, placed.zones, false, rng);
 
 // while fl(fl(96) * 1.7320508f) > counter -> 166.27... admits 0..166.
 check('a 96 map runs 167 sweeps', filled.sweepsPerFloor === 167, `${filled.sweepsPerFloor}`);
@@ -39,9 +40,9 @@ check('the phase spends two coins a sweep plus the jitter',
 // before the first sweep every zone's is zero — NaN refuses without drawing.
 check('the first sweep draws no jitter at all', filled.firstSweepJitterDraws === 0,
   `${filled.firstSweepJitterDraws}`);
-// The number itself is data. Recorded so a change to the port is NOTICED;
-// the editor oracle is what will hold it to the engine.
-console.log(`  (the reference map's FillZones total: ${rng.draws - afterZones} draws)`);
+// The number itself is data, on a synthetic chain — printed so a drift is
+// visible in the log, asserted nowhere.
+console.log(`  (this chain's FillZones total: ${rng.draws - afterZones} draws)`);
 
 const grid = filled.floors[0]!;
 let unassigned = 0;
@@ -62,13 +63,13 @@ check('the map is mostly claimed', unassigned < 96 * 96 * 0.25, `${unassigned} u
 console.log('\ndeterminism and refusals');
 
 const rng2 = new RmgRandom(1785351845);
-const placed2 = generateGameZones(96, 96, zones, 1, false, rng2);
-const filled2 = fillZones(96, 96, placed2.zones, 1, rng2);
+const placed2 = generateGameZones(96, 96, zones, false, rng2);
+const filled2 = fillZones(96, 96, placed2.zones, false, rng2);
 check('the same seed fills the same tiles', filled2.floors[0]!.every((row, a) =>
   row.every((v, b) => v === grid[a]![b])));
 
 check('a rectangle refuses — the engine only ever runs square', (() => {
-  try { fillZones(96, 72, placed.zones, 1, new RmgRandom(1)); return false; }
+  try { fillZones(96, 72, placed.zones, false, new RmgRandom(1)); return false; }
   catch { return true; }
 })());
 

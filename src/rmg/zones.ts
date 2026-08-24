@@ -119,24 +119,25 @@ export function zoneRadius(tiles: number, size: number, sizeSum: number, k: numb
 }
 
 /**
- * @param zones     every zone of the template, in template FILE order — the
- *                  size sum accumulates in this order, in single precision
- * @param floorCount floors on the map. An empty floor still costs a shuffle:
- *                  the per-floor draw happens before any zone is looked at
- * @param twoFloors the byte at generator+0x1D: radii stretch by sqrt(2). Set
- *                  in the CreateMap region — by the unported coin flip at
- *                  0xeab5a2, or forced when the map is small for its players.
- *                  Its exact relation to floorCount is still open; the two
- *                  are passed separately so the caller states what it knows.
+ * @param zones     every zone of the template in the order LoadTemplate made
+ *                  them — ascending Index, which is also the hash insertion
+ *                  order. (The engine's sizeSum walks the template FILE
+ *                  instead, but integer sizes sum exactly in float32, so the
+ *                  order cannot change the number.)
+ * @param twoFloors the byte at generator+0x1D — CreateMap's underground coin.
+ *                  Radii stretch by sqrt(2), and the floor count IS this bit
+ *                  plus one: the map-created step resizes the floor vector to
+ *                  exactly 1 + gen[0x1D] elements (0xE9FFC0). An empty second
+ *                  floor still costs a shuffle per pass.
  */
 export function generateGameZones(
   width: number,
   height: number,
   zones: ZoneSeed[],
-  floorCount: number,
   twoFloors: boolean,
   rng: RmgRandom,
 ): GeneratedZones {
+  const floorCount = twoFloors ? 2 : 1;
   const tiles = width * height;
 
   // Accumulated in FLOAT, element order and all — an int sum would be exact

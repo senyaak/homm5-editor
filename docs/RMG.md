@@ -254,11 +254,13 @@ only variable is the seed. Run 3 is what the port is written against — ordered
 rather than observed, so it can be asked for again — and run 4 is what stops the
 port from being fitted to one lucky case.
 
-**The races are drawn, not chosen.** Run 3 came out Inferno and Academy, run 4
-Fortress and Dungeon, with the same settings. So the players' towns are part of
-what the seed decides — and with `CreateMap` spending three draws for two
-players, two of those three are very likely the races. First real prediction to
-test, and there are two runs to test it against.
+**The races are drawn, not chosen — and the port now derives them.** Run 3
+came out Inferno and Academy, run 4 Fortress and Dungeon, with the same
+settings. The draw is LoadTemplate's, not CreateMap's as first guessed: two
+phases into the stream, `below(8)` against a hardcoded surface list — and the
+ported chain, given nothing but seed 1785351845 and the template, answers
+**Inferno and Academy** (`test-rmg-load-template`). The first prediction of
+something a reference map RECORDED, and it held.
 
 ## The port
 
@@ -269,7 +271,9 @@ is what it is belongs next to the number.
 | --- | --- | --- |
 | `random.ts` | the 64-bit LCG, five entry points, the draw counter | **done**, constants verified against the binary |
 | `template.ts` | reading `RMGTemplate` | **done**, all 22 shipped templates parse |
-| `create-map.ts` | `CreateMap` — players and size | **done**, three draws |
+| `create-map.ts` | `CreateMap` — underground, size, players | **done**, offsets pinned via the XML reader |
+| `map-setup.ts` | the "map created" step — strength, water, floors | **done**, six draws bracketed by run 1 |
+| `load-template.ts` | `LoadTemplate` — floors, races, players, zone classes | **done**, 22 draws reconciled; derives run 3's races |
 | `params.ts` | reading `RMGParameters` | **done**, held to `Params/Default.xdb` field by field |
 | `zones.ts` | `GenerateGameZones` | **done**, reconciled against run 1 |
 | `fill-zones.ts` | `FillZones` | **done**, structure reconciled; jitter awaits a lockstep run |
@@ -341,40 +345,44 @@ run, a single matching number proves nothing — a sequence does.
 
 ### Phase 1 — `CreateMap`, and the rule it establishes
 
-Three draws, and it throws nearly all of them away:
+Three draws, always — and it took two readings to name them right. The first
+draft had the field pairs inverted and the draws in the wrong order,
+invisible because every reference run supplied both parameters and all three
+draws were discarded `next()`s; walking the SRMGTemplate XML reader
+(0xB9BC90) finally pinned the offsets — MinPlayers +0x78, MaxPlayers +0x7C,
+MinMapSize +0x80, MaxMapSize +0x84. As the engine actually has it:
 
 ```
-next()                                       always, discarded
-players unset ? Min + below(span) : next()   the else branch DRAWS
-size    unset ? Min + below(span) : next()   likewise
+underground requested-random ? below(2) : next()      the FIRST draw
+size    unset ? Min + below(span), halved
+                for two floors           : next()     the SECOND
+players unset ? Min + below(span)        : next()     the THIRD
 ```
 
-**A supplied parameter is not a draw skipped.** The engine draws either way and
-discards the number when it already has one. This is the rule the whole port
-hangs on: a phase that draws "only when it needs a number" runs the counter
-short before anything interesting has happened, and every later phase then
-reads different numbers — a wrong map for a reason that has nothing to do with
-the code that made it.
+**A supplied parameter is not a draw skipped.** The engine draws either way
+and discards the number when it already has one. This is the rule the whole
+port hangs on: a phase that draws "only when it needs a number" runs the
+counter short before anything interesting has happened, and every later phase
+then reads different numbers — a wrong map for a reason that has nothing to
+do with the code that made it. The corollary that makes the port robust:
+**every RNG entry steps the state exactly once**, so a supplied parameter
+changes the value it yields and nothing downstream.
 
-The clamp is copied as written rather than as expected:
+The "fourth draw at 0xeab5a2" the first reading left unported is not a fourth
+at all: the coin REPLACES the first `next()` when the operator asked for a
+random underground — which is why every reference run spends exactly three.
+And the clamp is on the PLAYERS, copied as written rather than as expected:
 
 ```
-if (size > MaxMapSize || size < MinMapSize) size = MinMapSize
+if (players > MaxPlayers || players < MinPlayers) players = MinPlayers
 ```
 
-A size *above* the maximum falls back to the **minimum**. That looks like a bug
-and it is the engine's, so the port keeps it, with a test naming it as
-deliberate so nobody tidies it away.
+Too many players falls back to the **minimum**. The engine's bug, kept, with
+a test naming it deliberate.
 
-One draw is left unported and said out loud: a fourth, `below(2)` at
-`0xeab5a2`, reached only when a byte of the parameter block is already set on
-entry. All three reference runs spent exactly three draws, so nothing exercises
-that path and what sets the byte is unknown. Inventing a condition there would
-poison the one counter currently worth trusting.
-
-**And the races are not here.** The prediction from run 4 was wrong: `CreateMap`
-decides players and size only. Whatever draws Inferno-and-Academy against
-Fortress-and-Dungeon happens later.
+Still open here: the units↔size-index conversions (the generator's vt+0x14 /
+vt+0x18) — which is also what the template's 5..14 "size" range measures —
+and the forced-underground fit checks for a map too small for its players.
 
 #### Map sizes, pinned down
 
@@ -387,22 +395,59 @@ The size that reaches the map is an index into a table at `0xff291c`:
 The reference map is 96×96, so index 1 — and the map is always square, both
 dimensions read the same entry. Past index 6 the table is other data.
 
-#### What is a guess, and marked as one
+### Phase 2 — the "map created" step, six draws of scene-setting
 
-Which template fields the ranges come from. The phase reads `[edi+0x78]`
-through `[edi+0x84]`, and this port calls them
-MinMapSize/MaxMapSize/MinPlayers/MaxPlayers — **inferred from the order the
-fields appear in the XML**, not recovered from the structure layout. The field
-names do live in the executable (`0xfbda5c` onwards), but they are pushed by
-generated reader code, so the offsets are not simply next to them; getting them
-out needs the writes that follow each read, not the `lea`s around them.
+`0xE9FFC0`, ported in `src/rmg/map-setup.ts`; run 1's counters bracket it at
+3..9. In order: monster strength (`below(3)` or a discarded `next()` when
+supplied), water (`below(2)` likewise), an angle `betweenFloat(0, 2π)` whose
+reader is unfound, a raw `next()` whose PARITY later makes the underground
+Dwarven — the dwarven caves are a 50/50 of one roll — the surface ambient
+light (`below(5)` against RMGParameters' list), and `below(10) > 6` for the
+bird ambience. This is also where the floor vector is built: **1 + gen[0x1D]
+elements** — the CreateMap underground bit IS the floor count, which pinned
+the relation zones.ts used to take on faith.
 
-It costs nothing today: those values are read only when the operator supplied
-neither players nor size, and runs 3-5 all supplied both. It costs everything
-the first time a map is generated without them. Confirm before that.
+### Phase 2½ — `LoadTemplate`, where the zones come into being
 
-Note also that the template's own 5..14 size range is **not** an index into the
-table above — 96 tiles is index 1. What that range measures is open.
+`0xEA1D40`, ported in `src/rmg/load-template.ts`; the reading reconciles
+against run 1 exactly (1 + 7×2 + 7 = 22 = 31 − 9), which also proves the
+sorts, hash inserts and the CTerrainProcessor / CMonsterSetter /
+CTreasureBlockDistributor constructors draw nothing. The budget:
+
+```
+draws = [two floors: one per zone]      floor balancing
+      + 1                               the subterra coin, spent regardless
+      + per zone: Setting ∈ {SPECIAL, RANDOM_TYPE, NO_TYPE} ? 2 : 1
+      + one per zone                    the base constructor's next() → +0x13C
+      + [two floors: 2·⌊W·H/R²⌋]        a light grid drawn and thrown away
+```
+
+Zones are created in **ascending Index order** — sorted by Size descending to
+deal floors (LPT balancing: coin only when the floors are within a tile,
+discarded draw otherwise), then by Index ascending to build. Both sorts are
+the same odd gap-halving strided merge whose ties emit the RIGHT element,
+modelled 1:1 in `engineSort` because the tie order decides floor deals —
+exact by construction, not yet held to a two-floor oracle run.
+
+The races: a concrete Setting is kept (one discarded draw); the three
+"random" Settings draw from hardcoded lists — surface `[HEAVEN, PRESERVE,
+ACADEMY, DWARF, INFERNO, NECROMANCY, STRONGHOLD]` plus DUNGEON only on a
+one-floor map, underground `[DUNGEON, INFERNO, DWARF, NECROMANCY]` — and
+spend one more either way. A player-start zone seats the next player; a slot
+the operator filled with a concrete race wins over the drawn one, a RANDOM
+slot takes it. This is where run 3's Inferno-and-Academy comes from, and the
+port derives it from the seed.
+
+The underground's flavour: Dwarven when the map-setup parity said so, else
+one coin — for the whole map — decides Subterra against SubInferno. Water
+makes floor-0 zones WaterBordered and copies the template's `Shipyard` bit
+(in the schema with default TRUE, written by no shipped file — the reader
+walk found it, and template.ts now parses it).
+
+Named holes: the concrete-race branch appends a player entry without
+checking the operator's (nothing shipped reaches it; copied as read); who
+pre-fills the player vector upstream, and what later reads zone+0x13C and
+the map-setup angle.
 
 ### Phase 3 — GenerateGameZones, where the blobs begin
 
@@ -458,11 +503,11 @@ one floor.
 
 Also read on the way: **the zone constructor itself draws once** (`next()`
 into zone+0x13C) — those draws belong to LoadTemplate's budget, one per zone.
-Open, and named: how LoadTemplate (0xEA1D40) decides each zone's floor and
-how many floors exist; whether template item+0x10 is truly the XML `<Size>`
-(strong guess — it is the summed field and the one copied to zone+0x144);
-the exact meaning of `+0x1D` versus the floor count — the port takes both as
-separate inputs until the relation is read.
+The questions this section once left open were answered by reading
+LoadTemplate: floors come from `1 + gen[0x1D]` (Phase 2), zones' floors from
+the Size-descending deal (Phase 2½), item+0x10 **is** the XML `<Size>`
+(pinned through the generated reader), and `twoFloors` and the floor count
+are one bit — the port now takes a single parameter.
 
 ### Phase 4 — FillZones, where the blobs get their shape
 
@@ -484,10 +529,11 @@ Decisions queue up per sweep and apply at its end, and the areas the jitter
 reads are the *previous* sweep's snapshot — zero before the first, where the
 ratio is NaN and a strict `comiss` refuses without drawing: **sweep one costs
 exactly two draws**, a prediction the first editor-oracle run can check.
-Areas converge to the template's Size proportions; on the reference map the
-port ends with 2285/2321/2314/2296 tiles for four Size-10 zones, zero left
-unassigned, and a FillZones total of 18,529 draws — the number to hold
-against the editor.
+Areas converge to the template's Size proportions; on the reference chain —
+now the FULL chain, every phase from the seed — the port ends with
+2324/2305/2293/2294 tiles for four Size-10 zones, zero left unassigned, and
+the boundary counters **3, 9, 22, 388, 19116** (`test-rmg-load-template`) —
+the numbers an editor-oracle run of seed 1785351845 must log, phase by phase.
 
 Tie-breaks are the same 13-bucket hash containers as the zone order, down to
 `-1` hashing into bucket 8, and the port models them rather than taking a
@@ -507,6 +553,7 @@ npm run test-rmg-template  # the template reader and CreateMap, against the 22 s
 npm run test-rmg-params    # the RMGParameters reader, against Params/Default.xdb
 npm run test-rmg-zones     # GenerateGameZones: budgets, radii, the hash order model
 npm run test-rmg-fill-zones # FillZones: sweeps, the drawless first sweep, determinism
+npm run test-rmg-load-template # the engine sort, the full chain, run 3's races from the seed
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals

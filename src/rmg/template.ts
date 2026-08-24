@@ -29,6 +29,12 @@ export interface RmgZone {
   canBePlayerStart: boolean;
   town: boolean;
   townGuardStrenght: number;
+  /**
+   * In the schema (item+0x1C, default TRUE) but written by no shipped
+   * template — the reader walk found it, not the files. A water-bordered
+   * zone copies it to its own +0x164; nothing else reads it yet.
+   */
+  shipyard: boolean;
   /** Per tier: how many mines of that resource the zone wants. */
   mines: number[];
   abandonedMines: number;
@@ -104,6 +110,9 @@ export function parseTemplate(xml: string): RmgTemplate {
       canBePlayerStart: bool(z, 'CanBePlayerStart'),
       town: bool(z, 'Town'),
       townGuardStrenght: int(z, 'TownGuardStrenght'),
+      // Defaulted TRUE like the engine's item constructor (0xBA71D0) — the
+      // one field no shipped template writes, so absence is the normal case.
+      shipyard: childText(z, 'Shipyard') !== 'false',
       mines: items(z, 'Mines'),
       abandonedMines: int(z, 'AbandonedMines'),
       dwellings: items(z, 'Dwellings'),

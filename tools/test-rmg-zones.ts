@@ -81,7 +81,7 @@ console.log('\nthe reference layout (predictions until the editor counter hook e
 // Run 3's setup: S1P2Z2M1 — four zones of Size 10 on one floor, map 96x96.
 const zones: ZoneSeed[] = [1, 2, 3, 4].map((index) => ({ index, size: 10, floor: 0 }));
 const rng = new RmgRandom(1785351845);
-const g = generateGameZones(96, 96, zones, 1, false, rng);
+const g = generateGameZones(96, 96, zones, false, rng);
 
 check('all four zones placed', g.zones.length === 4);
 // Hand-derived from the disassembly's formula, not read back from the port:
@@ -99,32 +99,27 @@ check('start points are whole tiles inside the border ring', g.zones.every((z) =
 check('no two placed zones overlap', g.zones.every((a, i) => g.zones.slice(i + 1).every((b) =>
   Math.hypot(a.x - b.x, a.y - b.y) >= a.r + b.r)));
 
-const again = generateGameZones(96, 96, zones, 1, false, new RmgRandom(1785351845));
+const again = generateGameZones(96, 96, zones, false, new RmgRandom(1785351845));
 check('the same seed lays the same zones', JSON.stringify(again) === JSON.stringify(g));
 
-const other = generateGameZones(96, 96, zones, 1, false, new RmgRandom(1000));
+const other = generateGameZones(96, 96, zones, false, new RmgRandom(1000));
 check('a different seed does not', JSON.stringify(other.zones) !== JSON.stringify(g.zones));
 
 console.log('\nthe budget holds off the reference path too');
 
-// An empty second floor still costs its shuffle — the draw comes before any
-// zone is looked at.
-const rng2 = new RmgRandom(7);
-const twoFloor = generateGameZones(96, 96, zones, 2, false, rng2);
-check('an empty floor costs a full shuffle', rng2.draws === 184 + twoFloor.passes * 91 * 3,
-  `${rng2.draws} draws, ${twoFloor.passes} passes`);
-
-// twoFloors stretches radii by sqrt(2). The formula itself, held to numbers
-// derived by hand: base trunc(sqrt(2073.6001)/3) = 15, stretched
-// trunc(15 * 1.41421354) = 21.
+// The radius formula, held to numbers derived by hand: base
+// trunc(sqrt(2073.6001)/3) = 15, stretched trunc(15 * 1.41421354) = 21.
 check('the radius formula gives 15, stretched 21',
   zoneRadius(9216, 10, 40, Math.fround(0.9), false) === 15
   && zoneRadius(9216, 10, 40, Math.fround(0.9), true) === 21);
-// End to end the stretched zones DON'T land at 21: four r=21 circles refuse
-// to fit a 96x96 map, so the engine decays k until they shrink enough — the
-// retry loop earning its keep. Whatever pass count it took, the final radii
-// must be the formula at the final k.
-const stretched = generateGameZones(96, 96, zones, 1, true, new RmgRandom(1785351845));
+// twoFloors is one bit doing two things at once — a second floor (which costs
+// its shuffle every pass even with no zone on it) and sqrt(2) radii. End to
+// end the zones DON'T land at 21: four r=21 circles refuse to fit 96x96, so
+// the engine decays k until they shrink — the retry loop earning its keep.
+const rng2 = new RmgRandom(1785351845);
+const stretched = generateGameZones(96, 96, zones, true, rng2);
+check('two floors cost a third shuffle per pass', rng2.draws === 184 + stretched.passes * 91 * 3,
+  `${rng2.draws} draws, ${stretched.passes} passes`);
 check('stretched radii match the formula at the k the last pass used',
   stretched.passes > 1
   && stretched.zones.every((z) => z.r === zoneRadius(9216, 10, 40, stretched.k, true)),
@@ -134,7 +129,7 @@ check('stretched radii match the formula at the k the last pass used',
 // one pass. If this seed happens to need more passes the formula still holds.
 const rng3 = new RmgRandom(1785351845);
 const big = generateGameZones(176, 176, [1, 2, 3, 4, 5, 6, 7].map((index) => ({ index, size: 10, floor: 0 })),
-  1, false, rng3);
+  false, rng3);
 check('run 1 geometry spends 618 + 616 per pass', rng3.draws === 618 + big.passes * 616,
   `${rng3.draws} draws, ${big.passes} passes`);
 

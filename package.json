@@ -122,6 +122,7 @@
     "test-rmg-params": "node tools/test-rmg-params.ts",
     "test-rmg-zones": "node tools/test-rmg-zones.ts",
     "test-rmg-fill-zones": "node tools/test-rmg-fill-zones.ts",
+    "test-rmg-load-template": "node tools/test-rmg-load-template.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "test-e2e-setup": "node tools/test-e2e-setup.ts",
