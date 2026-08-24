@@ -47,6 +47,27 @@ disagrees.
 current suites lean on ends there, so measuring MainObjects means another
 ordered editor run with `trace` on.
 
+That log ended there for a reason that was in our own code, not the engine's:
+the trace switched itself off at the twelfth counter reading, and the twelfth
+reading is the door of MainObjects. **It now ends where the run does** — at
+`at %g temp db destroyed`, the last line the generator prints.
+
+**And the run is now read step by step.** The twelve counter readings say
+nothing about the inside of MainObjects, so the oracle reads the generator's
+own narration instead: all 34 "at %g …" lines go through one formatter, and
+each of those calls is patched to take the draw counter on the way past. A
+run therefore writes
+
+```
+step <draws so far> <zone, or -1> <what just finished>
+```
+
+for every phase tail and for every one of the fourteen steps in every zone —
+which is what turns MainObjects from one number into fourteen. The addresses
+are generated and checked, never typed: `npm run test-rmg-log-sites` holds the
+table in `native/rmg/oracle.c` to what the editor executable actually says,
+address and arity both, and `--c` prints the table to paste when a build moves.
+
 ## Where everything is
 
 **The algorithm is compiled into two executables, and no data file describes it.**
@@ -745,6 +766,72 @@ the phase's second pass. Every reference connection was dug on land, so that
 path has never been measured; the port reports the connections it could not
 dig rather than inventing what the engine would do with them.
 
+### Phase 10 — MainObjects, the per-zone fill
+
+Not ported yet. What follows is the reading of the code and of the reference
+map — the shape to port against, and it is marked where it is a reading of
+behaviour rather than of the code.
+
+**It is two loops over the zones, not one.** `0xEA3F80` (called from
+`0xEABE09`) walks every zone and runs twelve steps inside each; `0xEA5450`
+(from `0xEABFC4`) walks them again for the two statics steps. The `ret` at
+`0xEA543A` is where the first one ends — the bytes after it are a jump table
+for the switch at `0xEA46AC`, and the second function starts at `0xEA5450`.
+That is why the reference map reads zone by zone through the buildings and
+then has 1,325 statics in one block at the end: the statics are a second pass.
+
+**Both loops open with one draw, whatever happens.** With `this->0xB5` set,
+`below(count)` picks a zone to favour; without it, `next()` is drawn and
+thrown away (`0xEA3FE5` / `0xEA3FF0`). A port that skips the draw in the
+second case is one number out for the whole phase.
+
+The zone's parameters are an array element of **0x74 bytes**, and each step
+takes its own field of it. The steps, in the order the code runs them:
+
+| step | worker | its field | skipped when |
+| --- | --- | --- | --- |
+| mines | `0xEB5C50`, then `0xEBD700` for abandoned | `+0x20`, `+0x2C` | — |
+| hero | `0xEB5B30` | — | never runs; draws nothing |
+| dwellings | `0xEB8C10` | `+0x30` | — |
+| upgrade buildings | `0xEC00F0`, `0xEBFFC0`, `0xEB96D0` | `+0x3C` | the first two only in the favoured zone, and only with `this->0xB5` |
+| prisons | `0xEBD1C0` | `+0x48` | — |
+| cartographer | `0xEBD4B0` | `+0x4C` | — |
+| shrines | `0xEBE1C0` | `+0x54` | — |
+| resource buildings | `0xEBE540` | `+0x5C` | — |
+| treasury buildings | `0xEBECB0` | `+0x60` | — |
+| luck/morale | `0xEBF090` | `+0x58` | — |
+| shops | `0xEBF540` | `+0x50` | — |
+| road, and the treasures with it | `0xEBF930`, `0xEA57B0`, `0xEC05B0` | `+0x70`, whole element | treasures and chests only when `zone->0xF4 == 0` |
+| big statics | virtual, zone vtable `+0x34` | — | second loop |
+| one tile statics | virtual, zone vtable `+0x30` | — | second loop |
+
+Two of those are worth saying out loud. **`0xEC04D0` is a stub** — its whole
+body is `ret 4`, so the `+0x70` field reaches nothing. And **the statics steps
+are virtual**: `CGameZone` answers with `0xEBAA70`/`0xEBBBD0`, and Subterra,
+Dwarven, SubInferno and WaterBordered each have their own, so a subterranean
+zone fills itself differently from a surface one.
+
+A zone whose id does not resolve (`0xE9FF00` at `0xEA414A`) is skipped whole,
+step for step.
+
+**What the reference map already says about the first step.** Twelve of its
+eighteen mines are the six resource mines of the two town zones, always in
+this order — Sawmill, Ore_Pit, Alchemist_Lab, Crystal_Cavern, Sulfur_Dune,
+Gem_Pond — and the zones without a town get Sawmill, Ore_Pit and a Gold_Mine
+instead. Every mine comes as a THREE: the mine, a guard exactly two tiles
+away on one axis, and one or two piles of its own resource next to the guard.
+Sawmill 32:21, guard of 3 Footmen at 30:21, Wood at 30:20. The guard is
+`SetMonster`, which is ported and checked already, so what this step still
+needs is where the mine goes and which one it is.
+
+**Not read out of the code, only observed**: what `zone->0xF4` gates, and what
+`this->0xB5` and `this->0xB0` mean. The addresses of individual draws inside
+the workers were attributed by address range rather than by walking each
+function, so a draw listed under a worker may belong to a small callee of it.
+
+**The instrument for measuring it** is the step boundary — see below. Until
+that first traced run exists, none of the above has a draw count against it.
+
 ## Tools
 
 ```bash
@@ -762,6 +849,9 @@ npm run test-rmg-towns     # PlaceTowns: the towns, against the reference map.xd
 npm run test-rmg-dist-to-towns # FillDistToTownsTable: the 2-and-3 wave, and what it disowns
 npm run test-rmg-armies    # SetMonster: the recorded draws replayed into the recorded guards
 npm run test-rmg-connections # ZoneConnections: the passages, against the reference map.xdb
+npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
+
+node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals
