@@ -61,4 +61,29 @@ if (!added) {
   console.log(`patched ${exe}: import added in a new section at 0x${(rva ?? 0).toString(16)}`);
 }
 console.log(`  now imports ${imports(readFileSync(exe)).length} libraries`);
+
+// The map editor, on request: `--editor` prepares H5_MapEditor_H5E.exe the
+// same way — our copy, our import, the shipped file untouched. The extension
+// recognises the editor from inside and installs only the RMG oracle there
+// (native/rmg/oracle.c): the editor's generator screen has a seed field, which
+// makes it the better oracle for the port. No unwrap needed — the editor ships
+// its code in the clear.
+if (args.includes('--editor')) {
+  const editorSource = join(game, 'bin', 'H5_MapEditor.exe');
+  const editorExe = join(game, 'bin', 'H5_MapEditor_H5E.exe');
+  if (!existsSync(editorSource)) {
+    console.error(`no ${editorSource} — this install has no map editor`);
+    process.exit(1);
+  }
+  if (!existsSync(editorExe)) copyFileSync(editorSource, editorExe);
+  const editorBefore = readFileSync(editorExe);
+  const patched = addImport(editorBefore, DLL, ENTRY);
+  if (!patched.added) {
+    console.log(`${editorExe} already imports ${DLL} — nothing to do`);
+  } else {
+    writeFileSync(editorExe, patched.buf);
+    console.log(`patched ${editorExe}: import added in a new section at 0x${(patched.rva ?? 0).toString(16)}`);
+  }
+}
+
 console.log('\nLaunch H5_Game_H5E.exe. The newest bin/homm5-editor-*.log says whether it loaded.');

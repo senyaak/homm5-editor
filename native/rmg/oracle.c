@@ -59,6 +59,49 @@
 /** The counter it reads, so the head can be checked against this image's base. */
 #define RMG_COUNTER_FIELD_RVA 0xe1bcf0u
 
+// ---------------------------------------------------------------------------
+// The same five places in the MAP EDITOR, which is the better oracle: its
+// generator screen has a seed field, so a specific map can be ORDERED rather
+// than observed (docs/RMG.md). The code around them is the game's own down to
+// the pattern — seed from [esi+90h], time() when the screen left it zero, the
+// setter called with the survivor — only the setter writes the counter last
+// instead of first. Every address below was read out of the editor executable
+// the way the game's were, and each is verified against its bytes before
+// anything is written, so a build these do not fit refuses rather than patches.
+
+/** `call dword ptr [time]` in the editor's GenerateMap — six bytes, `ff 15`. */
+#define RMG_ED_TIME_CALL_RVA 0x8f9962u
+#define RMG_ED_SEED_CALL_RVA 0x8f9977u
+/** `state = (int64)seed; counter = 0` — same job, its own instruction order. */
+#define RMG_ED_SET_SEED_RVA 0x8fd1f0u
+#define RMG_ED_COUNTER_RVA 0x8fd3a0u
+#define RMG_ED_COUNTER_FIELD_RVA 0xfd8f38u
+
+/** The five places the oracle needs, whichever executable this is. */
+static DWORD g_rmgTimeCallRva = RMG_TIME_CALL_RVA;
+static DWORD g_rmgSeedCallRva = RMG_SEED_CALL_RVA;
+static DWORD g_rmgSetSeedRva = RMG_SET_SEED_RVA;
+static DWORD g_rmgCounterRva = RMG_COUNTER_RVA;
+static DWORD g_rmgCounterFieldRva = RMG_COUNTER_FIELD_RVA;
+
+/**
+ * Is this DLL living inside the map editor?
+ *
+ * Answered from the image, not the file name: the editor's counter accessor is
+ * `mov eax,[counter]; ret`, five bytes plus one, at an RVA where the game
+ * carries unrelated code — and the embedded address is computed from THIS
+ * image's base, so a relocated load still answers and a coincidence still has
+ * to match all six bytes. The rest of DllMain hangs on this answer: every
+ * other hook the extension owns is built against the game's image, and the
+ * editor gets the oracle alone.
+ */
+static int rmg_host_is_editor(void) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  const BYTE *p = base + RMG_ED_COUNTER_RVA;
+  return p[0] == 0xA1 && *(const DWORD *)(p + 1) == (DWORD)(base + RMG_ED_COUNTER_FIELD_RVA)
+      && p[5] == 0xC3;
+}
+
 typedef void(__fastcall *SetSeedFn)(int seed);
 typedef int (*CounterFn)(void);
 typedef long(__cdecl *TimeFn)(void *);
@@ -183,7 +226,7 @@ static long __cdecl rmg_time_hook(void *arg) {
 static void __fastcall rmg_seed_hook(int seed) {
   g_rmgReads = 0;
   rmg_log_pair("run seed ", seed, g_rmgForceSeed);
-  ((SetSeedFn)((BYTE *)GetModuleHandleW(NULL) + RMG_SET_SEED_RVA))(seed);
+  ((SetSeedFn)((BYTE *)GetModuleHandleW(NULL) + g_rmgSetSeedRva))(seed);
 }
 
 /**
@@ -280,16 +323,31 @@ static void *patch_indirect_call(DWORD siteRva, void *hook, const char *what) {
  */
 static int install_rmg_oracle(void) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  // Which executable this is decides which five addresses apply. The check
+  // repeats what every patch below verifies anyway; deciding here keeps the
+  // failure mode "wrong build refuses" instead of "editor patched with the
+  // game's numbers".
+  if (rmg_host_is_editor()) {
+    g_rmgTimeCallRva = RMG_ED_TIME_CALL_RVA;
+    g_rmgSeedCallRva = RMG_ED_SEED_CALL_RVA;
+    g_rmgSetSeedRva = RMG_ED_SET_SEED_RVA;
+    g_rmgCounterRva = RMG_ED_COUNTER_RVA;
+    g_rmgCounterFieldRva = RMG_ED_COUNTER_FIELD_RVA;
+    rmg_log("host: the map editor");
+  }
+
   BYTE head[5];
   head[0] = 0xA1; // mov eax, [imm32]
-  *(DWORD *)(head + 1) = (DWORD)(base + RMG_COUNTER_FIELD_RVA);
+  *(DWORD *)(head + 1) = (DWORD)(base + g_rmgCounterFieldRva);
 
-  g_rmgCounter = (CounterFn)detour(RMG_COUNTER_RVA, head, 5, &rmg_counter_hook, "rmg draw counter");
+  g_rmgCounter = (CounterFn)detour(g_rmgCounterRva, head, 5, &rmg_counter_hook, "rmg draw counter");
   if (!g_rmgCounter) return 0;
-  if (!patch_call(RMG_SEED_CALL_RVA, RMG_SET_SEED_RVA, &rmg_seed_hook, "rmg seed")) return 0;
+  if (!patch_call(g_rmgSeedCallRva, g_rmgSetSeedRva, &rmg_seed_hook, "rmg seed")) return 0;
   // Only needed to FORCE a seed; a run that just wants the counters logged is
-  // complete without it, so this one is allowed to fail on its own.
-  g_time = (TimeFn)patch_indirect_call(RMG_TIME_CALL_RVA, &rmg_time_hook, "rmg seed source");
+  // complete without it, so this one is allowed to fail on its own. In the
+  // editor a seed is usually TYPED into the screen instead, which makes the
+  // forcing moot — the screen's number wins before time() is ever asked.
+  g_time = (TimeFn)patch_indirect_call(g_rmgTimeCallRva, &rmg_time_hook, "rmg seed source");
   if (g_rmgForceSeed && !g_time) rmg_log("the seed cannot be forced - it will be the clock's");
   rmg_log(g_rmgForceSeed && g_time ? "oracle ready, with a seed of ours" : "oracle ready");
   return 1;

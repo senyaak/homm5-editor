@@ -41,9 +41,19 @@ Where the phase log actually goes is still unknown.
 **The number stream is the same in both.** The editor runs the identical LCG —
 `0x343FD`, `0x269EC3`, shift 23, mask `0x7FFFFFFF` — with its counter at
 `0x13D8F38` and the same five-byte accessor (`0xcfd3a0`, against `0xeb1550` in
-the game). So `src/rmg/random.ts` is measured against both, and the counter hook
-moves to the editor by changing one address if the phase-by-phase reading is
-ever wanted from there.
+the game). So `src/rmg/random.ts` is measured against both.
+
+**And the oracle now lives in both.** `install-native --editor` prepares
+`H5_MapEditor_H5E.exe` — our copy, our import, the shipped file untouched, no
+unwrap needed since the editor ships its code in the clear. The extension
+recognises the editor from inside (the counter accessor's six bytes at the
+editor's address, computed against the loaded base) and installs the oracle
+and nothing else — every other hook is built against the game's image. All
+five editor addresses were read the way the game's were: the seed region is
+the same pattern down to `[esi+90h]`, only here the screen actually fills it,
+so a typed seed reaches `run seed` in the log and the map alike. Phase draw
+counts from an ordered editor run — the thing runs 3–5 could not give — land
+in the same `bin/homm5-editor-rmg.log`.
 
 **The data, on the other hand, is already ours** — plain XML under
 `data-unpacked/RMG/`, unpacked from `a2p1-data.pak`:

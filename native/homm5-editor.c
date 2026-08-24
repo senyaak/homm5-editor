@@ -151,6 +151,18 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // launch each time. This changes nothing about the crash — it writes down the
   // registers and the return addresses first.
   install_fault_report(self);
+  // The MAP EDITOR is a different executable, and every hook below this line
+  // is built against the game's image — bytes at addresses the editor uses for
+  // other things. The one instrument that knows both executables is the RMG
+  // oracle (native/rmg/oracle.c): the editor's generator screen has a seed
+  // field, which makes it the better oracle for the port, and that is the whole
+  // reason this DLL is ever loaded into it. So: the oracle, and nothing else.
+  if (rmg_host_is_editor()) {
+    log_line("--- host is the map editor: the rmg oracle applies, nothing else does");
+    load_rmg_config();
+    if (g_rmgWanted) log_line(install_rmg_oracle() ? "rmg oracle installed" : "rmg oracle NOT installed");
+    return TRUE;
+  }
   // Before the config, because what this mirrors starts talking the moment the
   // game does: the engine's own log, in our file. Only in a build that asked for
   // it — `--log net/ubi-log` — and it says so when it goes in.
