@@ -123,7 +123,11 @@ static SweepFmtFn g_rmgSweepFmt = NULL;
 typedef int (*RmgNextFn)(void);
 typedef unsigned long long (*RmgNext63Fn)(void);
 typedef int(__fastcall *RmgBelowFn)(int n);
-typedef float(__cdecl *RmgBetweenFloatFn)(float a, float b);
+// `ret 8` — the callee cleans its two floats, so the hook must be stdcall.
+// The first build said cdecl and the editor returned INTO the 2*pi argument:
+// EIP 0x40C90FDB, the float's own bits. Arity and convention come from the
+// `ret`, never from what the signature plausibly looks like.
+typedef float(__stdcall *RmgBetweenFloatFn)(float a, float b);
 
 static int g_rmgTrace = 0;
 static int g_rmgRunActive = 0;
@@ -332,7 +336,7 @@ static int __fastcall rmg_below_trace(int n) {
   return v;
 }
 
-static float __cdecl rmg_between_float_trace(float a, float b) {
+static float __stdcall rmg_between_float_trace(float a, float b) {
   float v = g_rmgBetweenFloatOrig(a, b);
   union { float f; int i; } bits;
   bits.f = v;
