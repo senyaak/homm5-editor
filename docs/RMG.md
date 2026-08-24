@@ -277,7 +277,8 @@ is what it is belongs next to the number.
 | `params.ts` | reading `RMGParameters` | **done**, held to `Params/Default.xdb` field by field |
 | `zones.ts` | `GenerateGameZones` | **done**, reconciled against run 1 |
 | `fill-zones.ts` | `FillZones` | **done, held in lockstep**: an editor trace matched all 18,459 draws |
-| `terrain.ts` | `CalcBorderTiles` + `FillTerrain` | |
+| `border-tiles.ts` | `CalcBorderTiles` | **done** — drawless, held to the definition and the reference chain |
+| `terrain.ts` | `FillTerrain` | next — verified by byte-diffing GroundTerrain.bin |
 | `towns.ts` | `PlaceTowns` | |
 | `connections.ts` | `ZoneConnections`, guards and teleports | |
 | `objects/*.ts` | `MainObjects`, one file per placement step | |
@@ -543,6 +544,25 @@ margin against the dimension pair SWAPPED relative to the neighbour bounds —
 indistinguishable on the square maps it makes, so the port refuses rectangles
 rather than guess which reading is faithful.
 
+### Phase 5 — CalcBorderTiles, how deep a tile sits
+
+Read from `0xEA90D0`; ported in `src/rmg/border-tiles.ts`. No draws — the
+traced run shows 18459 on both sides of it, and the reading agrees: the only
+calls in its body are malloc and free. It fills the floor's second grid
+(floor+0xE0, int32, initialised to −1 by the map-created step — which is
+also where the ZONE grid gets its −1, closing the hole fill-zones assumed):
+per tile, the TRUNCATED EUCLIDEAN distance to the nearest border tile of its
+OWN zone, borders themselves 0. A border tile has one of its four orthogonal
+neighbours off the map or in another zone; the algorithm is a brute-force
+minimum over the floor's border list, differences/squares/sum/min in single
+precision, the sqrt alone in double, `cvttss2si` at the end. A zone−1 tile
+matches nothing and keeps the minimum's seed, 10000.0f.
+
+The table is what every placement phase later filters by — `dist > R/2` for
+a zone's deep core, `dist >= 1` to stay off the border — so its truncations
+decide the candidate sets, and through them the draw counts of the phases
+that DO draw. On the reference chain: 808 border tiles, deepest 22.
+
 ## Tools
 
 ```bash
@@ -554,6 +574,7 @@ npm run test-rmg-params    # the RMGParameters reader, against Params/Default.xd
 npm run test-rmg-zones     # GenerateGameZones: budgets, radii, the hash order model
 npm run test-rmg-fill-zones # FillZones: sweeps, the drawless first sweep, determinism
 npm run test-rmg-load-template # the engine sort, the full chain, run 3's races from the seed
+npm run test-rmg-border-tiles # CalcBorderTiles: the definition by hand, the reference table
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals
