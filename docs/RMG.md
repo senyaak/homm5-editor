@@ -776,6 +776,52 @@ the phase's second pass. Every reference connection was dug on land, so that
 path has never been measured; the port reports the connections it could not
 dig rather than inventing what the engine would do with them.
 
+### `RMGParameters`, offset by offset
+
+Every phase from here on reads this structure by offset, so the whole map is
+worth having in one place. It is read out of the executable twice over, which
+is why it is a fact and not a layout that happens to line up:
+
+- the **xdb serialiser**, `0xB9E5D0`, which pushes each field's name next to
+  the address it writes — `lea eax,[edi+<offset>]` … `push <name>`;
+- the **reflection descriptor table** built at `0xB9CA00`, where the offset
+  arrives as a literal in `edx` beside the field's type and size.
+
+The two agree, and the fields add up to `0x21C` without a hole — the size the
+table registers for the structure. `SRMGParameters` sits at offset 0 of the
+object (its RTTI locator says so, and the loader's first instructions take
+`ecx` unadjusted), so these are offsets from the pointer itself.
+
+| off | field | off | field |
+| --- | --- | --- | --- |
+| `+0x44` | RMGVersion | `+0x98` | GroundTerrainLight |
+| `+0x48` | Mine1LevelMinRadius | `+0xA0` | UndergroundTerrainLight |
+| `+0x4C` | Mine1LevelMaxRadius | `+0xA8` | PointLightParams (0x28) |
+| `+0x50` | Mine2LevelMinRadius | `+0xAC` | …ZoneRadius |
+| `+0x54` | Mine2LevelMaxRadius | `+0xB0` | …MinDist |
+| `+0x58` | Mine3LevelMinRadius | `+0xB4` `+0xB8` | …zMin, zMax |
+| `+0x5C` | Mine3LevelMaxRadius | `+0xBC` `+0xC0` | …LightRadiusMin, Max |
+| `+0x60` | BasicLeverGuardPower | `+0xC4` | …Colors |
+| `+0x64` | ConnectionGuardLevel | `+0xD0` … `+0x12C` | the eight text refs |
+| `+0x68` | Mine1LevelGuardLevel | `+0x130` | CreatureStackParams (0x10) |
+| `+0x6C` | Mine2LevelGuardLevel | `+0x134` … `+0x13C` | …Basic, Min, MaxAmount |
+| `+0x70` | MineGoldGuardLevel | `+0x140` `+0x148` | Default Surface / Subterra tile |
+| `+0x74` | JunctionMinBorderDistance | `+0x150` `+0x158` | DeepWaterTile, DeepWaterBottom |
+| `+0x78` | TeleportMinBorderDistance | `+0x160` | DefaultTransitiveTile |
+| `+0x7C` | TeleportMaxBorderDistance | `+0x168` | TransitiveTileIntensity |
+| `+0x80` | DistBetweenLakes | `+0x16C` | MapSizeNames |
+| `+0x84` | DistBetweenTreasureBlocks | `+0x1A8` | Templates |
+| `+0x88` | CreatureMinStackAmount | `+0x1CC` | MonsterStrenghtNames |
+| `+0x8C` | CreatureMaxStackAmount | `+0x1D8` | ResourceMineColors |
+| `+0x90` | MinDistanceBetweenBigObjects | `+0x1E4` | MonsterLevelCoef |
+| `+0x94` | MinDistanceBetweenTreasureBlocks | `+0x1F0` | ShipyardGuardsLevelCoef |
+| | | `+0x1F4` | GroundTerrainLights |
+| | | `+0x200` `+0x208` | Obelisk, Grail |
+| | | `+0x210` | WaterTreasures |
+
+The step that reads one of these reaches it through `0xEAFF80`, a lazy getter
+that dynamic-casts the resource to `SRMGParameters` and caches the result.
+
 ### Phase 10 — MainObjects, the per-zone fill
 
 Not ported yet. What follows is the reading of the code and of the reference
@@ -865,21 +911,17 @@ types 0–1 and the far one for 2–6, each a ring around the zone centre bounde
 by a min and a max radius from `RMGParameters`. A tile qualifies when it is
 inside the map, belongs to this zone, and its `+0xE4` grid value is above 1.
 
-Which parameter is at which offset started as a reading of the structure's
-LAYOUT — eleven consecutive ints against the eleven the xdb reader takes in
-order — and the guards then settled it.
+Which parameter is at which offset is **read out of the executable**, not
+inferred — see the offset map below. The ones this step uses:
 
 | offset | field | value in `Default.xdb` |
 | --- | --- | --- |
 | `+0x48` `+0x4C` | `Mine1LevelMinRadius` / `MaxRadius` — the near ring, types 0–1 | 7, 20 |
 | `+0x50` `+0x54` | `Mine2LevelMinRadius` / `MaxRadius` — the far ring, types 2–6 | 15, 40 |
-| `+0x58` `+0x5C` | `Mine3LevelMinRadius` / `MaxRadius` — not read by this step | 25, 45 |
 | `+0x60` | `BasicLeverGuardPower` | 1000 |
-| `+0x64` | `ConnectionGuardLevel` | 2 |
 | `+0x68` `+0x6C` `+0x70` | `Mine1LevelGuardLevel`, `Mine2LevelGuardLevel`, `MineGoldGuardLevel` | 2, 9, 18 |
 
-**The three guard offsets are no longer a reading of layout, they are
-measured.** Every one of the eighteen mine guards in the reference run was
+**And the guard offsets are measured on top of that.** Every one of the eighteen mine guards in the reference run was
 rebuilt from its recorded draws at `BasicLeverGuardPower × the type's level` —
 2000, 9000 and 18000 — and all eighteen came out the engine's own army,
 creature for creature (`test-rmg-armies`). A wrong offset does not survive
