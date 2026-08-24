@@ -42,12 +42,25 @@ const MASK47 = (1n << 47n) - 1n;
  */
 const SCALE = Math.fround(1 / 2 ** 31);
 
+/** One float32 and its bits — the hook's union, spelled in JavaScript. */
+const FLOAT_BITS = new Float32Array(1);
+const INT_BITS = new Int32Array(FLOAT_BITS.buffer);
+
 export class RmgRandom {
   /** The 64-bit state. BigInt because 64-bit wrap-around is the whole point. */
   private state: bigint;
 
   /** How many numbers have been drawn — the engine's "Rnd Counter". */
   draws = 0;
+
+  /**
+   * When set, hears every draw: which entry drew and what came out — the
+   * port's half of the oracle's `trace` lines (kinds `tn`/`t6`/`tb`/`tf`).
+   * `between` reports as `b` because the engine's own between draws through
+   * below, and the trace mirrors what the detours see. For `f` the value is
+   * the FLOAT'S BITS, matching the hook's union trick.
+   */
+  onDraw: ((kind: 'n' | '6' | 'b' | 'f', value: number) => void) | null = null;
 
   /** The seed as the map records it (`sRMGProps/RMGstartseed`). */
   readonly seed: number;
@@ -71,7 +84,9 @@ export class RmgRandom {
    * Safe as a JS number: 31 bits fit with room to spare.
    */
   next(): number {
-    return Number((this.step() >> 23n) & 0x7fffffffn);
+    const value = Number((this.step() >> 23n) & 0x7fffffffn);
+    this.onDraw?.('n', value);
+    return value;
   }
 
   /**
@@ -88,8 +103,9 @@ export class RmgRandom {
    */
   below(limit: number): number {
     if (limit === 0) return 0;
-    const value = (this.step() >> 16n) & MASK47;
-    return Number(value % BigInt(limit >>> 0));
+    const value = Number(((this.step() >> 16n) & MASK47) % BigInt(limit >>> 0));
+    this.onDraw?.('b', value);
+    return value;
   }
 
   /**
@@ -114,7 +130,10 @@ export class RmgRandom {
    */
   next63(): bigint {
     const state = this.step();
-    return (state & 0xffffffffn) | (((state >> 32n) & 0x7fffffffn) << 32n);
+    const value = (state & 0xffffffffn) | (((state >> 32n) & 0x7fffffffn) << 32n);
+    // The hook logs the low 31 bits — enough to recognise, cheap to carry.
+    this.onDraw?.('6', Number(value & 0x7fffffffn));
+    return value;
   }
 
   /**
@@ -131,8 +150,16 @@ export class RmgRandom {
    * precisely the kind of drift that shows up a thousand draws later.
    */
   betweenFloat(a: number, b: number): number {
-    const draw = this.next();
+    // The engine's betweenFloat steps the state itself rather than calling
+    // next(), so the trace must show ONE 'f', not an 'n' inside an 'f' — the
+    // draw is inlined here for the same reason.
+    const draw = Number((this.step() >> 23n) & 0x7fffffffn);
     const scaled = Math.fround(Math.fround(draw) * SCALE);
-    return Math.fround(a + Math.fround(scaled * Math.fround(b - a)));
+    const value = Math.fround(a + Math.fround(scaled * Math.fround(b - a)));
+    if (this.onDraw) {
+      FLOAT_BITS[0] = value;
+      this.onDraw('f', INT_BITS[0]);
+    }
+    return value;
   }
 }

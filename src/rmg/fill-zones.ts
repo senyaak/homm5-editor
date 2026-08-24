@@ -132,11 +132,17 @@ export interface FilledZones {
   decades: Array<{ sweep: number; draws: number }>;
 }
 
+export interface FillZonesSpy {
+  /** Hears every jitter draw a moment before it happens, with its tile. */
+  jitter?(sweep: number, a: number, b: number): void;
+}
+
 /**
  * @param zones every placed zone, exactly as generateGameZones returned them —
  *              engine iteration order, floor by floor
  * @param twoFloors gen+0x1D — the floor count is this bit plus one, the same
  *              contract generateGameZones takes
+ * @param spy    diagnostics only — nothing in the phase reads it back
  */
 export function fillZones(
   width: number,
@@ -144,6 +150,7 @@ export function fillZones(
   zones: PlacedZone[],
   twoFloors: boolean,
   rng: RmgRandom,
+  spy?: FillZonesSpy,
 ): FilledZones {
   const floorCount = twoFloors ? 2 : 1;
   // The engine checks the jitter's 6-tile margin against the dimensions
@@ -245,6 +252,7 @@ export function fillZones(
             const countRatio = fl((counts.get(zOther.index) ?? 0) / (counts.get(zOwn.index) ?? 0));
             const sizeRatio = fl(zOther.size / zOwn.size);
             if (sizeRatio > countRatio) {
+              spy?.jitter?.(counter, a, b);
               const r = rng.betweenFloat(0, 1);
               jitterDraws++;
               if (sweeps === 1) firstSweepJitterDraws++;

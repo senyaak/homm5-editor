@@ -96,6 +96,42 @@
 typedef char *(__cdecl *SweepFmtFn)(const char *fmt, int sweep);
 static SweepFmtFn g_rmgSweepFmt = NULL;
 
+// ---------------------------------------------------------------------------
+// The finest instrument: every draw, on request.
+//
+// The decade trace narrowed the FillZones divergence to ten sweeps; this one
+// removes the narrowing entirely. With `trace` in the config, the editor's
+// four drawing entries are detoured and each draw writes one line — its kind,
+// the counter after it, the value drawn — from the seed being set to the
+// twelfth boundary. ~19k lines for the reference map, and the whole run
+// becomes diffable against the port draw by draw: the first line that
+// disagrees IS the misreading, whatever phase it hides in. Capture
+// everything, filter offline.
+//
+// `between` is not hooked: it draws through `below`, so its draw already
+// appears — hooking both would write two lines for one step. The addresses
+// mirror the game's cluster; only the editor's are wired up, because the
+// editor is where ordered runs come from.
+
+#define RMG_ED_NEXT_RVA 0x8fd220u
+#define RMG_ED_NEXT63_RVA 0x8fd260u
+#define RMG_ED_BELOW_RVA 0x8fd2a0u
+#define RMG_ED_BETWEEN_FLOAT_RVA 0x8fd330u
+/** The state's high dword — its address sits inside three of the four heads. */
+#define RMG_ED_STATE_HI_RVA 0xfd8f44u
+
+typedef int (*RmgNextFn)(void);
+typedef unsigned long long (*RmgNext63Fn)(void);
+typedef int(__fastcall *RmgBelowFn)(int n);
+typedef float(__cdecl *RmgBetweenFloatFn)(float a, float b);
+
+static int g_rmgTrace = 0;
+static int g_rmgRunActive = 0;
+static RmgNextFn g_rmgNextOrig = NULL;
+static RmgNext63Fn g_rmgNext63Orig = NULL;
+static RmgBelowFn g_rmgBelowOrig = NULL;
+static RmgBetweenFloatFn g_rmgBetweenFloatOrig = NULL;
+
 /** The five places the oracle needs, whichever executable this is. */
 static DWORD g_rmgTimeCallRva = RMG_TIME_CALL_RVA;
 static DWORD g_rmgSeedCallRva = RMG_SEED_CALL_RVA;
@@ -209,6 +245,7 @@ static void load_rmg_config(void) {
     if (line >= stop || *line == '#') continue;
     const char *q = line;
     if (take_word(&q, stop, "seed") && read_int(&q, stop, &g_rmgSeed)) g_rmgForceSeed = 1;
+    if (take_word(&q, stop, "trace")) g_rmgTrace = 1;
   }
   VirtualFree(buf, 0, MEM_RELEASE);
 }
@@ -244,6 +281,9 @@ static long __cdecl rmg_time_hook(void *arg) {
  */
 static void __fastcall rmg_seed_hook(int seed) {
   g_rmgReads = 0;
+  // The draw trace runs from here to the twelfth boundary — the editor draws
+  // for other reasons between generations, and those are nobody's business.
+  if (g_rmgTrace) g_rmgRunActive = 1;
   rmg_log_pair("run seed ", seed, g_rmgForceSeed);
   ((SetSeedFn)((BYTE *)GetModuleHandleW(NULL) + g_rmgSetSeedRva))(seed);
 }
@@ -258,7 +298,46 @@ static void __fastcall rmg_seed_hook(int seed) {
 static int rmg_counter_hook(void) {
   int value = g_rmgCounter ? g_rmgCounter() : 0;
   rmg_log_pair("phase ", ++g_rmgReads, value);
+  if (g_rmgReads >= 12) g_rmgRunActive = 0;
   return value;
+}
+
+/** One draw's line: kind prefix, the counter after it, the value drawn. */
+static void rmg_trace_draw(const char *prefix, int value) {
+  if (!g_rmgRunActive) return;
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  rmg_log_pair(prefix, *(int *)(base + g_rmgCounterFieldRva), value);
+}
+
+static int rmg_next_trace(void) {
+  int v = g_rmgNextOrig();
+  rmg_trace_draw("tn ", v);
+  return v;
+}
+
+static unsigned long long rmg_next63_trace(void) {
+  unsigned long long v = g_rmgNext63Orig();
+  rmg_trace_draw("t6 ", (int)(v & 0x7FFFFFFF));
+  return v;
+}
+
+static int __fastcall rmg_below_trace(int n) {
+  // below(0) draws NOTHING — the engine returns before the counter moves, and
+  // a line for it would be one the port rightly does not have. The counter
+  // says whether this call was a draw.
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  int before = *(int *)(base + g_rmgCounterFieldRva);
+  int v = g_rmgBelowOrig(n);
+  if (*(int *)(base + g_rmgCounterFieldRva) != before) rmg_trace_draw("tb ", v);
+  return v;
+}
+
+static float __cdecl rmg_between_float_trace(float a, float b) {
+  float v = g_rmgBetweenFloatOrig(a, b);
+  union { float f; int i; } bits;
+  bits.f = v;
+  rmg_trace_draw("tf ", bits.i);
+  return v;
 }
 
 /**
@@ -371,6 +450,28 @@ static int install_rmg_oracle(void) {
     if (patch_call(RMG_ED_SWEEP_CALL_RVA, RMG_ED_SWEEP_TARGET_RVA, &rmg_sweep_hook, "rmg sweeps")) {
       g_rmgSweepFmt = (SweepFmtFn)((BYTE *)GetModuleHandleW(NULL) + RMG_ED_SWEEP_TARGET_RVA);
       rmg_log("FillZones sweeps will be read");
+    }
+    // The draw trace, only when the config says `trace`: four detours whose
+    // heads carry the state's own address, so each head is computed against
+    // this image's base the way the counter accessor's is. Three of the four
+    // in, or none worth trusting — but each refusal names itself.
+    if (g_rmgTrace) {
+      BYTE stateHead[5];
+      stateHead[0] = 0xA1; // mov eax, [state hi]
+      *(DWORD *)(stateHead + 1) = (DWORD)(base + RMG_ED_STATE_HI_RVA);
+      g_rmgNextOrig = (RmgNextFn)detour(RMG_ED_NEXT_RVA, stateHead, 5, &rmg_next_trace, "rmg trace next");
+      g_rmgNext63Orig = (RmgNext63Fn)detour(RMG_ED_NEXT63_RVA, stateHead, 5, &rmg_next63_trace, "rmg trace next63");
+      static const BYTE belowHead[6] = { 0x83, 0xEC, 0x08, 0x56, 0x8B, 0xF1 };
+      g_rmgBelowOrig = (RmgBelowFn)detour(RMG_ED_BELOW_RVA, belowHead, 6, &rmg_below_trace, "rmg trace below");
+      BYTE floatHead[6];
+      floatHead[0] = 0x51; // push ecx
+      floatHead[1] = 0xA1;
+      *(DWORD *)(floatHead + 2) = (DWORD)(base + RMG_ED_STATE_HI_RVA);
+      g_rmgBetweenFloatOrig = (RmgBetweenFloatFn)detour(RMG_ED_BETWEEN_FLOAT_RVA, floatHead, 6,
+                                                        &rmg_between_float_trace, "rmg trace betweenFloat");
+      rmg_log(g_rmgNextOrig && g_rmgNext63Orig && g_rmgBelowOrig && g_rmgBetweenFloatOrig
+                  ? "draw trace on - every draw will be written"
+                  : "draw trace INCOMPLETE - see the refusals above");
     }
   }
 
