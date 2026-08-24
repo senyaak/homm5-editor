@@ -136,6 +136,24 @@ static RmgNext63Fn g_rmgNext63Orig = NULL;
 static RmgBelowFn g_rmgBelowOrig = NULL;
 static RmgBetweenFloatFn g_rmgBetweenFloatOrig = NULL;
 
+/**
+ * `CRandomMap::GetZone(out, index)` — 0xCEF810 in the editor, `ret 8`,
+ * thiscall. FillZones asks it twice per jitter candidate — own, then best —
+ * BEFORE the ratio test, so a log of its arguments is the engine's own
+ * candidate list, rejected candidates included. That is the reading the draw
+ * trace cannot give: WHICH tiles the engine considered, in order.
+ */
+#define RMG_ED_GET_ZONE_RVA 0x8ef810u
+
+typedef void *(__fastcall *RmgGetZoneFn)(void *self, void *edx, void **out, int index);
+static RmgGetZoneFn g_rmgGetZoneOrig = NULL;
+
+static void *__fastcall rmg_get_zone_trace(void *self, void *edx, void **out, int index) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  if (g_rmgRunActive) rmg_log_pair("gz ", *(int *)(base + g_rmgCounterFieldRva), index);
+  return g_rmgGetZoneOrig(self, edx, out, index);
+}
+
 /** The five places the oracle needs, whichever executable this is. */
 static DWORD g_rmgTimeCallRva = RMG_TIME_CALL_RVA;
 static DWORD g_rmgSeedCallRva = RMG_SEED_CALL_RVA;
@@ -473,8 +491,13 @@ static int install_rmg_oracle(void) {
       *(DWORD *)(floatHead + 2) = (DWORD)(base + RMG_ED_STATE_HI_RVA);
       g_rmgBetweenFloatOrig = (RmgBetweenFloatFn)detour(RMG_ED_BETWEEN_FLOAT_RVA, floatHead, 6,
                                                         &rmg_between_float_trace, "rmg trace betweenFloat");
-      rmg_log(g_rmgNextOrig && g_rmgNext63Orig && g_rmgBelowOrig && g_rmgBetweenFloatOrig
-                  ? "draw trace on - every draw will be written"
+      // The candidate reading: GetZone's first two instructions are seven
+      // relocation-free bytes, a whole number of instructions.
+      static const BYTE getZoneHead[7] = { 0x8B, 0x44, 0x24, 0x08, 0x83, 0xEC, 0x08 };
+      g_rmgGetZoneOrig = (RmgGetZoneFn)detour(RMG_ED_GET_ZONE_RVA, getZoneHead, 7,
+                                              &rmg_get_zone_trace, "rmg trace GetZone");
+      rmg_log(g_rmgNextOrig && g_rmgNext63Orig && g_rmgBelowOrig && g_rmgBetweenFloatOrig && g_rmgGetZoneOrig
+                  ? "draw trace on - every draw and every GetZone will be written"
                   : "draw trace INCOMPLETE - see the refusals above");
     }
   }

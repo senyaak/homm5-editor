@@ -135,6 +135,12 @@ export interface FilledZones {
 export interface FillZonesSpy {
   /** Hears every jitter draw a moment before it happens, with its tile. */
   jitter?(sweep: number, a: number, b: number): void;
+  /**
+   * Hears every candidate that reaches the zone lookup — the moment the
+   * engine calls GetZone(own) and GetZone(best), BEFORE the ratio verdict.
+   * The oracle's `gz` lines are this callback's engine-side twin.
+   */
+  candidate?(sweep: number, a: number, b: number, own: number, best: number): void;
 }
 
 /**
@@ -243,6 +249,7 @@ export function fillZones(
             if (cnt.has(-1) || cnt.size === 0) continue;
             const best = cnt.best();
             if (!best || best.count <= 2) continue;
+            spy?.candidate?.(counter, a, b, own, best.key);
             const zOwn = byIndex.get(own);
             const zOther = byIndex.get(best.key);
             if (!zOwn || !zOther) continue;
