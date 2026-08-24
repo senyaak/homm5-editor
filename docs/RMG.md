@@ -281,7 +281,8 @@ is what it is belongs next to the number.
 | `preset-table.ts` | `RMGPresetTable` Tiles + AdvMapTile documents | **done** for what the painter reads |
 | `terrain.ts` | `FillTerrain` | **done** — held to the reference file's masks byte for byte |
 | `towns.ts` + `town-data.ts` | `PlaceTowns` | **done** — 16 draws, and both towns land where the engine put them |
-| `connections.ts` | `ZoneConnections`, guards and teleports | |
+| `dist-to-towns.ts` | `FillDistToTownsTable` | **done** — drawless; its side effect is what later phases see |
+| `connections.ts` | `ZoneConnections`, guards and teleports | next |
 | `objects/*.ts` | `MainObjects`, one file per placement step | |
 | `treasure.ts` | `CTreasureBlockDistributor` | |
 | `monsters.ts` | `CMonsterSetter` and the army templates | |
@@ -635,6 +636,26 @@ the largest list of the three, is checked by nothing.
 One named hole: the neutral-town guard (a town in a zone with no player)
 draws and is unported, since every reference town belongs to someone.
 
+### Phase 8 — FillDistToTownsTable, and the tiles it takes away
+
+An inline loop in GenerateMap (0xeabc01) calling `CGameZone::FillDistToTown`
+(0xEC06E0) per zone; ported in `src/rmg/dist-to-towns.ts`. No draws.
+
+From each zone's centre — a town's ENTRY point, or a townless zone's
+centroid — a wave spreads through that zone's own tiles only, four ways at
+cost 2 and four diagonally at 3, an integer stand-in for 2·√2. Other zones
+are walls, so an arm of a zone walled off from its own centre is never
+reached.
+
+**And then it is taken away.** Every tile of the zone still unreached is
+written −2 into the ZONE grid: it stops belonging to anyone, and every later
+phase sees a smaller zone. That side effect is the phase's real output — the
+distance table itself has no reader this port has found yet, while the
+disowning is visible to everything downstream. On the reference map nothing
+is disowned (all four zones are connected to their centres), so the
+behaviour is implemented from the reading and exercised only by the suite's
+own split-zone case.
+
 ## Tools
 
 ```bash
@@ -649,6 +670,7 @@ npm run test-rmg-load-template # the engine sort, the full chain, run 3's races 
 npm run test-rmg-border-tiles # CalcBorderTiles: the definition by hand, the reference table
 npm run test-rmg-terrain   # FillTerrain: the masks against the real GroundTerrain.bin
 npm run test-rmg-towns     # PlaceTowns: the towns, against the reference map.xdb
+npm run test-rmg-dist-to-towns # FillDistToTownsTable: the 2-and-3 wave, and what it disowns
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals
