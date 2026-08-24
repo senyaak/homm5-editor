@@ -124,6 +124,12 @@ export interface FilledZones {
   /** betweenFloat draws in total, and on each floor's FIRST sweep (predicted 0). */
   jitterDraws: number;
   firstSweepJitterDraws: number;
+  /**
+   * Cumulative draws at every tenth sweep, recorded where the engine logs
+   * "filling zones, %d" — BEFORE that sweep's own coins — so each entry is
+   * directly comparable to an oracle `sweep <n> <draws>` line.
+   */
+  decades: Array<{ sweep: number; draws: number }>;
 }
 
 /**
@@ -182,6 +188,7 @@ export function fillZones(
   let sweepsPerFloor = 0;
   let jitterDraws = 0;
   let firstSweepJitterDraws = 0;
+  const decades: Array<{ sweep: number; draws: number }> = [];
 
   for (let f = 0; f < floorCount; f++) {
     const grid = grids[f]!;
@@ -192,6 +199,7 @@ export function fillZones(
 
     let sweeps = 0;
     for (let counter = 0; sweepLimit > fl(counter); counter++) {
+      if (counter % 10 === 0) decades.push({ sweep: counter, draws: rng.draws });
       sweeps++;
       const grow = new HashQueue();
       const flip = new HashQueue();
@@ -261,5 +269,5 @@ export function fillZones(
     sweepsPerFloor = sweeps;
   }
 
-  return { floors: grids, sweepsPerFloor, jitterDraws, firstSweepJitterDraws };
+  return { floors: grids, sweepsPerFloor, jitterDraws, firstSweepJitterDraws, decades };
 }

@@ -77,6 +77,25 @@
 #define RMG_ED_COUNTER_RVA 0x8fd3a0u
 #define RMG_ED_COUNTER_FIELD_RVA 0xfd8f38u
 
+// ---------------------------------------------------------------------------
+// The finer instrument: FillZones, sweep by sweep.
+//
+// The twelve boundaries said which phase diverged; this says WHERE INSIDE it.
+// Every tenth sweep the editor's FillZones formats "filling zones, %d" — one
+// call site, one destination — and detouring that call reads the draw counter
+// on the way past: `sweep <n> <draws>` lands next to the phase lines, and the
+// first decade whose number disagrees with the port's is where the reading
+// went wrong. The hook forwards to the real formatter, so the engine's own
+// logging is exactly what it was.
+
+/** `call <formatter>` under the `counter % 10` test in the editor's FillZones. */
+#define RMG_ED_SWEEP_CALL_RVA 0x8f333eu
+/** The formatter it reaches — checked, like every call this file bends. */
+#define RMG_ED_SWEEP_TARGET_RVA 0xa8b510u
+
+typedef char *(__cdecl *SweepFmtFn)(const char *fmt, int sweep);
+static SweepFmtFn g_rmgSweepFmt = NULL;
+
 /** The five places the oracle needs, whichever executable this is. */
 static DWORD g_rmgTimeCallRva = RMG_TIME_CALL_RVA;
 static DWORD g_rmgSeedCallRva = RMG_SEED_CALL_RVA;
@@ -243,6 +262,19 @@ static int rmg_counter_hook(void) {
 }
 
 /**
+ * Every tenth FillZones sweep, on its way to being logged (editor only).
+ *
+ * The counter value read here is cumulative draws BEFORE the named sweep's
+ * own coins — the engine tests `counter % 10` first and draws after — so the
+ * port's number to match is the one recorded at the same point.
+ */
+static char *__cdecl rmg_sweep_hook(const char *fmt, int sweep) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  rmg_log_pair("sweep ", sweep, *(int *)(base + RMG_ED_COUNTER_FIELD_RVA));
+  return g_rmgSweepFmt ? g_rmgSweepFmt(fmt, sweep) : NULL;
+}
+
+/**
  * Point one `call` somewhere else.
  *
  * A fourth way in, beside the three in core/detour.c, and the narrowest: the
@@ -334,6 +366,12 @@ static int install_rmg_oracle(void) {
     g_rmgCounterRva = RMG_ED_COUNTER_RVA;
     g_rmgCounterFieldRva = RMG_ED_COUNTER_FIELD_RVA;
     rmg_log("host: the map editor");
+    // The per-sweep reading, editor only. Allowed to fail on its own — the
+    // phase boundaries are complete without it.
+    if (patch_call(RMG_ED_SWEEP_CALL_RVA, RMG_ED_SWEEP_TARGET_RVA, &rmg_sweep_hook, "rmg sweeps")) {
+      g_rmgSweepFmt = (SweepFmtFn)((BYTE *)GetModuleHandleW(NULL) + RMG_ED_SWEEP_TARGET_RVA);
+      rmg_log("FillZones sweeps will be read");
+    }
   }
 
   BYTE head[5];

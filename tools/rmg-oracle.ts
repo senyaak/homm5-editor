@@ -126,6 +126,7 @@ if (args.includes('--read')) {
   }
   let seed: number | null = null;
   const phases: number[] = [];
+  const sweeps: Array<[number, number]> = [];
   for (const line of readFileSync(path, 'latin1').split(/\r?\n/)) {
     const run = /^run seed (-?\d+) (\d+)$/.exec(line);
     // A second run restarts the reading: the log appends, and the numbers that
@@ -133,9 +134,13 @@ if (args.includes('--read')) {
     if (run) {
       seed = Number(run[1]);
       phases.length = 0;
+      sweeps.length = 0;
     }
     const phase = /^phase (\d+) (\d+)$/.exec(line);
     if (phase) phases.push(Number(phase[2]));
+    // The editor's finer reading: FillZones draws at every tenth sweep.
+    const sweep = /^sweep (\d+) (\d+)$/.exec(line);
+    if (sweep) sweeps.push([Number(sweep[1]), Number(sweep[2])]);
   }
   if (seed === null) {
     console.log('the log has no run in it');
@@ -144,6 +149,10 @@ if (args.includes('--read')) {
   console.log(`seed ${seed}`);
   console.log(`draws at each of ${phases.length} phase boundaries:`);
   phases.forEach((n, i) => console.log(`  ${String(i + 1).padStart(2)}  ${n}`));
+  if (sweeps.length) {
+    console.log('FillZones draws at every tenth sweep:');
+    console.log('  ' + sweeps.map(([s, d]) => `${s}:${d}`).join(' '));
+  }
   process.exit(0);
 }
 
