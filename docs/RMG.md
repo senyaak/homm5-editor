@@ -776,6 +776,63 @@ the phase's second pass. Every reference connection was dug on land, so that
 path has never been measured; the port reports the connections it could not
 dig rather than inventing what the engine would do with them.
 
+### The four grids a level carries
+
+Every step from MainObjects on reads and writes these, so they are worth one
+place too. A level is `world->0x34 + floor*0x120`, and each grid is a flat
+buffer plus a table of row pointers — the buffer is what `CreateMap`
+(`0xE9FFC0`) fills, the table is what everything else indexes through, which
+is why the same grid has two offsets.
+
+| grid | filled with | what it holds |
+| --- | --- | --- |
+| `+0xC0` / `+0xC4` | −1 | the zone id of each tile — `FillZones` |
+| `+0xD0` / `+0xD4` | 0 | what occupies the tile |
+| `+0xE0` / `+0xE4` | −1 | distance to the zone border — `CalcBorderTiles` |
+| `+0xF0` / `+0xF4` | −1 | room: distance to the nearest point of a zone's list |
+
+**The border table is not permanent.** `CalcBorderTiles` writes 0 on a border
+tile and the truncated Euclidean distance elsewhere, which is what
+`border-tiles.ts` ports — but `0xEC1500`, the placer that prisons, the
+cartographer, shrines, resource buildings, treasuries and luck/morale objects
+all go through, writes **1** into it at the object's tile and at its same-zone
+neighbours. So a step reads a table the steps before it have already dented,
+and the order of the steps is part of what each one sees.
+
+**What occupies a tile**, as the values that are actually written:
+
+| value | written by |
+| --- | --- |
+| 0 | nothing — the initial state |
+| 2 | an object's footprint, and a mine's resource pile |
+| 4 | a guard |
+| `0x08` `0x10` `0x20` | a road — three kinds, from the three calls to the router `0xEC0B60` |
+| `0x80` `0x100` `0x82` `0x40` `0x400` | written, meaning not established |
+
+A tile counts as FREE when `t == 0 || (t & 0x38)` — untouched, or carrying a
+road. That is the same `0x38` the room recompute is called with elsewhere, and
+it is exactly the three road bits.
+
+**The room grid** is recomputed on demand by `0xEC28E0(mask, allZones)`, and
+it does not measure distance to occupied tiles. For every tile of the floor it
+takes the minimum Euclidean distance to the nearest point in whichever of the
+zone's point lists the mask selects — `0x04` is the list at `zone+0x68`,
+`0x02` is `+0x5C`, `0x08`/`0x10`/`0x20` are the three road lists, `0x40` and
+`0x400` filter `+0xCC` by the matching occupancy bit. A tile belonging to no
+zone gets 1000; with `allZones` clear, tiles of other zones are left alone.
+The mines step calls it as `(4, 0)`.
+
+`0xEC2EB0(list)` is its companion: the **maximum** room value over a list of
+points, counting only those in the zone with a border distance above 2 and an
+occupancy that is not 2.
+
+**One engine quirk, to be reproduced rather than corrected.** The final
+`cvttss2si` in `0xEC28E0` (at `0xEC2E37`) converts `xmm0`, not the minimum
+accumulated on the stack. When no list iteration ran for a tile — because
+every selected list was empty — `xmm0` still holds whatever the previous tile
+left in it. The first mine of a zone is placed when nothing has been added to
+`zone+0x68` yet, so this is not a corner nobody reaches.
+
 ### `RMGParameters`, offset by offset
 
 Every phase from here on reads this structure by offset, so the whole map is
@@ -937,10 +994,11 @@ out exact. The other three (17, 42, 25) hold either way.
 **A zone with no town (`zone->0xF8 == 0`) skips the rings entirely** and puts
 every one of its tiles into both lists.
 
-**Then, per mine**, the zone recomputes a "room" grid — distance to the nearest
-already-placed object — takes its maximum over the candidates, and keeps only
-tiles with more than two fifths of it. So each mine is placed in what is left
-of the open space, and the space shrinks as the zone fills.
+**Then, per mine**, the zone recomputes the room grid with `(4, 0)` — distance
+to the nearest point of its `+0x68` list, which is where placed objects go —
+takes its maximum over the candidates through `0xEC2EB0`, and keeps only
+candidates whose room is more than two fifths of it. So each mine is placed in
+what is left of the open space, and the space shrinks as the zone fills.
 
 **Two draws per ATTEMPT, not per mine**: `below(number of candidates)` picks a
 tile and `below(4)` picks a quadrant of rotation. If the object does not fit
