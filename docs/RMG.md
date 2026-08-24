@@ -278,7 +278,8 @@ is what it is belongs next to the number.
 | `zones.ts` | `GenerateGameZones` | **done**, reconciled against run 1 |
 | `fill-zones.ts` | `FillZones` | **done, held in lockstep**: an editor trace matched all 18,459 draws |
 | `border-tiles.ts` | `CalcBorderTiles` | **done** — drawless, held to the definition and the reference chain |
-| `terrain.ts` | `FillTerrain` | next — verified by byte-diffing GroundTerrain.bin |
+| `preset-table.ts` | `RMGPresetTable` Tiles + AdvMapTile documents | **done** for what the painter reads |
+| `terrain.ts` | `FillTerrain` | **done** — held to the reference file's masks byte for byte |
 | `towns.ts` | `PlaceTowns` | |
 | `connections.ts` | `ZoneConnections`, guards and teleports | |
 | `objects/*.ts` | `MainObjects`, one file per placement step | |
@@ -563,6 +564,37 @@ a zone's deep core, `dist >= 1` to stay off the border — so its truncations
 decide the candidate sets, and through them the draw counts of the phases
 that DO draw. On the reference chain: 808 border tiles, deepest 22.
 
+### Phase 6 — FillTerrain, the ground gets its look
+
+Read from `CTerrainProcessor::Process` (0xED0AD0) with the dwarven-only
+pre-step 0xED17F0; ported in `src/rmg/terrain.ts` with `preset-table.ts`
+reading the RMGPresetTable Tiles blocks and the AdvMapTile documents it
+names. The phase paints ONLY texture masks — heights, flags and passability
+belong to someone later (the 9.0 height base of RMG maps has no writer found
+yet). Process draws nothing; the pre-step draws one below(8), dwarven
+two-floor maps only (`dwarvenCoarse`).
+
+Per vertex of the (size+1)² plane: the clamped tile's zone paints its ground
+tile at 255 — chosen by THE CONSTRUCTOR'S ROLL (zone+0x13C, the draw whose
+reader was unknown since LoadTemplate): odd or empty-pool takes the preset's
+DefaultTile, even takes OtherTiles[roll % n]. On floor 0, vertices with both
+coordinates in [1, size−2] get borders: the first DIAGONAL foreign-zone
+neighbour paints the transitive tile (RMGParameters' DefaultTransitiveTile;
+the Intensity knob is never read — the weights are the literals 128 and 255)
+when the races differ, then the first ORTHOGONAL one paints it again at 255.
+Haven and Preserve count as one race. PaintTile keeps layers keyed by href
+path, ordered by ascending Priority, and STEALS: past 255, every same-class
+layer at another priority loses twice the overflow.
+
+Held to the reference file, not to itself: on the traced run's
+GroundTerrain.bin the Sand-Dunes, Sand_Cracked and DarkGround masks are
+byte-identical, and Lava differs on exactly the 175 vertices where the file's
+Dead_Land sits — Inferno's SECONDARY ROAD tile, still land-class, painted by
+the roads phase that will steal from Lava when it is ported. The orientation
+that makes this work is pinned by probing the file at the corners and zone
+starts: the plane lies plane[a·(size+1)+b] in the port grid's own
+coordinates.
+
 ## Tools
 
 ```bash
@@ -575,6 +607,7 @@ npm run test-rmg-zones     # GenerateGameZones: budgets, radii, the hash order m
 npm run test-rmg-fill-zones # FillZones: sweeps, the drawless first sweep, determinism
 npm run test-rmg-load-template # the engine sort, the full chain, run 3's races from the seed
 npm run test-rmg-border-tiles # CalcBorderTiles: the definition by hand, the reference table
+npm run test-rmg-terrain   # FillTerrain: the masks against the real GroundTerrain.bin
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals

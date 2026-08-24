@@ -48,7 +48,7 @@ export const RACE = {
   DUNGEON: 6, NECROMANCY: 7, INFERNO: 8, DWARF: 9, STRONGHOLD: 10,
 } as const;
 
-const SETTING_BY_NAME: Record<string, number> = {
+export const RACE_BY_NAME: Record<string, number> = {
   RACE_SPECIAL: 0, RACE_RANDOM_TYPE: 1, RACE_NO_TYPE: 2, RACE_HEAVEN: 3,
   RACE_PRESERVE: 4, RACE_ACADEMY: 5, RACE_DUNGEON: 6, RACE_NECROMANCY: 7,
   RACE_INFERNO: 8, RACE_DWARF: 9, RACE_STRONGHOLD: 10,
@@ -95,12 +95,24 @@ export interface LoadedZone {
   size: number;
   floor: number;
   race: number;
+  /**
+   * Which race's preset paints this zone's ground — the entry the engine
+   * stores at zone+0x20 (vt+0x28 after construction): the zone's own race,
+   * except Dungeon ON THE SURFACE borrows Haven's, and the underground
+   * flavours override wholesale — Subterra paints as Dungeon, Dwarven as
+   * entry 2, SubInferno as entry 0.
+   */
+  terrainRace: number;
   /** 1-based player number when this is a start zone, 0 otherwise (+0xF0). */
   playerNo: number;
   kind: ZoneKind;
   /** Water zones only: the template's Shipyard bit, copied to +0x164. */
   shipyard: boolean;
-  /** The base constructor's draw (+0x13C) — kept whole; its reader is unread. */
+  /**
+   * The base constructor's draw (+0x13C). Its reader turned out to be
+   * FillTerrain: an odd roll (or an empty pool) paints the preset's
+   * DefaultTile, an even one paints OtherTiles[roll % n].
+   */
   ctorRoll: number;
 }
 
@@ -165,7 +177,7 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
 
   const zones: LoadedZone[] = [];
   for (const t of byIndex) {
-    const setting = SETTING_BY_NAME[t.item.setting];
+    const setting = RACE_BY_NAME[t.item.setting];
     if (setting === undefined) throw new Error(`loadTemplate: unknown Setting "${t.item.setting}"`);
 
     let race: number;
@@ -215,11 +227,18 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
       ? (options.water ? 'waterBordered' : 'zone')
       : (options.dwarvenUnderground ? 'dwarven' : subterra ? 'subterra' : 'subInferno');
 
+    const terrainRace = kind === 'subterra' ? RACE.DUNGEON
+      : kind === 'dwarven' ? 2
+      : kind === 'subInferno' ? 0
+      : race === RACE.DUNGEON ? RACE.HEAVEN
+      : race;
+
     zones.push({
       index: t.item.index,
       size: t.item.size,
       floor: t.floor,
       race,
+      terrainRace,
       playerNo: assignedPlayer,
       kind,
       shipyard: t.item.shipyard,
