@@ -285,7 +285,7 @@ is what it is belongs next to the number.
 | `connections.ts` | `ZoneConnections`, guards and teleports | next |
 | `objects/*.ts` | `MainObjects`, one file per placement step | |
 | `treasure.ts` | `CTreasureBlockDistributor` | |
-| `monsters.ts` | `CMonsterSetter` and the army templates | |
+| `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
 | `emit.ts` | the finished map, handed to `src/map/` | |
 
 ### The number stream, and why it comes first
@@ -671,6 +671,7 @@ npm run test-rmg-border-tiles # CalcBorderTiles: the definition by hand, the ref
 npm run test-rmg-terrain   # FillTerrain: the masks against the real GroundTerrain.bin
 npm run test-rmg-towns     # PlaceTowns: the towns, against the reference map.xdb
 npm run test-rmg-dist-to-towns # FillDistToTownsTable: the 2-and-3 wave, and what it disowns
+npm run test-rmg-armies    # SetMonster: the recorded draws replayed into the recorded guards
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals

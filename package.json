@@ -128,6 +128,7 @@
     "test-rmg-terrain": "node tools/test-rmg-terrain.ts",
     "test-rmg-towns": "node tools/test-rmg-towns.ts",
     "test-rmg-dist-to-towns": "node tools/test-rmg-dist-to-towns.ts",
+    "test-rmg-armies": "node tools/test-rmg-armies.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "test-e2e-setup": "node tools/test-e2e-setup.ts",
