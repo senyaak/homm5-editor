@@ -261,7 +261,7 @@ is what it is belongs next to the number.
 | `template.ts` | reading `RMGTemplate` | **done**, all 22 shipped templates parse |
 | `create-map.ts` | `CreateMap` — players and size | **done**, three draws |
 | `params.ts` | reading `RMGParameters` | **done**, held to `Params/Default.xdb` field by field |
-| `zones.ts` | `GenerateGameZones` + `FillZones` | next |
+| `zones.ts` | `GenerateGameZones` + `FillZones` | GenerateGameZones **done** (reconciled against run 1); FillZones next |
 | `terrain.ts` | `CalcBorderTiles` + `FillTerrain` | |
 | `towns.ts` | `PlaceTowns` | |
 | `connections.ts` | `ZoneConnections`, guards and teleports | |
@@ -297,11 +297,14 @@ back, neither of which draws.
 exactly this, empty range included: `hi < lo` makes the span zero, and it
 returns `lo` having drawn nothing.
 
-`betweenFloat` is where `Zone #%d … k == %2.2f` comes from, and it is computed
-in SINGLE precision — the scale, the multiply and the add are all `ss`
-instructions. In JavaScript that means `Math.fround` around every step. Skip it
-and the answer is right to seven digits and wrong after, which is the drift that
-surfaces a thousand draws later as a different map.
+`betweenFloat` is computed in SINGLE precision — the scale, the multiply and
+the add are all `ss` instructions. In JavaScript that means `Math.fround`
+around every step. Skip it and the answer is right to seven digits and wrong
+after, which is the drift that surfaces a thousand draws later as a different
+map. (An earlier draft of this document claimed the `k == %2.2f` in the zone
+log line comes from `betweenFloat`; reading the phase showed k is a constant
+0.9 decayed by 3% per retry pass, and `betweenFloat`'s known caller is
+FillZones, at 0xeaa3ba.)
 
 Three details that a reasonable-looking port gets wrong:
 
@@ -390,6 +393,70 @@ the first time a map is generated without them. Confirm before that.
 Note also that the template's own 5..14 size range is **not** an index into the
 table above — 96 tiles is index 1. What that range measures is open.
 
+### Phase 3 — GenerateGameZones, where the blobs begin
+
+Read from `0xEA2760` (thiscall on CRandomMapGenerator, the only caller
+`GenerateMap` at 0xeab86d). Ported in `src/rmg/zones.ts`; the phase gives
+every zone a start point and a radius, and FillZones later grows the blobs
+out from those points. The reading **reconciles against run 1 exactly**:
+176×176, one floor, one pass — 1234 draws predicted from the shape below,
+1234 counted by the oracle. That also proves no draw site on that path went
+unread.
+
+The shape: `tiles/100` candidate points are drawn once (`below(W)` then
+`below(H)` each — the only RNG entry this phase uses is `below`). Then a
+retry loop: Fisher–Yates shuffle of the points, radii recomputed from a
+coefficient k, then per floor — another shuffle (spent even on an empty
+floor, even after a failure) and each zone takes the first point that fits.
+`k` starts at 0.9f and decays by 0.97f after every pass, which is what the
+`k == %2.2f` in the log line actually is — not a drawn number. Budget:
+
+```
+draws = 2n + P · (n−1) · (1 + F)      n = ⌊tiles/100⌋, F floors, P passes
+```
+
+(P > 1 is exercised by the port's tests but not yet by an oracle run.)
+
+A point fits when it keeps R tiles from the border (equality passes; the
+rejections are strict) and does not overlap a zone **already placed this pass
+on the same floor** — the engine's overlap scan walks every floor but stops
+at the zone itself, and a cross-floor pair cannot fail the check, so zones on
+different floors overlap freely. A failed placement costs no draws, and after
+one failure the rest of the pass places nothing.
+
+The radius: `R = trunc(sqrt(fl(fl(size · fl(tiles·k)) / sizeSum)) / 3.0)`,
+`fl` marking single precision (the sqrt and the /3.0 are genuinely double);
+sizeSum is the template's zone sizes accumulated **in float, in file order**.
+With the generator's `+0x1D` byte set ("two floors" — set by CreateMap's
+unported coin flip at 0xeab5a2, or forced when the map is small for its
+players), R stretches by 1.41421354f. For the reference setup (S1P2Z2M1,
+96×96) that yields R = 15 for all four zones — a prediction to hold against
+the editor once the counter hook moves there.
+
+**Zone order is a hash_map's order, and it is not the obvious one.** The
+floor's zones live in an STLPort-style hash_map: bucket = index %
+bucketCount, head insertion, buckets iterated ascending; 13 buckets, growing
+to 29 on the fourteenth insert (prime table at 0xF49470). Shipped indices
+reach 15, so in a small table zone 14 iterates before zone 2 — and a shipped
+15-zone template sits in a rehashed 29-bucket table where those indices stop
+colliding and the order is plain ascending again. `floorIterationOrder`
+models exactly this and **refuses** the one unread path (a collision after a
+rehash, whose within-bucket order depends on how the rehash re-inserted); the
+suite proves no shipped template reaches it even if all its zones landed on
+one floor.
+
+Also read on the way: **the zone constructor itself draws once** (`next()`
+into zone+0x13C) — those draws belong to LoadTemplate's budget, one per zone.
+Open, and named: how LoadTemplate (0xEA1D40) decides each zone's floor and
+how many floors exist; whether template item+0x10 is truly the XML `<Size>`
+(strong guess — it is the summed field and the one copied to zone+0x144);
+the exact meaning of `+0x1D` versus the floor count — the port takes both as
+separate inputs until the relation is read.
+
+FillZones is `0xEA94C0` — mapped but not yet read in depth: per-tile loops
+over the floor vector, two `below(2)` coin flips at 0xea9974/0xea9984 and a
+`betweenFloat(0,1)` probability test at 0xeaa3ba.
+
 ## Tools
 
 ```bash
@@ -398,6 +465,7 @@ npm run test-rmg-map       # fail if it drifted
 npm run test-rmg-random    # the number stream, against the binary's constants
 npm run test-rmg-template  # the template reader and CreateMap, against the 22 shipped templates
 npm run test-rmg-params    # the RMGParameters reader, against Params/Default.xdb
+npm run test-rmg-zones     # GenerateGameZones: budgets, radii, the hash order model
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals
