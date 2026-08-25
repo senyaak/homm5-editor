@@ -963,10 +963,24 @@ counts differ, the order does not.
 The only place a type is asked about at all is `0xEB6F8D` — index 6 takes its
 guard from `MineGoldGuardLevel`, everything else from `Mine2LevelGuardLevel`.
 
-**Candidates are gathered once per zone**, into two lists: the near one for
-types 0–1 and the far one for 2–6, each a ring around the zone centre bounded
-by a min and a max radius from `RMGParameters`. A tile qualifies when it is
-inside the map, belongs to this zone, and its `+0xE4` grid value is above 1.
+**Candidates are gathered once per zone**, before the loop over mine types and
+not once per mine, into two lists: the near one for types 0–1 and the far one
+for 2 and up. The scan runs the first grid index outer and the second inner,
+and a tile qualifies when it is inside the map, belongs to this zone, and its
+`+0xE4` value is **above 1**. Then, and only if the zone has a town:
+
+    near list   Mine1LevelMinRadius < d < Mine1LevelMaxRadius
+    far list    Mine2LevelMinRadius < d < Mine2LevelMaxRadius
+
+Strict on both sides, both lists, and otherwise the same test on the same
+iteration — so a tile can land in both.
+
+**`d` is measured from the TOWN**, not from where the zone was seeded. The pair
+at `zone+0x0C`/`+0x10` is written in exactly one place in the generator —
+`0xEB4FBF` and `0xEB4FD8`, inside the slot `PlaceTowns` calls — and
+`GenerateGameZones` never touches it. That same function sets `zone+0xF8`,
+which is what "has a town" means, and a zone with `+0xF8 == 0` skips the rings
+entirely, putting every one of its tiles into both lists.
 
 Which parameter is at which offset is **read out of the executable**, not
 inferred — see the offset map below. The ones this step uses:
@@ -995,10 +1009,26 @@ out exact. The other three (17, 42, 25) hold either way.
 every one of its tiles into both lists.
 
 **Then, per mine**, the zone recomputes the room grid with `(4, 0)` — distance
-to the nearest point of its `+0x68` list, which is where placed objects go —
-takes its maximum over the candidates through `0xEC2EB0`, and keeps only
-candidates whose room is more than two fifths of it. So each mine is placed in
-what is left of the open space, and the space shrinks as the zone fills.
+to the nearest point of its `+0x68` list — takes its maximum over the
+candidates through `0xEC2EB0`, and filters. The filter is **one test and
+nothing else**: `+0xF4 > threshold`, strictly. Not the zone, not the border
+distance, not the occupancy — those three appear in `0xEC2EB0`, where they
+decide what counts towards the maximum, and nowhere else. The threshold is a
+signed `trunc(2 × max / 5)`, so a maximum of 0 gives a threshold of 0 and
+keeps whatever has any room at all.
+
+The filtered list is built fresh from the ORIGINAL list each time, so a
+candidate struck out by a failed fit is back for the next mine.
+
+**What is in `+0x68` before the first mine is placed, and it is not empty.**
+`0xEC2F90` — the routine that stamps an object onto the level — makes three
+passes: the first pushes into `zone+0x5C` and marks occupancy **2**, the second
+and third push into `zone+0x68` and mark occupancy **4**. So *the `+0x68` list
+is exactly the tiles marked 4*. And two phases have already run it before
+MainObjects: `PlaceTowns`, through the slot at `0xEB4CB0`, and
+`ZoneConnections`, through `0xEB7C60` at `0xEB854D`. A zone with no town still
+has whatever its passage guards left there — which is why the room filter bites
+in a zone that never saw a town.
 
 **Two draws per ATTEMPT, not per mine**: `below(number of candidates)` picks a
 tile and `below(4)` picks a quadrant of rotation. If the object does not fit
@@ -1092,20 +1122,26 @@ zone, where the list is at its least disturbed:
 Three things are settled by those, because getting them wrong misses by
 hundreds rather than by a tile:
 
-- **The scan is `x` outer, `y` inner.** The other way round puts zone 1's tile
-  at index 22 instead of 587.
-- **The ring is measured from the zone's WAVE CENTRE, not its start point.**
-  From the start point the ring holds 688 tiles and the tile is at 147; from
-  the centre it holds 950 and the tile is at 706, which the room filter then
-  brings to 587 exactly.
+- **The scan order.** The other way round puts zone 1's tile at index 22
+  instead of 587.
+- **The ring is measured from the town, not from the zone's start point.** From
+  the start point the ring holds 688 tiles and the tile is at 147; from the
+  town it holds 950 and the tile is at 706, which the room filter then brings
+  to 587 exactly. (The code says the same — `zone+0x0C` is written only by
+  `PlaceTowns` — so this is two independent readings agreeing.)
 - **A zone with no town really does drop the ring** and offer every tile it
-  has: zone 4 lands on 631 → 15:88 with no filtering at all.
+  has: zone 4 lands on 631 → 15:88.
 
-Zone 1 also lands exactly, with a room threshold of 7 — and 7 is
-`(2 × 19) / 5`, the two-fifths of its own maximum. Zones 2 and 3 do not land
-at any threshold, which says the room grid itself is measured from a set of
-points this port does not have yet rather than that the threshold is wrong.
-Zone 3 misses by three tiles and zone 2 by 183.
+Zone 1 lands with a room threshold of 7, which is `(2 × 19) / 5`, the
+two-fifths of its own maximum.
+
+Zones 2 and 3 do not land at ANY threshold, and the reading says why: the
+`+0x68` list the room is measured from is filled by `ZoneConnections` as well
+as by `PlaceTowns`, and this port does not yet record what the connections
+phase stamped onto the level. Zone 4 lands anyway because whatever its guards
+left is far enough from its Sawmill to change nothing; zone 3 misses by three
+tiles and zone 2 by 183. **So the next piece of work is making
+`zoneConnections` return its occupancy**, not searching for a rule.
 
 **The instrument for measuring it** is the step boundary — see below.
 
