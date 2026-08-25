@@ -74,8 +74,13 @@ export function routeRoad(input: RoadInput, from: Tile, to: Tile, rng: DrawSourc
   let wave = 0;
   for (;;) {
     let allReached = true;
-    for (let y = 1; y < size - 1; y++) {
-      for (let x = 1; x < size - 1; x++) {
+    // Outer loop over the FIRST coordinate (map x) — read off the sweep's
+    // index registers. The sweep relaxes in place (Gauss-Seidel), and the
+    // early exit on cost[to] freezes not-yet-converged plateau values, so
+    // the nesting order shapes which equal-length corridor the walk takes
+    // — the draw counter is blind to it, the statics' room grid is not.
+    for (let x = 1; x < size - 1; x++) {
+      for (let y = 1; y < size - 1; y++) {
         if (grid[y]![x] !== zoneIndex) continue;
         const c = cost[x * size + y]!;
         if (Math.trunc(c) === wave) {

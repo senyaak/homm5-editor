@@ -29,7 +29,7 @@
 
 import { mintName } from './armies.ts';
 import type { DrawSource } from './armies.ts';
-import { filterByRoom, roomGrid, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
+import { ensureRoom, filterByRoom, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 
 /** The dwellings' threshold — `trunc(2 * max / 3)` at 0xEB8CD3. */
@@ -54,6 +54,8 @@ export interface DwellingStepInput {
   /** MUTATED: the zone's stamped points — what the room is measured from. */
   points: Tile[];
   zoneIndex: number;
+  /** The level's persistent room grid, recomputed in place when carried. */
+  room?: Int32Array[];
   /** The template's seven per-tier counts for this zone (`zone params +0x30`). */
   counts: number[];
   /**
@@ -75,7 +77,7 @@ export function placeZoneDwellings(input: DwellingStepInput, rng: DrawSource): P
       // The room and the filter are redone per instance, from the ORIGINAL
       // candidate list — a candidate struck out by a failed fit is back for
       // the next dwelling.
-      const room = roomGrid(size, grid, zoneIndex, input.points);
+      const room = ensureRoom(input.room, size, grid, zoneIndex, input.points);
       const { kept } = filterByRoom(
         candidates, room, grid, border, occupancy, size, zoneIndex, DWELLING_ROOM_DIVISOR,
       );

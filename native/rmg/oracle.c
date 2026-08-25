@@ -215,6 +215,10 @@ typedef float(__stdcall *RmgBetweenFloatFn)(float a, float b);
 
 static int g_rmgTrace = 0;
 static int g_rmgRunActive = 0;
+/** `grids` in the config: dump the road lists and level grids at the roads boundary. */
+static int g_rmgGrids = 0;
+/** The CRandomMap the last GetZone was asked on — the dump's way in. */
+static void *g_rmgLastMap = NULL;
 static RmgNextFn g_rmgNextOrig = NULL;
 static RmgNext63Fn g_rmgNext63Orig = NULL;
 static RmgBelowFn g_rmgBelowOrig = NULL;
@@ -383,6 +387,7 @@ static void load_rmg_config(void) {
     const char *q = line;
     if (take_word(&q, stop, "seed") && read_int(&q, stop, &g_rmgSeed)) g_rmgForceSeed = 1;
     if (take_word(&q, stop, "trace")) g_rmgTrace = 1;
+    if (take_word(&q, stop, "grids")) g_rmgGrids = 1;
   }
   VirtualFree(buf, 0, MEM_RELEASE);
 }
@@ -476,6 +481,7 @@ static int __fastcall rmg_below_trace(int n) {
 
 static void *__fastcall rmg_get_zone_trace(void *self, void *edx, void **out, int index) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  g_rmgLastMap = self;
   if (g_rmgRunActive) rmg_log_pair("gz ", *(int *)(base + g_rmgCounterFieldRva), index);
   return g_rmgGetZoneOrig(self, edx, out, index);
 }
@@ -511,6 +517,127 @@ static char *__cdecl rmg_sweep_hook(const char *fmt, int sweep) {
  * of these calls), and the arity is the one the site's `add esp,N` states —
  * three slots for a step with no zone, four for a step inside one.
  */
+/** Does the narration line contain these words? No libc in this file. */
+static int rmg_fmt_says(const char *fmt, const char *what) {
+  const char *p;
+  for (p = fmt; *p; p++) {
+    const char *a = p;
+    const char *b = what;
+    while (*a && *b && *a == *b) { a++; b++; }
+    if (!*b) return 1;
+  }
+  return 0;
+}
+
+/** `<prefix> <ints...>` on one line — for the readings wider than a pair. */
+static void rmg_log_ints(const char *prefix, const int *vals, int count) {
+  char line[1400];
+  int i = 0, n = 0, k;
+  while (prefix[i] && i < 32) { line[i] = prefix[i]; i++; }
+  for (k = 0; k < count && i < (int)sizeof(line) - 14; k++) {
+    if (k) line[i++] = ' ';
+    num_to_dec(vals[k], line + i, &n);
+    i += n;
+  }
+  line[i] = 0;
+  rmg_log(line);
+}
+
+// ---------------------------------------------------------------------------
+// The grids dump — the engine's own road lists and level grids, read out of
+// the live objects at the "roads created" boundary.
+//
+// WHY. The road WALK is coin-per-tile, so the draw counter is blind to WHICH
+// tiles a route walked — two equal-length corridors cost the same coins — and
+// the road masks only paint kinds 0x08/0x10. The one measured way to hold the
+// 0x20 corridors (and the border table under them) is to read the zone's own
+// lists where they live. The offsets are the GAME exe's class layout
+// (docs/RMG.md, the four-grids section); the editor is the same engine, and
+// the zone-id check below is the guard against the day that stops being true.
+//
+//   rl <zoneId> <kind> <count>   one road list's header (kind 8/16/32)
+//   rt <x> <y>                   its tiles, in list order
+//   zg/oc/bd/rm <floor> <row> …  the four level grids, one row per line
+static void rmg_dump_grids(void) {
+  int floorsDumped[4] = { 0, 0, 0, 0 };
+  int id;
+  if (!g_rmgLastMap || !g_rmgGetZoneOrig) {
+    rmg_log("grids: no map pointer - was trace on and did GetZone fire?");
+    return;
+  }
+  for (id = 0; id < 16; id++) {
+    void *slot[2] = { NULL, NULL };
+    BYTE *zone;
+    int floor;
+    static const unsigned kindOffs[3] = { 0x74u, 0x80u, 0x8Cu };
+    static const int kindBits[3] = { 8, 16, 32 };
+    int k;
+    g_rmgGetZoneOrig(g_rmgLastMap, NULL, slot, id);
+    zone = (BYTE *)slot[0];
+    if (!zone) continue;
+    if (*(int *)(zone + 0xEC) != id) {
+      rmg_log_pair("grids: zone id mismatch - layout drifted ", id, *(int *)(zone + 0xEC));
+      continue;
+    }
+    floor = *(int *)(zone + 0xF4);
+    for (k = 0; k < 3; k++) {
+      float *beg = *(float **)(zone + kindOffs[k]);
+      float *end = *(float **)(zone + kindOffs[k] + 4);
+      int n = beg && end ? (int)(end - beg) / 2 : 0;
+      int hdr[3];
+      int j;
+      if (n < 0 || n > 100000) {
+        rmg_log_pair("grids: implausible list ", id, kindBits[k]);
+        continue;
+      }
+      hdr[0] = id;
+      hdr[1] = kindBits[k];
+      hdr[2] = n;
+      rmg_log_ints("rl ", hdr, 3);
+      for (j = 0; j < n; j++) {
+        int pt[2];
+        pt[0] = (int)beg[j * 2];
+        pt[1] = (int)beg[j * 2 + 1];
+        rmg_log_ints("rt ", pt, 2);
+      }
+    }
+    // The level's four grids, once per floor seen.
+    if (floor >= 0 && floor < 4 && !floorsDumped[floor]) {
+      BYTE *world = *(BYTE **)(zone + 0x134);
+      floorsDumped[floor] = 1;
+      if (world) {
+        int dimA = *(int *)(world + 0xC);
+        int dimB = *(int *)(world + 0x10);
+        BYTE *level = *(BYTE **)(world + 0x34) + floor * 0x120;
+        static const unsigned gridOffs[4] = { 0xC4u, 0xD4u, 0xE4u, 0xF4u };
+        static const char *gridNames[4] = { "zg ", "oc ", "bd ", "rm " };
+        int g;
+        if (dimA > 0 && dimA <= 256 && dimB > 0 && dimB <= 256) {
+          for (g = 0; g < 4; g++) {
+            int **rows = *(int ***)(level + gridOffs[g]);
+            int r;
+            if (!rows) continue;
+            for (r = 0; r < dimA; r++) {
+              // 2 leading ints (floor, row), then the row itself.
+              int vals[258];
+              int ccount = dimB + 2;
+              int cidx;
+              vals[0] = floor;
+              vals[1] = r;
+              if (!rows[r]) continue;
+              for (cidx = 0; cidx < dimB; cidx++) vals[cidx + 2] = rows[r][cidx];
+              rmg_log_ints(gridNames[g], vals, ccount);
+            }
+          }
+        } else {
+          rmg_log_pair("grids: implausible dims ", dimA, dimB);
+        }
+      }
+    }
+  }
+  rmg_log("grids dumped");
+}
+
 static char *__cdecl rmg_step_zone(const char *fmt, double secs, int zone) {
   rmg_log_step(zone, fmt);
   return g_rmgStepFmt ? ((StepZoneFn)g_rmgStepFmt)(fmt, secs, zone) : NULL;
@@ -518,6 +645,9 @@ static char *__cdecl rmg_step_zone(const char *fmt, double secs, int zone) {
 
 static char *__cdecl rmg_step_plain(const char *fmt, double secs) {
   rmg_log_step(-1, fmt);
+  // The one boundary where the road lists are complete and the statics have
+  // not yet stamped over anything.
+  if (g_rmgGrids && rmg_fmt_says(fmt, "roads created")) rmg_dump_grids();
   return g_rmgStepFmt ? ((StepPlainFn)g_rmgStepFmt)(fmt, secs) : NULL;
 }
 

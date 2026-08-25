@@ -140,6 +140,7 @@
     "test-rmg-treasures": "node tools/test-rmg-treasures.ts",
     "test-rmg-road": "node tools/test-rmg-road.ts",
     "test-rmg-roads-phase": "node tools/test-rmg-roads-phase.ts",
+    "test-rmg-statics": "node tools/test-rmg-statics.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "test-e2e-setup": "node tools/test-e2e-setup.ts",

@@ -42,7 +42,7 @@
 
 import { mintName } from './armies.ts';
 import type { DrawSource } from './armies.ts';
-import { filterByRoom, roomGrid, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
+import { ensureRoom, filterByRoom, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 
 /**
@@ -76,6 +76,8 @@ export interface PriceListInput {
   /** MUTATED: the stamp's 4s join the zone's room points. */
   points: Tile[];
   zoneIndex: number;
+  /** The level's persistent room grid, recomputed in place when carried. */
+  room?: Int32Array[];
   /** The step's points, already through its budget rule. */
   budget: number;
   /** The preset vector in file order — the prefix draw leans on it. */
@@ -103,7 +105,7 @@ export function placePriceList(input: PriceListInput, rng: DrawSource): PlacedPr
 
     // The shared candidate helper 0xEC1500: rebuilt from the original list
     // per object, room threshold at divisor 3, and its own border >= 1 gate.
-    const room = roomGrid(size, grid, zoneIndex, input.points);
+    const room = ensureRoom(input.room, size, grid, zoneIndex, input.points);
     const { kept } = filterByRoom(candidates, room, grid, border, occupancy, size, zoneIndex, 3);
     const gated = kept.filter(([x, y]) => border[y]![x]! >= 1);
 

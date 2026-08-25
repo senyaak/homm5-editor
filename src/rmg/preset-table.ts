@@ -60,6 +60,23 @@ export interface RacePreset {
    * dwelling hrefs (ElementalConflux, RefugeeCamp) and place as-is.
    */
   newShopBuildings: PricedBuilding[];
+  /**
+   * `BigStatics` (`+0xB4`) — the statics sweep's type list, in FILE ORDER
+   * (the shipped tables order big→small, and the sweep leans on that).
+   */
+  bigStatics: string[];
+  /** `Mountains` (`+0xC0`) — the pre-sweep mountain pass's list. */
+  mountains: string[];
+  /** `OverLakeCenterObjects` (`+0xCC`) — lake-seed decorations. */
+  overLakeCenterObjects: string[];
+  /** `OverLakeOneTileRandomObjects` (`+0xD8`) — the lakes' one-tile pass. */
+  overLakeOneTileRandomObjects: string[];
+  /** `OneTileSmallBlockers` (`+0x90`) — the one-tile step's blockers. */
+  oneTileSmallBlockers: string[];
+  /** `OneTileSmallNonblockers` (`+0x9C`) — its passable decorations. */
+  oneTileSmallNonblockers: string[];
+  /** `OneTileBigObjects` (`+0xA8`) — its larger-model one-tilers. */
+  oneTileBigObjects: string[];
 }
 
 /** One `Building / Value / GuardStrenght` record of a preset's price lists. */
@@ -121,6 +138,13 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
       newTreasuryBuildings: obj ? priced(find(obj, 'NewTreasuryBuildings')) : [],
       newLuckMoraleBuildings: obj ? priced(find(obj, 'NewLuckMoraleBuildings')) : [],
       newShopBuildings: obj ? priced(find(obj, 'NewShopBuildings')) : [],
+      bigStatics: obj ? hrefs(find(obj, 'BigStatics')) : [],
+      mountains: obj ? hrefs(find(obj, 'Mountains')) : [],
+      overLakeCenterObjects: obj ? hrefs(find(obj, 'OverLakeCenterObjects')) : [],
+      overLakeOneTileRandomObjects: obj ? hrefs(find(obj, 'OverLakeOneTileRandomObjects')) : [],
+      oneTileSmallBlockers: obj ? hrefs(find(obj, 'OneTileSmallBlockers')) : [],
+      oneTileSmallNonblockers: obj ? hrefs(find(obj, 'OneTileSmallNonblockers')) : [],
+      oneTileBigObjects: obj ? hrefs(find(obj, 'OneTileBigObjects')) : [],
     });
   }
   return out;

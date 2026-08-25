@@ -29,7 +29,7 @@
 
 import { mintName, setMonster } from './armies.ts';
 import type { DrawSource, Guard, GuardTables } from './armies.ts';
-import { EIGHT, filterByRoom, isFree, roomGrid, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
+import { EIGHT, ensureRoom, filterByRoom, isFree, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 import { rotate } from './towns.ts';
 
@@ -118,6 +118,8 @@ export interface UpgradeBuildingsInput {
   /** MUTATED: the stamp's 4s join the zone's room points. */
   points: Tile[];
   zoneIndex: number;
+  /** The level's persistent room grid, recomputed in place when carried. */
+  room?: Int32Array[];
   /** The template's UpgBuildingsDensity, raw (`zone params +0x3C`). */
   density: number;
   /** generator+0xB0 — 1 in every traced run. What writes it is unread. */
@@ -148,7 +150,7 @@ export function placeZoneUpgradeBuildings(input: UpgradeBuildingsInput, rng: Dra
     while (prefix < list.length && list[prefix]!.value + spent <= budget) prefix++;
     const entry = list[rng.below(prefix)]!;
 
-    const room = roomGrid(size, grid, zoneIndex, input.points);
+    const room = ensureRoom(input.room, size, grid, zoneIndex, input.points);
     const { kept } = filterByRoom(candidates, room, grid, border, occupancy, size, zoneIndex, 3);
 
     // Exhausted candidates are the "Can't place building" line — terminal

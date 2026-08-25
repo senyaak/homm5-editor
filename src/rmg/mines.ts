@@ -29,7 +29,7 @@
 
 import { mintName, setMonster } from './armies.ts';
 import type { DrawSource, Guard, GuardTables } from './armies.ts';
-import { EIGHT, FOUR, filterByRoom, isFree, readFootprint, roomGrid, stampFootprint, tryPlace } from './placement.ts';
+import { EIGHT, FOUR, ensureRoom, filterByRoom, isFree, readFootprint, stampFootprint, tryPlace } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 
 export type { Tile } from './placement.ts';
@@ -134,6 +134,8 @@ export interface MineStepInput {
   /** MUTATED: the zone's stamped points — what the room is measured from. */
   points: Tile[];
   zoneIndex: number;
+  /** The level's persistent room grid, recomputed in place when carried. */
+  room?: Int32Array[];
   town: { x: number; y: number } | null;
   /** The template's seven counts for this zone. */
   counts: number[];
@@ -161,7 +163,7 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
 
     for (let instance = 0; instance < count; instance++) {
       const foot = input.footprints.get(spec.mine)!;
-      const room = roomGrid(size, grid, zoneIndex, points);
+      const room = ensureRoom(input.room, size, grid, zoneIndex, points);
       const { kept } = filterByRoom(list, room, grid, border, occupancy, size, zoneIndex, MINE_ROOM_DIVISOR);
 
       // Two draws per attempt; an empty list is the engine's "cant place

@@ -29,13 +29,22 @@ nothing ever; prisons and the cartographer cost zero by template.
 **The ROADS PHASE runs LIVE too** (`0xEBA690`, `test-rmg-roads-phase`):
 its 381 coins land on the traced 20420 across all four zones — town
 entries and passage points wired into the 0x08 network, mine actives
-into the 0x10 one. Next: the statics (the SECOND loop over the zones,
-virtual slots `+0x30`/`+0x34` of the zone vtable — 69,378 draws, three
-quarters of the whole stream), then the additional objects, the treasure
-blocks and finally emitting the `.h5m`. The road PAINTER is still ahead
-of us: the network exists now, but its terrain layers — and with them
-the one open difference in the masks, Inferno's Dead_Land stealing
-weight from Lava wherever a road runs — wait for the painting pass.
+into the 0x10 one, every tile of both kinds confirmed under the
+reference's painted road masks.
+
+**The STATICS are ported and zone 1 runs in LOCKSTEP** (`0xEA5450` →
+the zone vtable's `+0x34`/`+0x30`, `test-rmg-statics`): big statics to
+40826, one-tile to 44537, and with ONE zone-road tile substituted zone
+2 lands too — all 604 statics of zones 1–2 on the reference by name
+and tile. What still stands between zones 2–4 and their boundaries is
+the ZONE ROAD's equal-length corridors, which the draw counter cannot
+see; the oracle's new `grids` dump (road lists + level grids at the
+roads boundary) is the measurement that closes it — see the phase
+section. Then: the additional objects, the treasure blocks and finally
+emitting the `.h5m`. The road PAINTER is still ahead of us: the network
+exists now, but its terrain layers — and with them the one open
+difference in the masks, Inferno's Dead_Land stealing weight from Lava
+wherever a road runs — wait for the painting pass.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -1511,7 +1520,104 @@ The proof is the boundary alone — 130/115/65/71 coins across zones 1–4,
 landing on 20420 — because per-zone boundaries are not narrated for this
 phase and roads leave no `map.xdb` objects. Sabotage-checked: shifting
 loop 2's sampling phase by one moves the boundary to 20424. The masks in
-`GroundTerrain.bin` stay the acceptance target for the painter.
+`GroundTerrain.bin` stay the acceptance target for the painter — and they
+already vouch for THIS phase: every 0x08 and 0x10 tile of all four zones
+lies under the painted road vertices, while the zone road's 0x20 tiles
+mostly do not, so the masks can arbitrate the roads phase but not the
+zone road.
+
+### Phase 12 — the statics (`0xEA5450` → vtable `+0x34`/`+0x30`)
+
+`src/rmg/statics-big.ts`, `src/rmg/statics-one-tile.ts`,
+`test-rmg-statics`. **Zone 1 runs in LOCKSTEP end to end** — big statics
+to 40826, one-tile to 44537, 269 objects — and with ONE road tile
+substituted (below) zone 2 does too: all 604 statics of zones 1–2 land
+on the reference by minted name and tile. Zones 3–4 carry similar
+road-corridor differences, awaiting the `grids` measurement.
+
+**The driver** (`0xEA5450`, sole caller `0xEABFC4`): zones in TEMPLATE
+ENTRY order (the 0x74-stride params array, entry+0x4 the zone id), big
+statics (`+0x34` = `0xEBBBD0`) then one-tile (`+0x30` = `0xEBAA70`) per
+zone, NO prologue draw and no `this->0xB5` read — the phase starts on
+the roads boundary exactly. Subterra/Dwarven/SubInferno/WaterBordered
+override both slots; unread (surface map).
+
+**Big statics** — three parts. The LAKES prologue (`0xEBC260`) gates on
+`zone+0x18` ∈ {HEAVEN, PRESERVE, NECROMANCY, INFERNO, DWARF,
+STRONGHOLD} and floor 0 — and the reference shows the gate CLOSED for
+its resolved-Inferno zone, so `+0x18` is read as the TEMPLATE'S Setting
+race (RACE_RANDOM_TYPE everywhere here), not the resolved one; its
+write site is unchased, and a fixed-race template is where lakes first
+run for real. Inside (held by reading alone): room recompute mask 0x3E
+(`+0x5C` has NO writer anywhere in the RMG range — effectively 0x3C);
+seed candidates = zone tiles with room > 5, border > 5, local maximum
+of room over 8 neighbours (ties PASS — only a strictly greater
+neighbour disqualifies, `0xebc380`); one betweenFloat per structural
+candidate, accepted on roll < 0.4f strict THEN ≥ 20.0 from every
+accepted seed (the roll is spent either way); seeds join `zone+0xB4`.
+The blob grows drawlessly (chamfer +2/+3, occupancy 0x80, 13 waves);
+`0xEC3B30` decorates seeds (OverLakeCenterObjects) and `0xEC3E00` rolls
+below(10) ≤ 5 per COLLECTED LAKE TILE (OverLakeOneTileRandomObjects).
+The preset-MOUNTAINS pass (`0xEBCAF0`, `Mountains` — empty for both
+reference races) places with the statics fit, stamps occupancy 0x100
+(reads back as 0 through the byte-wide fit) and raises the relief cone
+(`0xED1660`: height += 2·(3.5 − r) under blocked offsets with r < 3.5,
+also fired by sweep-placed "Mountain" statics with > 15 blocked tiles).
+
+**The sweep**: room recompute mask 0x3C (`+0x68` actives + all three
+road lists), candidates = zone tiles with room > 1 in `+0xCC` order,
+built once; outer loop the preset's `BigStatics` in FILE ORDER (the
+shipped tables order big→small), inner the candidates — NO tile draw.
+"Big" is blocked count n > 10. A big "Crater" candidate keeps 15.0 from
+every `zone+0xB4` point before any work. Big: 4 free rotations (angle =
+attempt·π/2); small: ONE drawn below(4) — the phase's below-dominated
+bulk. A passing fit costs one betweenFloat, accepted iff roll <
+1/(n+1) single-precision strict; then the mint (two below), the
+standard stamp, big positions into `+0xB4`, and the relief for big
+Mountains. Placed candidates are not struck from the list.
+
+**The statics fit** (`0xEC39D0`, vtable `+0x44`, drawless): per rotated
+blocked offset — bounds [0, dim) (the dims swapped against the sweep's,
+square-safe); the 5-margin ONLY at floor == 1; occupancy byte & 0x3E
+== 0 (roads and objects block; lake 0x80 and mountain 0x100 pass); room
+≥ 2 SIGNED (`jl`), so the −1 a never-recomputed cell keeps from
+CreateMap fails it — and NO zone test, which is why the room grid's
+staleness is modelled (the level's ONE persistent grid in the chain,
+`ensureRoom`/`recomputeRoom` in placement.ts: each recompute writes its
+own zone's tiles and 1000 to zoneless ones, everything else keeps the
+last writer's values).
+
+**One-tile statics** (`0xEBAA70`): room recompute mask 0x3C, then a
+drawless bucket scan of `+0xCC` (occupancy EXACTLY 0, border ≠ 0; room
+2 → near, 3–4 → mid, > 4 → far), then four passes: (1) the border
+FENCE — every zone tile draws below(4) first (the trace's bare filler);
+survivors (border == 0, occupancy ∈ {0,1,8,0x10,0x20}) ALWAYS get an
+object, the betweenFloat only selects the list (< 0.4 blockers, else
+big objects, else blockers; both empty = the engine's division by
+zero); a "FireDot" blocker takes the MAP angle — `mapSetup`'s
+betweenFloat(0, 2π), finally consumed — occupancy = 2 written over
+roads; (2) near — below(4) + base roll, cascade with fresh rolls and
+free fallthrough on empty lists: base < 0.15 big objects, else < 0.4
+blockers, else < 0.6 nonblockers (occupancy 1, the step's only 1); (3)
+mid — base < 0.3 big objects, else < 0.5 blockers, no nonblockers; (4)
+far — base ≤ 0.5 (the one gate where EQUALITY passes) and big objects
+only. No budget: the step ends when the passes run out of tiles.
+
+**The open difference — the zone road's corridors.** The road walk is
+one coin per tile and equal-length corridors cost the same coins, so
+the draw counter cannot see WHICH tiles a route walked — but the
+statics can: the room recompute reads the road lists, and the fit reads
+occupancy. Measured on zone 2: the engine's road from 59:52 to 60:70
+takes the ortho tile 61:62 where the port's converged cost field (held
+to the re-read arithmetic bit for bit) makes the diagonal 60:62 the
+UNIQUE minimum — the re-read descent (minimum over 8 by truncated
+cost, strict, either scan direction) cannot produce that choice, so one
+of the field's inputs still differs, and the border table is the one
+with no direct oracle. The `grids` keyword in the oracle config
+(native/rmg/oracle.c) now dumps the engine's own road lists (`rl`/`rt`
+lines) and all four level grids (`zg`/`oc`/`bd`/`rm`) at the roads
+boundary — the measurement that closes this. Until then
+`test-rmg-statics` asserts zone 1 and reports zones 2–4.
 
 ## Tools
 

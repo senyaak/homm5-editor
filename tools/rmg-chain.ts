@@ -66,6 +66,13 @@ export interface Chain {
   grid: Int32Array[];
   border: Int32Array[];
   occ: Uint8Array;
+  /**
+   * Floor 0's PERSISTENT room grid (`level+0xF4`): every step recomputes
+   * its own zone's tiles in place and the rest keep their stale values —
+   * which the statics fit reads across zone borders, so the staleness is
+   * part of the model.
+   */
+  room: Int32Array[];
   /** The zone's stamped points: the towns' occupancy-4 tiles plus the passages. */
   roomPoints(zoneIndex: number): Tile[];
   zone(zoneIndex: number): RmgZone;
@@ -118,11 +125,12 @@ export function runChain(dir: string): Chain {
   const grid = filled.floors[0]!;
   const border = distances[0]!;
   const occ = townResult.occupancy[0]!;
+  const room = Array.from({ length: SIZE }, () => new Int32Array(SIZE));
   const footprints = new Map<string, Footprint>();
 
   return {
     dir, rng, template, params, presets, tables, setup, loaded, townResult, conn,
-    grid, border, occ,
+    grid, border, occ, room,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, then the passages. The
       // room computations are order-blind, but the road step chains these
@@ -178,7 +186,7 @@ export class ZoneFill {
     const centre = c.townResult.centres.get(this.zoneIndex);
     const feet = new Map<string, MineFootprint>(MINE_TYPES.map((t) => [t.mine, readMineShared(c.dir, t.mine)]));
     return placeZoneMines({
-      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, points: this.points,
+      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room, points: this.points,
       zoneIndex: this.zoneIndex,
       town: this.zone.town && centre ? { x: centre.b, y: centre.a } : null,
       counts: this.zone.mines,
@@ -200,7 +208,7 @@ export class ZoneFill {
   dwellings(): PlacedDwelling[] {
     const { c } = this;
     return placeZoneDwellings({
-      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, points: this.points,
+      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room, points: this.points,
       zoneIndex: this.zoneIndex, counts: this.zone.dwellings,
       descriptors: this.preset.dwellings.map((href) => c.footprint(href)),
     }, c.rng);
@@ -209,7 +217,7 @@ export class ZoneFill {
   upgradeBuildings(): PlacedUpgradeBuilding[] {
     const { c } = this;
     return placeZoneUpgradeBuildings({
-      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, points: this.points,
+      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room, points: this.points,
       zoneIndex: this.zoneIndex, density: this.zone.upgBuildingsDensity, multIndex: 1,
       list: this.priced(this.preset.newUpgradeBuildings)
         .map((p, i) => ({ href: p.type, value: p.value, foot: p.foot,
@@ -222,7 +230,7 @@ export class ZoneFill {
   shrines(): PlacedShrine[] {
     const { c } = this;
     return placeZoneShrines({
-      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, points: this.points,
+      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room, points: this.points,
       zoneIndex: this.zoneIndex, shrinePoints: this.zone.shrinePoints,
       footprints: SHRINE_TYPES.map((s) => c.footprint(`/MapObjects/${s.name}.(AdvMapShrineShared).xdb`)),
     }, c.rng);
@@ -231,7 +239,7 @@ export class ZoneFill {
   private priceListStep(budget: number, list: PricedBuilding[]): PlacedPriced[] {
     const { c } = this;
     return placePriceList({
-      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, points: this.points,
+      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room, points: this.points,
       zoneIndex: this.zoneIndex, budget, list: this.priced(list),
     }, c.rng);
   }
@@ -268,7 +276,7 @@ export class ZoneFill {
   observatories(): PlacedObject[] {
     const { c } = this;
     return placeObservatories({
-      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, points: this.points,
+      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room, points: this.points,
       zoneIndex: this.zoneIndex,
       observatory: c.footprint(OBSERVATORY_HREF),
       denOfThieves: c.footprint(DEN_OF_THIEVES_HREF),
@@ -282,7 +290,7 @@ export class ZoneFill {
     // zone gets its treasures in the additional-objects phase instead.
     if (c.loaded.zones.find((z) => z.index === this.zoneIndex)!.floor !== 0) return [];
     return placeZoneTreasures({
-      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, points: this.points,
+      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room, points: this.points,
       zoneIndex: this.zoneIndex,
       density: kind === 'treasures' ? this.zone.treasureDensity : this.zone.treasureChestDensity,
       multIndex: 1, kind,

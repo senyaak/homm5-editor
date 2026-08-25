@@ -27,18 +27,60 @@ export type Tile = readonly [number, number];
  */
 export function roomGrid(size: number, grid: Int32Array[], zoneIndex: number, points: Tile[]): Int32Array[] {
   const out = Array.from({ length: size }, () => new Int32Array(size).fill(-1));
+  recomputeRoom(out, size, grid, zoneIndex, points);
+  return out;
+}
+
+/**
+ * The recompute as the engine runs it — IN PLACE on the level's one
+ * persistent grid, this zone's tiles only. Every other tile keeps whatever
+ * the previous recompute (of any zone) left there, and that staleness is
+ * load-bearing: the statics fit `0xEC39D0` reads room without a zone test,
+ * so a footprint spilling over the border sees the neighbour's LAST
+ * recomputed values, not fresh ones.
+ */
+/**
+ * Recompute into the level's persistent grid when the caller carries one,
+ * else into a fresh throwaway — same values either way for this zone's own
+ * tiles, which is all the first-loop steps ever read.
+ */
+export function ensureRoom(
+  room: Int32Array[] | undefined,
+  size: number,
+  grid: Int32Array[],
+  zoneIndex: number,
+  points: Tile[],
+): Int32Array[] {
+  const out = room ?? Array.from({ length: size }, () => new Int32Array(size).fill(-1));
+  recomputeRoom(out, size, grid, zoneIndex, points);
+  return out;
+}
+
+export function recomputeRoom(
+  room: Int32Array[],
+  size: number,
+  grid: Int32Array[],
+  zoneIndex: number,
+  points: Tile[],
+): void {
   for (let x = 0; x < size; x++) {
     for (let y = 0; y < size; y++) {
+      // 0xEC28E0 walks EVERY cell of the level: a zoneless cell (grid < 0)
+      // is written 1000 on every recompute, a foreign zone's cell is left
+      // alone, and only this zone's cells get the fresh distances.
+      if (grid[y]![x]! < 0) {
+        room[y]![x] = 1000;
+        continue;
+      }
       if (grid[y]![x] !== zoneIndex) continue;
       let m = 10000;
       for (const [px, py] of points) {
         const d = Math.hypot(px - x, py - y);
         if (d < m) m = d;
       }
-      out[y]![x] = Math.trunc(m);
+      room[y]![x] = Math.trunc(m);
     }
   }
-  return out;
 }
 
 export interface RoomFilterResult {

@@ -43,7 +43,7 @@
 
 import { mintName } from './armies.ts';
 import type { DrawSource } from './armies.ts';
-import { filterByRoom, fits, roomGrid, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
+import { ensureRoom, filterByRoom, fits, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 
 export const OBSERVATORY_HREF = '/MapObjects/Redwood_Observatory.(AdvMapBuildingShared).xdb';
@@ -69,6 +69,8 @@ interface ZoneContext {
   occupancy: Uint8Array;
   points: Tile[];
   zoneIndex: number;
+  /** The level's persistent room grid, recomputed in place when carried. */
+  room?: Int32Array[];
 }
 
 /**
@@ -78,7 +80,7 @@ interface ZoneContext {
  */
 function placeSingle(ctx: ZoneContext, foot: Footprint, rng: DrawSource): PlacedObject | null {
   const { size, grid, border, occupancy, zoneIndex } = ctx;
-  const room = roomGrid(size, grid, zoneIndex, ctx.points);
+  const room = ensureRoom(ctx.room, size, grid, zoneIndex, ctx.points);
   const { kept } = filterByRoom(zoneTiles(size, grid, zoneIndex), room, grid, border, occupancy, size, zoneIndex, 3);
   const pool = kept.filter(([x, y]) => border[y]![x]! >= 1);
 
@@ -146,7 +148,7 @@ export function placeZoneTreasures(input: TreasureStepInput, rng: DrawSource): P
     const type = input.kind === 'treasures' ? rng.below(9) : 1;
     const foot = input.footprints[type]!;
 
-    const room = roomGrid(size, grid, zoneIndex, input.points);
+    const room = ensureRoom(input.room, size, grid, zoneIndex, input.points);
     const { kept } = filterByRoom(prefiltered, room, grid, border, occupancy, size, zoneIndex, 3);
     const pool = kept.filter(([x, y]) => border[y]![x]! >= 1 && occupancy[y * size + x] !== 2);
 
