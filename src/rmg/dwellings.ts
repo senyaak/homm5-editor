@@ -29,26 +29,11 @@
 
 import { mintName } from './armies.ts';
 import type { DrawSource } from './armies.ts';
-import { filterByRoom, fits, roomGrid, stampFootprint } from './placement.ts';
+import { filterByRoom, roomGrid, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 
 /** The dwellings' threshold — `trunc(2 * max / 3)` at 0xEB8CD3. */
 const DWELLING_ROOM_DIVISOR = 3;
-
-/**
- * The candidate list `zone+0xCC` — every tile of the zone in FillZones' scan
- * order, the same map-x outer walk the mines gather uses. 0xEB7790 tests
- * nothing but zone membership.
- */
-export function zoneTiles(size: number, grid: Int32Array[], zoneIndex: number): Tile[] {
-  const out: Tile[] = [];
-  for (let x = 0; x < size; x++) {
-    for (let y = 0; y < size; y++) {
-      if (grid[y]![x] === zoneIndex) out.push([x, y]);
-    }
-  }
-  return out;
-}
 
 export interface PlacedDwelling {
   /** The shared document's href path — ImpCrucible, Workshop, … */
@@ -100,22 +85,11 @@ export function placeZoneDwellings(input: DwellingStepInput, rng: DrawSource): P
       const foot = input.descriptors[Math.min(tier, 3)];
       if (!foot) continue;
 
-      let tile: Tile | null = null;
-      let q = 0;
-      const pool = [...kept];
-      while (pool.length) {
-        const pick = rng.below(pool.length);
-        q = rng.below(4);
-        const candidate = pool[pick]!;
-        if (fits(input, foot, candidate, q)) {
-          tile = candidate;
-          break;
-        }
-        pool.splice(pick, 1);
-      }
       // The exhausted list is terminal for the STEP, not the instance —
       // "Can't place dwelling" returns out of both loops.
-      if (!tile) return placed;
+      const found = tryPlace(input, foot, kept, rng);
+      if (!found) return placed;
+      const { tile, q } = found;
 
       const name = mintName(rng);
       stampFootprint(input, foot, tile, q);

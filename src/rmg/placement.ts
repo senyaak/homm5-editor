@@ -186,6 +186,47 @@ export function fits(ctx: FitContext, foot: Footprint, tile: Tile, q: number): b
   return true;
 }
 
+/**
+ * The candidate list `zone+0xCC` — every tile of the zone in FillZones' scan
+ * order, the same map-x outer walk the mines gather uses. `0xEB7790` (its
+ * only caller is FillZones) tests nothing but zone membership, and the list
+ * is never rebuilt. Dwellings draw from it raw; the price-list placers
+ * (upgrade buildings, shrines) filter it by room per object.
+ */
+export function zoneTiles(size: number, grid: Int32Array[], zoneIndex: number): Tile[] {
+  const out: Tile[] = [];
+  for (let x = 0; x < size; x++) {
+    for (let y = 0; y < size; y++) {
+      if (grid[y]![x] === zoneIndex) out.push([x, y]);
+    }
+  }
+  return out;
+}
+
+/**
+ * The attempt loop every placement worker shares: `below(candidates)` picks a
+ * tile, `below(4)` a quadrant — the quadrant is drawn BEFORE the fit is
+ * tested, so a rejected candidate has already cost both draws — and a failed
+ * fit strikes the candidate out and draws again. Exhaustion returns null;
+ * what that means (skip the instance, or abandon the step) is the caller's.
+ */
+export function tryPlace(
+  ctx: FitContext,
+  foot: Footprint,
+  kept: Tile[],
+  rng: { below(limit: number): number },
+): { tile: Tile; q: number } | null {
+  const pool = [...kept];
+  while (pool.length) {
+    const pick = rng.below(pool.length);
+    const q = rng.below(4);
+    const candidate = pool[pick]!;
+    if (fits(ctx, foot, candidate, q)) return { tile: candidate, q };
+    pool.splice(pick, 1);
+  }
+  return null;
+}
+
 export interface StampContext {
   size: number;
   /** MUTATED: blocked tiles mark 2, active tiles and the marker mark 4. */

@@ -43,6 +43,20 @@ export interface RacePreset {
    * indexes by `min(tier, 3)` (the table the zone keeps at +0x1C→+0x28).
    */
   dwellings: string[];
+  /**
+   * `NewUpgradeBuildings` — the price list the upgrade-buildings step buys
+   * from (`[zone+0x20]+0x168`), sorted ascending by Value in the shipped
+   * table; the affordable-prefix draw depends on that order.
+   */
+  newUpgradeBuildings: PricedBuilding[];
+}
+
+/** One `Building / Value / GuardStrenght` record of a preset's price lists. */
+export interface PricedBuilding {
+  href: string;
+  value: number;
+  /** The engine's own misspelling, kept. Guard power = this × BasicLeverGuardPower. */
+  guardStrenght: number;
 }
 
 const stripXpointer = (href: string): string => href.replace(/#xpointer\(.*\)$/, '');
@@ -71,6 +85,13 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
   const hrefs = (holder: XmlElement | null): string[] => holder
     ? findAll(holder, 'Item').map((i) => i.attrs['href']).filter((h): h is string => !!h)
     : [];
+  const priced = (holder: XmlElement | null): PricedBuilding[] => holder
+    ? findAll(holder, 'Item').map((i) => ({
+        href: find(i, 'Building')?.attrs['href'] ?? '',
+        value: Number.parseInt(childText(i, 'Value'), 10) || 0,
+        guardStrenght: Number.parseInt(childText(i, 'GuardStrenght'), 10) || 0,
+      })).filter((p) => p.href !== '')
+    : [];
   for (const item of findAll(objects, 'Item')) {
     const id = childText(item, 'ID');
     const race = RACE_BY_NAME[id];
@@ -84,6 +105,7 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
       townProto: (obj ? find(obj, 'TownProto')?.attrs['href'] : undefined) ?? null,
       overTownCenterObjects: obj ? hrefs(find(obj, 'OverTownCenterObjects')) : [],
       dwellings: obj ? hrefs(find(obj, 'Dwellings')) : [],
+      newUpgradeBuildings: obj ? priced(find(obj, 'NewUpgradeBuildings')) : [],
     });
   }
   return out;

@@ -20,12 +20,14 @@ instead — the terrain masks byte for byte, the towns and guards to their
 positions, armies, moods and minted instance names in `map.xdb`.
 
 **`MainObjects` is in progress** — the per-zone fill, fourteen steps deep.
-The first two that draw are LIVE in zone 1: mines to the boundary at 18566
-and dwellings to 18574, every object on the reference map's tile (hero
-draws nothing, ever). Next in the engine's order: upgrade buildings,
-prisons, cartographer, shrines, resource and treasury buildings,
-luck/morale, shops, road, statics — and after the phase, the roads, the
-additional objects, the treasure blocks and finally emitting the `.h5m`. The roads phase is also what closes
+Zone 1 runs LIVE from the phase door to the shrines boundary at 18579:
+mines (18566), dwellings (18574), upgrade buildings (a measured zero-draw
+exit), and shrines — every object on the reference map's tile. Hero draws
+nothing ever; prisons and the cartographer cost zero by template. Next in
+the engine's order: resource and treasury buildings, luck/morale, shops —
+all four are the same price-list placer shape as upgrade buildings — then
+road, statics, and after the phase the roads, the additional objects, the
+treasure blocks and finally emitting the `.h5m`. The roads phase is also what closes
 the one open difference in the terrain masks: Inferno's Dead_Land is a
 secondary ROAD tile of land class, and it steals weight from Lava wherever a
 road runs.
@@ -374,6 +376,8 @@ is what it is belongs next to the number.
 | `placement.ts` | the machinery every placement worker shares: room, filter, fit, stamp | **done** — read out of mines, confirmed against dwellings |
 | `mines.ts` | the mines step: rings, guards, piles | **done, live in zone 1** — 74 draws to the boundary, every object on the reference tile |
 | `dwellings.ts` | the dwellings step | **done, live in zone 1** — 8 draws to the boundary; mode 1 and tier ≥ 3 unported |
+| `upgrade-buildings.ts` | the upgrade-buildings step, and the guard wrapper `0xED3200` | **done** — zone 1's zero-draw exit live; the townless zones' budgets held by arithmetic, their live run waits |
+| `shrines.ts` | the shrines step | **done, live in zone 1** — 5 draws to the boundary |
 | `objects/*.ts` | the remaining `MainObjects` steps, one file each | |
 | `treasure.ts` | `CTreasureBlockDistributor` | |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
@@ -1237,6 +1241,74 @@ draw 19821 — inside zone 4's SHOPS step, which places it off the preset's
 `NewDwellings` price list. Counting item types against this step counts one
 too many.
 
+#### The price-list placers — upgrade buildings (`0xEB96D0`) and shrines (`0xEBE1C0`)
+
+One shape, two workers, and four more steps (resource, treasury,
+luck/morale, shops) share it with their own preset vectors. A points budget
+buys objects off a priced list: per object, `below(affordable prefix)`
+picks the type, then the dwellings-shaped body — room recomputed, filter
+`room > trunc(2·max/3)` over the `zone+0xCC` tiles, two draws per attempt,
+two for the name — and `spent += Value` until the budget clears nothing.
+The prefix is a LEADING scan that breaks at the first element with
+`Value + spent > points`, so list order is load-bearing: the shipped
+upgrade list's tail (SpellMentor 20, SacrificeAltar 10) sits behind the
+Value-40 wall and is unreachable until the budget clears it. Exhausted
+candidates abandon the step whole, dwellings-style. Both live in zone 1
+(`test-rmg-upgrade-shrines`): upgrade buildings as a measured zero-draw
+exit, shrines to the boundary at 18579 with `Shrine_Of_Magic_2` on the
+reference tile.
+
+**Upgrade buildings, what is its own:**
+
+- **The budget** is `trunc(len(zone+0xCC) · trunc(density · mult) / 10000)`
+  (`0x68DB8BAD` magic at `0xEB96F8`), density = the template's
+  `UpgBuildingsDensity` raw. `mult` is the `{0.2, 0.5, 1, 2, 4}` ladder
+  (jump table `0xEA543C`) indexed by `generator+0xB0`, applied at the CALL
+  SITE and to no other step. The traced run's draw counts pin the index to
+  1 (× 0.5): 2302·20/10000 = 4 points against a cheapest Value of 8 is the
+  whole of why a town zone spends nothing — towns are never consulted.
+  Zones 3 and 4 get 11 points, an affordable prefix of six, and exactly one
+  building each (12 and 31 draws decompose as 1+2·2+2+5 and 1+2·12+2+4).
+  What writes `+0xB0` is unread.
+- **The list** is `[zone+0x20]+0x168` — 0x14-byte records `{_, href,
+  loaded, Value, GuardStrenght}`, which is the preset's
+  `NewUpgradeBuildings` (the offset map of `[zone+0x20]` matches the xdb
+  field order across four sibling steps: `NewLuckMoraleBuildings +0x144`,
+  `NewShopBuildings +0x150`, `NewResourceGivers +0x15C`,
+  `NewUpgradeBuildings +0x168`).
+- **The guard** goes through `0xED3200` — its ONLY caller in the image —
+  not the mines' inline seat, and the two differ in both anchors: the base
+  tile is the object's position plus the FIRST active-tile offset rotated
+  by the angle (mines: the LAST stamped tile), and EIGHT directions are
+  tried from index `2q`, orthogonals then diagonals (mines: four
+  orthogonals). Freeness is the road-lenient test, no border or zone check.
+  Power = `BasicLeverGuardPower × GuardStrenght`; SetMonster's own
+  `power < 100` gate spends nothing, but the seat is taken and occupancy 4
+  written regardless. The guard tile joins `zone+0x98` — a ledger the room
+  machinery never reads (mask 4 selects `+0x68`) — so guards do NOT steer
+  later room, and the port drops the ledger.
+- **A suspected infinite loop, never reached**: a failed mint (`0xEB9B37`)
+  skips the accounting and re-enters with an identical candidate list.
+
+**Shrines, what is its own:**
+
+- **Points are raw** — `ShrinePoints` pushed verbatim (`0xEA4B8B`), no
+  scaling; under 6 the step returns before any draw.
+- **The list is hardcoded**, mines-style: `Shrine_Of_Magic_1/2/3` at costs
+  `{6, 10, 12}` (records `0x121CA90`, costs `0xFF4C94`, static init
+  `0x4D5B40`). The preset's `NewShrines` vector is never read by this
+  worker — which is why the reader in `preset-table.ts` does not carry it.
+  The loop condition hardcodes the 6 (`0xEBE4BF`), not `cost[0]`.
+- **The candidate filter is the shared helper `0xEC1500`** (ten callers:
+  prisons, cartographer, shrines, resource, treasury, luck/morale, shops,
+  road and two more — upgrade buildings is NOT among them, it inlines), and
+  it adds a **border distance ≥ 1 gate** the inline filters do not have.
+  Measured, not just read: dropping the gate moves zone 1's boundary by 14
+  draws.
+- **No guard, ever**: SetMonster is called by none of the `0xEC1500`
+  family. And no SpellID — the reference's `SPELL_NONE` is the shared
+  document's default.
+
 ## Tools
 
 ```bash
@@ -1256,6 +1328,7 @@ npm run test-rmg-armies    # SetMonster: the recorded draws replayed into the re
 npm run test-rmg-connections # ZoneConnections: the passages, against the reference map.xdb
 npm run test-rmg-mines     # the mines candidate lists: four first picks land the reference Sawmills
 npm run test-rmg-dwellings # the dwellings step live in zone 1: 8 draws to the boundary, ImpCrucible on its tile
+npm run test-rmg-upgrade-shrines # upgrade buildings' zero-draw exit and shrines live to 18579; the townless budgets by arithmetic
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste

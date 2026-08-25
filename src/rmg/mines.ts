@@ -29,7 +29,7 @@
 
 import { mintName, setMonster } from './armies.ts';
 import type { DrawSource, Guard, GuardTables } from './armies.ts';
-import { EIGHT, FOUR, filterByRoom, fits, isFree, readFootprint, roomGrid, stampFootprint } from './placement.ts';
+import { EIGHT, FOUR, filterByRoom, isFree, readFootprint, roomGrid, stampFootprint, tryPlace } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 
 export type { Tile } from './placement.ts';
@@ -159,24 +159,11 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
       const room = roomGrid(size, grid, zoneIndex, points);
       const { kept } = filterByRoom(list, room, grid, border, occupancy, size, zoneIndex, MINE_ROOM_DIVISOR);
 
-      // Two draws per attempt; a failed fit strikes the candidate and draws
-      // again. An empty list is the engine's "cant place mine" line — the
-      // instance is skipped and nothing more is drawn for it.
-      let tile: Tile | null = null;
-      let q = 0;
-      const pool = [...kept];
-      while (pool.length) {
-        const pick = rng.below(pool.length);
-        q = rng.below(4);
-        const candidate = pool[pick]!;
-        if (fits(input, foot, candidate, q)) {
-          tile = candidate;
-          break;
-        }
-        pool.splice(pick, 1);
-      }
-      if (!tile) continue;
-      const at = tile;
+      // Two draws per attempt; an empty list is the engine's "cant place
+      // mine" line — the instance is skipped and nothing more is drawn for it.
+      const found = tryPlace(input, foot, kept, rng);
+      if (!found) continue;
+      const { tile: at, q } = found;
 
       // The mine: two draws for its name, then the stamp; the stamp's active
       // tiles form the footprint vector (`zone+0x11C`) whose LAST entry seats
