@@ -102,6 +102,14 @@ export interface TownsResult {
   centres: Map<number, { a: number; b: number }>;
   /** Per floor: 0 free, 2 under a building's blocked tiles, 4 under the rest. */
   occupancy: Uint8Array[];
+  /**
+   * Per zone index, the tiles marked 4 in MARK order — the town's active
+   * tiles rotated, then the possession marker. This is the head of the
+   * zone's `+0x68` room-points list, and the ORDER is load-bearing: the
+   * road step chains those points to their nearest later siblings, so a
+   * scan-order reconstruction routes different roads.
+   */
+  stamped: Map<number, Array<[number, number]>>;
 }
 
 export interface TownsInput {
@@ -161,6 +169,7 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
   const objects: PlacedObject[] = [];
   const centres = new Map<number, { a: number; b: number }>();
   const occupancy = floors.map(() => new Uint8Array(size * size));
+  const stamped = new Map<number, Array<[number, number]>>();
   const byIndex = new Map(zones.map((z) => [z.index, z]));
 
   for (const item of template.zones) {
@@ -234,7 +243,15 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
           const [dx, dy] = rotate(q, off);
           const fa = ta + dy;
           const fb = tb + dx;
-          if (fa >= 0 && fa < size && fb >= 0 && fb < size) occ[fa * size + fb] = value;
+          if (fa < 0 || fa >= size || fb < 0 || fb >= size) continue;
+          occ[fa * size + fb] = value;
+          // The 4s are the zone's room points, kept in MARK order — the
+          // road step later chains them, so the order is part of the fact.
+          if (value === 4) {
+            const list = stamped.get(zone.index);
+            if (list) list.push([fb, fa]);
+            else stamped.set(zone.index, [[fb, fa]]);
+          }
         }
       };
       mark(proto.blockedTiles, 2);
@@ -276,5 +293,5 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
     }
   }
 
-  return { objects, centres, occupancy };
+  return { objects, centres, occupancy, stamped };
 }

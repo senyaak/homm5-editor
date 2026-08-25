@@ -30,6 +30,7 @@ import type { PricedBuilding, RacePreset } from '../src/rmg/preset-table.ts';
 import { placePriceList, scaledBudget } from '../src/rmg/price-lists.ts';
 import type { PlacedPriced, PricedItem } from '../src/rmg/price-lists.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
+import { buildZoneRoad } from '../src/rmg/road.ts';
 import { SHRINE_TYPES, placeZoneShrines } from '../src/rmg/shrines.ts';
 import type { PlacedShrine } from '../src/rmg/shrines.ts';
 import { readTemplate } from '../src/rmg/template.ts';
@@ -123,12 +124,10 @@ export function runChain(dir: string): Chain {
     dir, rng, template, params, presets, tables, setup, loaded, townResult, conn,
     grid, border, occ,
     roomPoints(zoneIndex: number): Tile[] {
-      const points: Tile[] = [];
-      for (let x = 0; x < SIZE; x++) {
-        for (let y = 0; y < SIZE; y++) {
-          if (occ[y * SIZE + x] === 4 && grid[y]![x] === zoneIndex) points.push([x, y]);
-        }
-      }
+      // The engine's PUSH order — the town's stamp, then the passages. The
+      // room computations are order-blind, but the road step chains these
+      // points in order, so the order is part of the fact.
+      const points: Tile[] = [...(townResult.stamped.get(zoneIndex) ?? [])];
       for (const [a, b] of conn.passages.get(zoneIndex) ?? []) points.push([b, a]);
       return points;
     },
@@ -297,5 +296,14 @@ export class ZoneFill {
 
   chests(): PlacedObject[] {
     return this.treasureStep('chests');
+  }
+
+  /** `0xEC05B0` — the zone road, kind 0x20; one below(2) per walked tile. */
+  road(): Tile[] {
+    const { c } = this;
+    return buildZoneRoad({
+      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ,
+      zoneIndex: this.zoneIndex, points: this.points, kindBit: 0x20,
+    }, c.rng);
   }
 }

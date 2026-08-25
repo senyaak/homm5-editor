@@ -1,0 +1,183 @@
+// The zone road — read from 0xEC05B0 (the driver) and 0xEC0B60 (the
+// router), held to the traced run: the block's only RNG is one below(2)
+// per walked tile, so the boundary IS the total road length, and zone 1's
+// 234 coins are the whole proof surface.
+//
+// THE CHAIN (0xEC05B0). The zone's `+0x68` room points — town stamp,
+// passage mouths, every MainObjects stamp, in PUSH order — are wired each
+// to its NEAREST LATER sibling: for k in 0..n-2, the closest of
+// points[k+1..], strict <, first minimum wins. A chain in list order, not
+// an MST — which is why the order of the points list is load-bearing.
+//
+// THE ROUTE (0xEC0B60). A float cost grid (cached on the zone at
+// +0xA4..+0xB0) is filled with 1000.0, cost[from] = 0, and both
+// endpoints' occupancy is saved and zeroed so the wave can pass. Then a
+// repeated full-grid sweep — Bellman-Ford flavour, no queue — where a
+// cell relaxes its 8 neighbours only when it belongs to THIS zone and its
+// truncated cost equals the current wave number:
+//
+//   step = (1.0 orthogonal | 1.41 diagonal) + (100 - border)/100
+//        + (5 - border) when border < 5      — border at the SOURCE cell
+//
+// Relaxation is blocked only by occupancy EXACTLY 2 and the 1..dim-2
+// bounds; it writes into neighbours of any zone (only propagation is
+// zone-gated), so a path may leave the zone. The sweep repeats while any
+// zone cell is still at 1000, breaking early when cost[to] moved or the
+// wave passes 2000 ("pure road algo failed." fires at 800 and is not
+// fatal).
+//
+// THE WALK descends from `to` toward `from` by TRUNCATED integer cost —
+// far coarser than the field — pushing each tile into the zone's road
+// list (`+0x8C` for kind 0x20) and OR-ing the kind bit into occupancy.
+// Per tile, one below(2) flips whether the 8-neighbour scan runs forward
+// or backward: the compare is strict, so the coin only breaks ties. The
+// endpoints' occupancy is restored on a clean finish; a walk that steps
+// out of bounds returns without restoring — the engine's own leak, kept.
+//
+// The road kinds: 0x08 -> zone+0x74 and 0x10 -> zone+0x80 belong to the
+// later roads phase (0xEBA690); this step is kind 0x20 alone.
+
+import type { DrawSource } from './armies.ts';
+import { EIGHT } from './placement.ts';
+import type { Tile } from './placement.ts';
+
+const fl = Math.fround;
+
+export interface RoadInput {
+  size: number;
+  /** The zone grid, `[a][b]` with `b` the map x. */
+  grid: Int32Array[];
+  border: Int32Array[];
+  /** MUTATED: the kind bit is OR'd along the walk. */
+  occupancy: Uint8Array;
+  zoneIndex: number;
+  /** The zone's `+0x68` points in PUSH order — towns, passages, stamps. */
+  points: Tile[];
+  /** 0x20 for this step; the roads phase reuses the router with 0x08/0x10. */
+  kindBit: number;
+}
+
+/** One route — `0xEC0B60`. Returns the walked tiles, `to` first. */
+export function routeRoad(input: RoadInput, from: Tile, to: Tile, rng: DrawSource): Tile[] {
+  const { size, grid, border, occupancy, zoneIndex, kindBit } = input;
+
+  // The cost field, [x][y] flattened x-major to keep the sweep order the
+  // engine's: outer over the first coordinate, inner over the second.
+  const cost = new Float32Array(size * size).fill(1000);
+  cost[from[0] * size + from[1]] = 0;
+
+  const savedFrom = occupancy[from[1] * size + from[0]]!;
+  const savedTo = occupancy[to[1] * size + to[0]]!;
+  occupancy[from[1] * size + from[0]] = 0;
+  occupancy[to[1] * size + to[0]] = 0;
+
+  let wave = 0;
+  for (;;) {
+    let allReached = true;
+    for (let y = 1; y < size - 1; y++) {
+      for (let x = 1; x < size - 1; x++) {
+        if (grid[y]![x] !== zoneIndex) continue;
+        const c = cost[x * size + y]!;
+        if (Math.trunc(c) === wave) {
+          // The engine's exact rounding tree: t = (100-b)/100, then + the
+          // 1.0/1.41 base, then + (5-b) under 5 — each in single precision.
+          const b = border[y]![x]!;
+          const frac = fl((100 - b) / 100);
+          for (let k = 0; k < 8; k++) {
+            const [dx, dy] = EIGHT[k]!;
+            const nx = x + dx;
+            const ny = y + dy;
+            // The engine relaxes into the border ring ([0, dim)); those
+            // cells never propagate, but they are written.
+            if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+            if (occupancy[ny * size + nx] === 2) continue;
+            let t = fl(frac + (k < 4 ? 1.0 : fl(1.41)));
+            if (b < 5) t = fl(t + (5 - b));
+            const next = fl(t + c);
+            if (cost[nx * size + ny]! > next) cost[nx * size + ny] = next;
+          }
+        }
+        if (Math.abs(cost[x * size + y]! - 1000) <= 1e-4) allReached = false;
+      }
+    }
+    if (wave > 2000) break;
+    if (cost[to[0] * size + to[1]] !== 1000) break;
+    wave++;
+    if (allReached) break;
+  }
+
+  // The walk, one coin per tile.
+  const out: Tile[] = [];
+  let cx = to[0];
+  let cy = to[1];
+  let clean = false;
+  for (;;) {
+    if (Math.abs(cx - from[0]) <= 0.5 && Math.abs(cy - from[1]) <= 0.5) {
+      clean = true;
+      break;
+    }
+    out.push([cx, cy]);
+    occupancy[cy * size + cx] = occupancy[cy * size + cx]! | kindBit;
+    if (cx < 1 || cx >= size - 1 || cy < 1 || cy >= size - 1) {
+      clean = true;
+      break;
+    }
+    let best = Math.trunc(cost[cx * size + cy]!);
+    const coin = rng.below(2);
+    let pick = -1;
+    // coin != 0 walks the table forward, 0 backward (0xEC12FE) — READ, not
+    // measured: the draw counter is blind to the sense (either pick of a
+    // tie is a path of the same length), so the first thing to check if
+    // the road MASKS ever miss is this line.
+    for (let k = 0; k < 8; k++) {
+      const d = coin ? k : 7 - k;
+      const [dx, dy] = EIGHT[d]!;
+      const nx = cx + dx;
+      const ny = cy + dy;
+      if (nx < 1 || nx >= size - 1 || ny < 1 || ny >= size - 1) continue;
+      if (fl(best) > cost[nx * size + ny]!) {
+        best = Math.trunc(cost[nx * size + ny]!);
+        pick = d;
+      }
+    }
+    if (pick < 0) {
+      clean = true;
+      break;
+    }
+    cx += EIGHT[pick]![0];
+    cy += EIGHT[pick]![1];
+    if (cx < 0 || cx >= size || cy < 0 || cy >= size) break; // the engine's occupancy leak
+  }
+  if (clean) {
+    occupancy[to[1] * size + to[0]] = occupancy[to[1] * size + to[0]]! | savedTo;
+    occupancy[from[1] * size + from[0]] = occupancy[from[1] * size + from[0]]! | savedFrom;
+  }
+  return out;
+}
+
+/**
+ * The driver — `0xEC05B0`: each point to its nearest LATER sibling, and
+ * then one more. `argmin` starts at 0, not at k, so the last iteration —
+ * whose inner loop is empty — routes `points[n-1]` back to `points[0]`
+ * and CLOSES the chain. n calls for n points; missing the closing route
+ * is exactly one road per zone short.
+ */
+export function buildZoneRoad(input: RoadInput, rng: DrawSource): Tile[] {
+  const { points } = input;
+  const road: Tile[] = [];
+  for (let k = 0; k < points.length; k++) {
+    const [ax, ay] = points[k]!;
+    let best = fl(1000);
+    let argmin = 0;
+    for (let j = k + 1; j < points.length; j++) {
+      const [bx, by] = points[j]!;
+      const d = fl(Math.sqrt(fl((ax - bx) * (ax - bx) + (ay - by) * (ay - by))));
+      if (d < best) {
+        best = d;
+        argmin = j;
+      }
+    }
+    road.push(...routeRoad(input, points[k]!, points[argmin]!, rng));
+  }
+  return road;
+}

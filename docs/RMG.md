@@ -19,19 +19,16 @@ draw for draw; the two that do not draw are held to the engine's output
 instead — the terrain masks byte for byte, the towns and guards to their
 positions, armies, moods and minted instance names in `map.xdb`.
 
-**`MainObjects` is in progress** — the per-zone fill, fourteen steps deep.
-Zone 1 runs LIVE from the phase door to the treasures boundary at 18662 —
-mines (18566), dwellings (18574), upgrade buildings (a measured zero-draw
-exit), shrines (18579), resource buildings (18598), treasury (18622),
-luck/morale (18648), shops (18653) and the treasures block (18662, with
-chests a measured no-op) — every object on the reference map's tile.
-Hero draws nothing ever; prisons and the cartographer cost zero by
-template. Next: the zone ROAD (18662..18896 in zone 1; read below, not
-yet ported — it is what stands between zone 1's tail and zone 2's steps
-going live, and its port needs the zone's `+0x68` points in the engine's
-PUSH order, which the test chain does not yet keep), then statics, and
-after the phase the roads, the additional objects, the treasure blocks
-and finally emitting the `.h5m`. The roads phase is also what closes
+**The whole FIRST LOOP of `MainObjects` runs LIVE** — all four zones,
+every step, from the phase door to the loop's last draw at 20039
+(`test-rmg-road`): mines, dwellings, upgrade buildings, shrines, the four
+price-list steps, the treasures block and the zone ROAD, zone after zone
+on the one rng, each step landing on its traced boundary. Hero draws
+nothing ever; prisons and the cartographer cost zero by template. Next:
+the statics (the SECOND loop over the zones, virtual slots `+0x30`/`+0x34`
+of the zone vtable — 69,378 draws, three quarters of the whole stream),
+and after the phase the roads, the additional objects, the treasure
+blocks and finally emitting the `.h5m`. The roads phase is also what closes
 the one open difference in the terrain masks: Inferno's Dead_Land is a
 secondary ROAD tile of land class, and it steals weight from Lava wherever a
 road runs.
@@ -384,6 +381,7 @@ is what it is belongs next to the number.
 | `shrines.ts` | the shrines step: the hardcoded table over the generic placer | **done, live in zone 1** — 5 draws to the boundary |
 | `price-lists.ts` | the generic price-list placer and the four preset-vector steps' budget rules | **done, live in zone 1** — ten objects to the shops boundary at 18653 |
 | `treasures.ts` | the zone tail: observatories, the Den roll, treasures/chests | **done, live in zone 1** — 9 draws to 18662; chests a measured no-op |
+| `road.ts` | the zone road: the chain, the wave, the coin-tied walk | **done, live in all four zones** — 928 coins to the loop's end at 20039 |
 | `objects/*.ts` | the remaining `MainObjects` steps, one file each | |
 | `treasure.ts` | `CTreasureBlockDistributor` | |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
@@ -806,13 +804,18 @@ is why the same grid has two offsets.
 | `+0xE0` / `+0xE4` | −1 | distance to the zone border — `CalcBorderTiles` |
 | `+0xF0` / `+0xF4` | −1 | room: distance to the nearest point of a zone's list |
 
-**The border table is not permanent.** `CalcBorderTiles` writes 0 on a border
-tile and the truncated Euclidean distance elsewhere, which is what
-`border-tiles.ts` ports — but `0xEC1500`, the placer that prisons, the
-cartographer, shrines, resource buildings, treasuries and luck/morale objects
-all go through, writes **1** into it at the object's tile and at its same-zone
-neighbours. So a step reads a table the steps before it have already dented,
-and the order of the steps is part of what each one sees.
+**The border table is not permanent, but only two phases dent it.** An
+earlier version of this note blamed `0xEC1500`; a full write-site sweep
+(every `+0xE4` store in the RMG range) corrects it. `CalcBorderTiles`
+writes 0 on a border tile and the truncated Euclidean distance elsewhere
+(`border-tiles.ts`); after it, ONLY ZoneConnections writes — **1** on the
+passage mouth and its same-zone orthogonals from both sides (`0xEC1F6B`,
+`0xEC1FDE` for the digger; `0xEBA613`, `0xEBA66B` for the neighbour, the
+latter with no bounds test at all) — which `connections.ts` already ports —
+plus `CGameWaterBorderedZone`'s vtable `+0x24` override (`0xECB8F3`,
+water only, and it also disowns `+0xC4` tiles). `0xEC1500` and `0xEC2F90`
+only READ it; no placement worker dents it. That is why the road's costs
+are exact with nothing but the connections' dents reproduced.
 
 **What occupies a tile**, as the values that are actually written:
 
@@ -1386,19 +1389,34 @@ template the chests step scales to zero everywhere; the reference's 31
 chests all come from the treasure-blocks phase — counting `Chest` objects
 against the chests step counts 31 too many.
 
-#### The road (`0xEC05B0` → `0xEC0B60`) — read, not yet ported
+#### The road (`0xEC05B0` → `0xEC0B60`) — ported, live in all four zones
 
 Zone 1 spends 234 draws here, zones 2–4 265/222/207, and every one is the
 same coin: **`below(2)`, once per walked tile, the only RNG in the block**
 (`0xEC12D9`) — it flips whether the 8-neighbour scan runs forward or
 backward, pure tie-breaking on a strict compare. No mints, no objects.
+`src/rmg/road.ts`; `test-rmg-road` runs the whole first loop of
+MainObjects live to 20039 on the strength of it. One honest limit: the
+draw counter is BLIND to the coin's sense — either pick of a tie is a
+path of the same length — so the coin direction is held by reading alone
+until the road masks can be compared.
 
-**What it connects**: the zone's `+0x68` points — the occupancy-4 ledger
-(town stamps, passage mouths, MainObjects stamps) — each point routed to
-its NEAREST LATER sibling in list order (`n−1` calls, a chain, not an MST).
-So the port needs that list in the engine's PUSH order; the test chain's
-scan-order reconstruction is order-blind and must grow ordered points
-first.
+**What it connects**: the zone's `+0x68` points, each routed to its
+NEAREST LATER sibling in list order — **and then one more**: `argmin`
+starts at 0, so the last iteration, whose inner loop is empty, routes
+`points[n−1]` back to `points[0]` and CLOSES the chain. n calls for n
+points; missing the closing route is what a first port came out 17–32
+draws short by, zone for zone. The list must be in the engine's PUSH
+order, and the full write-site sweep says it has exactly four feeders:
+`0xEC2F90`'s passes 2 and 3 (actives, then the non-zero marker — towns
+included, via `0xEB4CB0`'s stamp call: actives then marker, NO entry or
+flag point), the digger's mouth (`0xEC26EA` in `0xEC1630`) and the
+neighbour's adopted tile (`0xEBA5DB` in `0xEBA470`) — plus the Grail's
+inlined seat (`0xEC03F5`), favoured-zone only. Guards push `+0x98`, never
+`+0x68` — measured, too: adding them to the list breaks the mines' own
+lockstep. One divergence kept in mind: `0xEC2F90` has NO bounds clamp on
+its pushes where the port's stamp clamps — an object stamped against the
+map edge would differ.
 
 **The route** (`0xEC0B60(zone, from, to, kindBit, outList)`): a float cost
 grid cached at `zone+0xA4..+0xB0`, filled with 1000.0, `cost[from] = 0`,
@@ -1445,6 +1463,7 @@ npm run test-rmg-dwellings # the dwellings step live in zone 1: 8 draws to the b
 npm run test-rmg-upgrade-shrines # upgrade buildings' zero-draw exit and shrines live to 18579; the townless budgets by arithmetic
 npm run test-rmg-price-lists # resource, treasury, luck/morale and shops live to 18653, ten objects on the reference tiles
 npm run test-rmg-treasures # the zone tail live to 18662: one observatory, below(9)=6 -> Ore, chests a no-op
+npm run test-rmg-road      # the WHOLE first loop of MainObjects live: four zones, every boundary, to 20039
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste
