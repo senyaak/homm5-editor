@@ -217,8 +217,15 @@ static int g_rmgTrace = 0;
 static int g_rmgRunActive = 0;
 /** `grids` in the config: dump the road lists and level grids at the roads boundary. */
 static int g_rmgGrids = 0;
-/** The CRandomMap the last GetZone was asked on — the dump's way in. */
-static void *g_rmgLastMap = NULL;
+static int rmg_readable(const void *p, unsigned size);
+static void rmg_log_ints(const char *prefix, const int *vals, int count);
+/**
+ * Zone pointers, harvested from the ENGINE'S OWN GetZone calls as they pass
+ * through the trace hook. Asking GetZone ourselves crashed the editor — its
+ * not-found path dereferences null for an id nobody owns — so the dump only
+ * ever touches pointers the engine itself resolved this run.
+ */
+static BYTE *g_rmgZones[32];
 static RmgNextFn g_rmgNextOrig = NULL;
 static RmgNext63Fn g_rmgNext63Orig = NULL;
 static RmgBelowFn g_rmgBelowOrig = NULL;
@@ -233,8 +240,28 @@ static RmgBetweenFloatFn g_rmgBetweenFloatOrig = NULL;
  */
 #define RMG_ED_GET_ZONE_RVA 0x8ef810u
 
+/**
+ * `CGameZone::route` — the road router, 0x7FB1B0 in the editor (game 0xEC0B60),
+ * thiscall, `ret 10h`. Detoured so the COST FIELD it leaves on the zone can be
+ * read the instant the wave is done: the draw counter is blind to which
+ * equal-length corridor the walk takes, and the router's own field is the one
+ * measurement that tells the port whether its wave converged to the same
+ * floats. Head: `sub esp,50h; mov edx,[esp+58h]` — 7 relocation-free bytes.
+ */
+#define RMG_ED_ROUTER_RVA 0x7fb1b0u
+
 typedef void *(__fastcall *RmgGetZoneFn)(void *self, void *edx, void **out, int index);
 static RmgGetZoneFn g_rmgGetZoneOrig = NULL;
+
+/**
+ * The router, as a fastcall so the thiscall `this` arrives in ecx and the four
+ * stack args line up as the trailing parameters (`edx` is the unused filler,
+ * the same shim GetZone uses above).
+ */
+typedef int(__fastcall *RmgRouterFn)(void *self, void *edx, float *from, float *to, int kind, void *outList);
+static RmgRouterFn g_rmgRouterOrig = NULL;
+/** `field` in the config: dump the router's cost field for the named routes. */
+static int g_rmgField = 0;
 
 /** The five places the oracle needs, whichever executable this is. */
 static DWORD g_rmgTimeCallRva = RMG_TIME_CALL_RVA;
@@ -388,6 +415,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "seed") && read_int(&q, stop, &g_rmgSeed)) g_rmgForceSeed = 1;
     if (take_word(&q, stop, "trace")) g_rmgTrace = 1;
     if (take_word(&q, stop, "grids")) g_rmgGrids = 1;
+    if (take_word(&q, stop, "field")) g_rmgField = 1;
   }
   VirtualFree(buf, 0, MEM_RELEASE);
 }
@@ -422,7 +450,11 @@ static long __cdecl rmg_time_hook(void *arg) {
  * begins as far as the log is concerned and where the boundary count restarts.
  */
 static void __fastcall rmg_seed_hook(int seed) {
+  int i;
   g_rmgReads = 0;
+  // A new run resolves its own zones; a previous generation's pointers are
+  // exactly the stale thing the dump must never touch.
+  for (i = 0; i < 32; i++) g_rmgZones[i] = NULL;
   // The draw trace runs from here to the twelfth boundary — the editor draws
   // for other reasons between generations, and those are nobody's business.
   if (g_rmgTrace) g_rmgRunActive = 1;
@@ -481,9 +513,69 @@ static int __fastcall rmg_below_trace(int n) {
 
 static void *__fastcall rmg_get_zone_trace(void *self, void *edx, void **out, int index) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
-  g_rmgLastMap = self;
+  void *ret;
   if (g_rmgRunActive) rmg_log_pair("gz ", *(int *)(base + g_rmgCounterFieldRva), index);
-  return g_rmgGetZoneOrig(self, edx, out, index);
+  ret = g_rmgGetZoneOrig(self, edx, out, index);
+  // Harvest the resolved pointer for the grids dump — the engine's answer,
+  // not a question of ours.
+  if (index >= 0 && index < 32 && out && *out) g_rmgZones[index] = (BYTE *)*out;
+  return ret;
+}
+
+/**
+ * The router, wrapped: run it, then — for the two routes the port disagrees on
+ * — dump the cost field it just built. `to` identifies the route (`trunc`ed to
+ * a tile), and the field lives on the zone at `+0xA8` (row table) / `+0xAC`
+ * (dimA) / `+0xB0` (dimB), as bit patterns so the diff is exact.
+ *
+ *   fld <zoneId> <toX> <toY> <dimA> <dimB>
+ *   fc <row> <bits...>            one row of the cost field, per dimA row
+ */
+static int __fastcall rmg_router_hook(void *self, void *edx, float *from, float *to, int kind,
+                                      void *outList) {
+  BYTE *zone = (BYTE *)self;
+  int tx = -1, ty = -1, want = 0, ret;
+  if (g_rmgField && to && rmg_readable(to, 8)) {
+    tx = (int)to[0];
+    ty = (int)to[1];
+    // The two routes the corridors diverge on: zone 2's 60:70 and zone 3's 47:7.
+    if ((tx == 60 && ty == 70) || (tx == 47 && ty == 7)) want = 1;
+  }
+  ret = g_rmgRouterOrig(self, edx, from, to, kind, outList);
+  if (!want || !rmg_readable(zone, 0xF0)) return ret;
+  {
+    float **rows = *(float ***)(zone + 0xA8);
+    int dimA = *(int *)(zone + 0xAC);
+    int dimB = *(int *)(zone + 0xB0);
+    int hdr[7];
+    int r;
+    hdr[0] = *(int *)(zone + 0xEC);
+    hdr[1] = from && rmg_readable(from, 8) ? (int)from[0] : -1;
+    hdr[2] = from && rmg_readable(from, 8) ? (int)from[1] : -1;
+    hdr[3] = tx;
+    hdr[4] = ty;
+    hdr[5] = dimA;
+    hdr[6] = dimB;
+    rmg_log_ints("fld ", hdr, 7);
+    if (!rows || dimA <= 0 || dimA > 256 || dimB <= 0 || dimB > 256
+        || !rmg_readable(rows, (unsigned)dimA * 4)) {
+      rmg_log("field: unreadable");
+      return ret;
+    }
+    for (r = 0; r < dimA; r++) {
+      int vals[257];
+      int cidx;
+      if (!rows[r] || !rmg_readable(rows[r], (unsigned)dimB * 4)) continue;
+      vals[0] = r;
+      for (cidx = 0; cidx < dimB; cidx++) {
+        union { float f; int i; } u;
+        u.f = rows[r][cidx];
+        vals[cidx + 1] = u.i;
+      }
+      rmg_log_ints("fc ", vals, dimB + 1);
+    }
+  }
+  return ret;
 }
 
 static float __stdcall rmg_between_float_trace(float a, float b) {
@@ -558,23 +650,30 @@ static void rmg_log_ints(const char *prefix, const int *vals, int count) {
 //   rl <zoneId> <kind> <count>   one road list's header (kind 8/16/32)
 //   rt <x> <y>                   its tiles, in list order
 //   zg/oc/bd/rm <floor> <row> …  the four level grids, one row per line
+/** Is this range committed, readable memory? The dump's seatbelt. */
+static int rmg_readable(const void *p, unsigned size) {
+  MEMORY_BASIC_INFORMATION mbi;
+  if (!p) return 0;
+  if (!VirtualQuery(p, &mbi, sizeof(mbi))) return 0;
+  if (mbi.State != MEM_COMMIT) return 0;
+  if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) return 0;
+  return (const BYTE *)p + size <= (const BYTE *)mbi.BaseAddress + mbi.RegionSize;
+}
+
 static void rmg_dump_grids(void) {
   int floorsDumped[4] = { 0, 0, 0, 0 };
   int id;
-  if (!g_rmgLastMap || !g_rmgGetZoneOrig) {
-    rmg_log("grids: no map pointer - was trace on and did GetZone fire?");
-    return;
-  }
-  for (id = 0; id < 16; id++) {
-    void *slot[2] = { NULL, NULL };
-    BYTE *zone;
+  for (id = 0; id < 32; id++) {
+    BYTE *zone = g_rmgZones[id];
     int floor;
     static const unsigned kindOffs[3] = { 0x74u, 0x80u, 0x8Cu };
     static const int kindBits[3] = { 8, 16, 32 };
     int k;
-    g_rmgGetZoneOrig(g_rmgLastMap, NULL, slot, id);
-    zone = (BYTE *)slot[0];
     if (!zone) continue;
+    if (!rmg_readable(zone, 0x140)) {
+      rmg_log_pair("grids: zone pointer unreadable ", id, 0);
+      continue;
+    }
     if (*(int *)(zone + 0xEC) != id) {
       rmg_log_pair("grids: zone id mismatch - layout drifted ", id, *(int *)(zone + 0xEC));
       continue;
@@ -586,7 +685,7 @@ static void rmg_dump_grids(void) {
       int n = beg && end ? (int)(end - beg) / 2 : 0;
       int hdr[3];
       int j;
-      if (n < 0 || n > 100000) {
+      if (n < 0 || n > 100000 || (n > 0 && !rmg_readable(beg, (unsigned)n * 8))) {
         rmg_log_pair("grids: implausible list ", id, kindBits[k]);
         continue;
       }
@@ -605,18 +704,20 @@ static void rmg_dump_grids(void) {
     if (floor >= 0 && floor < 4 && !floorsDumped[floor]) {
       BYTE *world = *(BYTE **)(zone + 0x134);
       floorsDumped[floor] = 1;
-      if (world) {
+      if (world && rmg_readable(world, 0x40)) {
         int dimA = *(int *)(world + 0xC);
         int dimB = *(int *)(world + 0x10);
-        BYTE *level = *(BYTE **)(world + 0x34) + floor * 0x120;
+        BYTE *levels = *(BYTE **)(world + 0x34);
         static const unsigned gridOffs[4] = { 0xC4u, 0xD4u, 0xE4u, 0xF4u };
         static const char *gridNames[4] = { "zg ", "oc ", "bd ", "rm " };
         int g;
-        if (dimA > 0 && dimA <= 256 && dimB > 0 && dimB <= 256) {
+        if (dimA > 0 && dimA <= 256 && dimB > 0 && dimB <= 256
+            && levels && rmg_readable(levels + floor * 0x120, 0x120)) {
+          BYTE *level = levels + floor * 0x120;
           for (g = 0; g < 4; g++) {
             int **rows = *(int ***)(level + gridOffs[g]);
             int r;
-            if (!rows) continue;
+            if (!rows || !rmg_readable(rows, (unsigned)dimA * 4)) continue;
             for (r = 0; r < dimA; r++) {
               // 2 leading ints (floor, row), then the row itself.
               int vals[258];
@@ -624,7 +725,7 @@ static void rmg_dump_grids(void) {
               int cidx;
               vals[0] = floor;
               vals[1] = r;
-              if (!rows[r]) continue;
+              if (!rows[r] || !rmg_readable(rows[r], (unsigned)dimB * 4)) continue;
               for (cidx = 0; cidx < dimB; cidx++) vals[cidx + 2] = rows[r][cidx];
               rmg_log_ints(gridNames[g], vals, ccount);
             }
@@ -795,6 +896,14 @@ static int install_rmg_oracle(void) {
       static const BYTE getZoneHead[7] = { 0x8B, 0x44, 0x24, 0x08, 0x83, 0xEC, 0x08 };
       g_rmgGetZoneOrig = (RmgGetZoneFn)detour(RMG_ED_GET_ZONE_RVA, getZoneHead, 7,
                                               &rmg_get_zone_trace, "rmg trace GetZone");
+      // The router's field, only when asked: its first two instructions are
+      // also seven relocation-free bytes.
+      if (g_rmgField) {
+        static const BYTE routerHead[7] = { 0x83, 0xEC, 0x50, 0x8B, 0x54, 0x24, 0x58 };
+        g_rmgRouterOrig = (RmgRouterFn)detour(RMG_ED_ROUTER_RVA, routerHead, 7,
+                                              &rmg_router_hook, "rmg road field");
+        rmg_log(g_rmgRouterOrig ? "router field dump armed" : "router field dump did NOT take");
+      }
       rmg_log(g_rmgNextOrig && g_rmgNext63Orig && g_rmgBelowOrig && g_rmgBetweenFloatOrig && g_rmgGetZoneOrig
                   ? "draw trace on - every draw and every GetZone will be written"
                   : "draw trace INCOMPLETE - see the refusals above");

@@ -11,7 +11,7 @@
 // exactly on the roads boundary, and every traced step boundary is
 // asserted.
 
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { Tile } from '../src/rmg/placement.ts';
@@ -105,13 +105,8 @@ for (const tz of c.template.zones) {
   }, c.rng);
   allStatics.push(...big.placed);
   const [bigBoundary, oneBoundary] = BOUNDARIES[tz.index]!;
-  if (tz.index === 1) {
-    check(`zone ${tz.index} big statics land on ${bigBoundary}`, c.rng.draws === bigBoundary,
-      `${c.rng.draws} (${big.placed.length} placed, ${big.lakeSeeds.length} lake seeds)`);
-  } else {
-    const hit = c.rng.draws === bigBoundary;
-    console.log(`  ${hit ? 'ok  ' : 'off '}  zone ${tz.index} big statics: ${c.rng.draws} vs traced ${bigBoundary}${hit ? '' : ' — awaiting the grids dump'}`);
-  }
+  check(`zone ${tz.index} big statics land on ${bigBoundary}`, c.rng.draws === bigBoundary,
+    `${c.rng.draws} (${big.placed.length} placed, ${big.lakeSeeds.length} lake seeds)`);
 
   const one = placeZoneOneTileStatics({
     size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room,
@@ -122,24 +117,31 @@ for (const tz of c.template.zones) {
     mapAngle: c.setup.angle,
   }, c.rng);
   allStatics.push(...one);
-  // Zone 1 is HELD (asserted); the others are REPORTED. The known gap: the
-  // engine's zone-2 road walks one ortho tile (61:62) where the port's field
-  // says the diagonal 60:62 is the unique minimum — with that one tile
-  // substituted, zone 2 runs to its boundaries and all 604 statics of zones
-  // 1-2 land on the reference by name and tile. Zones 3-4 carry similar
-  // road-corridor differences. The `grids` oracle dump (native/rmg/oracle.c)
-  // reads the engine's own road lists at the roads boundary — the measurement
-  // that closes this.
-  if (tz.index === 1) {
-    check(`zone ${tz.index} one-tile statics land on ${oneBoundary}`, c.rng.draws === oneBoundary,
-      `${c.rng.draws} (${one.length} placed)`);
-  } else {
-    const hit = c.rng.draws === oneBoundary;
-    console.log(`  ${hit ? 'ok  ' : 'off '}  zone ${tz.index} one-tile statics: ${c.rng.draws} vs traced ${oneBoundary}${hit ? '' : ' — awaiting the grids dump'}`);
-  }
+  check(`zone ${tz.index} one-tile statics land on ${oneBoundary}`, c.rng.draws === oneBoundary,
+    `${c.rng.draws} (${one.length} placed)`);
 }
 
-console.log(`\n${allStatics.length} statics placed; the phase ends on ${c.rng.draws} (traced: 89798)`);
+console.log(`\n${allStatics.length} statics placed; the phase ends on ${c.rng.draws}`);
+check('which is the traced 89798', c.rng.draws === 89798, `${c.rng.draws}`);
+check('and the reference count, 1325 statics', allStatics.length === 1325, `${allStatics.length}`);
+
+// Every static against the reference map, by minted name.
+{
+  const refPath = join('_tmp', 'oracle', 'reference', 'map.xdb');
+  if (!existsSync(refPath)) {
+    console.log('  (no reference map.xdb — the by-name half is skipped)');
+  } else {
+    const xdb = readFileSync(refPath, 'utf8');
+    let bad = 0;
+    for (const p of allStatics) {
+      const i = xdb.indexOf(`id="${p.name}"`);
+      if (i < 0) { bad++; continue; }
+      const m = /<x>(\d+)<\/x>\s*<y>(\d+)<\/y>/.exec(xdb.slice(i, i + 300));
+      if (!m || Number(m[1]) !== p.x || Number(m[2]) !== p.y) bad++;
+    }
+    check('every static stands where its minted name stands in the map', bad === 0, `${bad} astray`);
+  }
+}
 
 console.log(failures ? `\n${failures} failed` : '\nall good');
 process.exit(failures ? 1 : 0);

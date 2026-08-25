@@ -32,19 +32,22 @@ entries and passage points wired into the 0x08 network, mine actives
 into the 0x10 one, every tile of both kinds confirmed under the
 reference's painted road masks.
 
-**The STATICS are ported and zone 1 runs in LOCKSTEP** (`0xEA5450` →
-the zone vtable's `+0x34`/`+0x30`, `test-rmg-statics`): big statics to
-40826, one-tile to 44537, and with ONE zone-road tile substituted zone
-2 lands too — all 604 statics of zones 1–2 on the reference by name
-and tile. What still stands between zones 2–4 and their boundaries is
-the ZONE ROAD's equal-length corridors, which the draw counter cannot
-see; the oracle's new `grids` dump (road lists + level grids at the
-roads boundary) is the measurement that closes it — see the phase
-section. Then: the additional objects, the treasure blocks and finally
-emitting the `.h5m`. The road PAINTER is still ahead of us: the network
-exists now, but its terrain layers — and with them the one open
-difference in the masks, Inferno's Dead_Land stealing weight from Lava
-wherever a road runs — wait for the painting pass.
+**The STATICS run in FULL LOCKSTEP — all four zones** (`0xEA5450` →
+the zone vtable's `+0x34`/`+0x30`, `test-rmg-statics`): every one of
+the eight traced step boundaries lands, the phase ends on 89798, and
+all **1,325 statics stand where their minted names stand in the
+reference**, rotations included. Getting there took two live
+measurements (the oracle's `grids` and `field` dumps) and surfaced the
+biggest find of the port so far: **the game and the editor are
+different compilations with different float arithmetic in the road
+wave** — and the reference is the EDITOR's, so the editor's x87
+arithmetic is the one the port speaks (see the road section). Every
+road list of every zone is now byte-identical to the engine's own dump.
+Next: the additional objects, the treasure blocks and finally emitting
+the `.h5m`. The road PAINTER is still ahead of us: the network exists
+now, but its terrain layers — and with them the one open difference in
+the masks, Inferno's Dead_Land stealing weight from Lava wherever a
+road runs — wait for the painting pass.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -1603,21 +1606,33 @@ mid — base < 0.3 big objects, else < 0.5 blockers, no nonblockers; (4)
 far — base ≤ 0.5 (the one gate where EQUALITY passes) and big objects
 only. No budget: the step ends when the passes run out of tiles.
 
-**The open difference — the zone road's corridors.** The road walk is
-one coin per tile and equal-length corridors cost the same coins, so
-the draw counter cannot see WHICH tiles a route walked — but the
-statics can: the room recompute reads the road lists, and the fit reads
-occupancy. Measured on zone 2: the engine's road from 59:52 to 60:70
-takes the ortho tile 61:62 where the port's converged cost field (held
-to the re-read arithmetic bit for bit) makes the diagonal 60:62 the
-UNIQUE minimum — the re-read descent (minimum over 8 by truncated
-cost, strict, either scan direction) cannot produce that choice, so one
-of the field's inputs still differs, and the border table is the one
-with no direct oracle. The `grids` keyword in the oracle config
-(native/rmg/oracle.c) now dumps the engine's own road lists (`rl`/`rt`
-lines) and all four level grids (`zg`/`oc`/`bd`/`rm`) at the roads
-boundary — the measurement that closes this. Until then
-`test-rmg-statics` asserts zone 1 and reports zones 2–4.
+**The corridor hunt, and what it found.** The road walk is one coin per
+tile and equal-length corridors cost the same coins, so the draw
+counter cannot see WHICH tiles a route walked — but the statics can:
+the room recompute reads the road lists, and the fit reads occupancy.
+Zone 2's divergence came down to ONE road tile (the engine walks the
+ortho 61:62, the port's field made the diagonal 60:62 the unique
+minimum), and no reading of the walk could produce that choice — so
+the field itself was measured. Two oracle instruments came out of it
+(native/rmg/oracle.c, config keywords): `grids` dumps the engine's own
+road lists (`rl`/`rt`) and all four level grids (`zg`/`oc`/`bd`/`rm`)
+at the roads boundary — it proved border, zone grid and room BYTE-EXACT
+and pinned the differences to road tiles alone; `field` detours the
+EDITOR's router (RVA 0x7FB1B0, found by its "pure road algo failed."
+string) and dumps the cost field of a named route right after its wave.
+The field dump showed the first ortho step from the start already one
+ulp below the port's — an exact round-to-nearest TIE under the ported
+composition — and the re-read of the editor's own wave explained it:
+**the editor is compiled x87 where the game is SSE. The editor's step
+is `(100−b) * 0.01f` (fmul) carried in DOUBLE with ONE rounding at the
+store and the compare in double; the game's is `/100.0f` (divss) with
+per-operation single rounding.** The reference map is the editor's, so
+road.ts now implements the editor's arithmetic — after which every road
+list of every zone is byte-identical to the dump, every statics
+boundary lands, and the walk's every tie resolves the engine's way with
+the port's own coin sense. The moral for every phase after this one:
+when a traced run and a read-out-of-the-game-exe port disagree at one
+ulp, ask WHICH BUILD generated the trace.
 
 ## Tools
 
