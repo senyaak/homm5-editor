@@ -369,6 +369,7 @@ is what it is belongs next to the number.
 | `towns.ts` + `town-data.ts` | `PlaceTowns` | **done** — 16 draws, and both towns land where the engine put them |
 | `dist-to-towns.ts` | `FillDistToTownsTable` | **done** — drawless; its side effect is what later phases see |
 | `connections.ts` | `ZoneConnections`, land passages and guards | **done** — three guards on the engine's own tiles; teleports unported |
+| `mines.ts` | the mines step's candidate machinery | the four first picks land; placement, guards and piles next |
 | `objects/*.ts` | `MainObjects`, one file per placement step | |
 | `treasure.ts` | `CTreasureBlockDistributor` | |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
@@ -1132,16 +1133,22 @@ hundreds rather than by a tile:
 - **A zone with no town really does drop the ring** and offer every tile it
   has: zone 4 lands on 631 → 15:88.
 
-Zone 1 lands with a room threshold of 7, which is `(2 × 19) / 5`, the
-two-fifths of its own maximum.
+**All four now land** — `test-rmg-mines` replays each zone's recorded draw
+into the list this port builds and the tile it picks is the reference map's
+Sawmill, zone for zone. What closed the last two was not a new rule but the
+reading of the connections phase's stamping:
 
-Zones 2 and 3 do not land at ANY threshold, and the reading says why: the
-`+0x68` list the room is measured from is filled by `ZoneConnections` as well
-as by `PlaceTowns`, and this port does not yet record what the connections
-phase stamped onto the level. Zone 4 lands anyway because whatever its guards
-left is far enough from its Sawmill to change nothing; zone 3 misses by three
-tiles and zone 2 by 183. **So the next piece of work is making
-`zoneConnections` return its occupancy**, not searching for a rule.
+- a dug passage puts ONE tile into each side's `+0x68` — the digger its mouth
+  (which is also the guard's tile), the neighbour its adopted tile. That is
+  exactly what `zoneConnections` already returns as `passages`, so the room
+  points are the towns' occupancy-4 tiles plus the passages, and nothing new
+  had to be built;
+- the adoption offsets are MAP-coordinate pairs — dx moves x, the second grid
+  index — and the port had been applying them to (row, column). Zone 2 pinned
+  it: of the twenty-five points in the mouth's 5×5 neighbourhood, exactly one
+  lands its draw, and it is the tile the x-first order adopts. Fixed in
+  `connections.ts`, and the sabotage check (swapping the axes back) fails
+  zones 2 and 3 and no others.
 
 **The instrument for measuring it** is the step boundary — see below.
 
@@ -1162,6 +1169,7 @@ npm run test-rmg-towns     # PlaceTowns: the towns, against the reference map.xd
 npm run test-rmg-dist-to-towns # FillDistToTownsTable: the 2-and-3 wave, and what it disowns
 npm run test-rmg-armies    # SetMonster: the recorded draws replayed into the recorded guards
 npm run test-rmg-connections # ZoneConnections: the passages, against the reference map.xdb
+npm run test-rmg-mines     # the mines candidate lists: four first picks land the reference Sawmills
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste

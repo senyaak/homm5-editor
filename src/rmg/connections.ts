@@ -45,9 +45,19 @@ export const JUNCTION_MIN_BORDER_DISTANCE = 5;
 /** Fewer candidates than this and the neighbour is skipped. */
 const MIN_CANDIDATES = 8;
 
-/** The engine's neighbour table: four orthogonals, then four diagonals. */
+/**
+ * The engine's neighbour tables (`0x1093968`, then `0x1093988`), and the pairs
+ * are MAP-coordinate offsets: the first number moves x — the SECOND grid
+ * index — and the second moves y. An earlier reading applied them to
+ * (row, column) instead, which adopts a different tile whenever the first
+ * fitting neighbour differs between the two orders — and the adopted tile
+ * seeds the room grid the mines step filters by, so the mistake surfaced as
+ * two zones' first mines landing one draw away from the reference. The
+ * mines-step measurements pinned it: with x-first offsets all four zones'
+ * first picks land on the engine's tiles; with row-first, two do not.
+ */
 const NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
-  [0, -1], [1, 0], [0, 1], [-1, 0], [-1, -1], [1, -1], [1, 1], [-1, 1],
+  [0, -1], [1, 0], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, 1], [-1, -1],
 ];
 
 export interface ConnectionZone {
@@ -196,10 +206,11 @@ export function zoneConnections(input: ConnectionsInput, rng: RmgRandom): Connec
         addPassage(zone.index, [ta, tb]);
 
         // The neighbour takes the passage from its own side: the first of
-        // its tiles adjacent to the mouth, orthogonals before diagonals.
-        for (const [da, db] of NEIGHBOURS) {
-          const na = ta + da;
-          const nb = tb + db;
+        // its tiles adjacent to the mouth, orthogonals before diagonals —
+        // and the offsets are (dx, dy), so dx moves the SECOND index.
+        for (const [dx, dy] of NEIGHBOURS) {
+          const na = ta + dy;
+          const nb = tb + dx;
           if (na < 0 || na >= size || nb < 0 || nb >= size) continue;
           if (grid[na]![nb] !== neighbour) continue;
           openMouth(dist, grid, neighbour, na, nb);
