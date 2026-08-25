@@ -139,6 +139,7 @@
     "test-rmg-price-lists": "node tools/test-rmg-price-lists.ts",
     "test-rmg-treasures": "node tools/test-rmg-treasures.ts",
     "test-rmg-road": "node tools/test-rmg-road.ts",
+    "test-rmg-roads-phase": "node tools/test-rmg-roads-phase.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "test-e2e-setup": "node tools/test-e2e-setup.ts",

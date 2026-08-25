@@ -118,6 +118,11 @@ export interface PlacedMine {
   q: number;
   guard: (Guard & { x: number; y: number }) | null;
   piles: Array<{ name: string; x: number; y: number }>;
+  /**
+   * The stamp's active tiles in stamp order — what the engine pushes into
+   * `zone+0x11C`, the list the roads phase later wires with 0x10 roads.
+   */
+  actives: Tile[];
 }
 
 export interface MineStepInput {
@@ -227,7 +232,7 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
         }
       }
 
-      placed.push({ type: spec.mine, name, x: at[0], y: at[1], q, guard, piles });
+      placed.push({ type: spec.mine, name, x: at[0], y: at[1], q, guard, piles, actives: footprintTiles });
     }
   }
   return placed;

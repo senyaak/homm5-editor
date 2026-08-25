@@ -24,14 +24,18 @@ every step, from the phase door to the loop's last draw at 20039
 (`test-rmg-road`): mines, dwellings, upgrade buildings, shrines, the four
 price-list steps, the treasures block and the zone ROAD, zone after zone
 on the one rng, each step landing on its traced boundary. Hero draws
-nothing ever; prisons and the cartographer cost zero by template. Next:
-the statics (the SECOND loop over the zones, virtual slots `+0x30`/`+0x34`
-of the zone vtable — 69,378 draws, three quarters of the whole stream),
-and after the phase the roads, the additional objects, the treasure
-blocks and finally emitting the `.h5m`. The roads phase is also what closes
-the one open difference in the terrain masks: Inferno's Dead_Land is a
-secondary ROAD tile of land class, and it steals weight from Lava wherever a
-road runs.
+nothing ever; prisons and the cartographer cost zero by template.
+
+**The ROADS PHASE runs LIVE too** (`0xEBA690`, `test-rmg-roads-phase`):
+its 381 coins land on the traced 20420 across all four zones — town
+entries and passage points wired into the 0x08 network, mine actives
+into the 0x10 one. Next: the statics (the SECOND loop over the zones,
+virtual slots `+0x30`/`+0x34` of the zone vtable — 69,378 draws, three
+quarters of the whole stream), then the additional objects, the treasure
+blocks and finally emitting the `.h5m`. The road PAINTER is still ahead
+of us: the network exists now, but its terrain layers — and with them
+the one open difference in the masks, Inferno's Dead_Land stealing
+weight from Lava wherever a road runs — wait for the painting pass.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -1440,6 +1444,74 @@ vertices, LavaRoad 131, Dead_Land 175 (the Inferno SECONDARY road tile of
 land class — the layer `test-rmg-terrain` already books as "the roads
 phase's"), plus Lava's 175 missing vertices resolving. Those masks,
 byte for byte, are the acceptance target once the painter is reached.
+
+### Phase 11 — the roads phase (`0xEBA690`) — ported, live
+
+`src/rmg/roads-phase.ts`, `test-rmg-roads-phase`: 381 draws, 20039 →
+20420, every one the router's coin — the phase calls nothing that draws
+except `0xEC0B60`. The driver is an **inline loop in GenerateMap**
+(`0xEABE7D..0xEABF53`, printing "at %g roads created" at `0xEABF61`):
+floors ascending, each floor's zones in the level hash_map's bucket order
+— the order `floorIterationOrder` already models — calling `0xEBA690`
+non-virtually per zone. (A standalone copy of the driver at `0xEA3DC0`
+has no callers.) Between "main objects set" and the loop: two callback
+invocations, no draws — the phase has NO prologue draw.
+
+Per zone, after a cost-grid cache ensure that is a no-op by now
+(`0xEBA69F`), three parts:
+
+**The seed** (`0xEBA6EB`). With byte `zone+0xF8` set — "has a town",
+written by PlaceTown right after its stamp — the town ENTRY at `zone+0xC`
+(the same point Phase 8 grows from) is pushed into `zone+0x74`, the 0x08
+list. Otherwise element 0 of `zone+0xC0` is, if any. Nothing seeded means
+the phase does nothing for this zone.
+
+**Loop 1 — connections, kind 0x08** (`0xEBA710`). Each point of
+`zone+0xC0` in index order is routed to its nearest point of the GROWING
+0x08 list — every element scanned, single-precision distance, strict `<`,
+best from 1000.0f, argmin from 0 — with one gate this loop alone has
+(`0xEBA7FE`): both endpoints' truncated coordinates must lie inside the
+map, or the route is silently skipped. `0xEC0B60(zone, from = network,
+to = connection, 0x08, outList = zone+0x74)`: the wave grows FROM the
+network, the walk descends from the connection point, and the walked
+tiles join the list — later connections attach to earlier roads. A zone
+seeded from its own `C[0]` routes it to itself for zero coins.
+
+**Loop 2 — mines, kind 0x10** (`0xEBA883`). Each point of `zone+0x11C`
+in index order finds its nearest road tile by a SAMPLED scan: the 0x08
+list at indices ≡ 5 (mod 13) (`0xEBA8D5`, magic `0x4EC4EC4F`), then the
+same best continued over the 0x10 list at indices ≡ 7 (mod 11)
+(`0xEBA967`, magic `0xBA2E8BA3`). The route runs REVERSED — `from` = the
+MINE point, `to` = the road tile, `outList = zone+0x80` — and has NO
+bounds gate. Reachable quirk, kept: when no sampled index exists at all,
+argmin is still 0 and the route goes to `road08[0]`, the seed, no
+distance ever measured.
+
+**Who fills the inputs** (write-site sweep): `zone+0xC0` gets the
+digger's mouth (`0xEC2563` in `0xEC1630`), the neighbour's adopted tile
+(`0xEBA5B8` in `0xEBA470`) — the same pushes ZoneConnections makes to
+`+0x68`/`+0x98`, so `conn.passages` in push order IS this vector — and
+teleport actives (`0xEB7C60` stamps via `0xEC2F90` with
+`outList = zone+0xC0`; not ported, no surface-only template reaches it).
+`zone+0x11C` is fed by the mines step's two stamp sites (`0xEB640F`,
+`0xEB6E8F`) and the abandoned-mine placer (`0xEBE077`): stamp pass 2
+pushes each ACTIVE tile into the caller's outList when non-null — every
+other placer passes 0 — so the vector is every mine's actives in stamp
+order, which `PlacedMine.actives` now carries. `zone+0x74`/`+0x80` have
+no other feeder anywhere in the RMG range: they start empty, this phase
+alone fills them, and the room-recompute masks and the terrain painter's
+road layers read them afterwards.
+
+**Side writes**: none beyond the router's — occupancy `|= 0x08/0x10`
+along walks, endpoint occupancy zeroed and OR-restored on a clean
+finish. No border dents, no `+0x68`/`+0x98` pushes, no `RMGParameters`
+or template reads: the 0x08/0x10 split is hardwired by loop.
+
+The proof is the boundary alone — 130/115/65/71 coins across zones 1–4,
+landing on 20420 — because per-zone boundaries are not narrated for this
+phase and roads leave no `map.xdb` objects. Sabotage-checked: shifting
+loop 2's sampling phase by one moves the boundary to 20424. The masks in
+`GroundTerrain.bin` stay the acceptance target for the painter.
 
 ## Tools
 
