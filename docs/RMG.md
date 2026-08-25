@@ -20,15 +20,18 @@ instead — the terrain masks byte for byte, the towns and guards to their
 positions, armies, moods and minted instance names in `map.xdb`.
 
 **`MainObjects` is in progress** — the per-zone fill, fourteen steps deep.
-Zone 1 runs LIVE from the phase door to the shops boundary at 18653 —
+Zone 1 runs LIVE from the phase door to the treasures boundary at 18662 —
 mines (18566), dwellings (18574), upgrade buildings (a measured zero-draw
 exit), shrines (18579), resource buildings (18598), treasury (18622),
-luck/morale (18648) and shops (18653) — every object on the reference
-map's tile. Hero draws nothing ever; prisons and the cartographer cost
-zero by template. Next in the engine's order: the treasures and chests,
-then the zone road — which is what stands between zone 1's tail and zone
-2's steps going live — then statics, and after the phase the roads, the
-additional objects, the treasure blocks and finally emitting the `.h5m`. The roads phase is also what closes
+luck/morale (18648), shops (18653) and the treasures block (18662, with
+chests a measured no-op) — every object on the reference map's tile.
+Hero draws nothing ever; prisons and the cartographer cost zero by
+template. Next: the zone ROAD (18662..18896 in zone 1; read below, not
+yet ported — it is what stands between zone 1's tail and zone 2's steps
+going live, and its port needs the zone's `+0x68` points in the engine's
+PUSH order, which the test chain does not yet keep), then statics, and
+after the phase the roads, the additional objects, the treasure blocks
+and finally emitting the `.h5m`. The roads phase is also what closes
 the one open difference in the terrain masks: Inferno's Dead_Land is a
 secondary ROAD tile of land class, and it steals weight from Lava wherever a
 road runs.
@@ -380,6 +383,7 @@ is what it is belongs next to the number.
 | `upgrade-buildings.ts` | the upgrade-buildings step, and the guard wrapper `0xED3200` | **done** — zone 1's zero-draw exit live; the townless zones' budgets held by arithmetic, their live run waits |
 | `shrines.ts` | the shrines step: the hardcoded table over the generic placer | **done, live in zone 1** — 5 draws to the boundary |
 | `price-lists.ts` | the generic price-list placer and the four preset-vector steps' budget rules | **done, live in zone 1** — ten objects to the shops boundary at 18653 |
+| `treasures.ts` | the zone tail: observatories, the Den roll, treasures/chests | **done, live in zone 1** — 9 draws to 18662; chests a measured no-op |
 | `objects/*.ts` | the remaining `MainObjects` steps, one file each | |
 | `treasure.ts` | `CTreasureBlockDistributor` | |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
@@ -917,7 +921,7 @@ takes its own field of it. The steps, in the order the code runs them:
 | mines | `0xEB5C50`, then `0xEBD700` for abandoned | `+0x20`, `+0x2C` | — |
 | hero | `0xEB5B30` | — | never runs; draws nothing |
 | dwellings | `0xEB8C10` | `+0x30` | — |
-| upgrade buildings | `0xEC00F0`, `0xEBFFC0`, `0xEB96D0` | `+0x3C` | the first two only in the favoured zone, and only with `this->0xB5` |
+| upgrade buildings | `0xEC00F0` (Grail), `0xEBFFC0` (Obelisks), `0xEB96D0` | `+0x3C` | the Grail only in the favoured zone; both firsts only with `this->0xB5` |
 | prisons | `0xEBD1C0` | `+0x48` | — |
 | cartographer | `0xEBD4B0` | `+0x4C` | — |
 | shrines | `0xEBE1C0` | `+0x54` | — |
@@ -925,15 +929,17 @@ takes its own field of it. The steps, in the order the code runs them:
 | treasury buildings | `0xEBECB0` | `+0x60` | — |
 | luck/morale | `0xEBF090` | `+0x58` | — |
 | shops | `0xEBF540` | `+0x50` | — |
-| road, and the treasures with it | `0xEBF930`, `0xEA57B0`, `0xEC05B0` | `+0x70`, whole element | treasures and chests only on the surface |
+| BuffPoints stub | `0xEC04D0` — whole body `ret 4` | `+0x70` | always a no-op |
+| observatories + Den roll | `0xEBF930` | takes `&params[i]`, NEVER reads it | — |
+| treasures, then chests | `0xEA57B0` → `0xEB9DC0` | `+0x40`, `+0x44` | underground (`zone->0xF4 != 0`) — they run later, in additional objects |
+| road | `0xEC05B0` → `0xEC0B60` | — | — |
 | big statics | virtual, zone vtable `+0x34` | — | second loop |
 | one tile statics | virtual, zone vtable `+0x30` | — | second loop |
 
-Two of those are worth saying out loud. **`0xEC04D0` is a stub** — its whole
-body is `ret 4`, so the `+0x70` field reaches nothing. And **the statics steps
-are virtual**: `CGameZone` answers with `0xEBAA70`/`0xEBBBD0`, and Subterra,
-Dwarven, SubInferno and WaterBordered each have their own, so a subterranean
-zone fills itself differently from a surface one.
+**The statics steps are virtual**: `CGameZone` answers with
+`0xEBAA70`/`0xEBBBD0`, and Subterra, Dwarven, SubInferno and WaterBordered
+each have their own, so a subterranean zone fills itself differently from a
+surface one.
 
 A zone whose id does not resolve (`0xE9FF00` at `0xEA414A`) is skipped whole,
 step for step.
@@ -1346,6 +1352,77 @@ holds zone 1's ten live). What the four settle:
   line. Every price-list worker also push_backs the minted name record
   into `[zone+0x134]+0x40`, a ledger whose consumer is unread.
 
+#### The zone tail — observatories, treasures, chests (`0xEBF930`, `0xEA57B0` → `0xEB9DC0`)
+
+Read whole and replayed against the trace: the four zones' 9/15/5/5 draws
+account draw for draw (`test-rmg-treasures` holds zone 1 live to 18662).
+
+**Observatories (`0xEBF930`).** Takes `&params[i]` and never reads it —
+`RedwoodObservatoryDensity` and `DenOfThieves` are DEAD template fields.
+Places `trunc(len(zone+0xCC) / 4000) + 1` Redwood Observatories (the
+divisor is read out of the magic multiply; every traced zone lands N = 1)
+through the `0xEC1500` machinery with a 100-attempt cap per object. Then
+**the Den roll**: a zone with no player (`zone+0xF0`, the 1-based player
+number) draws `below(10)` and on 0 or 1 places one Den of Thieves the same
+way. Both town zones skip the roll and both townless zones took and missed
+it (9, 8) — the measurement that pins the gate.
+
+**Treasures and chests (`0xEB9DC0`, behind the `0xEA57B0` dispatcher).**
+Surface zones only — the dispatcher sits behind `zone->0xF4 == 0`, and the
+additional-objects phase later calls the same dispatcher for the
+underground zones. The worker prefilters `zone+0xCC` once by border ≥ 1,
+takes `count = trunc(len(RAW list) · trunc(density · ladder) / 10000)` —
+TreasureDensity on the `{0.2,0.5,1,2,4}` ladder indexed by
+`generator+0xA8` for treasures, TreasureChestDensity by `+0xB0` for
+chests — and per object: room + filter (room > trunc(2·max/3), border ≥ 1,
+**occupancy ≠ 2** — this inline filter's own gate; roads and guard tiles
+are acceptable seats), then the TYPE: `below(9)` over the table at
+`0x121C910` — Campfire, **Chest**, Crystal, Gems, Gold, Mercury, Ore,
+Sulfur, Wood — so a drawn treasure can be a Chest, and **the chests step
+is the same body with the type fixed at index 1**, 4 draws per object
+instead of 5. Amounts are never drawn and never written (the reference's
+`Amount 0` is the document default). Exhaustion abandons the step. In this
+template the chests step scales to zero everywhere; the reference's 31
+chests all come from the treasure-blocks phase — counting `Chest` objects
+against the chests step counts 31 too many.
+
+#### The road (`0xEC05B0` → `0xEC0B60`) — read, not yet ported
+
+Zone 1 spends 234 draws here, zones 2–4 265/222/207, and every one is the
+same coin: **`below(2)`, once per walked tile, the only RNG in the block**
+(`0xEC12D9`) — it flips whether the 8-neighbour scan runs forward or
+backward, pure tie-breaking on a strict compare. No mints, no objects.
+
+**What it connects**: the zone's `+0x68` points — the occupancy-4 ledger
+(town stamps, passage mouths, MainObjects stamps) — each point routed to
+its NEAREST LATER sibling in list order (`n−1` calls, a chain, not an MST).
+So the port needs that list in the engine's PUSH order; the test chain's
+scan-order reconstruction is order-blind and must grow ordered points
+first.
+
+**The route** (`0xEC0B60(zone, from, to, kindBit, outList)`): a float cost
+grid cached at `zone+0xA4..+0xB0`, filled with 1000.0, `cost[from] = 0`,
+both endpoints' occupancy saved and zeroed; then a repeated full-grid
+sweep (Bellman-Ford flavour, no queue) relaxing 8 neighbours with step
+`1.0 (orth) / 1.41 (diag) + (100 − border)/100`, plus `(5 − border)` when
+border < 5 — propagation is gated to the zone's own tiles but relaxation
+writes into neighbours of any zone. `pure road algo failed.` fires at
+sweep 800 and is not fatal; 2000 breaks. Then the walk descends from `to`
+by `(int)cost` — TRUNCATED comparison, far coarser than the field — one
+coin per tile, OR-ing the kind bit into occupancy (`0x20` here, lists:
+`0x08 → zone+0x74`, `0x10 → +0x80`, `0x20 → +0x8C`; the first two belong
+to the later roads phase at `0xEBA690`). Quirks to reproduce: the endpoint
+occupancy is restored only on a clean finish (a walk that steps out of
+bounds loses it), and the sweep's neighbour bounds check swaps the axes —
+harmless on square maps only.
+
+**Where roads land for comparison**: not in `map.xdb` — they are terrain
+layers in `GroundTerrain.bin`. The reference's road layers: SandRoad 607
+vertices, LavaRoad 131, Dead_Land 175 (the Inferno SECONDARY road tile of
+land class — the layer `test-rmg-terrain` already books as "the roads
+phase's"), plus Lava's 175 missing vertices resolving. Those masks,
+byte for byte, are the acceptance target once the painter is reached.
+
 ## Tools
 
 ```bash
@@ -1367,6 +1444,7 @@ npm run test-rmg-mines     # the mines candidate lists: four first picks land th
 npm run test-rmg-dwellings # the dwellings step live in zone 1: 8 draws to the boundary, ImpCrucible on its tile
 npm run test-rmg-upgrade-shrines # upgrade buildings' zero-draw exit and shrines live to 18579; the townless budgets by arithmetic
 npm run test-rmg-price-lists # resource, treasury, luck/morale and shops live to 18653, ten objects on the reference tiles
+npm run test-rmg-treasures # the zone tail live to 18662: one observatory, below(9)=6 -> Ore, chests a no-op
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste

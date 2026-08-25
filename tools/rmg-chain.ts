@@ -33,6 +33,11 @@ import { RmgRandom } from '../src/rmg/random.ts';
 import { SHRINE_TYPES, placeZoneShrines } from '../src/rmg/shrines.ts';
 import type { PlacedShrine } from '../src/rmg/shrines.ts';
 import { readTemplate } from '../src/rmg/template.ts';
+import {
+  DEN_OF_THIEVES_HREF, OBSERVATORY_HREF, TREASURE_TYPES,
+  placeObservatories, placeZoneTreasures,
+} from '../src/rmg/treasures.ts';
+import type { PlacedObject } from '../src/rmg/treasures.ts';
 import type { RmgTemplate, RmgZone } from '../src/rmg/template.ts';
 import { readTownShared, readTownSpecializations } from '../src/rmg/town-data.ts';
 import type { TownShared } from '../src/rmg/town-data.ts';
@@ -258,5 +263,39 @@ export class ZoneFill {
 
   shops(): PlacedPriced[] {
     return this.priceListStep(this.zone.shopPoints, this.preset.newShopBuildings);
+  }
+
+  /** `0xEBF930` — observatories plus the townless zones' Den of Thieves roll. */
+  observatories(): PlacedObject[] {
+    const { c } = this;
+    return placeObservatories({
+      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, points: this.points,
+      zoneIndex: this.zoneIndex,
+      observatory: c.footprint(OBSERVATORY_HREF),
+      denOfThieves: c.footprint(DEN_OF_THIEVES_HREF),
+      playerNo: c.loaded.zones.find((z) => z.index === this.zoneIndex)!.playerNo,
+    }, c.rng);
+  }
+
+  private treasureStep(kind: 'treasures' | 'chests'): PlacedObject[] {
+    const { c } = this;
+    // The dispatcher 0xEA57B0 sits behind the surface gate — an underground
+    // zone gets its treasures in the additional-objects phase instead.
+    if (c.loaded.zones.find((z) => z.index === this.zoneIndex)!.floor !== 0) return [];
+    return placeZoneTreasures({
+      size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, points: this.points,
+      zoneIndex: this.zoneIndex,
+      density: kind === 'treasures' ? this.zone.treasureDensity : this.zone.treasureChestDensity,
+      multIndex: 1, kind,
+      footprints: TREASURE_TYPES.map((t) => c.footprint(`/MapObjects/${t}.(AdvMapTreasureShared).xdb`)),
+    }, c.rng);
+  }
+
+  treasures(): PlacedObject[] {
+    return this.treasureStep('treasures');
+  }
+
+  chests(): PlacedObject[] {
+    return this.treasureStep('chests');
   }
 }
