@@ -24,8 +24,9 @@ import { fillDistToTowns } from '../src/rmg/dist-to-towns.ts';
 import { fillZones } from '../src/rmg/fill-zones.ts';
 import { loadTemplate } from '../src/rmg/load-template.ts';
 import { mapSetup } from '../src/rmg/map-setup.ts';
-import { MINE_TYPES, filterByRoom, mineLists, placeZoneMines, readMineShared, roomGrid } from '../src/rmg/mines.ts';
+import { MINE_TYPES, mineLists, placeZoneMines, readMineShared } from '../src/rmg/mines.ts';
 import type { MineFootprint, Tile } from '../src/rmg/mines.ts';
+import { filterByRoom, roomGrid } from '../src/rmg/placement.ts';
 import { readParams } from '../src/rmg/params.ts';
 import { readPresets } from '../src/rmg/preset-table.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
@@ -155,7 +156,7 @@ if (!hasReference()) {
       farMin: params.mine2LevelMinRadius, farMax: params.mine2LevelMaxRadius,
     });
     const room = roomGrid(SIZE, grid, zone, roomPoints(zone));
-    const { kept, max, threshold } = filterByRoom(lists.near, room, grid, border, occ, SIZE, zone);
+    const { kept, max, threshold } = filterByRoom(lists.near, room, grid, border, occ, SIZE, zone, 5);
     const got = kept[drew];
     const want = sawmills.get(zone);
     const ok = !!got && !!want && got[0] === want[0] && got[1] === want[1];

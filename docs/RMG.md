@@ -19,11 +19,13 @@ draw for draw; the two that do not draw are held to the engine's output
 instead — the terrain masks byte for byte, the towns and guards to their
 positions, armies, moods and minted instance names in `map.xdb`.
 
-**Next is `MainObjects`** — the per-zone fill, fourteen steps deep (mines,
-hero, dwellings, upgrade buildings, prisons, cartographer, shrines, resource
-and treasury buildings, luck/morale, shops, road, statics, then treasures
-and chests), and after it the roads, the additional objects, the treasure
-blocks and finally emitting the `.h5m`. The roads phase is also what closes
+**`MainObjects` is in progress** — the per-zone fill, fourteen steps deep.
+The first two that draw are LIVE in zone 1: mines to the boundary at 18566
+and dwellings to 18574, every object on the reference map's tile (hero
+draws nothing, ever). Next in the engine's order: upgrade buildings,
+prisons, cartographer, shrines, resource and treasury buildings,
+luck/morale, shops, road, statics — and after the phase, the roads, the
+additional objects, the treasure blocks and finally emitting the `.h5m`. The roads phase is also what closes
 the one open difference in the terrain masks: Inferno's Dead_Land is a
 secondary ROAD tile of land class, and it steals weight from Lava wherever a
 road runs.
@@ -369,8 +371,10 @@ is what it is belongs next to the number.
 | `towns.ts` + `town-data.ts` | `PlaceTowns` | **done** — 16 draws, and both towns land where the engine put them |
 | `dist-to-towns.ts` | `FillDistToTownsTable` | **done** — drawless; its side effect is what later phases see |
 | `connections.ts` | `ZoneConnections`, land passages and guards | **done** — three guards on the engine's own tiles; teleports unported |
-| `mines.ts` | the mines step's candidate machinery | the four first picks land; placement, guards and piles next |
-| `objects/*.ts` | `MainObjects`, one file per placement step | |
+| `placement.ts` | the machinery every placement worker shares: room, filter, fit, stamp | **done** — read out of mines, confirmed against dwellings |
+| `mines.ts` | the mines step: rings, guards, piles | **done, live in zone 1** — 74 draws to the boundary, every object on the reference tile |
+| `dwellings.ts` | the dwellings step | **done, live in zone 1** — 8 draws to the boundary; mode 1 and tier ≥ 3 unported |
+| `objects/*.ts` | the remaining `MainObjects` steps, one file each | |
 | `treasure.ts` | `CTreasureBlockDistributor` | |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
 | `emit.ts` | the finished map, handed to `src/map/` | |
@@ -1180,6 +1184,59 @@ reading of the connections phase's stamping:
 
 **The instrument for measuring it** is the step boundary — see below.
 
+#### The second step — dwellings, read out of `0xEB8C10`
+
+`0xEB8C10..0xEB96C2`, called from the zone loop at `0xEA4576` with the zone
+params' `+0x30` vector — the template's seven per-tier counts — and one byte,
+`generator+0xA5`. It is the mines step stripped to its skeleton, and the step
+boundaries hold it live: zone 1 spends 8 draws (three attempts, two failed
+fits), zone 2 spends 6, zones 3 and 4 with all-zero counts spend nothing.
+`test-rmg-dwellings` runs zone 1 through the same rng that ran the chain and
+lands the counter on 18574 with ImpCrucible on the reference tile, minted
+name and all.
+
+What is the same as mines, instruction for instruction: the room recompute
+`0xEC28E0(4,0)` and the maximum `0xEC2EB0` per instance, the fit test
+`0xEC3510` with the same six arguments, the name mint `0xEB3990`, the stamp
+`0xEC2F90`, and the attempt loop — `below(candidates)`, `below(4)` for the
+quadrant (the rotation is `q·π/2`, drawn before the fit is tested), strike
+and redraw on failure.
+
+What is different, and each difference is load-bearing:
+
+- **The candidates are every tile of the zone.** No rings, no radii, no
+  border test: the list is `zone+0xCC`, built once back in FillZones by
+  `0xEB7790` (its only caller) with nothing but a zone-membership test, and
+  never rebuilt. `RMGParameters` is never touched — `0xEAFF80` is absent.
+- **The threshold divisor is 3, not 5** — `trunc(2·max/3)` at `0xEB8CD3`
+  (`imul` by `0x55555556`, no `sar`) against the mines' `2·max/5`.
+- **No guard, no piles.** `SetMonster` and `betweenFloat` are never called;
+  the whole cost is 2 per attempt and 2 for the name.
+- **An exhausted candidate list is terminal for the STEP** — the
+  `Can't place dwelling %s at zone #%d, floor %d (town at %d:%d)` block at
+  `0xEB9647` has no edge back into either loop, so one failure abandons every
+  remaining instance and tier of that zone. (Whether mines behave the same is
+  unread — their failure block is separate.)
+- **The descriptor is the race preset's `Dwellings` list**, `RMGPresetTable`'s
+  four hrefs the zone keeps at `+0x1C→+0x28`, indexed `min(tier, 3)` — which
+  is why zone 1 (Inferno) placed ImpCrucible and zone 2 (Academy) Workshop. A
+  hole in the table skips the instance, no draws spent.
+
+**The worker is two-moded on `generator+0xA5`**, and every traced run has it
+zero. Mode 0 with tier < 3 sets no properties at all — exactly the reference
+map's dwellings, `PLAYER_NONE` with empty `RndSource`/`LinkToTown`. Unported
+and unmeasured, said rather than hidden: mode 1 swaps the descriptors for the
+seven `/MapObjects/Random/RandomDwellingN` stand-ins (`0x121C570`, filled by
+`0x4D5A60`) and, when the zone has a town, sets `RndSource = 2` and
+`LinkToTown` to the town at `zone+0xFC`; mode 0 with tier ≥ 3 reuses
+descriptor 3 and switches its creature on via `creaturesEnabled[tier-3]`.
+
+**One trap for a future comparison**: the reference has THREE `AdvMapDwelling`
+items, and only two are this step's. The RefugeeCamp at 29:75 is minted at
+draw 19821 — inside zone 4's SHOPS step, which places it off the preset's
+`NewDwellings` price list. Counting item types against this step counts one
+too many.
+
 ## Tools
 
 ```bash
@@ -1198,6 +1255,7 @@ npm run test-rmg-dist-to-towns # FillDistToTownsTable: the 2-and-3 wave, and wha
 npm run test-rmg-armies    # SetMonster: the recorded draws replayed into the recorded guards
 npm run test-rmg-connections # ZoneConnections: the passages, against the reference map.xdb
 npm run test-rmg-mines     # the mines candidate lists: four first picks land the reference Sawmills
+npm run test-rmg-dwellings # the dwellings step live in zone 1: 8 draws to the boundary, ImpCrucible on its tile
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste

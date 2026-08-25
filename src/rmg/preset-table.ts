@@ -1,9 +1,10 @@
 // `RMGPresetTable` — what each race's zone is made of. This reader grows one
 // phase at a time: the terrain painter needs the Tiles block (the default
 // tile and the "other tiles" pool the zone constructor's roll picks from),
-// and PlaceTowns needs the town prototype plus the decorations that may sit
-// over a town's entrance. The rest of a preset (hero pools, dwellings, road
-// and water tiles) waits for the phases that consume it.
+// PlaceTowns needs the town prototype plus the decorations that may sit
+// over a town's entrance, and the dwellings step needs the race's four
+// dwelling hrefs. The rest of a preset (hero pools, road and water tiles)
+// waits for the phases that consume it.
 //
 // The table indexes by the same race enum LoadTemplate draws (RACE_* ids in
 // file order), and a tile is carried as the engine's shared reference: the
@@ -37,6 +38,11 @@ export interface RacePreset {
    * skip the decoration block whole, draws included.
    */
   overTownCenterObjects: string[];
+  /**
+   * `Dwellings` — the four AdvMapDwellingShared hrefs the dwellings step
+   * indexes by `min(tier, 3)` (the table the zone keeps at +0x1C→+0x28).
+   */
+  dwellings: string[];
 }
 
 const stripXpointer = (href: string): string => href.replace(/#xpointer\(.*\)$/, '');
@@ -77,6 +83,7 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
       otherTiles: tiles ? hrefs(find(tiles, 'OtherTiles')).map((h) => readTileInfo(dataRoot, h)) : [],
       townProto: (obj ? find(obj, 'TownProto')?.attrs['href'] : undefined) ?? null,
       overTownCenterObjects: obj ? hrefs(find(obj, 'OverTownCenterObjects')) : [],
+      dwellings: obj ? hrefs(find(obj, 'Dwellings')) : [],
     });
   }
   return out;

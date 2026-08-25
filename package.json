@@ -134,6 +134,7 @@
     "test-rmg-armies": "node tools/test-rmg-armies.ts",
     "test-rmg-connections": "node tools/test-rmg-connections.ts",
     "test-rmg-mines": "node tools/test-rmg-mines.ts",
+    "test-rmg-dwellings": "node tools/test-rmg-dwellings.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "test-e2e-setup": "node tools/test-e2e-setup.ts",
