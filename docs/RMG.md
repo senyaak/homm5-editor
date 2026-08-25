@@ -1133,9 +1133,37 @@ hundreds rather than by a tile:
 - **A zone with no town really does drop the ring** and offer every tile it
   has: zone 4 lands on 631 → 15:88.
 
-**All four now land** — `test-rmg-mines` replays each zone's recorded draw
-into the list this port builds and the tile it picks is the reference map's
-Sawmill, zone for zone. What closed the last two was not a new rule but the
+**The whole step is now ported and runs LIVE** — `src/rmg/mines.ts`, and
+`test-rmg-mines` lets the same rng that ran the chain keep drawing through
+zone 1's entire mines step: 74 draws later the counter stands on the step
+boundary the trace recorded, with all six mines, every guard and every pile
+on the reference map's tiles, matched by the names their draws minted.
+
+The placement half, read out of `0xEC3510`/`0xEB3990` and the piles block:
+
+- **The fit test** (`0xEC3510`, no draws): blocked tiles and the marker need
+  the map, the zone, occupancy EXACTLY 0 — a road blocks a mine even though
+  it counts as free elsewhere — and border distance ≥ 1; **active tiles need
+  border ≥ 3**. The marker's (0,0) pair is skipped. Floor 1 adds a five-tile
+  edge margin, unmeasured — the reference has no underground.
+- **Creation** (`0xEB3990`) mints the name — two `below(65535)` — BEFORE the
+  factory runs, so a failed creation has already spent them. The only free
+  failure is a shared path without "Shared" in it.
+- **The guard seat** costs no draws: first free orthogonal of the footprint's
+  last active tile, starting from the quadrant's direction. Free here IS the
+  road-lenient test. No seat — no guard, no SetMonster; the engine then still
+  runs the piles against an UNINITIALISED guard position (the jump skips the
+  only writes to that slot) — stale stack, which the port declines to
+  reproduce and documents instead.
+- **The piles**: eight neighbours, from two past the guard's direction; free
+  first, then within 2.0 of the guard, and only then the 0.8 roll — a
+  candidate failing either test spends nothing. Two is the ceiling, counted
+  after successful creation.
+- **Abandoned mines** (`0xEBD700`): a count of zero spends nothing.
+
+The candidate machinery underneath: `test-rmg-mines` also replays each zone's
+recorded first draw into the list this port builds, and the tile it picks is
+the reference map's Sawmill, zone for zone. What closed the last two was not a new rule but the
 reading of the connections phase's stamping:
 
 - a dug passage puts ONE tile into each side's `+0x68` — the digger its mouth

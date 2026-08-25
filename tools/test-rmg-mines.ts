@@ -24,8 +24,8 @@ import { fillDistToTowns } from '../src/rmg/dist-to-towns.ts';
 import { fillZones } from '../src/rmg/fill-zones.ts';
 import { loadTemplate } from '../src/rmg/load-template.ts';
 import { mapSetup } from '../src/rmg/map-setup.ts';
-import { filterByRoom, mineLists, roomGrid } from '../src/rmg/mines.ts';
-import type { Tile } from '../src/rmg/mines.ts';
+import { MINE_TYPES, filterByRoom, mineLists, placeZoneMines, readMineShared, roomGrid } from '../src/rmg/mines.ts';
+import type { MineFootprint, Tile } from '../src/rmg/mines.ts';
 import { readParams } from '../src/rmg/params.ts';
 import { readPresets } from '../src/rmg/preset-table.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
@@ -163,6 +163,73 @@ if (!hasReference()) {
       `${got ? `${got[0]}:${got[1]}` : 'out of range'} vs ${want ? `${want[0]}:${want[1]}` : '?'}` +
         ` (near ${lists.near.length}, kept ${kept.length}, max ${max}, t ${threshold})`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Zone 1's whole mines step, LIVE — the same rng that ran the chain keeps
+// drawing, and 74 draws later the counter must stand on the step boundary the
+// trace recorded, with every object on the reference map's tile.
+
+console.log('\nzone 1, the whole step, live');
+
+const footprints = new Map<string, MineFootprint>(MINE_TYPES.map((t) => [t.mine, readMineShared(dir, t.mine)]));
+const zone1 = template.zones[0]!;
+const points1 = roomPoints(1);
+const centre1 = townResult.centres.get(1)!;
+const mines1 = placeZoneMines({
+  size: SIZE, grid, border, occupancy: occ, points: points1,
+  zoneIndex: 1, town: { x: centre1.b, y: centre1.a },
+  counts: zone1.mines,
+  radii: {
+    nearMin: params.mine1LevelMinRadius, nearMax: params.mine1LevelMaxRadius,
+    farMin: params.mine2LevelMinRadius, farMax: params.mine2LevelMaxRadius,
+  },
+  guardPower: {
+    basic: params.basicLeverGuardPower,
+    mine1: params.mine1LevelGuardLevel, mine2: params.mine2LevelGuardLevel, gold: params.mineGoldGuardLevel,
+  },
+  monsterStrength: setup.monsterStrength,
+  tables,
+  footprints,
+}, rng);
+
+check('the counter lands on 18566, the step boundary the trace recorded', rng.draws === 18566, `${rng.draws}`);
+check('six mines placed', mines1.length === 6, `${mines1.length}`);
+
+if (hasReference()) {
+  const xml = readFileSync(REFERENCE_MAP, 'utf8');
+  // Every reference mine with its position, in file order — placement order.
+  const refMines: Array<{ type: string; x: number; y: number }> = [];
+  for (const m of xml.matchAll(
+    /<Item href="#n:inline\(AdvMapMine\)"[^>]*>\s*<AdvMapMine>\s*<Pos>\s*<x>(\d+)<\/x>\s*<y>(\d+)<\/y>[\s\S]{0,600}?<Shared href="[^"]*\/([A-Za-z_0-9]+)\.\(AdvMapMineShared\)/g,
+  )) {
+    refMines.push({ type: m[3]!, x: Number(m[1]), y: Number(m[2]) });
+  }
+  const zone1Ref = refMines.filter((r) => grid[r.y]![r.x] === 1);
+  for (let i = 0; i < Math.min(mines1.length, zone1Ref.length); i++) {
+    const ours = mines1[i]!;
+    const ref = zone1Ref[i]!;
+    check(`mine ${i + 1} is ${ref.type} on the engine's tile`,
+      ours.type === ref.type && ours.x === ref.x && ours.y === ref.y,
+      `${ours.type} ${ours.x}:${ours.y} vs ${ref.type} ${ref.x}:${ref.y}`);
+  }
+  // The guards and piles, by the names the draws minted — position and all.
+  const posByName = new Map<string, { x: number; y: number }>();
+  for (const m of xml.matchAll(/<Item href="#n:inline\(AdvMap\w+\)" id="(item_-?\d+)">\s*<AdvMap\w+>\s*<Pos>\s*<x>(\d+)<\/x>\s*<y>(\d+)<\/y>/g)) {
+    posByName.set(m[1]!, { x: Number(m[2]), y: Number(m[3]) });
+  }
+  let placedRight = 0;
+  let total = 0;
+  for (const mine of mines1) {
+    for (const o of [mine.guard, ...mine.piles]) {
+      if (!o) continue;
+      total++;
+      const ref = posByName.get(o.name);
+      if (ref && ref.x === o.x && ref.y === o.y) placedRight++;
+    }
+  }
+  check('every guard and pile stands where its minted name stands in the map',
+    placedRight === total && total > 0, `${placedRight} of ${total}`);
 }
 
 console.log(failures ? `\n${failures} failed` : '\nall good');
