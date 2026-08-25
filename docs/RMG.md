@@ -1075,13 +1075,39 @@ constant in the image, it is the constant this run obeyed, with no exception.
 And all six guard rolls came out under 0.6, which is why every guard here cost
 four draws rather than five.
 
-What is still needed to PORT it is not the accounting but the candidate list:
-`below(587)` only reproduces if the list has the same 588 entries in the same
-order, which means the rings, the `+0xE4` grid and the two-fifths room
-threshold have to be right. That is the next piece of work.
+#### The candidate list, and the four numbers it has to satisfy
 
-**The instrument for measuring it** is the step boundary — see below. Until
-that first traced run exists, none of the above has a draw count against it.
+What is still needed to PORT the step is not the accounting but the candidate
+list: `below(587)` only reproduces if the list holds the same tiles in the same
+order. The run gives four independent tests of that — the first mine of each
+zone, where the list is at its least disturbed:
+
+| zone | the draw | the Sawmill landed at | has a town |
+| --- | --- | --- | --- |
+| 1 | 587 | 32:21 | yes |
+| 2 | 458 | 75:76 | yes |
+| 3 | 305 | 53:8 | no |
+| 4 | 631 | 15:88 | no |
+
+Three things are settled by those, because getting them wrong misses by
+hundreds rather than by a tile:
+
+- **The scan is `x` outer, `y` inner.** The other way round puts zone 1's tile
+  at index 22 instead of 587.
+- **The ring is measured from the zone's WAVE CENTRE, not its start point.**
+  From the start point the ring holds 688 tiles and the tile is at 147; from
+  the centre it holds 950 and the tile is at 706, which the room filter then
+  brings to 587 exactly.
+- **A zone with no town really does drop the ring** and offer every tile it
+  has: zone 4 lands on 631 → 15:88 with no filtering at all.
+
+Zone 1 also lands exactly, with a room threshold of 7 — and 7 is
+`(2 × 19) / 5`, the two-fifths of its own maximum. Zones 2 and 3 do not land
+at any threshold, which says the room grid itself is measured from a set of
+points this port does not have yet rather than that the threshold is wrong.
+Zone 3 misses by three tiles and zone 2 by 183.
+
+**The instrument for measuring it** is the step boundary — see below.
 
 ## Tools
 
