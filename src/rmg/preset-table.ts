@@ -49,6 +49,17 @@ export interface RacePreset {
    * table; the affordable-prefix draw depends on that order.
    */
   newUpgradeBuildings: PricedBuilding[];
+  /** `NewResourceGivers` (`+0x15C`) — the resource-buildings step's list. */
+  newResourceGivers: PricedBuilding[];
+  /** `NewTreasuryBuildings` (`+0x180`) — the treasury step's list. */
+  newTreasuryBuildings: PricedBuilding[];
+  /** `NewLuckMoraleBuildings` (`+0x144`) — the luck/morale step's list. */
+  newLuckMoraleBuildings: PricedBuilding[];
+  /**
+   * `NewShopBuildings` (`+0x150`) — the shops step's list; two entries are
+   * dwelling hrefs (ElementalConflux, RefugeeCamp) and place as-is.
+   */
+  newShopBuildings: PricedBuilding[];
 }
 
 /** One `Building / Value / GuardStrenght` record of a preset's price lists. */
@@ -106,6 +117,10 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
       overTownCenterObjects: obj ? hrefs(find(obj, 'OverTownCenterObjects')) : [],
       dwellings: obj ? hrefs(find(obj, 'Dwellings')) : [],
       newUpgradeBuildings: obj ? priced(find(obj, 'NewUpgradeBuildings')) : [],
+      newResourceGivers: obj ? priced(find(obj, 'NewResourceGivers')) : [],
+      newTreasuryBuildings: obj ? priced(find(obj, 'NewTreasuryBuildings')) : [],
+      newLuckMoraleBuildings: obj ? priced(find(obj, 'NewLuckMoraleBuildings')) : [],
+      newShopBuildings: obj ? priced(find(obj, 'NewShopBuildings')) : [],
     });
   }
   return out;

@@ -9,32 +9,15 @@
 // towns and rings, two without — and the room points come from what the towns
 // and connections phases actually stamped, so those phases are on trial here
 // too. This is what caught the adoption offsets being applied to the wrong
-// axes in connections.ts.
+// axes in connections.ts. Then zone 1's whole step runs LIVE to its boundary.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { readArmyTemplates } from '../src/rmg/armies.ts';
-import type { GuardTables } from '../src/rmg/armies.ts';
-import { calcBorderTiles } from '../src/rmg/border-tiles.ts';
-import { zoneConnections } from '../src/rmg/connections.ts';
-import { createMap } from '../src/rmg/create-map.ts';
-import { readCreatures } from '../src/rmg/creatures.ts';
-import { fillDistToTowns } from '../src/rmg/dist-to-towns.ts';
-import { fillZones } from '../src/rmg/fill-zones.ts';
-import { loadTemplate } from '../src/rmg/load-template.ts';
-import { mapSetup } from '../src/rmg/map-setup.ts';
-import { MINE_TYPES, mineLists, placeZoneMines, readMineShared } from '../src/rmg/mines.ts';
-import type { MineFootprint, Tile } from '../src/rmg/mines.ts';
+import { mineLists } from '../src/rmg/mines.ts';
+import type { Tile } from '../src/rmg/mines.ts';
 import { filterByRoom, roomGrid } from '../src/rmg/placement.ts';
-import { readParams } from '../src/rmg/params.ts';
-import { readPresets } from '../src/rmg/preset-table.ts';
-import { RmgRandom } from '../src/rmg/random.ts';
-import { readTemplate } from '../src/rmg/template.ts';
-import { readTownShared, readTownSpecializations } from '../src/rmg/town-data.ts';
-import type { TownShared } from '../src/rmg/town-data.ts';
-import { placeTowns } from '../src/rmg/towns.ts';
-import { generateGameZones } from '../src/rmg/zones.ts';
+import { runChain, SIZE, ZoneFill } from './rmg-chain.ts';
 import { dataDir } from './game-dir.ts';
 import { hasReference, REFERENCE_MAP, REFERENCE_MISSING } from './rmg-reference.ts';
 
@@ -50,71 +33,17 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const SIZE = 96;
-const template = readTemplate(join(dir, 'RMG', 'Templates', 'S1P2Z2M1.xdb'));
-const params = readParams(join(dir, 'RMG', 'Params', 'Default.xdb'));
-const presets = readPresets(dir);
-const towns = new Map<string, TownShared>();
-for (const preset of presets.values()) {
-  if (preset.townProto) {
-    const shared = readTownShared(dir, preset.townProto);
-    towns.set(shared.path, shared);
-  }
-}
-const creatures = readCreatures(dir);
-const tables: GuardTables = {
-  templates: readArmyTemplates(dir),
-  creatures,
-  powerByName: new Map(creatures.map((c) => [c.name, c.power])),
-};
-
-const rng = new RmgRandom(1785351845);
-const made = createMap(template, { players: 2, size: 8 }, rng);
-const setup = mapSetup(params, { monsterStrength: 1, water: false }, rng);
-const loaded = loadTemplate(template, {
-  twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
-  playerCount: made.players, mapSize: SIZE, pointLightZoneRadius: params.pointLightParams.zoneRadius,
-}, rng);
-const placed = generateGameZones(SIZE, SIZE,
-  loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng);
-const filled = fillZones(SIZE, SIZE, placed.zones, made.twoFloors, rng);
-const distances = calcBorderTiles(SIZE, SIZE, filled.floors);
-const townResult = placeTowns({
-  size: SIZE, template, zones: loaded.zones, floors: filled.floors, distances,
-  radii: new Map(placed.zones.map((z) => [z.index, z.r])),
-  presets, towns, specializations: readTownSpecializations(dir),
-}, rng);
-fillDistToTowns(SIZE, filled.floors, loaded.zones, townResult.centres);
-const conn = zoneConnections({
-  size: SIZE, template, zones: loaded.zones, floors: filled.floors, distances,
-  guardPowerUnit: params.basicLeverGuardPower * params.connectionGuardLevel,
-  monsterStrength: setup.monsterStrength, tables,
-}, rng);
+const c = runChain(dir);
+const { grid, border, occ, params, template } = c;
 
 console.log('the chain, up to the door of MainObjects');
-check('the counter stands at 18491, where the trace has it', rng.draws === 18491, `${rng.draws}`);
+check('the counter stands at 18491, where the trace has it', c.rng.draws === 18491, `${c.rng.draws}`);
 
 // MainObjects opens with one draw whatever happens — with the favoured-zone
 // flag clear (it is, in every editor run) a next() drawn and thrown away.
 // The trace records it, value and all.
-const prologue = rng.next();
+const prologue = c.rng.next();
 check('the phase prologue draw is the recorded 1893595527', prologue === 1893595527, `${prologue}`);
-
-const grid = filled.floors[0]!;
-const border = distances[0]!;
-const occ = townResult.occupancy[0]!;
-
-/** The zone's stamped points: the towns' occupancy-4 tiles plus the passages. */
-function roomPoints(zoneIndex: number): Tile[] {
-  const points: Tile[] = [];
-  for (let x = 0; x < SIZE; x++) {
-    for (let y = 0; y < SIZE; y++) {
-      if (occ[y * SIZE + x] === 4 && grid[y]![x] === zoneIndex) points.push([x, y]);
-    }
-  }
-  for (const [a, b] of conn.passages.get(zoneIndex) ?? []) points.push([b, a]);
-  return points;
-}
 
 // Straight out of bin/homm5-editor-rmg.log: each zone's first tile pick.
 const FIRST_PICKS: Array<{ zone: number; drew: number }> = [
@@ -146,7 +75,7 @@ if (!hasReference()) {
   for (const { zone, drew } of FIRST_PICKS) {
     const town = template.zones.find((z) => z.index === zone)?.town
       ? (() => {
-          const centre = townResult.centres.get(zone)!;
+          const centre = c.townResult.centres.get(zone)!;
           return { x: centre.b, y: centre.a };
         })()
       : null;
@@ -155,7 +84,7 @@ if (!hasReference()) {
       nearMin: params.mine1LevelMinRadius, nearMax: params.mine1LevelMaxRadius,
       farMin: params.mine2LevelMinRadius, farMax: params.mine2LevelMaxRadius,
     });
-    const room = roomGrid(SIZE, grid, zone, roomPoints(zone));
+    const room = roomGrid(SIZE, grid, zone, c.roomPoints(zone));
     const { kept, max, threshold } = filterByRoom(lists.near, room, grid, border, occ, SIZE, zone, 5);
     const got = kept[drew];
     const want = sawmills.get(zone);
@@ -173,28 +102,9 @@ if (!hasReference()) {
 
 console.log('\nzone 1, the whole step, live');
 
-const footprints = new Map<string, MineFootprint>(MINE_TYPES.map((t) => [t.mine, readMineShared(dir, t.mine)]));
-const zone1 = template.zones[0]!;
-const points1 = roomPoints(1);
-const centre1 = townResult.centres.get(1)!;
-const mines1 = placeZoneMines({
-  size: SIZE, grid, border, occupancy: occ, points: points1,
-  zoneIndex: 1, town: { x: centre1.b, y: centre1.a },
-  counts: zone1.mines,
-  radii: {
-    nearMin: params.mine1LevelMinRadius, nearMax: params.mine1LevelMaxRadius,
-    farMin: params.mine2LevelMinRadius, farMax: params.mine2LevelMaxRadius,
-  },
-  guardPower: {
-    basic: params.basicLeverGuardPower,
-    mine1: params.mine1LevelGuardLevel, mine2: params.mine2LevelGuardLevel, gold: params.mineGoldGuardLevel,
-  },
-  monsterStrength: setup.monsterStrength,
-  tables,
-  footprints,
-}, rng);
+const mines1 = new ZoneFill(c, 1).mines();
 
-check('the counter lands on 18566, the step boundary the trace recorded', rng.draws === 18566, `${rng.draws}`);
+check('the counter lands on 18566, the step boundary the trace recorded', c.rng.draws === 18566, `${c.rng.draws}`);
 check('six mines placed', mines1.length === 6, `${mines1.length}`);
 
 if (hasReference()) {

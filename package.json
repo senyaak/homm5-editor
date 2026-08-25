@@ -136,6 +136,7 @@
     "test-rmg-mines": "node tools/test-rmg-mines.ts",
     "test-rmg-dwellings": "node tools/test-rmg-dwellings.ts",
     "test-rmg-upgrade-shrines": "node tools/test-rmg-upgrade-shrines.ts",
+    "test-rmg-price-lists": "node tools/test-rmg-price-lists.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "test-e2e-setup": "node tools/test-e2e-setup.ts",

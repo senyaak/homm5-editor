@@ -20,14 +20,15 @@ instead — the terrain masks byte for byte, the towns and guards to their
 positions, armies, moods and minted instance names in `map.xdb`.
 
 **`MainObjects` is in progress** — the per-zone fill, fourteen steps deep.
-Zone 1 runs LIVE from the phase door to the shrines boundary at 18579:
+Zone 1 runs LIVE from the phase door to the shops boundary at 18653 —
 mines (18566), dwellings (18574), upgrade buildings (a measured zero-draw
-exit), and shrines — every object on the reference map's tile. Hero draws
-nothing ever; prisons and the cartographer cost zero by template. Next in
-the engine's order: resource and treasury buildings, luck/morale, shops —
-all four are the same price-list placer shape as upgrade buildings — then
-road, statics, and after the phase the roads, the additional objects, the
-treasure blocks and finally emitting the `.h5m`. The roads phase is also what closes
+exit), shrines (18579), resource buildings (18598), treasury (18622),
+luck/morale (18648) and shops (18653) — every object on the reference
+map's tile. Hero draws nothing ever; prisons and the cartographer cost
+zero by template. Next in the engine's order: the treasures and chests,
+then the zone road — which is what stands between zone 1's tail and zone
+2's steps going live — then statics, and after the phase the roads, the
+additional objects, the treasure blocks and finally emitting the `.h5m`. The roads phase is also what closes
 the one open difference in the terrain masks: Inferno's Dead_Land is a
 secondary ROAD tile of land class, and it steals weight from Lava wherever a
 road runs.
@@ -377,7 +378,8 @@ is what it is belongs next to the number.
 | `mines.ts` | the mines step: rings, guards, piles | **done, live in zone 1** — 74 draws to the boundary, every object on the reference tile |
 | `dwellings.ts` | the dwellings step | **done, live in zone 1** — 8 draws to the boundary; mode 1 and tier ≥ 3 unported |
 | `upgrade-buildings.ts` | the upgrade-buildings step, and the guard wrapper `0xED3200` | **done** — zone 1's zero-draw exit live; the townless zones' budgets held by arithmetic, their live run waits |
-| `shrines.ts` | the shrines step | **done, live in zone 1** — 5 draws to the boundary |
+| `shrines.ts` | the shrines step: the hardcoded table over the generic placer | **done, live in zone 1** — 5 draws to the boundary |
+| `price-lists.ts` | the generic price-list placer and the four preset-vector steps' budget rules | **done, live in zone 1** — ten objects to the shops boundary at 18653 |
 | `objects/*.ts` | the remaining `MainObjects` steps, one file each | |
 | `treasure.ts` | `CTreasureBlockDistributor` | |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
@@ -1237,9 +1239,9 @@ descriptor 3 and switches its creature on via `creaturesEnabled[tier-3]`.
 
 **One trap for a future comparison**: the reference has THREE `AdvMapDwelling`
 items, and only two are this step's. The RefugeeCamp at 29:75 is minted at
-draw 19821 — inside zone 4's SHOPS step, which places it off the preset's
-`NewDwellings` price list. Counting item types against this step counts one
-too many.
+draw 19821 — inside zone 4's SHOPS step, whose price list
+(`NewShopBuildings`) carries two dwelling-typed entries, RefugeeCamp and
+ElementalConflux. Counting item types against this step counts one too many.
 
 #### The price-list placers — upgrade buildings (`0xEB96D0`) and shrines (`0xEBE1C0`)
 
@@ -1309,6 +1311,41 @@ reference tile.
   family. And no SpellID — the reference's `SPELL_NONE` is the shared
   document's default.
 
+**The other four — resource (`0xEBE540`), treasury (`0xEBECB0`),
+luck/morale (`0xEBF090`), shops (`0xEBF540`) — are the same body with the
+preset's own vectors**, and the traced run's 240 draws over 33 objects
+replay against the model without one mismatch (`test-rmg-price-lists`
+holds zone 1's ten live). What the four settle:
+
+- **The budget rule follows the template field's SUFFIX.** `…Points`
+  fields arrive raw (treasury `TreasureBuildingPoints`, shops
+  `ShopPoints`); `…Density` fields scale as `trunc(tiles · density /
+  10000)` (resource), and luck/morale adds 40 to the density INSIDE the
+  product — `add eax,28h` at `0xEBF0C6` before the multiply — which is
+  why a density-0 zone still builds (2279·40/10000 = 9 points). No
+  `{0.2,0.5,1,2,4}` ladder anywhere here: that is the upgrade-buildings
+  call site's alone.
+- **The vector-offset map closes**: `NewLuckMoraleBuildings +0x144`,
+  `NewShopBuildings +0x150`, `NewResourceGivers +0x15C`,
+  `NewUpgradeBuildings +0x168`, **`NewShrines +0x174` — read by nobody**,
+  `NewTreasuryBuildings +0x180`.
+- **`GuardStrenght` is dead data in these four vectors.** Twelve traced
+  objects carry a non-zero one and none drew a guard; the only `+0x10`
+  read in the family is upgrade buildings' push into `0xED3200`.
+- **The stop is `list[0].Value + spent <= points`** — the FIRST element,
+  like upgrade buildings; the shrines' hardcoded 6 is that list's own
+  `cost[0]` and a quirk of that worker alone.
+- **An entry need not be a building.** Shops ship two dwelling hrefs
+  (ElementalConflux, RefugeeCamp) and place them as plain objects — the
+  worker casts to the shared BASE type, and no dwelling properties are
+  set. The one exception is treasury, whose working descriptor is cast to
+  `SAdvMapBuildingShared`: a non-building entry there aborts the step
+  silently, with no log line. Nothing shipped reaches it.
+- **Only upgrade buildings logs on success** (`building #%s(%d) set…`) and
+  logs its budget up front; these four emit nothing but their failure
+  line. Every price-list worker also push_backs the minted name record
+  into `[zone+0x134]+0x40`, a ledger whose consumer is unread.
+
 ## Tools
 
 ```bash
@@ -1329,6 +1366,7 @@ npm run test-rmg-connections # ZoneConnections: the passages, against the refere
 npm run test-rmg-mines     # the mines candidate lists: four first picks land the reference Sawmills
 npm run test-rmg-dwellings # the dwellings step live in zone 1: 8 draws to the boundary, ImpCrucible on its tile
 npm run test-rmg-upgrade-shrines # upgrade buildings' zero-draw exit and shrines live to 18579; the townless budgets by arithmetic
+npm run test-rmg-price-lists # resource, treasury, luck/morale and shops live to 18653, ten objects on the reference tiles
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste
