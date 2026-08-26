@@ -1634,6 +1634,14 @@ the port's own coin sense. The moral for every phase after this one:
 when a traced run and a read-out-of-the-game-exe port disagree at one
 ulp, ask WHICH BUILD generated the trace.
 
+Speaking the editor's arithmetic is a choice of MEASURABILITY, not of
+correctness: ordered runs can only be made in the editor (the game
+offers no way to set the generation parameters), so the editor is the
+only build a port can be held to. The GAME's wave builds DIFFERENT maps
+from the same seed. The day the port serves the in-game RMG screen
+(network play), it will need a build switch — game arithmetic vs editor
+arithmetic in the router — deliberately deferred until then.
+
 ## Tools
 
 ```bash
