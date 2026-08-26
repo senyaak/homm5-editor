@@ -91,8 +91,8 @@ floor gate) and the two-floor treasure blocks (3,103). Lay it out with
 seed on S2-3P2Z7N2 (245,577 draws, four underground zones) is saved in
 `game/Maps/1785351845uuu.h5m` and stays in the log for later.
 
-**The underground run is in LOCKSTEP through the STATICS**
-(`test-rmg-underground`, 67,611 of its 70,799 draws): the chain to 4475 —
+**The underground run is in FULL LOCKSTEP — all 70,799 draws**
+(`test-rmg-underground`): the chain to 4475 —
 which took four finds the surface run could not make — then every step
 boundary of all three zones' first MainObjects loop, with all 106 named
 objects on their reference tiles. What the run surfaced, each proven by
@@ -1983,7 +1983,7 @@ npm run test-rmg-roads-phase # the roads phase live: both loops, all four zones,
 npm run test-rmg-statics   # the statics live: eight boundaries to 89798, 1325 objects on the reference tiles
 npm run test-rmg-treasure-blocks # the treasure blocks live: growth and fill per zone, to 92438 — the whole run
 npm run test-rmg-road-painter # the road painter: all seven GroundTerrain.bin layers byte-identical
-npm run test-rmg-underground # the two-floor run through the statics: the carve, the lakes for real, 1190 objects to 67611
+npm run test-rmg-underground # the WHOLE two-floor run: the carve, the lakes for real, 1423 objects to 70799
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste

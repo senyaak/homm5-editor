@@ -95,6 +95,8 @@ export interface Chain {
   roomPoints(zoneIndex: number): Tile[];
   /** The teleports' active tiles — the `zone+0xC0` entries they pushed. */
   teleportActives(zoneIndex: number): Tile[];
+  /** The teleports' guard seats — part of the treasure blocks' repel list. */
+  teleportGuardSeats(zoneIndex: number): Tile[];
   /** The zone's `+0x5C` stamped-blocked ledger — the lakes' 0x3E extra bit. */
   blockedList(zoneIndex: number): Tile[];
   zone(zoneIndex: number): RmgZone;
@@ -169,6 +171,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   const teleports = new Map<number, PlacedTeleport[]>();
   const teleportRoomPoints = new Map<number, Tile[]>();
   const teleportActives = new Map<number, Tile[]>();
+  const teleportGuardSeats = new Map<number, Tile[]>();
   const unconnectedSet = new Set(conn.unconnected);
   const blockedLists = new Map<number, Tile[]>();
   const blockedList = (zoneIndex: number): Tile[] => {
@@ -211,6 +214,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
         if (placedTeleports.length) teleports.set(z.index, placedTeleports);
         if (grew.length) teleportRoomPoints.set(z.index, grew);
         if (actives.length) teleportActives.set(z.index, actives);
+        if (seats.length) teleportGuardSeats.set(z.index, seats);
       }
     }
   }
@@ -231,6 +235,9 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     },
     teleportActives(zoneIndex: number): Tile[] {
       return teleportActives.get(zoneIndex) ?? [];
+    },
+    teleportGuardSeats(zoneIndex: number): Tile[] {
+      return teleportGuardSeats.get(zoneIndex) ?? [];
     },
     blockedList,
     zone(zoneIndex: number): RmgZone {
@@ -420,11 +427,12 @@ export class ZoneFill {
     }, c.rng);
   }
 
-  private treasureStep(kind: 'treasures' | 'chests'): PlacedObject[] {
+  private treasureStep(kind: 'treasures' | 'chests', late = false): PlacedObject[] {
     const { c } = this;
     // The dispatcher 0xEA57B0 sits behind the surface gate — an underground
-    // zone gets its treasures in the additional-objects phase instead.
-    if (c.loaded.zones.find((z) => z.index === this.zoneIndex)!.floor !== 0) return [];
+    // zone gets its treasures in the additional-objects phase instead,
+    // through the same dispatcher with the gate's sense reversed.
+    if (!late && c.loaded.zones.find((z) => z.index === this.zoneIndex)!.floor !== 0) return [];
     return placeZoneTreasures({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       // NO `blocked` — the treasures' 2s stay out of the `+0x5C` ledger
@@ -443,6 +451,15 @@ export class ZoneFill {
 
   chests(): PlacedObject[] {
     return this.treasureStep('chests');
+  }
+
+  /** The additional-objects phase — the underground zones' late treasures. */
+  lateTreasures(): PlacedObject[] {
+    return this.treasureStep('treasures', true);
+  }
+
+  lateChests(): PlacedObject[] {
+    return this.treasureStep('chests', true);
   }
 
   /** `0xEC05B0` — the zone road, kind 0x20; one below(2) per walked tile. */

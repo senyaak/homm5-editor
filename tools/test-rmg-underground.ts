@@ -11,9 +11,11 @@
 //
 // The statics run on the subterranean overrides (`0xEC4A70`/`0xEC50C0`
 // through the shared massif carve `0xED11D0`) for the underground zone
-// and on the base pair for the surface ones; every traced boundary of
-// the phase is asserted. The suite ends at the statics boundary — the
-// additional objects and the two-floor treasure blocks are still ahead.
+// and on the base pair for the surface ones; the additional-objects
+// phase replays the treasures dispatcher late for the underground zone,
+// and the treasure blocks close the run on its last draw, 70,799. Every
+// traced boundary is asserted and every named object is held to the
+// reference map.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,6 +28,10 @@ import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import { placeZoneOneTileStatics, placeSubterraOneTileStatics } from '../src/rmg/statics-one-tile.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { RACE_BY_NAME } from '../src/rmg/load-template.ts';
+import { readArtifacts, rmgArtifactPool } from '../src/rmg/artifacts.ts';
+import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
+import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
+import { zoneTiles } from '../src/rmg/placement.ts';
 import { runChain, ZoneFill } from './rmg-chain.ts';
 import { dataDir } from './game-dir.ts';
 import { REFERENCE_UG_DIR, hasUndergroundReference } from './rmg-reference.ts';
@@ -70,6 +76,7 @@ console.log('\nthe first loop of MainObjects, zone by zone in template order');
 c.rng.next(); // the MainObjects prologue draw
 
 const named: Array<{ name: string; x: number; y: number }> = [];
+const guardSeats = new Map<number, Tile[]>();
 const fills = new Map<number, ZoneFill>();
 const mineActives = new Map<number, Tile[]>();
 const roads = new Map<number, Tile[]>();
@@ -77,6 +84,11 @@ for (const tz of c.template.zones) {
   const zone = tz.index;
   const fill = new ZoneFill(c, zone);
   fills.set(zone, fill);
+  const seats: Tile[] = [
+    ...(c.conn.passages.get(zone) ?? []).map(([a, b]) => [b, a] as Tile),
+    ...c.teleportGuardSeats(zone),
+  ];
+  guardSeats.set(zone, seats);
   const steps = STEPS[zone]!;
   const run: Record<string, () => void> = {
     mines: () => {
@@ -88,12 +100,20 @@ for (const tz of c.template.zones) {
       for (const m of mines) {
         named.push(m);
         for (const p of m.piles) named.push(p);
-        if (m.guard) named.push({ name: m.guard.name, x: m.guard.x, y: m.guard.y });
+        if (m.guard) {
+          named.push({ name: m.guard.name, x: m.guard.x, y: m.guard.y });
+          guardSeats.get(zone)!.push([m.guard.x, m.guard.y]);
+        }
       }
       for (const m of fill.abandoned) named.push(m);
     },
     dwellings: () => { for (const d of fill.dwellings()) named.push(d); },
-    upgradeBuildings: () => { for (const u of fill.upgradeBuildings()) named.push(u); },
+    upgradeBuildings: () => {
+      for (const u of fill.upgradeBuildings()) {
+        named.push(u);
+        if (u.guard) guardSeats.get(zone)!.push([u.guard.x, u.guard.y]);
+      }
+    },
     prisons: () => { for (const p of fill.prisons()) named.push(p); },
     shrines: () => { for (const s of fill.shrines()) named.push(s); },
     resourceBuildings: () => { for (const p of fill.resourceBuildings()) named.push(p); },
@@ -201,6 +221,55 @@ for (const tz of c.template.zones) {
 }
 check('the statics phase ends on the traced 67611', c.rng.draws === 67611, `${c.rng.draws}`);
 console.log(`  ${staticsCount} statics placed`);
+
+// The additional-objects phase — the same treasures dispatcher, called
+// late for the zones the surface gate refused: the underground zone's
+// treasures and chests, on its own floor's post-statics grids.
+console.log('\nadditional objects — the underground treasures');
+for (const tz of c.template.zones) {
+  if (c.loaded.zones.find((z) => z.index === tz.index)!.floor === 0) continue;
+  const fill = fills.get(tz.index)!;
+  for (const t of fill.lateTreasures()) named.push(t);
+  check(`zone ${tz.index} late treasures land on 67672`, c.rng.draws === 67672, `${c.rng.draws}`);
+  for (const t of fill.lateChests()) named.push(t);
+  check(`zone ${tz.index} late chests land on 67696`, c.rng.draws === 67696, `${c.rng.draws}`);
+}
+
+// The treasure blocks — the same two halves as the surface run, per
+// template zone on its own floor.
+console.log('\nthe treasure blocks, zone by zone in template order');
+const ARTIFACTS: ArtifactEntry[] = rmgArtifactPool(readArtifacts(dir))
+  .map((a) => ({ id: a.id, cost: a.cost, href: a.href }));
+let blockGuards = 0;
+let blockItems = 0;
+for (const tz of c.template.zones) {
+  const lz = c.loaded.zones.find((z) => z.index === tz.index)!;
+  const fl = c.floors[lz.floor]!;
+  const centre = c.townResult.centres.get(tz.index);
+  const hasTown = Boolean(tz.town && centre);
+  const town: Tile = hasTown ? [centre!.b, centre!.a] : [0, 0];
+  recomputeRoom(fl.room, c.size, fl.grid, tz.index, roads.get(tz.index)!);
+  const blocks = buildTreasureBlocks({
+    size: c.size, occupancy: fl.occ, room: fl.room,
+    tiles: zoneTiles(c.size, fl.grid, tz.index),
+    town, hasTown,
+    repel: guardSeats.get(tz.index)!,
+    totalValue: tz.treasureBlocksTotalValue,
+    distBetween: c.params.distBetweenTreasureBlocks,
+  }, c.rng);
+  const result = fillTreasureBlocks({
+    size: c.size, occupancy: fl.occ, blocks, artifacts: ARTIFACTS,
+    monsterStrength: c.setup.monsterStrength, tables: c.tables,
+  }, c.rng);
+  for (const b of result) {
+    if (b.guard) blockGuards++;
+    for (const item of b.items) named.push(item);
+    blockItems += b.items.length;
+  }
+  console.log(`  zone ${tz.index}: ${blocks.length} blocks, ${result.length} filled — at ${c.rng.draws}`);
+}
+check('the treasure blocks end on the traced 70799 — the whole run', c.rng.draws === 70799,
+  `${c.rng.draws} (${blockItems} items, ${blockGuards} guards)`);
 
 // Every named object of the loop against the reference map.
 if (!hasUndergroundReference()) {
