@@ -101,6 +101,61 @@ function paint(layers: TerrainLayer[], tile: TerrainTileInfo | null, o: number, 
   }
 }
 
+export interface RoadPaintZone {
+  zoneIndex: number;
+  /** The race whose preset names the road tiles — the zone's terrain race. */
+  roadTile: TerrainTileInfo | null;
+  secondaryRoadTile: TerrainTileInfo | null;
+}
+
+/**
+ * The road painter — `0xECE3E0`, thiscall on the same CTerrainProcessor
+ * that ran FillTerrain. GenerateMap calls it at 0xEAC1FE, AFTER "treasure
+ * blocks set" and just before "finished creating map" — late, but nothing
+ * between the roads phase and it touches the road bits (the statics fit
+ * refuses occupied tiles, roads included), so replaying it right after the
+ * roads phase paints the same masks.
+ *
+ * ONE scan of the occupancy grid — outer loop the SECOND port index, inner
+ * the first (0xECE632/0xECE622; the reverse of FillTerrain's vertex walk)
+ * — and the occupancy decides, not the road lists: a network's seed tile
+ * sits in the list but never gets its bit, and its corners stay unpainted.
+ * `test al, 18h`: only 0x08 and 0x10 paint, the zone road's 0x20 not at
+ * all. A tile with 0x08 takes the tile-zone's RoadTile (preset +0x4C),
+ * else the SecondaryRoadTile (+0x58) — the zone is the TILE's, so a shared
+ * corner vertex gets both zones' tiles in scan order, which is what leaves
+ * 34:63 holding SandRoad AND LavaRoad (the earlier, lower-priority paint
+ * builds no base for the later one to overflow) while 51:50 and 52:50 lose
+ * their LavaRoad to a SandRoad that scanned later. Four corner vertices at
+ * the literal 255 — the `*Strenght` fields are never read — through the
+ * same PaintTile as everything else, which is also Dead_Land's whole
+ * mechanism: it shares Lava's class, so its 255 overflows the base and
+ * strips Lava's 175 vertices. No draws.
+ */
+export function paintRoads(
+  layers: TerrainLayer[],
+  size: number,
+  grid: Int32Array[],
+  occupancy: Uint8Array,
+  zones: RoadPaintZone[],
+): void {
+  const v = size + 1;
+  const byIndex = new Map(zones.map((z) => [z.zoneIndex, z]));
+  for (let b = 0; b < size; b++) {
+    for (let a = 0; a < size; a++) {
+      const occ = occupancy[a * size + b]!;
+      if ((occ & 0x18) === 0) continue;
+      const zone = byIndex.get(grid[a]![b]!);
+      if (!zone) continue; // GetZone came back empty — skipped without a log
+      const tile = occ & 0x08 ? zone.roadTile : zone.secondaryRoadTile;
+      if (!tile) continue;
+      for (const da of [0, 1]) {
+        for (const db of [0, 1]) paint(layers, tile, a + da, b + db, 255, v);
+      }
+    }
+  }
+}
+
 /** Haven and Preserve share a border-free peace (0xED0E1E). */
 const sameRace = (a: number, b: number): boolean =>
   a === b || (a === 3 && b === 4) || (a === 4 && b === 3);

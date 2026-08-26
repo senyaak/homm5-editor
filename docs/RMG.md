@@ -52,10 +52,14 @@ Additional objects cost nothing on a surface-only template, which the
 trace and the code agree on, so **every draw the reference run spends is
 now accounted for**.
 
-Next: emitting the `.h5m`. The road PAINTER is still ahead of us: the network exists
-now, but its terrain layers — and with them the one open difference in
-the masks, Inferno's Dead_Land stealing weight from Lava wherever a
-road runs — wait for the painting pass.
+**The ROAD PAINTER closes the terrain** (`0xECE3E0`,
+`test-rmg-road-painter`): the road networks become the SandRoad,
+LavaRoad and Dead_Land layers, and with them the last open difference in
+the masks — Dead_Land's theft from Lava — falls in line. **All seven
+layers of the reference `GroundTerrain.bin` are now byte-identical, with
+no forgiveness clause left.**
+
+Next: emitting the `.h5m`.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -394,7 +398,7 @@ is what it is belongs next to the number.
 | `fill-zones.ts` | `FillZones` | **done, held in lockstep**: an editor trace matched all 18,459 draws |
 | `border-tiles.ts` | `CalcBorderTiles` | **done** — drawless, held to the definition and the reference chain |
 | `preset-table.ts` | `RMGPresetTable` Tiles + AdvMapTile documents | **done** for what the painter reads |
-| `terrain.ts` | `FillTerrain` | **done** — held to the reference file's masks byte for byte |
+| `terrain.ts` | `FillTerrain`, and the road painter `0xECE3E0` | **done** — all seven of the reference file's mask layers byte for byte |
 | `towns.ts` + `town-data.ts` | `PlaceTowns` | **done** — 16 draws, and both towns land where the engine put them |
 | `dist-to-towns.ts` | `FillDistToTownsTable` | **done** — drawless; its side effect is what later phases see |
 | `connections.ts` | `ZoneConnections`, land passages and guards | **done** — three guards on the engine's own tiles; teleports unported |
@@ -715,7 +719,7 @@ Held to the reference file, not to itself: on the traced run's
 GroundTerrain.bin the Sand-Dunes, Sand_Cracked and DarkGround masks are
 byte-identical, and Lava differs on exactly the 175 vertices where the file's
 Dead_Land sits — Inferno's SECONDARY ROAD tile, still land-class, painted by
-the roads phase that will steal from Lava when it is ported. The orientation
+the road painter (Phase 14), whose theft closes the difference. The orientation
 that makes this work is pinned by probing the file at the corners and zone
 starts: the plane lies plane[a·(size+1)+b] in the port grid's own
 coordinates.
@@ -1521,8 +1525,9 @@ pushes each ACTIVE tile into the caller's outList when non-null — every
 other placer passes 0 — so the vector is every mine's actives in stamp
 order, which `PlacedMine.actives` now carries. `zone+0x74`/`+0x80` have
 no other feeder anywhere in the RMG range: they start empty, this phase
-alone fills them, and the room-recompute masks and the terrain painter's
-road layers read them afterwards.
+alone fills them, and the room-recompute masks read them afterwards —
+the road painter does NOT: it scans the occupancy bits, which is why a
+network's seed tile (in the list, but never walked) stays unpainted.
 
 **Side writes**: none beyond the router's — occupancy `|= 0x08/0x10`
 along walks, endpoint occupancy zeroed and OR-restored on a clean
@@ -1533,11 +1538,10 @@ The proof is the boundary alone — 130/115/65/71 coins across zones 1–4,
 landing on 20420 — because per-zone boundaries are not narrated for this
 phase and roads leave no `map.xdb` objects. Sabotage-checked: shifting
 loop 2's sampling phase by one moves the boundary to 20424. The masks in
-`GroundTerrain.bin` stay the acceptance target for the painter — and they
-already vouch for THIS phase: every 0x08 and 0x10 tile of all four zones
-lies under the painted road vertices, while the zone road's 0x20 tiles
-mostly do not, so the masks can arbitrate the roads phase but not the
-zone road.
+`GroundTerrain.bin` vouch for this phase too: every 0x08 and 0x10 tile
+of all four zones lies under the painted road vertices (Phase 14), while
+the zone road's 0x20 tiles are never painted at all — so the masks can
+arbitrate the roads phase but not the zone road.
 
 ### Phase 12 — the statics (`0xEA5450` → vtable `+0x34`/`+0x30`)
 
@@ -1738,6 +1742,54 @@ sextant) behind a context flag — 89 of the vanilla 97.
 The phase writes NOTHING: no occupancy, no room points, no border. It
 only reads, and hands its objects to the map.
 
+### Phase 14 — the road painter (`0xECE3E0`) — ported, live
+
+`paintRoads` in `src/rmg/terrain.ts`, `test-rmg-road-painter`. The pass
+that turns the road networks into terrain layers — and with it **all
+seven layers of the reference `GroundTerrain.bin` are byte-identical,
+the roads-in-waiting forgiveness clause in `test-rmg-terrain` no longer
+carrying anything.**
+
+**Where it runs.** Not in the roads phase: GenerateMap calls it at
+`0xEAC1FE`, on the same `CTerrainProcessor` (`map+0x60`) that ran
+FillTerrain, AFTER "treasure blocks set" and just before "finished
+creating map" (the water pass `0xECF760` — height −0.5 on the 0x80 bits
+— follows it). Late, but nothing between the roads phase and it touches
+the road bits: the statics fit refuses occupied tiles, roads included,
+and the treasure blocks write nothing — so the port paints right after
+the roads phase and the masks come out the same. In the editor build the
+tail is an un-inlined function: `0xCEFC20`, painter at `0x7951F0`, same
+logic instruction for instruction (x87 codegen aside).
+
+**How it paints.** One scan of the occupancy grid per floor — outer loop
+the SECOND port index, inner the first (`0xECE632`/`0xECE622`, the
+reverse of FillTerrain's vertex walk) — and `test al, 18h`: only the
+0x08 and 0x10 bits paint, the zone road's 0x20 never. A tile with 0x08
+takes its zone's RoadTile (preset `+0x4C`), else the SecondaryRoadTile
+(`+0x58`); the zone is the TILE's own from the zone grid, found through
+GetZone and silently skipped when missing. The tile paints its FOUR
+corner vertices at the literal 255 — `RoadTileStrenght` and
+`SecondaryRoadTileStrenght` sit in the data at 100 and are never read,
+the same fate as `TransitiveTileIntensity` — through the ordinary
+PaintTile, which is the whole of the layer arithmetic:
+
+- Dead_Land (Inferno's secondary, `TT_LAVA`, priority 60) shares Lava's
+  class, so its 255 overflows the 255 base and strips Lava — the 175
+  stolen vertices, vertex for vertex;
+- SandRoad (240) and LavaRoad (244) share the ROAD class, and a border
+  vertex both networks touch keeps whichever combination the scan order
+  dictates: at 34:63 the sand tile scans first, builds no base for the
+  later lava paint, and the file holds BOTH at 255; at 51:50 and 52:50
+  the lava corner scans first and the later sand paint strips it. The
+  scan order is load-bearing, and those three vertices are its proof.
+
+Because the occupancy decides, a network's SEED tile — pushed into the
+road list but never walked, so never given its bit — stays unpainted,
+which the reference masks confirm at both town entries. No draws: the
+counter stands at 20420 through the whole pass, and the suite holds all
+seven layers to the file byte for byte, 607 SandRoad, 131 LavaRoad and
+175 Dead_Land vertices among them.
+
 ## Tools
 
 ```bash
@@ -1764,6 +1816,7 @@ npm run test-rmg-road      # the WHOLE first loop of MainObjects live: four zone
 npm run test-rmg-roads-phase # the roads phase live: both loops, all four zones, to 20420
 npm run test-rmg-statics   # the statics live: eight boundaries to 89798, 1325 objects on the reference tiles
 npm run test-rmg-treasure-blocks # the treasure blocks live: growth and fill per zone, to 92438 — the whole run
+npm run test-rmg-road-painter # the road painter: all seven GroundTerrain.bin layers byte-identical
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste

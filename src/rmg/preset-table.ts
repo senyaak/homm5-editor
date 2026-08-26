@@ -30,6 +30,14 @@ export interface TerrainTileInfo {
 export interface RacePreset {
   defaultTile: TerrainTileInfo | null;
   otherTiles: TerrainTileInfo[];
+  /**
+   * `RoadTile` / `SecondaryRoadTile` — what the road painter paints under
+   * the 0x08 and 0x10 networks. The `*Strenght` fields beside them are 100
+   * in every shipped preset and the painted weight is always 255, so the
+   * strength is not carried until a table proves it read.
+   */
+  roadTile: TerrainTileInfo | null;
+  secondaryRoadTile: TerrainTileInfo | null;
   /** `TownProto` — the AdvMapTownShared a zone of this race builds. */
   townProto: string | null;
   /**
@@ -127,9 +135,13 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
     const obj = find(item, 'obj');
     const tiles = obj ? find(obj, 'Tiles') : null;
     const def = tiles ? find(tiles, 'DefaultTile')?.attrs['href'] : undefined;
+    const road = tiles ? find(tiles, 'RoadTile')?.attrs['href'] : undefined;
+    const secondary = tiles ? find(tiles, 'SecondaryRoadTile')?.attrs['href'] : undefined;
     out.set(race, {
       defaultTile: def ? readTileInfo(dataRoot, def) : null,
       otherTiles: tiles ? hrefs(find(tiles, 'OtherTiles')).map((h) => readTileInfo(dataRoot, h)) : [],
+      roadTile: road ? readTileInfo(dataRoot, road) : null,
+      secondaryRoadTile: secondary ? readTileInfo(dataRoot, secondary) : null,
       townProto: (obj ? find(obj, 'TownProto')?.attrs['href'] : undefined) ?? null,
       overTownCenterObjects: obj ? hrefs(find(obj, 'OverTownCenterObjects')) : [],
       dwellings: obj ? hrefs(find(obj, 'Dwellings')) : [],
