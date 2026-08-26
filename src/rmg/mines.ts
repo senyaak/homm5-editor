@@ -134,6 +134,8 @@ export interface MineStepInput {
   /** MUTATED: the zone's stamped points — what the room is measured from. */
   points: Tile[];
   zoneIndex: number;
+  /** The zone's floor — floor 1 adds the fit's five-tile margin. */
+  floor?: number;
   /** The level's persistent room grid, recomputed in place when carried. */
   room?: Int32Array[];
   town: { x: number; y: number } | null;
@@ -236,6 +238,98 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
 
       placed.push({ type: spec.mine, name, x: at[0], y: at[1], q, guard, piles, actives: footprintTiles });
     }
+  }
+  return placed;
+}
+
+export interface AbandonedMinesInput {
+  size: number;
+  grid: Int32Array[];
+  border: Int32Array[];
+  /** MUTATED: the stamp marks 2 and 4. */
+  occupancy: Uint8Array;
+  /** MUTATED: the stamp's 4s join the zone's room points. */
+  points: Tile[];
+  zoneIndex: number;
+  /** The zone's floor — floor 1 adds the fit's five-tile margin. */
+  floor?: number;
+  /** The level's persistent room grid, recomputed per instance. */
+  room?: Int32Array[];
+  /** The template zone's AbandonedMines (`zoneRec+0x2C`). */
+  count: number;
+  /** The TOWN (zone+0x0C) under the town flag — the ring's centre. */
+  town: { x: number; y: number } | null;
+  /** `Mine3LevelMinRadius` / `Mine3LevelMaxRadius` — 25 and 45 shipped. */
+  ringMin: number;
+  ringMax: number;
+  /** The preset's AbandonedMine footprint. */
+  foot: Footprint;
+}
+
+export interface PlacedAbandonedMine {
+  name: string;
+  x: number;
+  y: number;
+  q: number;
+  /** The stamp's active tiles — they join `zone+0x11C` with the mines'. */
+  actives: Tile[];
+}
+
+/**
+ * The abandoned mines — `0xEBD700`, its own worker called right AFTER the
+ * ordinary mines of the same step, with the zone record's AbandonedMines
+ * for a count. The candidates are gathered once: the zone's tiles inside
+ * the map frame at border > 1, and — only under the town flag — inside the
+ * ring `Mine3LevelMinRadius < d < Mine3LevelMaxRadius`, both ends strict.
+ * Each instance recomputes room (mask 4), takes the maximum over the
+ * GATHERED list and keeps room strictly above `trunc(4*max/5)` — the 4/5
+ * that separates this pool from every divisor-3 cousin. Two draws a try, a
+ * fit refusal strikes the candidate, an exhausted pool logs and moves to
+ * the NEXT instance rather than abandoning the step. No guard, no piles;
+ * the object takes AvailableResources = [0,0,1,1,1,1,1] drawlessly and its
+ * stamp's actives join the mine-actives vector the roads phase wires.
+ */
+export function placeZoneAbandonedMines(input: AbandonedMinesInput, rng: DrawSource): PlacedAbandonedMine[] {
+  const { size, grid, border, occupancy, zoneIndex, foot } = input;
+  const placed: PlacedAbandonedMine[] = [];
+
+  // The gather runs even at count 0 — it just costs nothing.
+  const cand: Tile[] = [];
+  for (let x = 0; x < size; x++) {
+    for (let y = 0; y < size; y++) {
+      if (grid[y]![x] !== zoneIndex) continue;
+      if (x < 1 || x >= size - 1 || y < 1 || y >= size - 1) continue;
+      if (border[y]![x]! <= 1) continue;
+      if (input.town) {
+        const d = Math.hypot(input.town.x - x, input.town.y - y);
+        if (!(d < input.ringMax) || !(d > input.ringMin)) continue;
+      }
+      cand.push([x, y]);
+    }
+  }
+  if (input.count <= 0) return placed;
+
+  for (let i = 0; i < input.count; i++) {
+    const room = ensureRoom(input.room, size, grid, zoneIndex, input.points);
+    // The maximum over the GATHERED list, with 0xEC2EB0's own gates.
+    let max = 0;
+    for (const [x, y] of cand) {
+      if (grid[y]![x] !== zoneIndex) continue;
+      if (border[y]![x]! <= 2) continue;
+      if (occupancy[y * size + x] === 2) continue;
+      const r = room[y]![x]!;
+      if (r > max) max = r;
+    }
+    const threshold = Math.trunc((4 * max) / 5);
+    const pool = cand.filter(([x, y]) => room[y]![x]! > threshold);
+
+    const found = tryPlace(input, foot, pool, rng);
+    if (!found) continue; // "Can't place aban mine" — the next instance still tries
+    const { tile, q } = found;
+
+    const name = mintName(rng);
+    const actives = stampFootprint(input, foot, tile, q);
+    placed.push({ name, x: tile[0], y: tile[1], q, actives });
   }
   return placed;
 }

@@ -91,6 +91,14 @@ export interface PlacedObject {
   specialization?: string;
   /** Towns only: a player's town also gets a tavern (the engine's rule). */
   hasTavern?: boolean;
+  /**
+   * An UNDERGROUND town's four point lights — the subterranean zone
+   * subclasses wrap PlaceTown (vt+0x20 is 0xEC6250/0xEC84C0/0xECAAB0, not
+   * 0xEB4CB0 itself) and a SUCCESSFUL placement pays two draws for the
+   * whole set: z = 5 + below(3), radius = 12 + below(10), positions the
+   * literal (0,±5) and (±5,0), colour a constant of the town's faction.
+   */
+  pointLights?: { z: number; radius: number };
 }
 
 export interface TownsResult {
@@ -289,6 +297,15 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
 
       // The specialisation comes last, and only if the pool has one.
       if (specs.length) town.specialization = specs[rng.below(specs.length)]!.path;
+
+      // The underground subclasses' wrapper — after 0xEB4CB0 returns true
+      // it hangs four point lights on the town for two draws (0xEC6570);
+      // a failed placement pays nothing, and a surface town has no lights.
+      if (zone.floor !== 0) {
+        const z = 5 + rng.below(3);
+        const radius = 12 + rng.below(10);
+        town.pointLights = { z, radius };
+      }
       break;
     }
   }

@@ -76,6 +76,8 @@ export interface PriceListInput {
   /** MUTATED: the stamp's 4s join the zone's room points. */
   points: Tile[];
   zoneIndex: number;
+  /** The zone's floor — floor 1 adds the fit's five-tile margin. */
+  floor?: number;
   /** The level's persistent room grid, recomputed in place when carried. */
   room?: Int32Array[];
   /** The step's points, already through its budget rule. */

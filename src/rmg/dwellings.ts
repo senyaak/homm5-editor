@@ -54,6 +54,8 @@ export interface DwellingStepInput {
   /** MUTATED: the zone's stamped points — what the room is measured from. */
   points: Tile[];
   zoneIndex: number;
+  /** The zone's floor — floor 1 adds the fit's five-tile margin. */
+  floor?: number;
   /** The level's persistent room grid, recomputed in place when carried. */
   room?: Int32Array[];
   /** The template's seven per-tier counts for this zone (`zone params +0x30`). */

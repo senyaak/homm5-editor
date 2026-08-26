@@ -38,6 +38,8 @@ export interface RacePreset {
    */
   roadTile: TerrainTileInfo | null;
   secondaryRoadTile: TerrainTileInfo | null;
+  /** `AbandonedMine` (`+0x198`) — what the abandoned-mines worker places. */
+  abandonedMine: string | null;
   /** `TownProto` — the AdvMapTownShared a zone of this race builds. */
   townProto: string | null;
   /**
@@ -142,6 +144,7 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
       otherTiles: tiles ? hrefs(find(tiles, 'OtherTiles')).map((h) => readTileInfo(dataRoot, h)) : [],
       roadTile: road ? readTileInfo(dataRoot, road) : null,
       secondaryRoadTile: secondary ? readTileInfo(dataRoot, secondary) : null,
+      abandonedMine: (obj ? find(obj, 'AbandonedMine')?.attrs['href'] : undefined) ?? null,
       townProto: (obj ? find(obj, 'TownProto')?.attrs['href'] : undefined) ?? null,
       overTownCenterObjects: obj ? hrefs(find(obj, 'OverTownCenterObjects')) : [],
       dwellings: obj ? hrefs(find(obj, 'Dwellings')) : [],

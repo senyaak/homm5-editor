@@ -184,6 +184,8 @@ export interface FitContext {
   border: Int32Array[];
   occupancy: Uint8Array;
   zoneIndex: number;
+  /** The zone's floor — floor 1 adds the five-tile margin (0xEC365D). */
+  floor?: number;
 }
 
 /**
@@ -202,12 +204,14 @@ export interface FitContext {
  * 2 — and succeeds on the second, whose sits at 5. The live replay walks
  * through both.
  *
- * Unported, said rather than hidden: floor 1 adds a five-tile margin from
- * the map edge to every check (`0xEC365D`), and the reference has no
- * underground — that margin has never been measured.
+ * Floor 1 (exactly — `cmp [zone+0xF4], 1` at 0xEC3667) adds a five-tile
+ * margin from the map edge to every checked tile: the coordinate must be
+ * at least 5 and strictly under size-5, tested between the bounds and the
+ * grid reads.
  */
 export function fits(ctx: FitContext, foot: Footprint, tile: Tile, q: number): boolean {
   const { size, grid, border, occupancy, zoneIndex } = ctx;
+  const margin = ctx.floor === 1;
   const lists: Array<{ offs: readonly Offset[]; minDepth: number; skipZero: boolean }> = [
     { offs: foot.blocked, minDepth: 1, skipZero: false },
     { offs: [foot.marker], minDepth: 1, skipZero: true },
@@ -220,6 +224,7 @@ export function fits(ctx: FitContext, foot: Footprint, tile: Tile, q: number): b
       const x = tile[0] + dx;
       const y = tile[1] + dy;
       if (x < 0 || x >= size || y < 0 || y >= size) return false;
+      if (margin && (x < 5 || x >= size - 5 || y < 5 || y >= size - 5)) return false;
       if (grid[y]![x] !== zoneIndex) return false;
       if (occupancy[y * size + x] !== 0) return false;
       if (border[y]![x]! < minDepth) return false;

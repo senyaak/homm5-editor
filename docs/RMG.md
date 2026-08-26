@@ -91,6 +91,53 @@ floor gate) and the two-floor treasure blocks (3,103). Lay it out with
 seed on S2-3P2Z7N2 (245,577 draws, four underground zones) is saved in
 `game/Maps/1785351845uuu.h5m` and stays in the log for later.
 
+**The underground run is in LOCKSTEP through the roads phase**
+(`test-rmg-underground`, 6,471 of its 70,799 draws): the chain to 4475 —
+which took four finds the surface run could not make — then every step
+boundary of all three zones' first MainObjects loop, with all 106 named
+objects on their reference tiles. What the run surfaced, each proven by
+its boundary:
+
+- **an underground town wears four point lights.** The subterranean zone
+  subclasses put a WRAPPER in vt+0x20 (`0xEC6250`/`0xEC84C0`/`0xECAAB0`)
+  around PlaceTown, and a successful placement pays two draws for the set:
+  `z = 5 + below(3)`, `Radius = 12 + below(10)` — the reference town's
+  z 6 and Radius 12 are those two draws verbatim (`towns.ts`);
+- **teleports** (`teleports.ts`, `0xEB7C60`): each endpoint zone places
+  its own half, paired by nothing but GroupID = min·100 + max; the type
+  is floors alone — Monolith_Two_Way on one floor, Gate_In above and
+  Gate_Out below across floors. Candidates are the zone's tiles at
+  border 3..9 (LITERALS — the Teleport*BorderDistance params are never
+  read) filtered by room > 2max/3; the guard takes the connection's
+  power over sqrt(2), rounded to nearest. The pair lands tile-for-tile
+  with the reference, guards included;
+- **prisons** (`prisons.ts`, `0xEBD1C0`): the 0xEC1500 family with a
+  fixed shared, no guard, RandomHero written true and the hero itself
+  never drawn — and an exhausted pool skips the instance where dwellings
+  abandon the step;
+- **the price lists buy from the TERRAIN race.** `[zone+0x20]` is the
+  terrain preset — the same one that paints the ground — so the
+  underground zone's dwarven town buys from the DUNGEON lists while its
+  dwellings stay dwarven (`[zone+0x1C]`). On the surface the races
+  agree, which is why four zones of lockstep never told them apart: the
+  treasury boundary here is what did (an affordable prefix of 7 where
+  the dwarven list holds 6);
+- **abandoned mines** (`0xEBD700`, in `mines.ts`): their own worker
+  after the ordinary mines, fed by the zone record's AbandonedMines
+  (`+0x2C`) and the preset's AbandonedMine shared. Candidates once —
+  frame, border > 1, and under the town flag the ring
+  `Mine3LevelMin/MaxRadius` (25..45, strict) — then per instance a room
+  threshold of `trunc(4*max/5)`, the only 4/5 in the family. No guard,
+  no piles, AvailableResources = [0,0,1,1,1,1,1] drawlessly, actives
+  into the roads' mine vector;
+- an underground zone runs **no observatories mark and no treasures**:
+  the observatories spend their draws unmarked between "shops" and the
+  road boundary, and treasures/chests wait for additional objects.
+
+Still ahead of the underground run: the statics (the subterranean vtable
+overrides `+0x34`/`+0x30` are their own unread functions — three quarters
+of the run), then additional objects and the treasure blocks.
+
 **That trace now exists, and the whole run is measured.** Seed 1785351845 end
 to end is **92,438 draws**, and where they go is no longer a guess:
 
@@ -427,6 +474,8 @@ is what it is belongs next to the number.
 | `road.ts` | the zone road: the chain, the wave, the coin-tied walk | **done, live in all four zones** — 928 coins to the loop's end at 20039 |
 | `objects/*.ts` | the remaining `MainObjects` steps, one file each | |
 | `treasure-blocks.ts` | `CTreasureBlockDistributor`: the growth `0xED5650` and the fill `0xED49D0` | **done, live in all four zones** — 2,640 draws to the run's end at 92438 |
+| `teleports.ts` | the connections phase's second sweep `0xEB7C60` | **done, live on the underground run** — the pair tile-for-tile |
+| `prisons.ts` | the prisons step `0xEBD1C0` | **done, live on the underground run** — 8 and 6 draws |
 | `artifacts.ts` | the artifact table the distributor's pool is built from | **done** — cost and the generated flag, in id order |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
 | `emit.ts` | the finished map, handed to `src/map/` | |
@@ -1832,6 +1881,7 @@ npm run test-rmg-roads-phase # the roads phase live: both loops, all four zones,
 npm run test-rmg-statics   # the statics live: eight boundaries to 89798, 1325 objects on the reference tiles
 npm run test-rmg-treasure-blocks # the treasure blocks live: growth and fill per zone, to 92438 — the whole run
 npm run test-rmg-road-painter # the road painter: all seven GroundTerrain.bin layers byte-identical
+npm run test-rmg-underground # the two-floor run through the roads phase: teleports, prisons, abandoned mines
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste
