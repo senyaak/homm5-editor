@@ -99,6 +99,24 @@ export const SPELL_TABLE: TableSpec = {
   shipped: 353,
 };
 
+/**
+ * The town type table — a faction is a DIMENSION, not a list, and this is the
+ * dimension's registration: three service types plus the eight factions.
+ *
+ * Registered `push imm8` with one live accessor (six callers). Its sibling
+ * `RMGPresetTable.xdb` registers `11 + __RACE_COUNT = 12` and must move in
+ * lockstep — but deliberately has NO spec here: it ships no live accessor, and
+ * once this table is at 12 the accessor search for {12, 13} would find the town
+ * accessor and quietly write the RMG count into it. Whoever raises this ceiling
+ * moves the RMG push directly (`findLoadSite`), never through `setTableLimit`.
+ * The full ledger is docs/engineInternals/FACTIONS.md.
+ */
+export const TOWN_TYPE_TABLE: TableSpec = {
+  what: 'town types',
+  path: '/GameMechanics/RefTables/TownTypesInfo.xdb',
+  shipped: 11,
+};
+
 /** Where the count sits in the file, and how wide the instruction holds it. */
 export interface LoadSite {
   /** File offset of the immediate itself, not of the opcode. */
