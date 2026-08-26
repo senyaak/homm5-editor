@@ -40,10 +40,13 @@ export const REFERENCE_UG_TERRAIN_1 = join(REFERENCE_UG_DIR, 'UndergroundTerrain
 
 /**
  * The THIRD reference — the surface run re-ordered with the ONE setting the
- * others turned off: WaterAmount = WATER_PRESENT (same seed, same S1P2Z2M1,
- * same everything else). It measures what neither no-water run enters: the
- * WaterBordered zones and whatever reads them — shipyards, WaterTreasures,
- * the sea itself. One floor, so two files.
+ * others turned off: water (same seed, same S1P2Z2M1, same everything else).
+ * The dialog's water control is a CHECKBOX and checking it records
+ * WaterAmount = WATER_ISLAND_MAP — the middle WATER_PRESENT cannot be
+ * ordered at all; it only arises when water is left to the below(2) coin.
+ * The run measures what neither no-water run enters: the WaterBordered
+ * zones and whatever reads them — shipyards, WaterTreasures, the sea
+ * itself. One floor, so two files.
  */
 export const REFERENCE_WATER_DIR = join('_tmp', 'oracle', 'reference-water');
 export const REFERENCE_WATER_MAP = join(REFERENCE_WATER_DIR, 'map.xdb');
@@ -90,7 +93,8 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
       : REFERENCE_WATER_MISSING);
     console.log(`\nall references are seed ${REFERENCE_SEED}, 2 players:`);
     console.log('the surface one S1P2Z2M1 small, the underground one S0-1P2Z2K3.1T tiny (both no water),');
-    console.log('the water one S1P2Z2M1 small again with WATER_PRESENT — the only changed setting.');
+    console.log('the water one S1P2Z2M1 small again with the water checkbox on (WATER_ISLAND_MAP) —');
+    console.log('the only changed setting, and the only water the dialog can order.');
     process.exit(0);
   }
 

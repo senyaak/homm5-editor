@@ -91,6 +91,23 @@ floor gate) and the two-floor treasure blocks (3,103). Lay it out with
 seed on S2-3P2Z7N2 (245,577 draws, four underground zones) is saved in
 `game/Maps/1785351845uuu.h5m` and stays in the log for later.
 
+**A THIRD reference exists for water.** The same seed on the same surface
+template, with the ONE remaining setting flipped: the dialog's water
+CHECKBOX. Checking it records `WaterAmount = WATER_ISLAND_MAP` — the enum
+is tri-state (`NONE`/`PRESENT`/`ISLAND_MAP`) but the dialog can only order
+0 or 2; the middle `WATER_PRESENT` arises only when water is left to the
+`below(2)` coin, which no ordered run can do. Unlike the underground,
+water is a per-order parameter, not a template flag — `RMGTemplate` has no
+water field, and no shipped template has a zone with `CanBeWater=true`,
+which does NOT stop the water from coming (so `CanBeWater` gates something
+narrower, still unread). The run is 65,421 draws (`1785351845w.h5m`,
+boundaries in `_tmp/oracle/island-run-boundaries.txt`, trace archived as
+`_tmp/oracle/log-water-island-run.log`); the map places Shipwrecks — the
+first live sighting of a `WaterTreasures` consumer — and its terrain
+carries the water layers (188,739 bytes against the surface run's
+169,757). Lay it out with `npm run rmg-reference -- --water <map.h5m>`
+into `_tmp/oracle/reference-water/`.
+
 **The underground run is in FULL LOCKSTEP — all 70,799 draws**
 (`test-rmg-underground`): the chain to 4475 —
 which took four finds the surface run could not make — then every step
@@ -451,6 +468,7 @@ Kept in `_tmp/oracle/` (not committed — game content).
 | 3 | **editor** | **1785351845** | `S1P2Z2M1` | small | **the reference** |
 | 4 | editor | 1000 | `S1P2Z2M1` | small | a second seed, same everything else |
 | 5 | editor | 1785351845 again | `S1P2Z2M1` | small | the determinism check |
+| 6 | editor | 1785351845 again | `S1P2Z2M1` | small | **the water reference** — the water checkbox on, everything else run 3 |
 
 Runs 3–5 are the useful ones: same template, same size, same settings, so the
 only variable is the seed. Run 3 is what the port is written against — ordered
