@@ -2,6 +2,7 @@
 //
 //   node tools/rmg-reference.ts                  say what is there
 //   node tools/rmg-reference.ts <map.h5m>        unpack one into place
+//     --underground / --water                    which reference slot it is
 //
 // The port's sharpest checks compare against a map the ENGINE wrote — the
 // ordered editor run of seed 1785351845 (S1P2Z2M1, small, 2 players, no
@@ -37,11 +38,24 @@ export const REFERENCE_UG_MAP = join(REFERENCE_UG_DIR, 'map.xdb');
 export const REFERENCE_UG_TERRAIN = join(REFERENCE_UG_DIR, 'GroundTerrain.bin');
 export const REFERENCE_UG_TERRAIN_1 = join(REFERENCE_UG_DIR, 'UndergroundTerrain.bin');
 
+/**
+ * The THIRD reference — the surface run re-ordered with the ONE setting the
+ * others turned off: WaterAmount = WATER_PRESENT (same seed, same S1P2Z2M1,
+ * same everything else). It measures what neither no-water run enters: the
+ * WaterBordered zones and whatever reads them — shipyards, WaterTreasures,
+ * the sea itself. One floor, so two files.
+ */
+export const REFERENCE_WATER_DIR = join('_tmp', 'oracle', 'reference-water');
+export const REFERENCE_WATER_MAP = join(REFERENCE_WATER_DIR, 'map.xdb');
+export const REFERENCE_WATER_TERRAIN = join(REFERENCE_WATER_DIR, 'GroundTerrain.bin');
+
 /** A one-line note a suite can print when the reference is missing. */
 export const REFERENCE_MISSING =
   `no ${REFERENCE_DIR} — rebuild it with \`npm run rmg-reference -- <map.h5m>\`; skipping the comparison`;
 export const REFERENCE_UG_MISSING =
   `no ${REFERENCE_UG_DIR} — rebuild it with \`npm run rmg-reference -- --underground <map.h5m>\`; skipping the comparison`;
+export const REFERENCE_WATER_MISSING =
+  `no ${REFERENCE_WATER_DIR} — rebuild it with \`npm run rmg-reference -- --water <map.h5m>\`; skipping the comparison`;
 
 export function hasReference(): boolean {
   return existsSync(REFERENCE_MAP) && existsSync(REFERENCE_TERRAIN);
@@ -51,9 +65,18 @@ export function hasUndergroundReference(): boolean {
   return existsSync(REFERENCE_UG_MAP) && existsSync(REFERENCE_UG_TERRAIN) && existsSync(REFERENCE_UG_TERRAIN_1);
 }
 
+export function hasWaterReference(): boolean {
+  return existsSync(REFERENCE_WATER_MAP) && existsSync(REFERENCE_WATER_TERRAIN);
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename)) {
   const cli = process.argv.slice(2);
   const underground = cli.includes('--underground');
+  const water = cli.includes('--water');
+  if (underground && water) {
+    console.error('no such run — the references change one setting at a time; pick one flag');
+    process.exit(1);
+  }
   const archive = cli.find((a) => !a.startsWith('--'));
   if (!archive) {
     console.log(hasReference()
@@ -62,8 +85,12 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
     console.log(hasUndergroundReference()
       ? `underground reference in place:\n  ${REFERENCE_UG_MAP}\n  ${REFERENCE_UG_TERRAIN}\n  ${REFERENCE_UG_TERRAIN_1}`
       : REFERENCE_UG_MISSING);
-    console.log(`\nboth references are seed ${REFERENCE_SEED}, 2 players, no water:`);
-    console.log('the surface one S1P2Z2M1 small, the underground one S0-1P2Z2K3.1T tiny.');
+    console.log(hasWaterReference()
+      ? `water reference in place:\n  ${REFERENCE_WATER_MAP}\n  ${REFERENCE_WATER_TERRAIN}`
+      : REFERENCE_WATER_MISSING);
+    console.log(`\nall references are seed ${REFERENCE_SEED}, 2 players:`);
+    console.log('the surface one S1P2Z2M1 small, the underground one S0-1P2Z2K3.1T tiny (both no water),');
+    console.log('the water one S1P2Z2M1 small again with WATER_PRESENT — the only changed setting.');
     process.exit(0);
   }
 
@@ -93,7 +120,22 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
     console.error('--underground, but the archive holds no UndergroundTerrain.bin — a one-floor map?');
     process.exit(1);
   }
-  const dir = underground ? REFERENCE_UG_DIR : REFERENCE_DIR;
+
+  // The map records the order's WaterAmount, so a water run cannot land in a
+  // no-water slot by a forgotten flag — laying it out would silently replace
+  // the reference the whole port is written against.
+  const { readFileSync } = await import('node:fs');
+  const recordedWater = /<WaterAmount>WATER_(\w+)</.exec(readFileSync(found['map.xdb']!, 'latin1'))?.[1];
+  if (water && recordedWater === 'NONE') {
+    console.error('--water, but the map records WATER_NONE — not the water run');
+    process.exit(1);
+  }
+  if (!water && recordedWater !== undefined && recordedWater !== 'NONE') {
+    console.error(`the map records WATER_${recordedWater} — a water run; pass --water so it lands in its own slot`);
+    process.exit(1);
+  }
+
+  const dir = water ? REFERENCE_WATER_DIR : underground ? REFERENCE_UG_DIR : REFERENCE_DIR;
   mkdirSync(dir, { recursive: true });
   const laid: string[] = [];
   for (const name of underground

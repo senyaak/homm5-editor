@@ -658,8 +658,9 @@ port derives it from the seed.
 The underground's flavour: Dwarven when the map-setup parity said so, else
 one coin — for the whole map — decides Subterra against SubInferno. Water
 makes floor-0 zones WaterBordered and copies the template's `Shipyard` bit
-(in the schema with default TRUE, written by no shipped file — the reader
-walk found it, and template.ts now parses it).
+(in the schema with default TRUE; two shipped templates write it —
+S0-1P2Z2K3.2T and S3-5P2-8Z8K2M, every zone, always true — the rest rely
+on the default; template.ts parses it).
 
 Named holes: the concrete-race branch appends a player entry without
 checking the operator's (nothing shipped reaches it; copied as read); who

@@ -30,9 +30,10 @@ export interface RmgZone {
   town: boolean;
   townGuardStrenght: number;
   /**
-   * In the schema (item+0x1C, default TRUE) but written by no shipped
-   * template — the reader walk found it, not the files. A water-bordered
-   * zone copies it to its own +0x164; nothing else reads it yet.
+   * In the schema (item+0x1C, default TRUE); two shipped templates write it
+   * explicitly (S0-1P2Z2K3.2T and S3-5P2-8Z8K2M, every zone, always true),
+   * the rest rely on the default. A water-bordered zone copies it to its own
+   * +0x164; nothing else reads it yet.
    */
   shipyard: boolean;
   /** Per tier: how many mines of that resource the zone wants. */
