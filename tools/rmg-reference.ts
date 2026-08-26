@@ -95,9 +95,14 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
   }
 
   // The archive is opened by the editor's own pak tool; this only moves the
-  // two files the suites read out of wherever it landed.
+  // two files the suites read out of wherever it landed. The staging dir is
+  // wiped first: every run unpacks under its own GUID, so leftovers from a
+  // previous unpack survive the next one and the walk below would pick up a
+  // STALE map — which map won depended on GUID order.
   const { execFileSync } = await import('node:child_process');
+  const { rmSync } = await import('node:fs');
   const staging = join('_tmp', 'oracle', 'staging');
+  rmSync(staging, { recursive: true, force: true });
   mkdirSync(staging, { recursive: true });
   execFileSync(process.execPath, ['tools/pak-cli.js', 'open', archive, staging], { stdio: 'inherit' });
 
