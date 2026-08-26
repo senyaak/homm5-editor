@@ -23,7 +23,7 @@ import { mapSetup } from '../src/rmg/map-setup.ts';
 import { MINE_TYPES, placeZoneAbandonedMines, placeZoneMines, readMineShared } from '../src/rmg/mines.ts';
 import type { MineFootprint, PlacedMine } from '../src/rmg/mines.ts';
 import { readParams } from '../src/rmg/params.ts';
-import { ensureRoom, filterByRoom, readFootprint } from '../src/rmg/placement.ts';
+import { ensureRoom, filterByRoom, readFootprint, zoneTiles } from '../src/rmg/placement.ts';
 import { PRISON_HREF, placeZonePrisons } from '../src/rmg/prisons.ts';
 import type { PlacedPrison } from '../src/rmg/prisons.ts';
 import type { Footprint, Tile } from '../src/rmg/placement.ts';
@@ -48,6 +48,10 @@ import { readTownShared, readTownSpecializations } from '../src/rmg/town-data.ts
 import type { TownShared } from '../src/rmg/town-data.ts';
 import { placeTowns } from '../src/rmg/towns.ts';
 import type { TownsResult } from '../src/rmg/towns.ts';
+import { carveWaterBorder, placeWaterTreasures, waterDepth } from '../src/rmg/water-border.ts';
+import type { PlacedWaterTreasure } from '../src/rmg/water-border.ts';
+import { SHIPYARD_HREF, placeShipyard } from '../src/rmg/shipyards.ts';
+import type { PlacedShipyard } from '../src/rmg/shipyards.ts';
 import { placeZoneUpgradeBuildings } from '../src/rmg/upgrade-buildings.ts';
 import type { PlacedUpgradeBuilding } from '../src/rmg/upgrade-buildings.ts';
 import { floorIterationOrder, generateGameZones } from '../src/rmg/zones.ts';
@@ -77,6 +81,25 @@ export interface Chain {
   setup: ReturnType<typeof mapSetup>;
   loaded: LoadedTemplate;
   townResult: TownsResult;
+  /**
+   * The water border's leavings, when the order asked for water: the sea
+   * depth, per zone the rebuilt `+0xCC` (the grid alone no longer derives
+   * it — the rim keeps list membership with grid -1), the sea tiles, the
+   * `+0x148` water ledger, the `+0x154` repel ledger and the placed water
+   * treasures; and the draw counter at the pass's end (the engine's
+   * "dist to towns" bracket spends the same draws on nothing else).
+   */
+  water: {
+    depth: number;
+    kept: Map<number, Tile[]>;
+    sea: Map<number, Tile[]>;
+    waterLedger: Map<number, Tile[]>;
+    repel: Map<number, Tile[]>;
+    treasures: Map<number, PlacedWaterTreasure[]>;
+    /** One per water zone with the Shipyard bit, from the connections sweep. */
+    shipyards: Map<number, PlacedShipyard>;
+    drawsAfter: number;
+  } | null;
   conn: ConnectionsResult;
   /** The teleport pass's objects, per zone — empty on the surface run. */
   teleports: Map<number, PlacedTeleport[]>;
@@ -145,6 +168,34 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     radii: new Map(placed.zones.map((z) => [z.index, z.r])),
     presets, towns, specializations: readTownSpecializations(dir),
   }, rng);
+  // The water border — the engine runs it between "towns placed" and the
+  // dist-to-towns tables (0xEABB1D): the sea depth by size index, then every
+  // floor-0 zone's vt+0x24 in the level's hash order. The carve is drawless;
+  // each water treasure costs exactly five draws.
+  let water: Chain['water'] = null;
+  if (setup.water !== 0) {
+    water = {
+      depth: waterDepth(8), kept: new Map(), sea: new Map(), waterLedger: new Map(),
+      repel: new Map(), treasures: new Map(), shipyards: new Map(), drawsAfter: 0,
+    };
+    for (const z of floorIterationOrder(loaded.zones.filter((zz) => zz.floor === 0))) {
+      const carved = carveWaterBorder({
+        size, grid: filled.floors[0]!, border: distances[0]!, zoneIndex: z.index,
+        tiles: zoneTiles(size, filled.floors[0]!, z.index), depth: water.depth,
+      });
+      water.kept.set(z.index, carved.kept);
+      water.sea.set(z.index, carved.sea);
+      water.waterLedger.set(z.index, carved.waterLedger);
+      const repel: Tile[] = [];
+      water.repel.set(z.index, repel);
+      water.treasures.set(z.index, placeWaterTreasures({
+        size, landTiles: carved.kept.length, sea: carved.sea, ledger: repel,
+        typeCount: params.waterTreasures.length,
+      }, rng));
+    }
+    water.drawsAfter = rng.draws;
+  }
+
   fillDistToTowns(size, filled.floors, loaded.zones, townResult.centres);
   const conn = zoneConnections({
     size, template, zones: loaded.zones, floors: filled.floors, distances,
@@ -189,7 +240,11 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     for (const [a, b] of conn.passages.get(zoneIndex) ?? []) points.push([b, a]);
     return points;
   };
-  if (unconnectedSet.size) {
+  // The engine's second sweep (vt+0x2C per zone) always runs; the teleport
+  // half no-ops when the digger served every connection, and the shipyard
+  // half exists only on water-bordered zones — so the loop is entered when
+  // either half has work.
+  if (unconnectedSet.size || water) {
     for (let f = 0; f < floors.length; f++) {
       for (const z of floorIterationOrder(loaded.zones.filter((zz) => zz.floor === f))) {
         const centre = townResult.centres.get(z.index)!;
@@ -214,6 +269,28 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
           },
         }, rng);
         if (placedTeleports.length) teleports.set(z.index, placedTeleports);
+
+        // The WaterBordered override's tail: one shipyard for a zone whose
+        // `+0x164` bit is set, straight after its teleports.
+        if (water && z.floor === 0) {
+          const templateZone = template.zones.find((t) => t.index === z.index)!;
+          if (z.shipyard) {
+            const ship = placeShipyard({
+              size, grid: floors[f]!.grid, border: floors[f]!.border,
+              occupancy: floors[f]!.occ, room: floors[f]!.room,
+              points: [...points, ...grew], blocked: blockedList(z.index),
+              connectionPoints: actives, guardSeats: seats,
+              zoneIndex: z.index, floor: f, tiles: water.kept.get(z.index)!,
+              depth: water.depth,
+              town: templateZone.town ? { x: centre.b, y: centre.a } : null,
+              foot: chainFootprint(SHIPYARD_HREF),
+              guardPowerUnit: params.basicLeverGuardPower * params.connectionGuardLevel,
+              monsterStrength: setup.monsterStrength, tables,
+            }, rng);
+            if (ship) water.shipyards.set(z.index, ship);
+          }
+        }
+
         if (grew.length) teleportRoomPoints.set(z.index, grew);
         if (actives.length) teleportActives.set(z.index, actives);
         if (seats.length) teleportGuardSeats.set(z.index, seats);
@@ -226,7 +303,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   const room = floors[0]!.room;
 
   return {
-    dir, rng, size, template, params, presets, tables, setup, loaded, townResult, conn,
+    dir, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
     teleports, floors, grid, border, occ, room,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, then the

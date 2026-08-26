@@ -92,7 +92,10 @@ export function floorIterationOrder<T extends { index: number }>(seeds: T[]): T[
   const rehashed = seeds.length > 13;
   const buckets: T[][] = Array.from({ length: bucketCount }, () => []);
   for (const s of seeds) {
-    const bucket = buckets[s.index % bucketCount]!;
+    // The engine's hash takes the key as size_t, so a negative index wraps:
+    // the water carve's -1 (sea) hashes as 0xFFFFFFFF and lands in bucket 8
+    // of 13. Non-negative indices are untouched by the >>> 0.
+    const bucket = buckets[(s.index >>> 0) % bucketCount]!;
     if (rehashed && bucket.length) {
       throw new Error('floorIterationOrder: bucket collision after a rehash — within-bucket order unverified');
     }

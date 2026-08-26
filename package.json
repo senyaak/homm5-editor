@@ -144,6 +144,7 @@
     "test-rmg-treasure-blocks": "node tools/test-rmg-treasure-blocks.ts",
     "test-rmg-road-painter": "node tools/test-rmg-road-painter.ts",
     "test-rmg-underground": "node tools/test-rmg-underground.ts",
+    "test-rmg-water": "node tools/test-rmg-water.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "test-e2e-setup": "node tools/test-e2e-setup.ts",

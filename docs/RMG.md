@@ -108,34 +108,59 @@ carries the water layers (188,739 bytes against the surface run's
 169,757). Lay it out with `npm run rmg-reference -- --water <map.h5m>`
 into `_tmp/oracle/reference-water/`.
 
-**First readings of the island trace** (`rmg-diff-draws --water`,
-`rmg-decode-draws --reference reference-water`): the port already matches
-the run's first 18,459 draws — water changes NOTHING through FillZones,
-towns included (the towns step spends its usual 16 to 18,475). The water
-starts at 18,476, in two shapes:
+**The island run is in LOCKSTEP to 18,737 — the connections boundary**
+(`test-rmg-water`): every draw from 1 to 18,737 matches the trace in kind
+and value, and every object so far stands on its reference tile by minted
+name — 36 water treasures, 6 monolith halves with 6 guards, 4 shipyards
+with 4 guards. Water changes NOTHING through FillZones and the towns (the
+supplied WaterAmount costs one discarded draw either way); what it adds,
+read out of the executable and ported:
 
-- **A water-treasures step between towns and dist-to-towns** — no
-  narration line of its own, so it hides inside the "dist to towns"
-  bracket: 36 placements of exactly 5 draws each (180 = the whole gap to
-  18,655): a big `below` (the candidate pick), a small `below` ≤ 6 (the
-  index into the `WaterTreasures` list — FootmanWreck, PeasantWreck,
-  Sea_Chest, Floatsam all appear), a `below(4)`-shaped third, then the
-  two minting `below(65535)`s. Every one of the 36 mints matches a map
-  object — no failed placements in this run.
-- **Island connections replace the land passages** (18,655 → 18,737, 82
-  draws against the surface run's 16): each connection is served by a
-  **Monolith_Two_Way pair or a SHIPYARD**, guarded — the stream reads
-  pick-draws, the object's mint, one `betweenFloat` (the guard roll the
-  land passages also make), then the guard monster's mint. Four Shipyards
-  stand in this run, which makes the connections step the reader of the
-  `Shipyard` bit that `zone+0x164` carries — unfound until now. The shape
-  is the underground teleport pass's (`teleports.ts`) with a nautical
-  price list, which is the porting lead.
+- **The water border pass** (`water-border.ts`) — the block at 0xEABB1D
+  between "towns placed" and the dist-to-towns tables: a SEA DEPTH by
+  size index (the 0xEAC3C0 jump table: 2/3/4/5/7/8/10 for indices 0..6,
+  else 3 — the small run's index 8 falls to the default 3), then every
+  floor-0 zone's vtable `+0x24` — a one-instruction ret on CGameZone,
+  the carve on CGameWaterBorderedZone (0xECB7D0). The carve is drawless:
+  tiles with border < depth leave the zone grid (-1) into a sea vector,
+  EVERY zone tile's border takes += (1 - depth), the `+0xCC` list is
+  rebuilt keeping adjusted border >= 0 (the border == depth-1 RIM stays
+  listed while the grid disowns it — the grid alone no longer derives the
+  list, so the chain carries it), and the rest goes to the `+0x148` water
+  ledger. The treasure tail (0xECDB20) spends exactly five draws per
+  placement, count = trunc(len(rebuilt `+0xCC`) / 200): candidates are
+  sea tiles inside [1, dim-2] and at least 5.0 from every earlier
+  placement (`+0x154`), then below(candidates), below(len(WaterTreasures
+  — params `+0x210`)), below(4) x pi/2, and the mint. All 36 landed.
+- **Island connections** — the land digger finds no adjacency across the
+  sea (0 draws, all three template connections unconnected), so the
+  second sweep serves them: the vtable's `+0x2C`, which on
+  CGameWaterBorderedZone (0xECCB30) is the UNDERGROUND TELEPORT PASS
+  (0xEB7C60 — `teleports.ts`, reused verbatim: Monolith_Two_Way pairs on
+  GroupID with guards) plus, under the zone's `+0x164` Shipyard bit, ONE
+  SHIPYARD (0xECC0A0 — `shipyards.ts`). The shipyard: candidates from
+  the rebuilt list with border in [2,3] strictly inside depth+3 margins,
+  room (the shared ensureRoom) filtered by trunc(4*max/5) with
+  0xEC2EB0's gates (a border-2 tile counts toward the pool but not the
+  maximum); ONE below per fit attempt — the facing is not drawn, the
+  shipyard TURNS toward the town entry (or the zone's tile centroid,
+  singles arithmetic) by quadrant; the stamp's actives join the zone's
+  `+0xC0` connection points (the roads phase will wire the shipyard in),
+  a 5x5 halo turns occupancy 0 into 1, and the guard seats from the last
+  active through the shared EIGHT table from 2q — power =
+  BasicLeverGuardPower x ConnectionGuardLevel x 20, the 20 an immediate
+  (0xECC901), not a read of ShipyardGuardsLevelCoef. The seat joins
+  `+0x98`.
 
-All 893 objects of the island map find their mint pairs, so the stream is
-fully labelled. The port now carries `WaterAmount` as 0/1/2 end to end
-(`MapSetupRequest.water`, `ChainOptions.water`; the random path's coin can
-still only mint 0 or 1).
+Named holes: the carve's coast/sea marking (four corner writes of 200
+through 0xEB1590 per coastal tile and a shared engine object — drawless,
+terrain-side, waits for the terrain stage); what a failed 0xEB43D0
+creation skips; the water hash detail that made `floorIterationOrder`
+take its key as size_t (the sea's -1 hashes to bucket 8 of 13).
+
+Beyond 18,737 the island run is unread: MainObjects over carved island
+zones, the statics with a sea, the treasure blocks, and the terrain
+files with the water layers (`GroundTerrain.bin` grew by 19 KB).
 
 **The underground run is in FULL LOCKSTEP — all 70,799 draws**
 (`test-rmg-underground`): the chain to 4475 —
@@ -543,7 +568,9 @@ is what it is belongs next to the number.
 | `road.ts` | the zone road: the chain, the wave, the coin-tied walk | **done, live in all four zones** — 928 coins to the loop's end at 20039 |
 | `objects/*.ts` | the remaining `MainObjects` steps, one file each | |
 | `treasure-blocks.ts` | `CTreasureBlockDistributor`: the growth `0xED5650` and the fill `0xED49D0` | **done, live in all four zones** — 2,640 draws to the run's end at 92438 |
-| `teleports.ts` | the connections phase's second sweep `0xEB7C60` | **done, live on the underground run** — the pair tile-for-tile |
+| `teleports.ts` | the connections phase's second sweep `0xEB7C60` | **done, live on the underground run** — the pair tile-for-tile; serves the island connections unchanged |
+| `water-border.ts` | the water carve and treasures — `0xECB7D0` and its tail `0xECDB20` | **done, live on the island run** — 36 treasures by name |
+| `shipyards.ts` | the shipyard `0xECC0A0` — the `+0x2C` override's tail | **done, live on the island run** — 4 shipyards and their guards by name |
 | `prisons.ts` | the prisons step `0xEBD1C0` | **done, live on the underground run** — 8 and 6 draws |
 | `artifacts.ts` | the artifact table the distributor's pool is built from | **done** — cost and the generated flag, in id order |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
