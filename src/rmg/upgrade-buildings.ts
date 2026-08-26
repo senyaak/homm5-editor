@@ -64,8 +64,10 @@ export interface SeatedGuard {
  * On a found seat the engine calls SetMonster FIRST and then writes
  * occupancy 4 regardless of the result — a GuardStrenght of 0 spends no
  * draws (SetMonster's own power < 100 gate) but still burns the tile. The
- * guard tile joins `zone+0x98`, a ledger no room computation reads — so
- * unlike the stamp it does NOT join the room points, and this port drops it.
+ * guard tile joins `zone+0x98` — not the room points, so no room computation
+ * sees it, but the treasure blocks phase keeps its piles away from every
+ * entry in that ledger. The tile comes back in `SeatedGuard` for callers that
+ * need to rebuild the list.
  * No free neighbour: no draws, no writes, no guard.
  */
 export function seatGuard(

@@ -43,8 +43,16 @@ different compilations with different float arithmetic in the road
 wave** — and the reference is the EDITOR's, so the editor's x87
 arithmetic is the one the port speaks (see the road section). Every
 road list of every zone is now byte-identical to the engine's own dump.
-Next: the additional objects, the treasure blocks and finally emitting
-the `.h5m`. The road PAINTER is still ahead of us: the network exists
+**The TREASURE BLOCKS close the run** (`0xEA3AE0` → `0xEBA420`,
+`test-rmg-treasure-blocks`): all eight traced boundaries land — the
+growth and the fill of each zone — the phase ends on **92438, the whole
+reference run**, and its 58 treasures and 24 artifacts stand where their
+minted names stand in the reference map, each of the 28 blocks guarded.
+Additional objects cost nothing on a surface-only template, which the
+trace and the code agree on, so **every draw the reference run spends is
+now accounted for**.
+
+Next: emitting the `.h5m`. The road PAINTER is still ahead of us: the network exists
 now, but its terrain layers — and with them the one open difference in
 the masks, Inferno's Dead_Land stealing weight from Lava wherever a
 road runs — wait for the painting pass.
@@ -399,7 +407,8 @@ is what it is belongs next to the number.
 | `treasures.ts` | the zone tail: observatories, the Den roll, treasures/chests | **done, live in zone 1** — 9 draws to 18662; chests a measured no-op |
 | `road.ts` | the zone road: the chain, the wave, the coin-tied walk | **done, live in all four zones** — 928 coins to the loop's end at 20039 |
 | `objects/*.ts` | the remaining `MainObjects` steps, one file each | |
-| `treasure.ts` | `CTreasureBlockDistributor` | |
+| `treasure-blocks.ts` | `CTreasureBlockDistributor`: the growth `0xED5650` and the fill `0xED49D0` | **done, live in all four zones** — 2,640 draws to the run's end at 92438 |
+| `artifacts.ts` | the artifact table the distributor's pool is built from | **done** — cost and the generated flag, in id order |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
 | `emit.ts` | the finished map, handed to `src/map/` | |
 
@@ -1311,9 +1320,10 @@ reference tile.
   orthogonals). Freeness is the road-lenient test, no border or zone check.
   Power = `BasicLeverGuardPower × GuardStrenght`; SetMonster's own
   `power < 100` gate spends nothing, but the seat is taken and occupancy 4
-  written regardless. The guard tile joins `zone+0x98` — a ledger the room
-  machinery never reads (mask 4 selects `+0x68`) — so guards do NOT steer
-  later room, and the port drops the ledger.
+  written regardless. The guard tile joins `zone+0x98` — which the room
+  machinery never reads (mask 4 selects `+0x68`), so guards do NOT steer
+  later room; the treasure blocks phase is the ledger's one reader, and
+  keeps its piles 8 tiles away from every seat in it (Phase 13).
 - **A suspected infinite loop, never reached**: a failed mint (`0xEB9B37`)
   skips the accounting and re-enters with an identical candidate list.
 
@@ -1642,6 +1652,92 @@ from the same seed. The day the port serves the in-game RMG screen
 (network play), it will need a build switch — game arithmetic vs editor
 arithmetic in the router — deliberately deferred until then.
 
+### Phase 13 — the treasure blocks (`0xEA3AE0` → `0xEBA420`) — ported, live
+
+The generator's last phase, and the one that finishes the reference run:
+2,640 draws from 89798 to **92438**, every boundary of every zone landed
+(`test-rmg-treasure-blocks`).
+
+**Read the LIVE function.** `0xED3F00` carries the phase's log string and
+looks exactly like its body — and nothing calls it, and it is in no
+vtable. An older redaction left as a COMDAT duplicate; it picks its
+artifacts from a different pool (`+0x4C`/`+0x58` by a value threshold
+where the live one filters `+0x70` by a cost window). The live path is
+`0xEBA420` → `0xED3EB0` (a five-argument setter, no logic) and
+`0xED49D0`, which begins by calling the growth `0xED5650`.
+
+**Additional objects (`0xEA59E0`) cost nothing here.** Its per-zone body
+sits behind `zone+0xF4 != 0` — the floor — so a surface-only template
+never enters it, and the trace agrees: 89798 to 89798.
+
+**A block is a spot beside a road.** `0xEBA420` first recomputes the room
+grid with mask **0x38** — the three road lists alone — so throughout this
+phase `room` is the distance to the nearest road tile. Then `0xED5650`
+walks `zone+0xCC` and a seed must be:
+
+| gate | the test | before or after the draw |
+| --- | --- | --- |
+| free | occupancy 0 (bit 0 is never written, so this is "untouched" — a road tile does NOT qualify) | before |
+| beside a road | `room == 1`, exactly | before |
+| away from the town | `(dy² + dx²) > 3.0f`, the SQUARE against 3 | before |
+| — | **`below(8)`** — where the eight-neighbour walk starts | — |
+| unguarded | no neighbour carries occupancy 4 | after |
+| on an edge | at least TWO free neighbours with `room > 1` | after |
+| spaced | `DistBetweenTreasureBlocks` (8) from every block already grown, and from every point of `zone+0x98` | after |
+
+So the phase's whole draw budget is decided by three tests, and the
+draw is spent on seeds that go on to fail four more.
+
+**`zone+0x98` is the guards' ledger, and this phase is its only
+reader.** ZoneConnections opens it with each passage guard's seat and
+each tile adopted from a neighbour; the mines step and the upgrade
+buildings add their seated guards. Nothing else ever reads it — which is
+why earlier sections called it a ledger no one reads. It is what keeps
+the piles off the roads' guarded junctions.
+
+**The spot grows** into those of the seed's eight neighbours that are
+free, at `room >= 1`, touch at least two footprints (occupancy 2) and no
+guard. Fewer than two grown points and the seed is dropped; the seed
+tile itself is not one of the points. The block records the SEED's raw
+coordinates — no centroid is computed — and `trunc(distance to town)`.
+
+**Then the value.** Once every block of the zone exists, the zone
+record's `TreasureBlocksTotalValue` is split: in a zone WITH a town by
+each block's distance to it (`trunc(dist * total / Σdist)`, so the far
+blocks are the rich ones), in a townless zone evenly. Integer division
+throughout, truncating toward zero. A block under **600** is then
+skipped whole — no guard, no artifact, no piles, no draws.
+
+**Filling a block**, in order:
+
+1. the guard, on the seed tile, at `trunc(value * 2.5f + 0.5f)` of power
+   through the ported `SetMonster` — 4 or 5 draws. Its facing is
+   `-atan2(accX, accY)` over the directions to the block's own points and
+   to every surrounding tile carrying a footprint or a guard, both
+   accumulators nudged by `0.01f` so a null vector still has an angle;
+2. the artifact — **one draw, always**. Candidates are the pool's
+   artifacts whose cost, IN FIFTHS, satisfies `c + 500 < value` and
+   `c * 7 > value`; `below(candidates)` picks one and the block pays `c`
+   out of its value. With no candidate the engine still spends a
+   `below(1)`, and that is the draw the trace shows as 0;
+3. the piles, one per grown point, in growth order. `perPoint =
+   (value / points) / 100`, both divisions integer. `perPoint <= 1` is a
+   chest of 1 and costs no extra draw; otherwise `perPoint > 10` redraws
+   it as `below(6) + 7`, a block of three points or more flips
+   `below(2)` for a chest, and a resource otherwise takes `below(7)`
+   over Wood, Ore, Mercury, Crystal, Sulfur, Gems, Gold. Each pile then
+   spends `betweenFloat(0, 1)` on its rotation and two `below(65535)`
+   minting its name.
+
+**The artifact lands on the point at index 1 and only there**, and that
+point gets nothing else. The pool itself is built in the distributor's
+constructor `0xED3B80`: every artifact whose `CanBeGeneratedToSell` is
+true, in ascending id order, id 0 skipped outright and id 10 (the
+sextant) behind a context flag — 89 of the vanilla 97.
+
+The phase writes NOTHING: no occupancy, no room points, no border. It
+only reads, and hands its objects to the map.
+
 ## Tools
 
 ```bash
@@ -1665,6 +1761,9 @@ npm run test-rmg-upgrade-shrines # upgrade buildings' zero-draw exit and shrines
 npm run test-rmg-price-lists # resource, treasury, luck/morale and shops live to 18653, ten objects on the reference tiles
 npm run test-rmg-treasures # the zone tail live to 18662: one observatory, below(9)=6 -> Ore, chests a no-op
 npm run test-rmg-road      # the WHOLE first loop of MainObjects live: four zones, every boundary, to 20039
+npm run test-rmg-roads-phase # the roads phase live: both loops, all four zones, to 20420
+npm run test-rmg-statics   # the statics live: eight boundaries to 89798, 1325 objects on the reference tiles
+npm run test-rmg-treasure-blocks # the treasure blocks live: growth and fill per zone, to 92438 — the whole run
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste
