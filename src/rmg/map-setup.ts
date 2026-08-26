@@ -33,13 +33,19 @@ const TWO_PI = Math.fround(6.2831853);
 export interface MapSetupRequest {
   /** 0..2 to fix it; undefined lets the engine roll below(3). */
   monsterStrength?: number;
-  /** Fixed, or undefined for the engine's coin. */
-  water?: boolean;
+  /**
+   * WaterAmount, fixed, or undefined for the engine's coin. TRI-state
+   * (0 NONE / 1 PRESENT / 2 ISLAND_MAP), but the dialog's water control is
+   * a checkbox that supplies 2 — the middle 1 only ever comes out of the
+   * coin, so no ordered run can record it.
+   */
+  water?: number;
 }
 
 export interface MapSetup {
   monsterStrength: number;
-  water: boolean;
+  /** gen+0xA6 — the WaterAmount byte, 0/1/2. */
+  water: number;
   /** map+0x5C — single-precision, in radians; its reader is unfound. */
   angle: number;
   /** map+0x88 — the raw roll, kept whole because only its parity is understood. */
@@ -61,9 +67,9 @@ export function mapSetup(params: RmgParams, request: MapSetupRequest, rng: RmgRa
     monsterStrength = request.monsterStrength;
   }
 
-  let water: boolean;
+  let water: number;
   if (request.water === undefined) {
-    water = rng.below(2) !== 0;
+    water = rng.below(2);
   } else {
     rng.next();
     water = request.water;

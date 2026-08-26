@@ -55,13 +55,15 @@ import { floorIterationOrder, generateGameZones } from '../src/rmg/zones.ts';
 export const SEED = 1785351845;
 export const SIZE = 96;
 
-/** The knobs the two ordered reference runs differ by. */
+/** The knobs the ordered reference runs differ by. */
 export interface ChainOptions {
   /** Template file name without the extension; the surface run's default. */
   template?: string;
   /** Map side in tiles — 96 for the surface run, 72 for the underground one. */
   size?: number;
   underground?: boolean;
+  /** WaterAmount (0/1/2); the water reference supplies 2 — see map-setup.ts. */
+  water?: number;
 }
 
 export interface Chain {
@@ -129,7 +131,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
 
   const rng = new RmgRandom(SEED);
   const made = createMap(template, { players: 2, size: 8, underground: options.underground }, rng);
-  const setup = mapSetup(params, { monsterStrength: 1, water: false }, rng);
+  const setup = mapSetup(params, { monsterStrength: 1, water: options.water ?? 0 }, rng);
   const loaded = loadTemplate(template, {
     twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
     playerCount: made.players, mapSize: size, pointLightZoneRadius: params.pointLightParams.zoneRadius,

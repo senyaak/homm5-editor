@@ -58,7 +58,7 @@ if (!existsSync(dir)) {
   const p = readParams(join(dir, 'Params', 'Default.xdb'));
   const rng = new RmgRandom(1785351845);
   const made = createMap(t, { players: 2, size: 8 }, rng);
-  const setup = mapSetup(p, { monsterStrength: 1, water: false }, rng);
+  const setup = mapSetup(p, { monsterStrength: 1, water: 0 }, rng);
   const lt = loadTemplate(t, {
     twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
     playerCount: made.players, mapSize: 96, pointLightZoneRadius: p.pointLightParams.zoneRadius,

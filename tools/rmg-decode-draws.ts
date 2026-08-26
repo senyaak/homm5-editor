@@ -85,7 +85,10 @@ if (!draws.size) {
 
 /** The reference map's objects, by the name they were minted with. */
 function objects(): Map<number, { kind: string; shared: string }> {
-  const path = join(import.meta.dirname, '..', '_tmp', 'oracle', 'reference', 'map.xdb');
+  // `--reference <dir>` names a sibling of `reference` under `_tmp/oracle` —
+  // the run in the log decides which map the names come from.
+  const path = join(import.meta.dirname, '..', '_tmp', 'oracle',
+    flagValue('reference') ?? 'reference', 'map.xdb');
   const out = new Map<number, { kind: string; shared: string }>();
   if (!existsSync(path)) return out;
   const xdb = readFileSync(path, 'utf8');

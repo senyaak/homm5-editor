@@ -108,6 +108,35 @@ carries the water layers (188,739 bytes against the surface run's
 169,757). Lay it out with `npm run rmg-reference -- --water <map.h5m>`
 into `_tmp/oracle/reference-water/`.
 
+**First readings of the island trace** (`rmg-diff-draws --water`,
+`rmg-decode-draws --reference reference-water`): the port already matches
+the run's first 18,459 draws — water changes NOTHING through FillZones,
+towns included (the towns step spends its usual 16 to 18,475). The water
+starts at 18,476, in two shapes:
+
+- **A water-treasures step between towns and dist-to-towns** — no
+  narration line of its own, so it hides inside the "dist to towns"
+  bracket: 36 placements of exactly 5 draws each (180 = the whole gap to
+  18,655): a big `below` (the candidate pick), a small `below` ≤ 6 (the
+  index into the `WaterTreasures` list — FootmanWreck, PeasantWreck,
+  Sea_Chest, Floatsam all appear), a `below(4)`-shaped third, then the
+  two minting `below(65535)`s. Every one of the 36 mints matches a map
+  object — no failed placements in this run.
+- **Island connections replace the land passages** (18,655 → 18,737, 82
+  draws against the surface run's 16): each connection is served by a
+  **Monolith_Two_Way pair or a SHIPYARD**, guarded — the stream reads
+  pick-draws, the object's mint, one `betweenFloat` (the guard roll the
+  land passages also make), then the guard monster's mint. Four Shipyards
+  stand in this run, which makes the connections step the reader of the
+  `Shipyard` bit that `zone+0x164` carries — unfound until now. The shape
+  is the underground teleport pass's (`teleports.ts`) with a nautical
+  price list, which is the porting lead.
+
+All 893 objects of the island map find their mint pairs, so the stream is
+fully labelled. The port now carries `WaterAmount` as 0/1/2 end to end
+(`MapSetupRequest.water`, `ChainOptions.water`; the random path's coin can
+still only mint 0 or 1).
+
 **The underground run is in FULL LOCKSTEP — all 70,799 draws**
 (`test-rmg-underground`): the chain to 4475 —
 which took four finds the surface run could not make — then every step

@@ -83,7 +83,7 @@ if (!existsSync(join(dir, 'RMG'))) {
 
   const rng = new RmgRandom(1785351845);
   const made = createMap(template, { players: 2, size: 8 }, rng);
-  const setup = mapSetup(params, { monsterStrength: 1, water: false }, rng);
+  const setup = mapSetup(params, { monsterStrength: 1, water: 0 }, rng);
   const loaded = loadTemplate(template, {
     twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
     playerCount: made.players, mapSize: 96, pointLightZoneRadius: params.pointLightParams.zoneRadius,

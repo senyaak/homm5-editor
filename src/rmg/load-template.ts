@@ -121,8 +121,12 @@ export interface LoadTemplateOptions {
   twoFloors: boolean;
   /** map+0x8C from the map-created step: the underground is the Dwarven caves. */
   dwarvenUnderground: boolean;
-  /** gen+0xA6 — floor-0 zones become WaterBordered. */
-  water: boolean;
+  /**
+   * gen+0xA6 — the WaterAmount byte (0/1/2); non-zero makes floor-0 zones
+   * WaterBordered. Whether the engine distinguishes 1 from 2 here is an
+   * assumption until read — the island reference is the only water run.
+   */
+  water: number;
   /** gen+0x28 — how many players CreateMap settled on. */
   playerCount: number;
   /** gen+0x64 as the operator left it: a race per slot, RACE.RANDOM to defer. */
@@ -224,7 +228,7 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
     }
 
     const kind: ZoneKind = t.floor === 0
-      ? (options.water ? 'waterBordered' : 'zone')
+      ? (options.water !== 0 ? 'waterBordered' : 'zone')
       : (options.dwarvenUnderground ? 'dwarven' : subterra ? 'subterra' : 'subInferno');
 
     const terrainRace = kind === 'subterra' ? RACE.DUNGEON
