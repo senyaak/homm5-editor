@@ -9,15 +9,23 @@
 // margin. Every traced step boundary of the first loop is asserted per
 // zone, so a divergence names its step.
 //
-// The statics of the underground zone wait on the subterranean vtable
-// overrides (unread); this suite ends at the roads-phase boundary.
+// The statics run on the subterranean overrides (`0xEC4A70`/`0xEC50C0`
+// through the shared massif carve `0xED11D0`) for the underground zone
+// and on the base pair for the surface ones; every traced boundary of
+// the phase is asserted. The suite ends at the statics boundary — the
+// additional objects and the two-floor treasure blocks are still ahead.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { createVertexHeights } from '../src/rmg/massif-carve.ts';
+import { recomputeRoom } from '../src/rmg/placement.ts';
 import type { Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
+import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
+import { placeZoneOneTileStatics, placeSubterraOneTileStatics } from '../src/rmg/statics-one-tile.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
+import { RACE_BY_NAME } from '../src/rmg/load-template.ts';
 import { runChain, ZoneFill } from './rmg-chain.ts';
 import { dataDir } from './game-dir.ts';
 import { REFERENCE_UG_DIR, hasUndergroundReference } from './rmg-reference.ts';
@@ -62,11 +70,13 @@ console.log('\nthe first loop of MainObjects, zone by zone in template order');
 c.rng.next(); // the MainObjects prologue draw
 
 const named: Array<{ name: string; x: number; y: number }> = [];
+const fills = new Map<number, ZoneFill>();
 const mineActives = new Map<number, Tile[]>();
 const roads = new Map<number, Tile[]>();
 for (const tz of c.template.zones) {
   const zone = tz.index;
   const fill = new ZoneFill(c, zone);
+  fills.set(zone, fill);
   const steps = STEPS[zone]!;
   const run: Record<string, () => void> = {
     mines: () => {
@@ -114,7 +124,7 @@ for (let f = 0; f < c.floors.length; f++) {
   for (const z of floorIterationOrder(c.loaded.zones.filter((zz) => zz.floor === f))) {
     const zone = c.zone(z.index);
     const centre = c.townResult.centres.get(z.index);
-    buildZoneRoadsPhase({
+    const phase = buildZoneRoadsPhase({
       size: c.size, grid: c.floors[f]!.grid, border: c.floors[f]!.border,
       occupancy: c.floors[f]!.occ, zoneIndex: z.index,
       townEntry: zone.town && centre ? [centre.b, centre.a] : null,
@@ -124,9 +134,73 @@ for (let f = 0; f < c.floors.length; f++) {
       ],
       mineActives: mineActives.get(z.index) ?? [],
     }, c.rng);
+    roads.set(z.index, [...roads.get(z.index)!, ...phase.road08, ...phase.road10]);
   }
 }
 check('the roads phase ends on the traced 6471', c.rng.draws === 6471, `${c.rng.draws}`);
+
+// The statics — the driver `0xEA5450`, zones in template entry order,
+// vtable +0x34 then +0x30 per zone: the base pair for the surface zones,
+// the subterranean overrides for zone 1, whose big statics are the base
+// sweep behind the massif carve and whose one-tile step carries the rock
+// filter, the survival rolls and the Crystal point lights.
+console.log('\nthe statics, zone by zone in template order');
+
+const STATIC_BOUNDARIES: Record<number, [number, number]> = {
+  1: [44208, 49892], 2: [51711, 60511], 3: [65932, 67611],
+};
+
+const vertexHeights = c.floors.map((_, f) => createVertexHeights(c.size, f));
+const surfaceHeights = new Float32Array(c.size * c.size);
+let staticsCount = 0;
+for (const tz of c.template.zones) {
+  const loadedZone = c.loaded.zones.find((z) => z.index === tz.index)!;
+  const f = loadedZone.floor;
+  const floor = c.floors[f]!;
+  const preset = c.presets.get(loadedZone.terrainRace)!;
+  const fill = fills.get(tz.index)!;
+  const zoneRoads = roads.get(tz.index)!;
+  const subterranean = loadedZone.kind !== 'zone' && loadedZone.kind !== 'waterBordered';
+  const [bigBoundary, oneBoundary] = STATIC_BOUNDARIES[tz.index]!;
+
+  const big = placeZoneBigStatics({
+    size: c.size, grid: floor.grid, border: floor.border, occupancy: floor.occ, room: floor.room,
+    points: fill.points, zoneIndex: tz.index, floor: f,
+    settingRace: loadedZone.race,
+    roads: zoneRoads, bigPositions: [], blockedList: fill.blocked,
+    bigStatics: preset.bigStatics.map((h) => c.footprint(h)),
+    mountains: preset.mountains.map((h) => c.footprint(h)),
+    overLakeCenterObjects: preset.overLakeCenterObjects.map((h) => c.footprint(h)),
+    overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => h ? c.footprint(h) : null),
+    mapAngle: c.setup.angle, heights: surfaceHeights,
+    subterranean, vertexHeights: vertexHeights[f]!,
+  }, c.rng);
+  for (const p of big.placed) named.push(p);
+  staticsCount += big.placed.length;
+  check(`zone ${tz.index} big statics land on ${bigBoundary}`, c.rng.draws === bigBoundary,
+    `${c.rng.draws} (${big.placed.length} placed)`);
+
+  const oneInput = {
+    size: c.size, grid: floor.grid, border: floor.border, occupancy: floor.occ, room: floor.room,
+    points: fill.points, zoneIndex: tz.index, roads: zoneRoads,
+    smallBlockers: preset.oneTileSmallBlockers.map((h) => c.footprint(h)),
+    smallNonblockers: preset.oneTileSmallNonblockers.map((h) => c.footprint(h)),
+    bigObjects: preset.oneTileBigObjects.map((h) => c.footprint(h)),
+    mapAngle: c.setup.angle,
+  };
+  const one = subterranean
+    ? placeSubterraOneTileStatics({
+        ...oneInput, vertexHeights: vertexHeights[f]!,
+        pointLight: c.params.pointLightParams,
+      }, c.rng)
+    : placeZoneOneTileStatics(oneInput, c.rng);
+  for (const p of one) named.push(p);
+  staticsCount += one.length;
+  check(`zone ${tz.index} one-tile statics land on ${oneBoundary}`, c.rng.draws === oneBoundary,
+    `${c.rng.draws} (${one.length} placed)`);
+}
+check('the statics phase ends on the traced 67611', c.rng.draws === 67611, `${c.rng.draws}`);
+console.log(`  ${staticsCount} statics placed`);
 
 // Every named object of the loop against the reference map.
 if (!hasUndergroundReference()) {

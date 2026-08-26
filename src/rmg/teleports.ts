@@ -69,6 +69,8 @@ export interface ZoneTeleportsInput {
   occupancy: Uint8Array;
   /** MUTATED: the stamp's 4s join the zone's room points (`zone+0x68`). */
   points: Tile[];
+  /** MUTATED when carried: stamped-blocked tiles join the zone's `+0x5C` ledger. */
+  blocked?: Tile[];
   /** MUTATED: the stamp's actives join `zone+0xC0` for the roads phase. */
   connectionPoints: Tile[];
   /** MUTATED: the guard's tile joins the `zone+0x98` ledger. */
@@ -143,7 +145,7 @@ export function placeZoneTeleports(input: ZoneTeleportsInput, rng: DrawSource): 
     if (!tile) return placed; // "cant find empty tiles to set teleport"
 
     const name = mintName(rng);
-    const actives = stampFootprint({ size, occupancy, points: input.points }, foot, tile, q);
+    const actives = stampFootprint({ size, occupancy, points: input.points, blocked: input.blocked }, foot, tile, q);
     input.connectionPoints.push(...actives);
 
     // The guard: the stamp's LAST active tile, orthogonals then diagonals,

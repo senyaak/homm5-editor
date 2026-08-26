@@ -280,6 +280,15 @@ export interface StampContext {
   occupancy: Uint8Array;
   /** MUTATED: the tiles marked 4 join the zone's room points. */
   points: Tile[];
+  /**
+   * MUTATED when carried: the stamped-blocked ledger — the zone's `+0x5C`
+   * list, the extra bit of the lakes' 0x3E room mask. Only the STAMP
+   * feeds it: a mine's piles and the one-tile statics write their 2s
+   * directly and stay out (measured on the underground run's zone-2 lake
+   * candidates — a pile in the list is one candidate short, all stamps
+   * out is thirteen over).
+   */
+  blocked?: Tile[];
 }
 
 /**
@@ -296,10 +305,20 @@ export function stampFootprint(ctx: StampContext, foot: Footprint, at: Tile, q: 
       const [dx, dy] = rotate(q, off);
       const x = at[0] + dx;
       const y = at[1] + dy;
-      if (x < 0 || x >= size || y < 0 || y >= size) continue;
-      occupancy[y * size + x] = value;
+      // `0xEC2F90` bounds-checks NOTHING: the vector pushes take the RAW
+      // pair (out-of-range included — the room recomputes then measure
+      // distance to it as-is), and the occupancy write wraps through the
+      // grid's contiguous x-major buffer (rows[x][y] = buf[x*size+y]) —
+      // an out-of-range y bleeds into the neighbouring row, an
+      // out-of-range x leaves the buffer and is dropped here.
       if (intoPoints) points.push([x, y]);
       if (collect) active.push([x, y]);
+      if (value === 2) ctx.blocked?.push([x, y]);
+      const flat = x * size + y;
+      if (x < 0 || x >= size || flat < 0 || flat >= size * size) continue;
+      const xw = Math.floor(flat / size);
+      const yw = flat - xw * size;
+      occupancy[yw * size + xw] = value;
     }
   };
   stamp(foot.blocked, 2, false, false);

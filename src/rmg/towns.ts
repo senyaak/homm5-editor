@@ -118,6 +118,11 @@ export interface TownsResult {
    * scan-order reconstruction routes different roads.
    */
   stamped: Map<number, Array<[number, number]>>;
+  /**
+   * Per zone index, the tiles marked 2 — the head of the zone's `+0x5C`
+   * stamped-blocked ledger, the extra bit of the lakes' 0x3E room mask.
+   */
+  stampedBlocked: Map<number, Array<[number, number]>>;
 }
 
 export interface TownsInput {
@@ -178,6 +183,7 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
   const centres = new Map<number, { a: number; b: number }>();
   const occupancy = floors.map(() => new Uint8Array(size * size));
   const stamped = new Map<number, Array<[number, number]>>();
+  const stampedBlocked = new Map<number, Array<[number, number]>>();
   const byIndex = new Map(zones.map((z) => [z.index, z]));
 
   for (const item of template.zones) {
@@ -260,6 +266,11 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
             if (list) list.push([fb, fa]);
             else stamped.set(zone.index, [[fb, fa]]);
           }
+          if (value === 2) {
+            const list = stampedBlocked.get(zone.index);
+            if (list) list.push([fb, fa]);
+            else stampedBlocked.set(zone.index, [[fb, fa]]);
+          }
         }
       };
       mark(proto.blockedTiles, 2);
@@ -310,5 +321,5 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
     }
   }
 
-  return { objects, centres, occupancy, stamped };
+  return { objects, centres, occupancy, stamped, stampedBlocked };
 }

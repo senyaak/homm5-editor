@@ -91,8 +91,8 @@ floor gate) and the two-floor treasure blocks (3,103). Lay it out with
 seed on S2-3P2Z7N2 (245,577 draws, four underground zones) is saved in
 `game/Maps/1785351845uuu.h5m` and stays in the log for later.
 
-**The underground run is in LOCKSTEP through the roads phase**
-(`test-rmg-underground`, 6,471 of its 70,799 draws): the chain to 4475 —
+**The underground run is in LOCKSTEP through the STATICS**
+(`test-rmg-underground`, 67,611 of its 70,799 draws): the chain to 4475 —
 which took four finds the surface run could not make — then every step
 boundary of all three zones' first MainObjects loop, with all 106 named
 objects on their reference tiles. What the run surfaced, each proven by
@@ -134,9 +134,31 @@ its boundary:
   the observatories spend their draws unmarked between "shops" and the
   road boundary, and treasures/chests wait for additional objects.
 
-Still ahead of the underground run: the statics (the subterranean vtable
-overrides `+0x34`/`+0x30` are their own unread functions — three quarters
-of the run), then additional objects and the treasure blocks.
+**The underground STATICS run in FULL LOCKSTEP — all three zones**
+(6471 → 67611, three quarters of the run): every traced boundary lands
+and all 1,190 statics stand where their minted names stand, point-lit
+crystals included. The subterranean overrides came apart into four
+finds, each measured live (details in Phase 12):
+
+- **the massif carve** (`0xED11D0`, drawless): the underground floor is
+  vertex-height rock (byte/float grids, floor 18.0, rock 36.0, an edge
+  ramp) carved into massifs wherever a 9×9 occupancy patch is clean —
+  the port's float grid came out byte-identical to the reference
+  `UndergroundTerrain.bin`, all 5,329 vertices;
+- **Subterra's `+0x34`** is the base sweep behind the carve; its `+0x30`
+  is the base one-tile skeleton plus a rock filter, survival pre-rolls
+  (0.7/0.6/0.9/0.9) and two-draw point lights on Crystals;
+- **the LAKES ran for real** (zone 2 resolves HEAVEN): they exposed the
+  `+0x5C` stamped-blocked ledger (the room masks' bit 0x02, written by
+  the stamp itself), the DEEP WATER pass (blob interiors turn 0x82 and
+  refuse the fit), the deco jitter's axes, list HOLES (a self-closed
+  `<Item/>` draws but creates nothing), the mountains' transient 0x100
+  and their end-of-pass conversion to 2 — and re-read `zone+0x18` as the
+  RESOLVED race (the surface's Inferno zone merely had zero seed
+  candidates).
+
+Still ahead of the underground run: additional objects (85 draws) and
+the two-floor treasure blocks (3,103), then emitting the `.h5m`.
 
 **That trace now exists, and the whole run is measured.** Seed 1785351845 end
 to end is **92,438 draws**, and where they go is no longer a guess:
@@ -1621,7 +1643,87 @@ ENTRY order (the 0x74-stride params array, entry+0x4 the zone id), big
 statics (`+0x34` = `0xEBBBD0`) then one-tile (`+0x30` = `0xEBAA70`) per
 zone, NO prologue draw and no `this->0xB5` read — the phase starts on
 the roads boundary exactly. Subterra/Dwarven/SubInferno/WaterBordered
-override both slots; unread (surface map).
+override both slots; the Subterra pair is read and ported (below), and
+the underground run drives it in lockstep.
+
+**What the underground run corrected in this phase's first reading**
+(each held by the run's boundaries and by-name checks):
+
+- **`zone+0x18` is the RESOLVED race.** The surface trace showed no
+  lake draws for its Inferno zone because the seed scan found ZERO
+  candidates — indistinguishable from a closed gate until a zone with
+  candidates (the underground's HEAVEN zone 2) opened it.
+- **The `+0x5C` stamped-blocked ledger** — the room masks' bit 0x02 —
+  is written by the stamp `0xEC2F90` itself: every stamped blocked cell
+  joins it, in stamp order, raw coordinates (no bounds check — and the
+  occupancy write wraps through the grid's contiguous x-major buffer).
+  A mine's piles and the treasures write their 2s directly and stay
+  out. `0xEC28E0`'s full bit dispatch: 0x02 `+0x5C`, 0x04 `+0x68`,
+  0x08/0x10/0x20 the three road lists, 0x40/0x400 occupancy-filtered
+  `+0xCC` tiles (byte/dword-wide tests); the all-zones flag recomputes
+  the LEVEL against the CALLING zone's lists, not each zone's own.
+- **The LAKES** (`0xEBC260`, mask 0x3E): after the blob, the lake
+  painter's tail (`0xECE680` → `0xecee65`) converts DEEP WATER: every
+  level cell in 1..dim−2 with ≥ 3 of its 8 neighbours at EXACTLY 0x80
+  turns 0x82, two-phase — and 0x82 & 0x3E = 2, so statics stand on a
+  lake's rim, never in its interior. The seed decorations jitter with
+  the FIRST below(5) on the pair's `a` field (the file's Y); the
+  over-lake one-tilers keep list HOLES (a self-closed `<Item/>` is
+  picked for three draws and creates nothing — `below(len)` counts it).
+  Decorations and one-tilers write no occupancy and push nothing.
+- **The MOUNTAINS** (`0xEBCAF0`) have NO recompute — candidates read
+  the room grid the lakes head left (stale if the gate never opened);
+  type is drawn BEFORE the quadrant; the fit is the shared vt+0x44;
+  0x100 per blocked cell is TRANSIENT (mountains overlap freely within
+  the pass, only the 4.0 rule separates them) and the WHOLE accumulated
+  set turns 2 after the pass; the relief cone fires unconditionally per
+  placement.
+
+### The subterranean statics — Subterra `+0x34`/`+0x30`, the carve
+
+`src/rmg/massif-carve.ts`, the subterranean branches of
+`statics-big.ts`/`statics-one-tile.ts`; driven by `test-rmg-underground`.
+
+**The carve** (`0xED11D0`, reached from vt+0x40 = `0xEC4A50`/`0xEC7050`/
+`0xEC92B0` — Subterra, Dwarven and SubInferno share it; SubInferno's
+`+0x34` lacks the vt+0x40 call, unexplained): DRAWLESS, floor 1
+hardcoded. The underground level carries two VERTEX grids `(dim+1)^2`
+(`level+0x24` bytes, `level+0x14` floats; floor 1 starts 0x10/18.0 with
+a rock frame — the low edges ramp 36/30/24 over bytes 32/26/21, the far
+edge lines are plain wall — floor 0 starts 0x20/36.0). The carve walks
+the 3×3-tile lattice: a clean 9×9 occupancy patch (byte mask 0x3E)
+raises its 4×4 vertex block to rock (0x20/36.0), smooths the 16
+surrounding lattice cells (`0xEB27D0` — bilinear over four fixed
+corners, `trunc/9` bytes, float += delta·1.125; OOB corners read 0x20)
+and stamps the patch 0x40; one conversion pass then turns EXACTLY-0x40
+cells to 2 — so only the first subterranean zone's call carves. The
+port's float grid is byte-identical to the reference
+`UndergroundTerrain.bin`, all 5,329 vertices, frame and smoothing
+included.
+
+**Subterra big statics** (`+0x34` = `0xEC4A70`): the carve, then the
+base sweep VERBATIM — same crater rule, rotations, fit, acceptance,
+stamp — minus the relief cone and the "Mountain" test. Dwarven's
+(`0xEC7070`) is the carve alone; SubInferno's (`0xEC92D0`) is Subterra's
+body without the carve call.
+
+**Subterra one-tile statics** (`+0x30` = `0xEC50C0`; SubInferno's
+`0xEC9920` is an instruction-identical clone): the base skeleton — same
+bucket thresholds, same cascade constants and strictness — with three
+changes. A ROCK + BOUNDS filter everywhere (the corner vertex byte
+above 0x10 is rock, read in the vertex grids' own transposed
+convention; tiles must sit in 1..dim−2), tested BEFORE any draw. A
+SURVIVAL pre-roll opens every pass — fence ≥ 0.7, near ≥ 0.6, mid and
+far ≥ 0.9, equality survives — and in near/mid/far it comes BEFORE the
+below(4) quadrant (the base drew below(4) first). Created blockers and
+nonblockers go through vt+0x3C (`0xEC6280`): a resource path containing
+"Crystal" takes a point light for two draws — z = zMin + below(zMax −
+zMin), radius likewise from `PointLightParams` — colour drawless,
+`Colors[zoneId % count]`. Dwarven's `+0x30` (`0xEC7090`) is its own
+four-pass wall-and-pillar layout over the carve (FireColumns at
+`%10==5` seats, Fakels one ring further, a drawless Dwarf_Column
+forest, lights on "Fakel"/"FireColumn") — read in full, unported until
+a dwarven-underground reference exists.
 
 **Big statics** — three parts. The LAKES prologue (`0xEBC260`) gates on
 `zone+0x18` ∈ {HEAVEN, PRESERVE, NECROMANCY, INFERNO, DWARF,
@@ -1881,7 +1983,7 @@ npm run test-rmg-roads-phase # the roads phase live: both loops, all four zones,
 npm run test-rmg-statics   # the statics live: eight boundaries to 89798, 1325 objects on the reference tiles
 npm run test-rmg-treasure-blocks # the treasure blocks live: growth and fill per zone, to 92438 — the whole run
 npm run test-rmg-road-painter # the road painter: all seven GroundTerrain.bin layers byte-identical
-npm run test-rmg-underground # the two-floor run through the roads phase: teleports, prisons, abandoned mines
+npm run test-rmg-underground # the two-floor run through the statics: the carve, the lakes for real, 1190 objects to 67611
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste

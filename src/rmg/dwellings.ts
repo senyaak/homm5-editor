@@ -53,6 +53,8 @@ export interface DwellingStepInput {
   occupancy: Uint8Array;
   /** MUTATED: the zone's stamped points — what the room is measured from. */
   points: Tile[];
+  /** MUTATED when carried: stamped-blocked tiles join the zone's `+0x5C` ledger. */
+  blocked?: Tile[];
   zoneIndex: number;
   /** The zone's floor — floor 1 adds the fit's five-tile margin. */
   floor?: number;

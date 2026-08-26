@@ -42,6 +42,7 @@
 
 import type { DrawSource } from './armies.ts';
 import { mintName } from './armies.ts';
+import type { VertexHeights } from './massif-carve.ts';
 import { recomputeRoom } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 import type { PlacedStatic } from './statics-big.ts';
@@ -149,6 +150,151 @@ export function placeZoneOneTileStatics(input: OneTileStaticsInput, rng: DrawSou
 
   // Pass 4 — far, big objects only, equality passes.
   for (const t of far) {
+    const q = rng.below(4);
+    const base = rng.betweenFloat(0, 1);
+    if (base <= fl(0.5) && input.bigObjects.length) create(input.bigObjects, t, q, false, 2);
+  }
+
+  return placed;
+}
+
+// ---------------------------------------------------------------------------
+// The subterranean one-tile statics — CGameSubterraZone's vtable +0x30
+// (`0xEC50C0`; SubInferno's `0xEC9920` is an instruction-identical clone).
+// The base skeleton — bucket scan, fence, near/mid/far with the same
+// cascade constants and strictness — with three changes:
+//
+// - a ROCK + BOUNDS filter everywhere: a tile whose corner vertex byte
+//   (`level+0x24`, read through `0xED17A0` with the pair swapped into the
+//   grid's own transposed convention) is above 0x10 is rock, and a tile
+//   within one of the map edge is out; both are tested BEFORE any draw;
+// - a SURVIVAL pre-roll opens every pass — fence >= 0.7, near >= 0.6,
+//   mid and far >= 0.9 (`comiss K, roll; ja skip`: equality survives) —
+//   and in near/mid/far it comes BEFORE the below(4) quadrant, where the
+//   base drew below(4) first;
+// - created blockers and nonblockers go through vt+0x3C (`0xEC6280`): a
+//   resource path containing "Crystal" takes a point light for two draws
+//   (z = zMin + below(zMax - zMin), radius likewise); big objects never
+//   do. The colour is drawless — preset Colors[zoneId % count].
+//
+// The fence keeps the base's oddity of drawing below(4) before its border
+// and occupancy tests (only rock/bounds precede it), and no pass here
+// stamps or joins the ledgers, same as base.
+
+export interface SubterraOneTileStaticsInput extends OneTileStaticsInput {
+  /** The floor's vertex height grids — the rock tests read the bytes. */
+  vertexHeights: VertexHeights;
+  /** `SRMGParameters.PointLightParams` — spans for the two light draws. */
+  pointLight: { zMin: number; zMax: number; lightRadiusMin: number; lightRadiusMax: number };
+}
+
+/** The whole slot-+0x30 step for one subterranean-class zone. */
+export function placeSubterraOneTileStatics(
+  input: SubterraOneTileStaticsInput,
+  rng: DrawSource,
+): PlacedStatic[] {
+  const { size, grid, border, occupancy, room, zoneIndex } = input;
+  const w = size + 1;
+  const placed: PlacedStatic[] = [];
+
+  recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads]);
+
+  // `0xED17A0` — the corner vertex byte, in the vertex grids' own
+  // transposed convention; above 0x10 is rock.
+  const rock = (x: number, y: number): boolean => input.vertexHeights.bytes[y * w + x]! > 0x10;
+  const inBounds = (x: number, y: number): boolean =>
+    x >= 1 && x < size - 1 && y >= 1 && y < size - 1;
+
+  // The bucket scan — base thresholds plus the rock and bounds filters.
+  const near: Tile[] = [];
+  const mid: Tile[] = [];
+  const far: Tile[] = [];
+  for (let x = 0; x < size; x++) {
+    for (let y = 0; y < size; y++) {
+      if (grid[y]![x] !== zoneIndex) continue;
+      if (occupancy[y * size + x] !== 0) continue;
+      if (border[y]![x] === 0) continue;
+      if (rock(x, y)) continue;
+      if (!inBounds(x, y)) continue;
+      const r = room[y]![x]!;
+      if (r > 4) far.push([x, y]);
+      else if (r >= 3) mid.push([x, y]);
+      else if (r === 2) near.push([x, y]);
+    }
+  }
+
+  // A blocker or nonblocker whose path carries "Crystal" takes the point
+  // light's two draws (`0xEC6280`); big objects bypass vt+0x3C entirely.
+  const create = (list: Footprint[], at: Tile, q: number, lit: boolean, occ: number): void => {
+    if (!list.length) throw new Error('subterra one-tile statics: both lists empty — the engine would draw below(0)');
+    const entry = list[rng.below(list.length)]!;
+    const angle = lit && entry.path.includes('FireDot') ? input.mapAngle : q * (Math.PI / 2);
+    const item: PlacedStatic = { type: entry.path, name: mintName(rng), x: at[0], y: at[1], angle };
+    if (lit && entry.path.includes('Crystal')) {
+      const p = input.pointLight;
+      item.light = {
+        z: p.zMin + rng.below(p.zMax - p.zMin),
+        radius: p.lightRadiusMin + rng.below(p.lightRadiusMax - p.lightRadiusMin),
+      };
+    }
+    placed.push(item);
+    occupancy[at[1] * size + at[0]] = occ;
+  };
+
+  // Pass 1 — the fence: rock and bounds before the bare below(4), the
+  // survival roll after the border and occupancy tests.
+  for (let x = 0; x < size; x++) {
+    for (let y = 0; y < size; y++) {
+      if (grid[y]![x] !== zoneIndex) continue;
+      if (rock(x, y)) continue;
+      if (!inBounds(x, y)) continue;
+      const q = rng.below(4);
+      if (border[y]![x] !== 0) continue;
+      const occ = occupancy[y * size + x]!;
+      if (occ !== 0 && occ !== 1 && occ !== 8 && occ !== 0x10 && occ !== 0x20) continue;
+      if (rng.betweenFloat(0, 1) < fl(0.7)) continue;
+      const roll = rng.betweenFloat(0, 1);
+      if (roll < fl(0.4) && input.smallBlockers.length) create(input.smallBlockers, [x, y], q, true, 2);
+      else if (input.bigObjects.length) create(input.bigObjects, [x, y], q, false, 2);
+      else create(input.smallBlockers, [x, y], q, true, 2);
+    }
+  }
+
+  // Pass 2 — near: survival, THEN the quadrant, then the base cascade.
+  for (const t of near) {
+    if (rng.betweenFloat(0, 1) < fl(0.6)) continue;
+    const q = rng.below(4);
+    const base = rng.betweenFloat(0, 1);
+    if (base < fl(0.15) && input.bigObjects.length) {
+      create(input.bigObjects, t, q, false, 2);
+      continue;
+    }
+    if (input.smallBlockers.length && rng.betweenFloat(0, 1) < fl(0.4)) {
+      create(input.smallBlockers, t, q, true, 2);
+      continue;
+    }
+    if (input.smallNonblockers.length && rng.betweenFloat(0, 1) < fl(0.6)) {
+      create(input.smallNonblockers, t, q, true, 1);
+    }
+  }
+
+  // Pass 3 — mid: survival at 0.9, no nonblocker stage.
+  for (const t of mid) {
+    if (rng.betweenFloat(0, 1) < fl(0.9)) continue;
+    const q = rng.below(4);
+    const base = rng.betweenFloat(0, 1);
+    if (base < fl(0.3) && input.bigObjects.length) {
+      create(input.bigObjects, t, q, false, 2);
+      continue;
+    }
+    if (input.smallBlockers.length && rng.betweenFloat(0, 1) < fl(0.5)) {
+      create(input.smallBlockers, t, q, true, 2);
+    }
+  }
+
+  // Pass 4 — far: survival at 0.9, big objects only, equality passes.
+  for (const t of far) {
+    if (rng.betweenFloat(0, 1) < fl(0.9)) continue;
     const q = rng.below(4);
     const base = rng.betweenFloat(0, 1);
     if (base <= fl(0.5) && input.bigObjects.length) create(input.bigObjects, t, q, false, 2);

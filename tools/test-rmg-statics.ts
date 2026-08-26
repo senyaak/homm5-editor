@@ -20,7 +20,6 @@ import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import type { PlacedStatic } from '../src/rmg/statics-big.ts';
 import { placeZoneOneTileStatics } from '../src/rmg/statics-one-tile.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
-import { RACE_BY_NAME } from '../src/rmg/load-template.ts';
 import { runChain, SIZE, ZoneFill } from './rmg-chain.ts';
 import { dataDir } from './game-dir.ts';
 
@@ -95,12 +94,12 @@ for (const tz of c.template.zones) {
   const big = placeZoneBigStatics({
     size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room,
     points: fill.points, zoneIndex: tz.index, floor: loadedZone.floor,
-    settingRace: RACE_BY_NAME[tz.setting] ?? 1,
-    roads: zoneRoads, bigPositions,
+    settingRace: loadedZone.race,
+    roads: zoneRoads, bigPositions, blockedList: fill.blocked,
     bigStatics: preset.bigStatics.map((h) => c.footprint(h)),
     mountains: preset.mountains.map((h) => c.footprint(h)),
     overLakeCenterObjects: preset.overLakeCenterObjects.map((h) => c.footprint(h)),
-    overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => c.footprint(h)),
+    overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => h ? c.footprint(h) : null),
     mapAngle: c.setup.angle, heights,
   }, c.rng);
   allStatics.push(...big.placed);

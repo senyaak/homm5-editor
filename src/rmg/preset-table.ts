@@ -79,8 +79,8 @@ export interface RacePreset {
   mountains: string[];
   /** `OverLakeCenterObjects` (`+0xCC`) — lake-seed decorations. */
   overLakeCenterObjects: string[];
-  /** `OverLakeOneTileRandomObjects` (`+0xD8`) — the lakes' one-tile pass. */
-  overLakeOneTileRandomObjects: string[];
+  /** `OverLakeOneTileRandomObjects` (`+0xD8`) — the lakes' one-tile pass; holes kept null. */
+  overLakeOneTileRandomObjects: Array<string | null>;
   /** `OneTileSmallBlockers` (`+0x90`) — the one-tile step's blockers. */
   oneTileSmallBlockers: string[];
   /** `OneTileSmallNonblockers` (`+0x9C`) — its passable decorations. */
@@ -123,6 +123,14 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
   const hrefs = (holder: XmlElement | null): string[] => holder
     ? findAll(holder, 'Item').map((i) => i.attrs['href']).filter((h): h is string => !!h)
     : [];
+  // The engine keeps a list's HOLES — a self-closed <Item/> is an entry
+  // whose pick draws below(len) and creates nothing. The underground
+  // run's zone-2 lakes proved it: Haven's one over-lake hole makes the
+  // engine draw below(1) per placed blob tile, where a filtered list
+  // skips the pass entirely.
+  const hrefsKeepingHoles = (holder: XmlElement | null): Array<string | null> => holder
+    ? findAll(holder, 'Item').map((i) => i.attrs['href'] ?? null)
+    : [];
   const priced = (holder: XmlElement | null): PricedBuilding[] => holder
     ? findAll(holder, 'Item').map((i) => ({
         href: find(i, 'Building')?.attrs['href'] ?? '',
@@ -156,7 +164,7 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
       bigStatics: obj ? hrefs(find(obj, 'BigStatics')) : [],
       mountains: obj ? hrefs(find(obj, 'Mountains')) : [],
       overLakeCenterObjects: obj ? hrefs(find(obj, 'OverLakeCenterObjects')) : [],
-      overLakeOneTileRandomObjects: obj ? hrefs(find(obj, 'OverLakeOneTileRandomObjects')) : [],
+      overLakeOneTileRandomObjects: obj ? hrefsKeepingHoles(find(obj, 'OverLakeOneTileRandomObjects')) : [],
       oneTileSmallBlockers: obj ? hrefs(find(obj, 'OneTileSmallBlockers')) : [],
       oneTileSmallNonblockers: obj ? hrefs(find(obj, 'OneTileSmallNonblockers')) : [],
       oneTileBigObjects: obj ? hrefs(find(obj, 'OneTileBigObjects')) : [],

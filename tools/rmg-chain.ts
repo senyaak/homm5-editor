@@ -95,6 +95,8 @@ export interface Chain {
   roomPoints(zoneIndex: number): Tile[];
   /** The teleports' active tiles — the `zone+0xC0` entries they pushed. */
   teleportActives(zoneIndex: number): Tile[];
+  /** The zone's `+0x5C` stamped-blocked ledger — the lakes' 0x3E extra bit. */
+  blockedList(zoneIndex: number): Tile[];
   zone(zoneIndex: number): RmgZone;
   zoneRace(zoneIndex: number): number;
   footprint(href: string): Footprint;
@@ -168,6 +170,15 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   const teleportRoomPoints = new Map<number, Tile[]>();
   const teleportActives = new Map<number, Tile[]>();
   const unconnectedSet = new Set(conn.unconnected);
+  const blockedLists = new Map<number, Tile[]>();
+  const blockedList = (zoneIndex: number): Tile[] => {
+    let l = blockedLists.get(zoneIndex);
+    if (!l) {
+      l = [...(townResult.stampedBlocked.get(zoneIndex) ?? [])];
+      blockedLists.set(zoneIndex, l);
+    }
+    return l;
+  };
   const basePoints = (zoneIndex: number): Tile[] => {
     const points: Tile[] = [...(townResult.stamped.get(zoneIndex) ?? [])];
     for (const [a, b] of conn.passages.get(zoneIndex) ?? []) points.push([b, a]);
@@ -184,7 +195,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
         const placedTeleports = placeZoneTeleports({
           size, zoneIndex: z.index, floor: f,
           grid: floors[f]!.grid, border: floors[f]!.border, occupancy: floors[f]!.occ,
-          points: grew, connectionPoints: actives, guardSeats: seats,
+          points: grew, blocked: blockedList(z.index), connectionPoints: actives, guardSeats: seats,
           connections: template.connections, unconnected: unconnectedSet,
           centre: { x: centre.b, y: centre.a },
           floorOf: (zi) => loaded.zones.find((zz) => zz.index === zi)!.floor,
@@ -221,6 +232,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     teleportActives(zoneIndex: number): Tile[] {
       return teleportActives.get(zoneIndex) ?? [];
     },
+    blockedList,
     zone(zoneIndex: number): RmgZone {
       return template.zones.find((z) => z.index === zoneIndex)!;
     },
@@ -261,6 +273,8 @@ export class ZoneFill {
    * the underground run's treasury boundary is what proved.
    */
   private readonly pricePreset: RacePreset;
+  /** The zone's `+0x5C` stamped-blocked ledger, shared with the chain. */
+  readonly blocked: Tile[];
   /** The zone's own floor's grids — what every step reads and dents. */
   private readonly f: Chain['floors'][number];
 
@@ -268,6 +282,7 @@ export class ZoneFill {
     this.c = c;
     this.zoneIndex = zoneIndex;
     this.points = c.roomPoints(zoneIndex);
+    this.blocked = c.blockedList(zoneIndex);
     this.zone = c.zone(zoneIndex);
     const loaded = c.loaded.zones.find((z) => z.index === zoneIndex)!;
     this.preset = c.presets.get(loaded.race)!;
@@ -286,7 +301,7 @@ export class ZoneFill {
     const feet = new Map<string, MineFootprint>(MINE_TYPES.map((t) => [t.mine, readMineShared(c.dir, t.mine)]));
     const mines = placeZoneMines({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor,
       town: this.zone.town && centre ? { x: centre.b, y: centre.a } : null,
       counts: this.zone.mines,
       radii: {
@@ -306,7 +321,7 @@ export class ZoneFill {
     this.abandoned = this.pricePreset.abandonedMine
       ? placeZoneAbandonedMines({
           size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ,
-          room: this.f.room, points: this.points, zoneIndex: this.zoneIndex, floor: this.floor,
+          room: this.f.room, points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor,
           count: this.zone.abandonedMines,
           town: this.zone.town && centre ? { x: centre.b, y: centre.a } : null,
           ringMin: c.params.mine3LevelMinRadius, ringMax: c.params.mine3LevelMaxRadius,
@@ -320,7 +335,7 @@ export class ZoneFill {
     const { c } = this;
     return placeZoneDwellings({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, counts: this.zone.dwellings,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, counts: this.zone.dwellings,
       descriptors: this.preset.dwellings.map((href) => c.footprint(href)),
     }, c.rng);
   }
@@ -329,7 +344,7 @@ export class ZoneFill {
     const { c } = this;
     return placeZoneUpgradeBuildings({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, density: this.zone.upgBuildingsDensity, multIndex: 1,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, density: this.zone.upgBuildingsDensity, multIndex: 1,
       list: this.priced(this.pricePreset.newUpgradeBuildings)
         .map((p, i) => ({ href: p.type, value: p.value, foot: p.foot,
           guardStrenght: this.pricePreset.newUpgradeBuildings[i]!.guardStrenght })),
@@ -343,7 +358,7 @@ export class ZoneFill {
     const { c } = this;
     return placeZonePrisons({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor,
       count: this.zone.prisons, foot: c.footprint(PRISON_HREF),
     }, c.rng);
   }
@@ -352,7 +367,7 @@ export class ZoneFill {
     const { c } = this;
     return placeZoneShrines({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, shrinePoints: this.zone.shrinePoints,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, shrinePoints: this.zone.shrinePoints,
       footprints: SHRINE_TYPES.map((s) => c.footprint(`/MapObjects/${s.name}.(AdvMapShrineShared).xdb`)),
     }, c.rng);
   }
@@ -361,7 +376,7 @@ export class ZoneFill {
     const { c } = this;
     return placePriceList({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, budget, list: this.priced(list),
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, budget, list: this.priced(list),
     }, c.rng);
   }
 
@@ -398,7 +413,7 @@ export class ZoneFill {
     const { c } = this;
     return placeObservatories({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor,
       observatory: c.footprint(OBSERVATORY_HREF),
       denOfThieves: c.footprint(DEN_OF_THIEVES_HREF),
       playerNo: c.loaded.zones.find((z) => z.index === this.zoneIndex)!.playerNo,
@@ -412,6 +427,9 @@ export class ZoneFill {
     if (c.loaded.zones.find((z) => z.index === this.zoneIndex)!.floor !== 0) return [];
     return placeZoneTreasures({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      // NO `blocked` — the treasures' 2s stay out of the `+0x5C` ledger
+      // (measured on the underground zone-2 mountains: with them in, the
+      // port's candidate list loses tiles the engine keeps).
       points: this.points, zoneIndex: this.zoneIndex, floor: this.floor,
       density: kind === 'treasures' ? this.zone.treasureDensity : this.zone.treasureChestDensity,
       multIndex: 1, kind,

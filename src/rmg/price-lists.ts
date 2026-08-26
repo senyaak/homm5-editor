@@ -75,6 +75,8 @@ export interface PriceListInput {
   occupancy: Uint8Array;
   /** MUTATED: the stamp's 4s join the zone's room points. */
   points: Tile[];
+  /** MUTATED when carried: stamped-blocked tiles join the zone's `+0x5C` ledger. */
+  blocked?: Tile[];
   zoneIndex: number;
   /** The zone's floor — floor 1 adds the fit's five-tile margin. */
   floor?: number;
