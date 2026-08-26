@@ -168,4 +168,28 @@ twelfth record that is a byte-for-byte clone of Heaven's, patch
 `TownTypesInfo` 11→12 with its accessor, `RMGPresetTable` 12→13, the clamp
 at `0xB4E730` and the jump table — and just load a map. That answers whether
 11 is an allocation or a bound, for a day's work, without authoring a single
-asset. It has not been run.
+asset.
+
+**Built and installed 2026-08-26** (`_tmp/town12-probe.ts`, untracked): the
+archive `H5E/town12-probe.h5u` carries types.xml (+`TOWN_TEST`=11,
++`RACE_TEST`=11, `__RACE_COUNT`→12, both tables' declared sizes moved) over
+the editor mod's copy by mtime, plus both ref tables with the cloned Heaven
+record; the executable got all four patches. What the build taught:
+
+- `TOWN_TYPE_TABLE` is now a real spec in `table-limit.ts`, and the test
+  covers it. `RMGPresetTable` deliberately has NO spec: it ships no live
+  accessor, and once the town table sits at 12 the value-anchored accessor
+  search for {12, 13} would find the TOWN accessor (`0xa9f0e0`, now
+  returning 12) and write the RMG count into it. Its push moves by
+  `findLoadSite` alone.
+- The `cmp edx,0Ah; ja +0xa1; jmp [edx*4+…]` shape occurs FOUR times
+  byte-identically — `MAE_*`, `AWARD_*` and `ARTFSET_EFFECT_*` have twin
+  switches (`0xa9b703`, `0xa9eae3`, `0xceb443`) — so any signature for the
+  town switch must carry the jump table address `0xa96338`, and the probe
+  additionally verifies slot 3 pushes the literal `TOWN_HEAVEN` string.
+- All four jump tables are followed by int3 padding, so the twelfth slot is
+  written over `0xa96364` and points at Heaven's own handler: townType 11
+  stringifies as `TOWN_HEAVEN`, which is what a clone should say.
+
+The game has not yet been launched with it; the verdict line belongs here
+when it has.

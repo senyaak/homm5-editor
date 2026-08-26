@@ -12,6 +12,13 @@ its section by version number, so this heading is inert until it is renamed to
 one. A version with a `-` in it (`-alpha.1`, `-rc.1`) is published as a GitHub
 pre-release.
 
+## Unreleased
+
+- Groundwork for a ninth faction: the town type table's executable ceiling
+  (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
+  covered by the table-limit tests. Nothing user-visible yet — the decisive
+  probe and its findings live in `docs/engineInternals/FACTIONS.md`.
+
 ## 0.10.0-alpha.1 — 2026-08-16
 
 **An alpha, and the reason is multiplayer.** The online half below works and has

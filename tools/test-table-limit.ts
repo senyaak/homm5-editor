@@ -13,7 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  HERO_CLASS_TABLE, HERO_SKILL_TABLE, MAX_IMM8, SPELL_TABLE, findCountAccessor, findLoadSite, patchTableLimit, readTableLimit,
+  HERO_CLASS_TABLE, HERO_SKILL_TABLE, MAX_IMM8, SPELL_TABLE, TOWN_TYPE_TABLE, findCountAccessor, findLoadSite, patchTableLimit, readTableLimit,
 } from '../src/exe/table-limit.ts';
 import type { TableSpec } from '../src/exe/table-limit.ts';
 import { gameDirIfAny } from './game-dir.ts';
@@ -100,7 +100,7 @@ function tinyExe(
   return buf;
 }
 
-for (const table of [HERO_CLASS_TABLE, HERO_SKILL_TABLE, SPELL_TABLE]) {
+for (const table of [HERO_CLASS_TABLE, HERO_SKILL_TABLE, SPELL_TABLE, TOWN_TYPE_TABLE]) {
   console.log(`\n${table.what}:`);
   {
     const buf = tinyExe(table, { decoy: true });
@@ -183,7 +183,7 @@ for (const exe of gameRoot ? ['bin/H5_Game_H5E.exe', 'bin/H5_Game.exe'] : []) {
   if (!existsSync(path)) continue;
   const buf = readFileSync(path);
   console.log(`\n${exe}:`);
-  for (const table of [HERO_CLASS_TABLE, HERO_SKILL_TABLE, SPELL_TABLE]) {
+  for (const table of [HERO_CLASS_TABLE, HERO_SKILL_TABLE, SPELL_TABLE, TOWN_TYPE_TABLE]) {
     const r = readTableLimit(buf, table);
     if (r.wrapped) { check(`${table.what}: reported as wrapped, not as unknown`, true); continue; }
     check(`${table.what}: the count is found`, r.limit !== null, `${r.limit}`);
