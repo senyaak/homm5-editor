@@ -108,11 +108,13 @@ carries the water layers (188,739 bytes against the surface run's
 169,757). Lay it out with `npm run rmg-reference -- --water <map.h5m>`
 into `_tmp/oracle/reference-water/`.
 
-**The island run is in LOCKSTEP to 18,737 — the connections boundary**
-(`test-rmg-water`): every draw from 1 to 18,737 matches the trace in kind
-and value, and every object so far stands on its reference tile by minted
-name — 36 water treasures, 6 monolith halves with 6 guards, 4 shipyards
-with 4 guards. Water changes NOTHING through FillZones and the towns (the
+**The island run is in LOCKSTEP to 20,511 — through the roads phase**
+(`test-rmg-water`): every draw matches the trace in kind and value, every
+traced step boundary of the first MainObjects loop lands per zone, and
+every object stands on its reference tile by minted name — 36 water
+treasures, 6 monolith halves with 6 guards, 4 shipyards with 4 guards,
+and the loop's 112. The shipyards wire into the road networks through
+`+0xC0` with `roads-phase.ts` unchanged. Water changes NOTHING through FillZones and the towns (the
 supplied WaterAmount costs one discarded draw either way); what it adds,
 read out of the executable and ported:
 
@@ -152,15 +154,30 @@ read out of the executable and ported:
   (0xECC901), not a read of ShipyardGuardsLevelCoef. The seat joins
   `+0x98`.
 
+**What the carve does to the first loop.** The rebuilt `+0xCC` is the
+candidate list every list-fed step reads, and after the carve the grid
+no longer derives it: the RIM (original border == depth-1) keeps list
+membership with grid -1 — and the room recompute writes zoneless cells
+1000, so a rim tile passes EVERY room threshold and sits in every pool
+until the fit's zone test rejects it. The placers now take an optional
+`tiles` list (`ZoneFill` serves the carve's kept list on water runs;
+no-water runs still derive from the grid, which is the same list there
+by construction). Two more water-only facts, each found as a one-draw
+divergence: the shipyard's stamp pushes its actives and marker into the
+zone's `+0x68` like every 0xEC2F90 stamp (the mines' room sees the
+shipyard), and the budget denominators (`resourceBuildings`,
+`luckMorale`) count the LIST, rim included.
+
 Named holes: the carve's coast/sea marking (four corner writes of 200
 through 0xEB1590 per coastal tile and a shared engine object — drawless,
 terrain-side, waits for the terrain stage); what a failed 0xEB43D0
 creation skips; the water hash detail that made `floorIterationOrder`
 take its key as size_t (the sea's -1 hashes to bucket 8 of 13).
 
-Beyond 18,737 the island run is unread: MainObjects over carved island
-zones, the statics with a sea, the treasure blocks, and the terrain
-files with the water layers (`GroundTerrain.bin` grew by 19 KB).
+Beyond 20,511 the island run is unread: the statics with a sea (the
+WaterBordered `+0x30`/`+0x34` overrides, 14,653 draws in zone 1 alone),
+the treasure blocks, and the terrain files with the water layers
+(`GroundTerrain.bin` grew by 19 KB).
 
 **The underground run is in FULL LOCKSTEP — all 70,799 draws**
 (`test-rmg-underground`): the chain to 4475 —

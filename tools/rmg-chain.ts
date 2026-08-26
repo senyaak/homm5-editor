@@ -223,6 +223,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   };
   const teleports = new Map<number, PlacedTeleport[]>();
   const teleportRoomPoints = new Map<number, Tile[]>();
+  const shipyardRoomPoints = new Map<number, Tile[]>();
   const teleportActives = new Map<number, Tile[]>();
   const teleportGuardSeats = new Map<number, Tile[]>();
   const unconnectedSet = new Set(conn.unconnected);
@@ -275,10 +276,14 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
         if (water && z.floor === 0) {
           const templateZone = template.zones.find((t) => t.index === z.index)!;
           if (z.shipyard) {
+            // The stamp pushes into the zone's `+0x68` — served back through
+            // roomPoints() so the mines' room downstream sees the shipyard.
+            const stamped: Tile[] = [...points, ...grew];
+            const before = stamped.length;
             const ship = placeShipyard({
               size, grid: floors[f]!.grid, border: floors[f]!.border,
               occupancy: floors[f]!.occ, room: floors[f]!.room,
-              points: [...points, ...grew], blocked: blockedList(z.index),
+              points: stamped, blocked: blockedList(z.index),
               connectionPoints: actives, guardSeats: seats,
               zoneIndex: z.index, floor: f, tiles: water.kept.get(z.index)!,
               depth: water.depth,
@@ -287,7 +292,10 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
               guardPowerUnit: params.basicLeverGuardPower * params.connectionGuardLevel,
               monsterStrength: setup.monsterStrength, tables,
             }, rng);
-            if (ship) water.shipyards.set(z.index, ship);
+            if (ship) {
+              water.shipyards.set(z.index, ship);
+              if (stamped.length > before) shipyardRoomPoints.set(z.index, stamped.slice(before));
+            }
           }
         }
 
@@ -306,11 +314,15 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     dir, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
     teleports, floors, grid, border, occ, room,
     roomPoints(zoneIndex: number): Tile[] {
-      // The engine's PUSH order — the town's stamp, the passages, then the
-      // teleports' stamps. The room computations are order-blind, but the
-      // road step chains these points in order, so the order is part of
-      // the fact.
-      return [...basePoints(zoneIndex), ...(teleportRoomPoints.get(zoneIndex) ?? [])];
+      // The engine's PUSH order — the town's stamp, the passages, the
+      // teleports' stamps, then the shipyard's. The room computations are
+      // order-blind, but the road step chains these points in order, so
+      // the order is part of the fact.
+      return [
+        ...basePoints(zoneIndex),
+        ...(teleportRoomPoints.get(zoneIndex) ?? []),
+        ...(shipyardRoomPoints.get(zoneIndex) ?? []),
+      ];
     },
     teleportActives(zoneIndex: number): Tile[] {
       return teleportActives.get(zoneIndex) ?? [];
@@ -363,6 +375,12 @@ export class ZoneFill {
   readonly blocked: Tile[];
   /** The zone's own floor's grids — what every step reads and dents. */
   private readonly f: Chain['floors'][number];
+  /**
+   * The zone's `+0xCC` when the water carve rebuilt it — the rim keeps list
+   * membership with grid -1, so the grid no longer derives the list and
+   * every list-fed step takes it from here. undefined on no-water runs.
+   */
+  private readonly tiles?: Tile[];
 
   constructor(c: Chain, zoneIndex: number) {
     this.c = c;
@@ -375,6 +393,7 @@ export class ZoneFill {
     this.pricePreset = c.presets.get(loaded.terrainRace)!;
     this.floor = loaded.floor;
     this.f = c.floors[this.floor] ?? c.floors[0]!;
+    this.tiles = c.water?.kept.get(zoneIndex);
   }
 
   private priced(list: PricedBuilding[]): PricedItem[] {
@@ -421,7 +440,7 @@ export class ZoneFill {
     const { c } = this;
     return placeZoneDwellings({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, counts: this.zone.dwellings,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, counts: this.zone.dwellings,
       descriptors: this.preset.dwellings.map((href) => c.footprint(href)),
     }, c.rng);
   }
@@ -430,7 +449,7 @@ export class ZoneFill {
     const { c } = this;
     return placeZoneUpgradeBuildings({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, density: this.zone.upgBuildingsDensity, multIndex: 1,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, density: this.zone.upgBuildingsDensity, multIndex: 1,
       list: this.priced(this.pricePreset.newUpgradeBuildings)
         .map((p, i) => ({ href: p.type, value: p.value, foot: p.foot,
           guardStrenght: this.pricePreset.newUpgradeBuildings[i]!.guardStrenght })),
@@ -444,7 +463,7 @@ export class ZoneFill {
     const { c } = this;
     return placeZonePrisons({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
       count: this.zone.prisons, foot: c.footprint(PRISON_HREF),
     }, c.rng);
   }
@@ -453,7 +472,7 @@ export class ZoneFill {
     const { c } = this;
     return placeZoneShrines({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, shrinePoints: this.zone.shrinePoints,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, shrinePoints: this.zone.shrinePoints,
       footprints: SHRINE_TYPES.map((s) => c.footprint(`/MapObjects/${s.name}.(AdvMapShrineShared).xdb`)),
     }, c.rng);
   }
@@ -462,11 +481,12 @@ export class ZoneFill {
     const { c } = this;
     return placePriceList({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, budget, list: this.priced(list),
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, budget, list: this.priced(list),
     }, c.rng);
   }
 
   private zoneTileCount(): number {
+    if (this.tiles) return this.tiles.length;
     let n = 0;
     for (let x = 0; x < this.c.size; x++) {
       for (let y = 0; y < this.c.size; y++) if (this.f.grid[y]![x] === this.zoneIndex) n++;
@@ -499,7 +519,7 @@ export class ZoneFill {
     const { c } = this;
     return placeObservatories({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
       observatory: c.footprint(OBSERVATORY_HREF),
       denOfThieves: c.footprint(DEN_OF_THIEVES_HREF),
       playerNo: c.loaded.zones.find((z) => z.index === this.zoneIndex)!.playerNo,
@@ -517,7 +537,7 @@ export class ZoneFill {
       // NO `blocked` — the treasures' 2s stay out of the `+0x5C` ledger
       // (measured on the underground zone-2 mountains: with them in, the
       // port's candidate list loses tiles the engine keeps).
-      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor,
+      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
       density: kind === 'treasures' ? this.zone.treasureDensity : this.zone.treasureChestDensity,
       multIndex: 1, kind,
       footprints: TREASURE_TYPES.map((t) => c.footprint(`/MapObjects/${t}.(AdvMapTreasureShared).xdb`)),

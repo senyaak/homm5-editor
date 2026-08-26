@@ -63,7 +63,11 @@ export interface ShipyardInput {
   occupancy: Uint8Array;
   /** The floor's persistent room grid — recomputed here (0xEC28E0 mask 4). */
   room: Int32Array[];
-  /** The zone's `+0x68` room points, for the recompute. */
+  /**
+   * The zone's `+0x68` room points, for the recompute — and MUTATED: the
+   * stamp pushes the shipyard's actives and marker here too, like every
+   * 0xEC2F90 stamp, so the mines' room downstream sees the shipyard.
+   */
   points: Tile[];
   /** MUTATED: the stamp's blocked tiles join the `+0x5C` ledger. */
   blocked: Tile[];
@@ -159,9 +163,10 @@ export function placeShipyard(input: ShipyardInput, rng: DrawSource): PlacedShip
 
   const name = mintName(rng);
   const actives = stampFootprint(
-    { size, occupancy, points: input.connectionPoints, blocked: input.blocked },
+    { size, occupancy, points: input.points, blocked: input.blocked },
     input.foot, placedAt, q,
   );
+  input.connectionPoints.push(...actives);
 
   // The 5x5 reservation halo — untouched tiles only.
   for (let ox = -2; ox <= 2; ox++) {

@@ -60,6 +60,12 @@ export interface DwellingStepInput {
   floor?: number;
   /** The level's persistent room grid, recomputed in place when carried. */
   room?: Int32Array[];
+  /**
+   * The zone's `+0xCC` when the grid no longer derives it — after the water
+   * carve the rim keeps list membership with grid -1 (and room 1000, so it
+   * sits in every pool until the fit rejects it, the engine's own shape).
+   */
+  tiles?: Tile[];
   /** The template's seven per-tier counts for this zone (`zone params +0x30`). */
   counts: number[];
   /**
@@ -72,7 +78,7 @@ export interface DwellingStepInput {
 /** One zone's dwellings — the loops of `0xEB8C10`, draws and all. */
 export function placeZoneDwellings(input: DwellingStepInput, rng: DrawSource): PlacedDwelling[] {
   const { size, grid, border, occupancy, zoneIndex } = input;
-  const candidates = zoneTiles(size, grid, zoneIndex);
+  const candidates = input.tiles ?? zoneTiles(size, grid, zoneIndex);
   const placed: PlacedDwelling[] = [];
 
   for (let tier = 0; tier < input.counts.length; tier++) {

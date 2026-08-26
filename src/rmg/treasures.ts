@@ -75,6 +75,8 @@ interface ZoneContext {
   floor?: number;
   /** The level's persistent room grid, recomputed in place when carried. */
   room?: Int32Array[];
+  /** The zone's `+0xCC` when the grid no longer derives it (water carve). */
+  tiles?: Tile[];
 }
 
 /**
@@ -85,7 +87,8 @@ interface ZoneContext {
 function placeSingle(ctx: ZoneContext, foot: Footprint, rng: DrawSource): PlacedObject | null {
   const { size, grid, border, occupancy, zoneIndex } = ctx;
   const room = ensureRoom(ctx.room, size, grid, zoneIndex, ctx.points);
-  const { kept } = filterByRoom(zoneTiles(size, grid, zoneIndex), room, grid, border, occupancy, size, zoneIndex, 3);
+  const { kept } = filterByRoom(ctx.tiles ?? zoneTiles(size, grid, zoneIndex),
+    room, grid, border, occupancy, size, zoneIndex, 3);
   const pool = kept.filter(([x, y]) => border[y]![x]! >= 1);
 
   for (let attempts = 0; pool.length && attempts < 100; attempts++) {
@@ -112,7 +115,7 @@ export interface ObservatoriesInput extends ZoneContext {
 /** `0xEBF930` — the observatories and the Den of Thieves roll. */
 export function placeObservatories(input: ObservatoriesInput, rng: DrawSource): PlacedObject[] {
   const placed: PlacedObject[] = [];
-  const tiles = zoneTiles(input.size, input.grid, input.zoneIndex).length;
+  const tiles = (input.tiles ?? zoneTiles(input.size, input.grid, input.zoneIndex)).length;
   const count = Math.trunc(tiles / 4000) + 1;
   for (let i = 0; i < count; i++) {
     const one = placeSingle(input, input.observatory, rng);
@@ -143,7 +146,7 @@ export function placeZoneTreasures(input: TreasureStepInput, rng: DrawSource): P
   const { size, grid, border, occupancy, zoneIndex } = input;
   const placed: PlacedObject[] = [];
 
-  const raw = zoneTiles(size, grid, zoneIndex);
+  const raw = input.tiles ?? zoneTiles(size, grid, zoneIndex);
   const prefiltered = raw.filter(([x, y]) => border[y]![x]! >= 1);
   const mult = LADDER[input.multIndex] ?? 1;
   const count = Math.trunc((raw.length * Math.trunc(input.density * mult)) / 10000);

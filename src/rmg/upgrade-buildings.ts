@@ -126,6 +126,8 @@ export interface UpgradeBuildingsInput {
   floor?: number;
   /** The level's persistent room grid, recomputed in place when carried. */
   room?: Int32Array[];
+  /** The zone's `+0xCC` when the grid no longer derives it (water carve). */
+  tiles?: Tile[];
   /** The template's UpgBuildingsDensity, raw (`zone params +0x3C`). */
   density: number;
   /** generator+0xB0 — 1 in every traced run. What writes it is unread. */
@@ -140,7 +142,7 @@ export interface UpgradeBuildingsInput {
 /** One zone's upgrade buildings — `0xEB96D0`, draws and all. */
 export function placeZoneUpgradeBuildings(input: UpgradeBuildingsInput, rng: DrawSource): PlacedUpgradeBuilding[] {
   const { size, grid, border, occupancy, zoneIndex, list } = input;
-  const candidates = zoneTiles(size, grid, zoneIndex);
+  const candidates = input.tiles ?? zoneTiles(size, grid, zoneIndex);
 
   const mult = DENSITY_MULTIPLIERS[input.multIndex] ?? 1;
   const budget = Math.trunc((candidates.length * Math.trunc(input.density * mult)) / 10000);

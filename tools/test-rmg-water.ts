@@ -13,7 +13,10 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { runChain } from './rmg-chain.ts';
+import type { Tile } from '../src/rmg/placement.ts';
+import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
+import { floorIterationOrder } from '../src/rmg/zones.ts';
+import { runChain, ZoneFill } from './rmg-chain.ts';
 import { dataDir } from './game-dir.ts';
 import { REFERENCE_WATER_MAP, hasWaterReference } from './rmg-reference.ts';
 
@@ -103,6 +106,110 @@ if (!hasWaterReference()) {
   }
   check('every monolith half and its guard stand on their reference tiles',
     teleAstray === 0, `6 halves, ${teleGuards} guards, ${teleAstray} astray`);
+}
+
+// --- The first loop of MainObjects, zone by zone in template order, every
+// traced step boundary asserted. The treasures boundary swallows the
+// observatories (no mark of their own), chests spend nothing here.
+console.log('\nthe first loop of MainObjects over the carved islands');
+c.rng.next(); // the MainObjects prologue draw
+
+const STEPS: Record<number, Array<[string, number]>> = {
+  1: [['mines', 18825], ['dwellings', 18829], ['upgradeBuildings', 18829], ['prisons', 18829],
+      ['shrines', 18834], ['resourceBuildings', 18848], ['treasuryBuildings', 18864],
+      ['luckMorale', 18895], ['shops', 18902], ['treasures', 18915], ['chests', 18915], ['road', 19127]],
+  2: [['mines', 19210], ['dwellings', 19218], ['upgradeBuildings', 19218], ['prisons', 19218],
+      ['shrines', 19223], ['resourceBuildings', 19235], ['treasuryBuildings', 19240],
+      ['luckMorale', 19257], ['shops', 19262], ['treasures', 19273], ['chests', 19273], ['road', 19461]],
+  3: [['mines', 19500], ['dwellings', 19500], ['upgradeBuildings', 19511], ['prisons', 19511],
+      ['shrines', 19532], ['resourceBuildings', 19532], ['treasuryBuildings', 19558],
+      ['luckMorale', 19565], ['shops', 19601], ['treasures', 19612], ['chests', 19612], ['road', 19794]],
+  4: [['mines', 19831], ['dwellings', 19831], ['upgradeBuildings', 19840], ['prisons', 19840],
+      ['shrines', 19855], ['resourceBuildings', 19855], ['treasuryBuildings', 19882],
+      ['luckMorale', 19889], ['shops', 19915], ['treasures', 19924], ['chests', 19924], ['road', 20130]],
+};
+
+const named: Array<{ name: string; x: number; y: number }> = [];
+const fills = new Map<number, ZoneFill>();
+const mineActives = new Map<number, Tile[]>();
+const roads = new Map<number, Tile[]>();
+for (const tz of c.template.zones) {
+  const zone = tz.index;
+  const fill = new ZoneFill(c, zone);
+  fills.set(zone, fill);
+  const run: Record<string, () => void> = {
+    mines: () => {
+      const mines = fill.mines();
+      mineActives.set(zone, [
+        ...mines.flatMap((m) => m.actives),
+        ...fill.abandoned.flatMap((m) => m.actives),
+      ]);
+      for (const m of mines) {
+        named.push(m);
+        for (const p of m.piles) named.push(p);
+        if (m.guard) named.push({ name: m.guard.name, x: m.guard.x, y: m.guard.y });
+      }
+      for (const m of fill.abandoned) named.push(m);
+    },
+    dwellings: () => { for (const d of fill.dwellings()) named.push(d); },
+    upgradeBuildings: () => {
+      for (const u of fill.upgradeBuildings()) {
+        named.push(u);
+        if (u.guard?.guard) named.push({ name: u.guard.guard.name, x: u.guard.x, y: u.guard.y });
+      }
+    },
+    prisons: () => { for (const p of fill.prisons()) named.push(p); },
+    shrines: () => { for (const s of fill.shrines()) named.push(s); },
+    resourceBuildings: () => { for (const p of fill.resourceBuildings()) named.push(p); },
+    treasuryBuildings: () => { for (const p of fill.treasuryBuildings()) named.push(p); },
+    luckMorale: () => { for (const p of fill.luckMorale()) named.push(p); },
+    shops: () => { for (const p of fill.shops()) named.push(p); },
+    treasures: () => {
+      for (const o of fill.observatories()) named.push(o);
+      for (const t of fill.treasures()) named.push(t);
+    },
+    chests: () => { for (const t of fill.chests()) named.push(t); },
+    road: () => { roads.set(zone, fill.road()); },
+  };
+  for (const [step, boundary] of STEPS[zone]!) {
+    run[step]!();
+    check(`zone ${zone} ${step} lands on ${boundary}`, c.rng.draws === boundary, `${c.rng.draws}`);
+  }
+}
+check('the first loop ends on the traced 20130', c.rng.draws === 20130, `${c.rng.draws}`);
+
+console.log('\nthe roads phase — the shipyards wired in through +0xC0');
+for (let f = 0; f < c.floors.length; f++) {
+  for (const z of floorIterationOrder(c.loaded.zones.filter((zz) => zz.floor === f))) {
+    const zone = c.zone(z.index);
+    const centre = c.townResult.centres.get(z.index);
+    const phase = buildZoneRoadsPhase({
+      size: c.size, grid: c.floors[f]!.grid, border: c.floors[f]!.border,
+      occupancy: c.floors[f]!.occ, zoneIndex: z.index,
+      townEntry: zone.town && centre ? [centre.b, centre.a] : null,
+      connectionPoints: [
+        ...(c.conn.passages.get(z.index) ?? []).map(([a, b]) => [b, a] as Tile),
+        ...c.teleportActives(z.index),
+      ],
+      mineActives: mineActives.get(z.index) ?? [],
+    }, c.rng);
+    roads.set(z.index, [...roads.get(z.index)!, ...phase.road08, ...phase.road10]);
+  }
+}
+check('the roads phase ends on the traced 20511', c.rng.draws === 20511, `${c.rng.draws}`);
+
+// Every named object of the loop against the reference map.
+if (hasWaterReference()) {
+  const xdb = readFileSync(REFERENCE_WATER_MAP, 'utf8');
+  let astray = 0;
+  for (const p of named) {
+    const i = xdb.indexOf(`id="${p.name}"`);
+    if (i < 0) { astray++; continue; }
+    const m = /<x>(\d+)<\/x>\s*<y>(\d+)<\/y>/.exec(xdb.slice(i, i + 300));
+    if (!m || Number(m[1]) !== p.x || Number(m[2]) !== p.y) astray++;
+  }
+  check(`every loop object stands where its minted name stands (${named.length} checked)`,
+    astray === 0, `${astray} astray`);
 }
 
 console.log(failures ? `\n${failures} failed` : '\nall good');

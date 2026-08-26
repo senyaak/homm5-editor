@@ -50,6 +50,8 @@ export interface PrisonsInput {
   floor?: number;
   /** The level's persistent room grid, recomputed in place when carried. */
   room?: Int32Array[];
+  /** The zone's `+0xCC` when the grid no longer derives it (water carve). */
+  tiles?: Tile[];
   /** The template zone's Prisons count, raw. */
   count: number;
   /** The prison shared's footprint (PRISON_HREF). */
@@ -62,7 +64,7 @@ export function placeZonePrisons(input: PrisonsInput, rng: DrawSource): PlacedPr
   const placed: PlacedPrison[] = [];
   if (input.count <= 0) return placed;
 
-  const candidates = zoneTiles(size, grid, zoneIndex);
+  const candidates = input.tiles ?? zoneTiles(size, grid, zoneIndex);
   for (let i = 0; i < input.count; i++) {
     const room = ensureRoom(input.room, size, grid, zoneIndex, input.points);
     const { kept } = filterByRoom(candidates, room, grid, border, occupancy, size, zoneIndex, 3);

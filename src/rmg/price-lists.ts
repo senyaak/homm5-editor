@@ -82,6 +82,8 @@ export interface PriceListInput {
   floor?: number;
   /** The level's persistent room grid, recomputed in place when carried. */
   room?: Int32Array[];
+  /** The zone's `+0xCC` when the grid no longer derives it (water carve). */
+  tiles?: Tile[];
   /** The step's points, already through its budget rule. */
   budget: number;
   /** The preset vector in file order — the prefix draw leans on it. */
@@ -98,7 +100,7 @@ export function placePriceList(input: PriceListInput, rng: DrawSource): PlacedPr
   const placed: PlacedPriced[] = [];
   if (list.length === 0) return placed;
 
-  const candidates = zoneTiles(size, grid, zoneIndex);
+  const candidates = input.tiles ?? zoneTiles(size, grid, zoneIndex);
   let spent = 0;
   while (list[0]!.value + spent <= budget) {
     // The affordable LEADING prefix — breaks at the first element over
