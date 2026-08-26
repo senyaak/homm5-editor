@@ -77,7 +77,7 @@ import type { DrawSource } from './armies.ts';
 import { mintName } from './armies.ts';
 import { carveMassif } from './massif-carve.ts';
 import type { VertexHeights } from './massif-carve.ts';
-import { EIGHT, recomputeRoom } from './placement.ts';
+import { EIGHT, recomputeRoom, zoneTiles } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 import { rotate } from './towns.ts';
 
@@ -155,6 +155,14 @@ export interface BigStaticsInput {
   subterranean?: boolean;
   /** The floor's vertex height grids — required when `subterranean`. */
   vertexHeights?: VertexHeights;
+  /**
+   * A water-bordered zone: the fit is the `+0x44` override (`0xECD840`,
+   * border >= 3 on every blocked tile) and the candidates come from
+   * `tiles` — the carve's rebuilt `+0xCC`, rim included (room 1000).
+   */
+  water?: boolean;
+  /** The rebuilt `+0xCC` when `water` — the grid no longer derives it. */
+  tiles?: Tile[];
 }
 
 export interface BigStaticsResult {
@@ -179,9 +187,14 @@ function raiseRelief(input: BigStaticsInput, at: Tile, q: number, blocked: reado
   }
 }
 
-/** `0xEC39D0` — the statics fit: blocked tiles only, byte-wide, no zone test. */
+/**
+ * `0xEC39D0` — the statics fit: blocked tiles only, byte-wide, no zone test.
+ * The fit is the zone vtable's `+0x44`, and CGameWaterBorderedZone overrides
+ * it (`0xECD840`) with one more gate: **border >= 3** — the statics keep off
+ * the coast — and no floor margin (a water zone is floor 0 by construction).
+ */
 export function staticFits(
-  input: Pick<BigStaticsInput, 'size' | 'occupancy' | 'room' | 'floor'>,
+  input: Pick<BigStaticsInput, 'size' | 'occupancy' | 'room' | 'floor' | 'water' | 'border'>,
   blocked: readonly Tile[],
   at: Tile,
   q: number,
@@ -193,6 +206,7 @@ export function staticFits(
     const y = at[1] + dy;
     if (x < 0 || x >= size || y < 0 || y >= size) return false;
     if (input.floor === 1 && (x < 5 || x >= size - 5 || y < 5 || y >= size - 5)) return false;
+    if (input.water && input.border[y]![x]! < 3) return false;
     if ((occupancy[y * size + x]! & 0x3e) !== 0) return false;
     if (room[y]![x]! < 2) return false;
   }
@@ -406,16 +420,20 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
       lakeTiles = lakes.blob;
       placed.push(...lakes.placed);
     }
+    if (process.env['H5E_DEBUG_STATICS']) {
+      console.log(`  [big z${zoneIndex}] lakes done at ${(rng as { draws?: number }).draws}, seeds ${lakeSeeds.length}, blob ${lakeTiles.length}`);
+    }
     placed.push(...placePresetMountains(input, rng));
+    if (process.env['H5E_DEBUG_STATICS']) {
+      console.log(`  [big z${zoneIndex}] mountains done at ${(rng as { draws?: number }).draws}`);
+    }
   }
 
   // The sweep. Room with mask 0x3C, candidates once, types in file order.
   recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads]);
   const candidates: Tile[] = [];
-  for (let x = 0; x < size; x++) {
-    for (let y = 0; y < size; y++) {
-      if (grid[y]![x] === zoneIndex && room[y]![x]! > 1) candidates.push([x, y]);
-    }
+  for (const [x, y] of input.tiles ?? zoneTiles(size, grid, zoneIndex)) {
+    if (room[y]![x]! > 1) candidates.push([x, y]);
   }
 
   for (const entry of input.bigStatics) {

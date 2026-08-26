@@ -13,8 +13,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { readArtifacts, rmgArtifactPool } from '../src/rmg/artifacts.ts';
+import { recomputeRoom } from '../src/rmg/placement.ts';
 import type { Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
+import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
+import { placeWaterOneTileStatics } from '../src/rmg/statics-one-tile.ts';
+import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
+import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { runChain, ZoneFill } from './rmg-chain.ts';
 import { dataDir } from './game-dir.ts';
@@ -133,10 +139,16 @@ const named: Array<{ name: string; x: number; y: number }> = [];
 const fills = new Map<number, ZoneFill>();
 const mineActives = new Map<number, Tile[]>();
 const roads = new Map<number, Tile[]>();
+const guardSeats = new Map<number, Tile[]>();
 for (const tz of c.template.zones) {
   const zone = tz.index;
   const fill = new ZoneFill(c, zone);
   fills.set(zone, fill);
+  const seats: Tile[] = [
+    ...(c.conn.passages.get(zone) ?? []).map(([a, b]) => [b, a] as Tile),
+    ...c.teleportGuardSeats(zone),
+  ];
+  guardSeats.set(zone, seats);
   const run: Record<string, () => void> = {
     mines: () => {
       const mines = fill.mines();
@@ -147,7 +159,10 @@ for (const tz of c.template.zones) {
       for (const m of mines) {
         named.push(m);
         for (const p of m.piles) named.push(p);
-        if (m.guard) named.push({ name: m.guard.name, x: m.guard.x, y: m.guard.y });
+        if (m.guard) {
+          named.push({ name: m.guard.name, x: m.guard.x, y: m.guard.y });
+          seats.push([m.guard.x, m.guard.y]);
+        }
       }
       for (const m of fill.abandoned) named.push(m);
     },
@@ -156,6 +171,7 @@ for (const tz of c.template.zones) {
       for (const u of fill.upgradeBuildings()) {
         named.push(u);
         if (u.guard?.guard) named.push({ name: u.guard.guard.name, x: u.guard.x, y: u.guard.y });
+        if (u.guard) seats.push([u.guard.x, u.guard.y]);
       }
     },
     prisons: () => { for (const p of fill.prisons()) named.push(p); },
@@ -198,7 +214,93 @@ for (let f = 0; f < c.floors.length; f++) {
 }
 check('the roads phase ends on the traced 20511', c.rng.draws === 20511, `${c.rng.draws}`);
 
-// Every named object of the loop against the reference map.
+// --- The statics: the base big sweep with the WaterBordered fit override
+// (border >= 3, no zone test) over the carve's kept lists, and the water
+// one-tile override — the base cascades with no border fence.
+console.log('\nthe statics over the islands');
+
+const STATIC_BOUNDARIES: Record<number, [number, number]> = {
+  1: [35164, 36001], 2: [43700, 44769], 3: [52561, 53620], 4: [61962, 63227],
+};
+const heights = new Float32Array(c.size * c.size);
+for (const tz of c.template.zones) {
+  const loadedZone = c.loaded.zones.find((z) => z.index === tz.index)!;
+  const preset = c.presets.get(c.zoneRace(tz.index))!;
+  const fill = fills.get(tz.index)!;
+  const zoneRoads = roads.get(tz.index)!;
+  const [bigBoundary, oneBoundary] = STATIC_BOUNDARIES[tz.index]!;
+
+  const big = placeZoneBigStatics({
+    size: c.size, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room,
+    points: fill.points, zoneIndex: tz.index, floor: loadedZone.floor,
+    settingRace: loadedZone.race,
+    roads: zoneRoads, bigPositions: [], blockedList: fill.blocked,
+    bigStatics: preset.bigStatics.map((h) => c.footprint(h)),
+    mountains: preset.mountains.map((h) => c.footprint(h)),
+    overLakeCenterObjects: preset.overLakeCenterObjects.map((h) => c.footprint(h)),
+    overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => h ? c.footprint(h) : null),
+    mapAngle: c.setup.angle, heights,
+    water: true, tiles: c.water!.kept.get(tz.index),
+  }, c.rng);
+  for (const p of big.placed) named.push(p);
+  check(`zone ${tz.index} big statics land on ${bigBoundary}`, c.rng.draws === bigBoundary,
+    `${c.rng.draws} (${big.placed.length} placed)`);
+
+  const one = placeWaterOneTileStatics({
+    size: c.size, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room,
+    points: fill.points, zoneIndex: tz.index, roads: zoneRoads,
+    smallBlockers: preset.oneTileSmallBlockers.map((h) => c.footprint(h)),
+    smallNonblockers: preset.oneTileSmallNonblockers.map((h) => c.footprint(h)),
+    bigObjects: preset.oneTileBigObjects.map((h) => c.footprint(h)),
+    mapAngle: c.setup.angle, tiles: c.water!.kept.get(tz.index)!,
+  }, c.rng);
+  for (const p of one) named.push(p);
+  check(`zone ${tz.index} one-tile statics land on ${oneBoundary}`, c.rng.draws === oneBoundary,
+    `${c.rng.draws} (${one.length} placed)`);
+}
+
+// --- The treasure blocks — the shared machinery over the kept lists (the
+// LIST-driven room recompute reaches the rim), the artifact pool WITH the
+// sextant (its gate is the water flag), additional objects zero draws.
+console.log('\nthe treasure blocks, zone by zone in template order');
+
+const BLOCK_BOUNDARIES: Record<number, [number, number]> = {
+  1: [63698, 63770], 2: [64214, 64274], 3: [64714, 64835], 4: [65312, 65421],
+};
+const ARTIFACTS: ArtifactEntry[] = rmgArtifactPool(readArtifacts(dir), true)
+  .map((a) => ({ id: a.id, cost: a.cost, href: a.href }));
+let blockGuards = 0;
+for (const tz of c.template.zones) {
+  const centre = c.townResult.centres.get(tz.index);
+  const hasTown = Boolean(tz.town && centre);
+  recomputeRoom(c.room, c.size, c.grid, tz.index, roads.get(tz.index)!, c.water!.kept.get(tz.index));
+  const blocks = buildTreasureBlocks({
+    size: c.size, occupancy: c.occ, room: c.room,
+    tiles: c.water!.kept.get(tz.index)!,
+    town: hasTown ? [centre!.b, centre!.a] : [0, 0], hasTown,
+    repel: guardSeats.get(tz.index)!,
+    totalValue: c.zone(tz.index).treasureBlocksTotalValue,
+    distBetween: c.params.distBetweenTreasureBlocks,
+  }, c.rng);
+  const [grown, filled] = BLOCK_BOUNDARIES[tz.index]!;
+  check(`zone ${tz.index} grows its blocks by ${grown}`, c.rng.draws === grown,
+    `${c.rng.draws} (${blocks.length} blocks)`);
+  const result = fillTreasureBlocks({
+    size: c.size, occupancy: c.occ, blocks, artifacts: ARTIFACTS,
+    monsterStrength: c.setup.monsterStrength, tables: c.tables,
+  }, c.rng);
+  for (const b of result) {
+    if (b.guard) {
+      blockGuards++;
+      named.push({ name: b.guard.name, x: b.guardAt[0], y: b.guardAt[1] });
+    }
+    named.push(...b.items);
+  }
+  check(`zone ${tz.index} fills them by ${filled}`, c.rng.draws === filled, `${c.rng.draws}`);
+}
+check('the island run closes on the traced 65421 — the WHOLE run', c.rng.draws === 65421, `${c.rng.draws}`);
+
+// Every named object against the reference map.
 if (hasWaterReference()) {
   const xdb = readFileSync(REFERENCE_WATER_MAP, 'utf8');
   let astray = 0;
@@ -208,7 +310,7 @@ if (hasWaterReference()) {
     const m = /<x>(\d+)<\/x>\s*<y>(\d+)<\/y>/.exec(xdb.slice(i, i + 300));
     if (!m || Number(m[1]) !== p.x || Number(m[2]) !== p.y) astray++;
   }
-  check(`every loop object stands where its minted name stands (${named.length} checked)`,
+  check(`every object stands where its minted name stands (${named.length} checked)`,
     astray === 0, `${astray} astray`);
 }
 

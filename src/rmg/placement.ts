@@ -50,9 +50,10 @@ export function ensureRoom(
   grid: Int32Array[],
   zoneIndex: number,
   points: Tile[],
+  tiles?: Tile[],
 ): Int32Array[] {
   const out = room ?? Array.from({ length: size }, () => new Int32Array(size).fill(-1));
-  recomputeRoom(out, size, grid, zoneIndex, points);
+  recomputeRoom(out, size, grid, zoneIndex, points, tiles);
   return out;
 }
 
@@ -62,6 +63,7 @@ export function recomputeRoom(
   grid: Int32Array[],
   zoneIndex: number,
   points: Tile[],
+  tiles?: Tile[],
 ): void {
   for (let x = 0; x < size; x++) {
     for (let y = 0; y < size; y++) {
@@ -73,6 +75,24 @@ export function recomputeRoom(
         continue;
       }
       if (grid[y]![x] !== zoneIndex) continue;
+      let m = 10000;
+      for (const [px, py] of points) {
+        const d = Math.hypot(px - x, py - y);
+        if (d < m) m = d;
+      }
+      room[y]![x] = Math.trunc(m);
+    }
+  }
+  // The distance walk is really LIST-driven (`0xEC28E0` reads the zone's
+  // vectors), which the grid walk above reproduces exactly — until the water
+  // carve puts RIM tiles in the list that the grid has disowned. Those get
+  // their real distances too, not the zoneless 1000: measured by the island
+  // run's treasure blocks, whose seed scan is the one reader with no border
+  // gate to hide the rim (a rim tile beside a road reads room 1 and costs
+  // the engine a below(8) the 1000 was hiding from the port).
+  if (tiles) {
+    for (const [x, y] of tiles) {
+      if (grid[y]![x]! >= 0) continue;
       let m = 10000;
       for (const [px, py] of points) {
         const d = Math.hypot(px - x, py - y);

@@ -159,6 +159,85 @@ export function placeZoneOneTileStatics(input: OneTileStaticsInput, rng: DrawSou
 }
 
 // ---------------------------------------------------------------------------
+// The water one-tile statics — CGameWaterBorderedZone's vtable +0x30
+// (`0xECCB50`). The base skeleton with two subtractions and one gate:
+//
+// - NO border fence — the pass that walked every zone tile is simply
+//   absent, so the step starts at the near bucket;
+// - the bucket scan walks the zone's `+0xCC` LIST (the carve's rebuilt
+//   one) and a tile qualifies when its occupancy is EXACTLY 0 and its
+//   border is AT LEAST 3 — the coast band and the rim never bucket;
+// - the three cascades are the base's, constants and strictness included
+//   (near 0.15/0.4/0.6, mid 0.3/0.5, far <= 0.5 with equality passing).
+
+export interface WaterOneTileStaticsInput extends OneTileStaticsInput {
+  /** The carve's rebuilt `+0xCC` — the grid no longer derives it. */
+  tiles: Tile[];
+}
+
+/** The whole slot-+0x30 step for one water-bordered zone. */
+export function placeWaterOneTileStatics(input: WaterOneTileStaticsInput, rng: DrawSource): PlacedStatic[] {
+  const { size, grid, border, occupancy, room, zoneIndex } = input;
+  const placed: PlacedStatic[] = [];
+
+  recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads]);
+
+  const near: Tile[] = [];
+  const mid: Tile[] = [];
+  const far: Tile[] = [];
+  for (const [x, y] of input.tiles) {
+    if (occupancy[y * size + x] !== 0) continue;
+    if (border[y]![x]! < 3) continue;
+    const r = room[y]![x]!;
+    if (r > 4) far.push([x, y]);
+    else if (r >= 3) mid.push([x, y]);
+    else if (r === 2) near.push([x, y]);
+  }
+
+  const create = (list: Footprint[], at: Tile, q: number, fireDot: boolean, occ: number): void => {
+    if (!list.length) throw new Error('water one-tile statics: empty list reached');
+    const entry = list[rng.below(list.length)]!;
+    const angle = fireDot && entry.path.includes('FireDot') ? input.mapAngle : q * (Math.PI / 2);
+    placed.push({ type: entry.path, name: mintName(rng), x: at[0], y: at[1], angle });
+    occupancy[at[1] * size + at[0]] = occ;
+  };
+
+  for (const t of near) {
+    const q = rng.below(4);
+    const base = rng.betweenFloat(0, 1);
+    if (base < fl(0.15) && input.bigObjects.length) {
+      create(input.bigObjects, t, q, false, 2);
+      continue;
+    }
+    if (input.smallBlockers.length && rng.betweenFloat(0, 1) < fl(0.4)) {
+      create(input.smallBlockers, t, q, true, 2);
+      continue;
+    }
+    if (input.smallNonblockers.length && rng.betweenFloat(0, 1) < fl(0.6)) {
+      create(input.smallNonblockers, t, q, true, 1);
+    }
+  }
+  for (const t of mid) {
+    const q = rng.below(4);
+    const base = rng.betweenFloat(0, 1);
+    if (base < fl(0.3) && input.bigObjects.length) {
+      create(input.bigObjects, t, q, false, 2);
+      continue;
+    }
+    if (input.smallBlockers.length && rng.betweenFloat(0, 1) < fl(0.5)) {
+      create(input.smallBlockers, t, q, true, 2);
+    }
+  }
+  for (const t of far) {
+    const q = rng.below(4);
+    const base = rng.betweenFloat(0, 1);
+    if (base <= fl(0.5) && input.bigObjects.length) create(input.bigObjects, t, q, false, 2);
+  }
+
+  return placed;
+}
+
+// ---------------------------------------------------------------------------
 // The subterranean one-tile statics — CGameSubterraZone's vtable +0x30
 // (`0xEC50C0`; SubInferno's `0xEC9920` is an instruction-identical clone).
 // The base skeleton — bucket scan, fence, near/mid/far with the same

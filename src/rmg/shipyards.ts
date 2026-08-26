@@ -190,7 +190,12 @@ export function placeShipyard(input: ShipyardInput, rng: DrawSource): PlacedShip
       const occ = occupancy[y * size + x]!;
       if (occ !== 0 && (occ & 0x39) === 0) continue;
       const seated = setMonster(input.guardPowerUnit * 20, input.monsterStrength, input.tables, rng);
-      occupancy[y * size + x] = 4;
+      // Unlike the price-list guards, the shipyard's seat writes NO
+      // occupancy — the halo's 1 (or the road bit) stays, and the island
+      // run's oc dump is what said so: the four divergent cells of the
+      // whole grid were the four shipyard guard seats, engine 1 to the
+      // port's 4. The freed cell is what hands the treasure blocks their
+      // extra (rejected) seed candidate beside the shipyard road.
       input.guardSeats.push([x, y]);
       guard = { x, y, guard: seated };
       break;

@@ -108,13 +108,18 @@ carries the water layers (188,739 bytes against the surface run's
 169,757). Lay it out with `npm run rmg-reference -- --water <map.h5m>`
 into `_tmp/oracle/reference-water/`.
 
-**The island run is in LOCKSTEP to 20,511 — through the roads phase**
+**The island run is in FULL LOCKSTEP — all 65,421 draws**
 (`test-rmg-water`): every draw matches the trace in kind and value, every
-traced step boundary of the first MainObjects loop lands per zone, and
-every object stands on its reference tile by minted name — 36 water
-treasures, 6 monolith halves with 6 guards, 4 shipyards with 4 guards,
-and the loop's 112. The shipyards wire into the road networks through
-`+0xC0` with `roads-phase.ts` unchanged. Water changes NOTHING through FillZones and the towns (the
+traced boundary lands (the first loop per zone, the roads phase at
+20,511, all eight statics boundaries, the blocks' growth and fill per
+zone), and every named object of the run — 834 checked — stands on its
+reference tile: water treasures, monoliths, shipyards, the loop's
+objects, 638 statics (rotations included) and the treasure blocks. The
+shipyards wire into the road networks through `+0xC0` with
+`roads-phase.ts` unchanged, and the island's road lists came out
+byte-identical to the oracle's grids dump — all twelve, the unpainted
+0x20 corridors included. The occupancy grid at the roads boundary
+matches the dump in ALL 9,216 cells. Water changes NOTHING through FillZones and the towns (the
 supplied WaterAmount costs one discarded draw either way); what it adds,
 read out of the executable and ported:
 
@@ -168,16 +173,41 @@ zone's `+0x68` like every 0xEC2F90 stamp (the mines' room sees the
 shipyard), and the budget denominators (`resourceBuildings`,
 `luckMorale`) count the LIST, rim included.
 
+**The statics with a sea.** The big sweep is the BASE code — the
+WaterBordered `+0x34` slot is `0xEBBBD0` itself — but the FIT it calls is
+the vtable's `+0x44`, and there the water zone answers with `0xECD840`:
+the base tests plus **border >= 3 on every blocked tile** (the statics
+keep off the coast) and no zone test or floor margin. Candidates come
+from the rebuilt `+0xCC`. The one-tile step IS overridden (`+0x30` →
+`0xECCB50`): the base cascades, constants and strictness included, with
+NO border fence pass and a bucket gate of occupancy exactly 0 AND border
+at least 3 (`statics-one-tile.ts` / `placeWaterOneTileStatics`). The
+lakes head runs and finds zero seed candidates on every island zone —
+the carved borders never reach its border > 5 gate.
+
+**The blocks and the two facts the last draw taught.** The treasure
+blocks run on the shared machinery with the kept lists and the sextant
+in the artifact pool (its id-10 gate is the water flag). Zone 4 ran one
+draw short until the oracle's occupancy dump named the cause — of all
+9,216 cells exactly FOUR differed, the four shipyard guard seats:
+**the shipyard's guard writes NO occupancy** (unlike the price-list
+guards' 4), so the halo's 1 stays and a free room-1 cell beside the
+shipyard road hands the seed scan one more (gate-rejected) below(8).
+And the room recompute is LIST-driven (`0xEC28E0` reads the zone's
+vectors), so a RIM tile in the list gets its real distance, not the
+zoneless 1000 — only the blocks' seed scan can see the difference,
+every other reader hides the rim behind a border gate.
+
 Named holes: the carve's coast/sea marking (four corner writes of 200
 through 0xEB1590 per coastal tile and a shared engine object — drawless,
 terrain-side, waits for the terrain stage); what a failed 0xEB43D0
 creation skips; the water hash detail that made `floorIterationOrder`
 take its key as size_t (the sea's -1 hashes to bucket 8 of 13).
 
-Beyond 20,511 the island run is unread: the statics with a sea (the
-WaterBordered `+0x30`/`+0x34` overrides, 14,653 draws in zone 1 alone),
-the treasure blocks, and the terrain files with the water layers
-(`GroundTerrain.bin` grew by 19 KB).
+What remains of the water reference is the TERRAIN: the water layers of
+`GroundTerrain.bin` (it grew by 19 KB — the sea textures, the coast
+marking, the 0xECF760 height pass over map-wide water), and then the
+`.h5m` emission for all three references.
 
 **The underground run is in FULL LOCKSTEP — all 70,799 draws**
 (`test-rmg-underground`): the chain to 4475 —
