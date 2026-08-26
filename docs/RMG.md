@@ -76,6 +76,21 @@ when the oracle config says `trace`) is what `npm run rmg-diff-draws`
 replays, and it is the instrument to reach for the moment a phase's counter
 disagrees.
 
+**A SECOND reference exists for the underground.** The same seed ordered on
+template **S0-1P2Z2K3.1T** (tiny 72×72, 2 players, underground on, no
+water) — templates carry an explicit `<Underground>` flag and the dialog
+filters by it, so the surface template could not simply be re-ordered. The
+run is 70,799 draws and it measures what the surface one never enters:
+floor balancing (zone 1 lands underground), the underground terrain
+(`UndergroundTerrain.bin`, laid out beside the other two files), the
+PRISONS step (8 and 6 draws — always zero before), additional objects
+live (85 draws: zone 1's treasures and chests, played late behind the
+floor gate) and the two-floor treasure blocks (3,103). Lay it out with
+`npm run rmg-reference -- --underground <map.h5m>` into
+`_tmp/oracle/reference-underground/`; a heavier acceptance run of the same
+seed on S2-3P2Z7N2 (245,577 draws, four underground zones) is saved in
+`game/Maps/1785351845uuu.h5m` and stays in the log for later.
+
 **That trace now exists, and the whole run is measured.** Seed 1785351845 end
 to end is **92,438 draws**, and where they go is no longer a guess:
 
