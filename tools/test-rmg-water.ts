@@ -16,15 +16,18 @@ import { join } from 'node:path';
 import { readArtifacts, rmgArtifactPool } from '../src/rmg/artifacts.ts';
 import { recomputeRoom } from '../src/rmg/placement.ts';
 import type { Tile } from '../src/rmg/placement.ts';
+import { readTileInfo } from '../src/rmg/preset-table.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
 import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import { placeWaterOneTileStatics } from '../src/rmg/statics-one-tile.ts';
+import { fillTerrain, paintRoads, paintSeaCorners, paintWaterMarks } from '../src/rmg/terrain.ts';
 import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
 import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
+import { parseTerrain, readMask, readTextureLayers, readWaterPlane } from '../src/terrain/terrain.ts';
 import { runChain, ZoneFill } from './rmg-chain.ts';
 import { dataDir } from './game-dir.ts';
-import { REFERENCE_WATER_MAP, hasWaterReference } from './rmg-reference.ts';
+import { REFERENCE_WATER_MAP, REFERENCE_WATER_TERRAIN, hasWaterReference } from './rmg-reference.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -299,6 +302,76 @@ for (const tz of c.template.zones) {
   check(`zone ${tz.index} fills them by ${filled}`, c.rng.draws === filled, `${c.rng.draws}`);
 }
 check('the island run closes on the traced 65421 — the WHOLE run', c.rng.draws === 65421, `${c.rng.draws}`);
+
+// --- The terrain: FillTerrain's land over the PRE-CARVE grid (the engine
+// paints it before the water border runs), then per zone in carve order the
+// carve's 200-marks and the sea layer, then the road painter over the
+// carved grid — and the whole of GroundTerrain.bin, river plane included,
+// byte for byte.
+console.log('\nthe terrain, land then water then roads');
+
+const transitive = c.params.defaultTransitiveTile ? readTileInfo(dir, c.params.defaultTransitiveTile) : null;
+const layers = fillTerrain(c.size, c.size, c.loaded.zones, [c.water!.gridBeforeCarve], c.presets, transitive)[0]!;
+const deepWaterBottom = c.params.deepWaterBottom ? readTileInfo(dir, c.params.deepWaterBottom) : null;
+const deepWaterTile = c.params.deepWaterTile ? readTileInfo(dir, c.params.deepWaterTile) : null;
+for (const [zi, zoneMarks] of c.water!.marks) {
+  const lz = c.loaded.zones.find((z) => z.index === zi)!;
+  paintWaterMarks(layers, zoneMarks, c.presets.get(lz.terrainRace)?.waterCoastTile ?? null,
+    deepWaterBottom, c.size);
+  paintSeaCorners(layers, c.water!.sea.get(zi)!, deepWaterTile, c.size);
+}
+paintRoads(layers, c.size, c.grid, c.occ,
+  floorIterationOrder(c.loaded.zones.filter((z) => z.floor === 0)).map((z) => {
+    const preset = c.presets.get(c.loaded.zones.find((lz) => lz.index === z.index)!.terrainRace);
+    return {
+      zoneIndex: z.index,
+      roadTile: preset?.roadTile ?? null,
+      secondaryRoadTile: preset?.secondaryRoadTile ?? null,
+    };
+  }));
+check('nine layers painted', layers.length === 9,
+  layers.map((l) => l.path.split('/').pop()).join(' '));
+
+if (hasWaterReference()) {
+  const terr = parseTerrain(readFileSync(REFERENCE_WATER_TERRAIN));
+  const fileLayers = readTextureLayers(terr);
+  check('the file carries the same nine', fileLayers.length === layers.length, `${fileLayers.length}`);
+  const V = c.size + 1;
+  for (const fl of fileLayers) {
+    const ours = layers.find((l) => l.path === fl.path);
+    const short = fl.path?.split('/').pop() ?? '?';
+    if (!ours) { check(`${short} painted by the port`, false); continue; }
+    const fileMask = readMask(terr, fl);
+    let bad = -1;
+    let painted = 0;
+    for (let k = 0; k < fileMask.length; k++) {
+      if (fileMask[k]! > 0) painted++;
+      if (fileMask[k] !== ours.mask[k] && bad === -1) bad = k;
+    }
+    check(`${short} byte-identical`, bad === -1,
+      bad >= 0
+        ? `vertex ${bad} (${Math.trunc(bad / V)}:${bad % V}): file ${fileMask[bad]} ours ${ours.mask[bad]}`
+        : `${painted} painted vertices`);
+  }
+
+  const filePlane = readWaterPlane(terr);
+  if (!filePlane) {
+    check('the file carries a river plane', false);
+  } else {
+    const river = c.water!.river;
+    check('river plane dims agree', filePlane.W === river.w, `file ${filePlane.W} ours ${river.w}`);
+    let bad = -1;
+    let wet = 0;
+    for (let k = 0; k < filePlane.data.length; k++) {
+      if (filePlane.data[k]! > 0) wet++;
+      if (bad === -1 && filePlane.data[k] !== river.data[k]) bad = k;
+    }
+    check('river plane byte-identical', bad === -1,
+      bad >= 0
+        ? `cell ${bad} (${Math.trunc(bad / river.w)}:${bad % river.w}): file ${filePlane.data[bad]} ours ${river.data[bad]}`
+        : `${wet} wet half-vertices`);
+  }
+}
 
 // Every named object against the reference map.
 if (hasWaterReference()) {

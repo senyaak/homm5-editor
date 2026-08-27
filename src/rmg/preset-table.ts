@@ -38,6 +38,12 @@ export interface RacePreset {
    */
   roadTile: TerrainTileInfo | null;
   secondaryRoadTile: TerrainTileInfo | null;
+  /**
+   * `WaterCoastTile` (`+0x88`) — what the water carve's coast band paints
+   * at 200. Inferno's is its Dead_Land, the same document as its
+   * SecondaryRoadTile; an empty ref falls back to DeepWaterBottom.
+   */
+  waterCoastTile: TerrainTileInfo | null;
   /** `AbandonedMine` (`+0x198`) — what the abandoned-mines worker places. */
   abandonedMine: string | null;
   /** `TownProto` — the AdvMapTownShared a zone of this race builds. */
@@ -147,11 +153,13 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
     const def = tiles ? find(tiles, 'DefaultTile')?.attrs['href'] : undefined;
     const road = tiles ? find(tiles, 'RoadTile')?.attrs['href'] : undefined;
     const secondary = tiles ? find(tiles, 'SecondaryRoadTile')?.attrs['href'] : undefined;
+    const coast = tiles ? find(tiles, 'WaterCoastTile')?.attrs['href'] : undefined;
     out.set(race, {
       defaultTile: def ? readTileInfo(dataRoot, def) : null,
       otherTiles: tiles ? hrefs(find(tiles, 'OtherTiles')).map((h) => readTileInfo(dataRoot, h)) : [],
       roadTile: road ? readTileInfo(dataRoot, road) : null,
       secondaryRoadTile: secondary ? readTileInfo(dataRoot, secondary) : null,
+      waterCoastTile: coast ? readTileInfo(dataRoot, coast) : null,
       abandonedMine: (obj ? find(obj, 'AbandonedMine')?.attrs['href'] : undefined) ?? null,
       townProto: (obj ? find(obj, 'TownProto')?.attrs['href'] : undefined) ?? null,
       overTownCenterObjects: obj ? hrefs(find(obj, 'OverTownCenterObjects')) : [],

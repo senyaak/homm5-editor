@@ -35,6 +35,8 @@
 
 import type { RmgRandom } from './random.ts';
 import type { RacePreset, TerrainTileInfo } from './preset-table.ts';
+import type { Tile } from './placement.ts';
+import type { WaterMark } from './water-border.ts';
 
 export interface TerrainZone {
   index: number;
@@ -151,6 +153,135 @@ export function paintRoads(
       if (!tile) continue;
       for (const da of [0, 1]) {
         for (const db of [0, 1]) paint(layers, tile, a + da, b + db, 255, v);
+      }
+    }
+  }
+}
+
+/**
+ * The carve's own terrain writes — the 200-marks of `0xECB7D0`, replayed in
+ * the order carveWaterBorder recorded them. Per marked tile, four corner
+ * vertices at the LITERAL 200 (0xECB9AE ff. — TransitiveTileIntensity is
+ * never read here either): band 'sea' paints the params' DeepWaterBottom
+ * (the engine re-resolves the shared ref per tile — same document), band
+ * 'coast' the preset's WaterCoastTile with DeepWaterBottom as the
+ * empty-ref fallback (0xECBB79; the shipped table has one empty entry, so
+ * the branch is live). The corner order is the engine's — the second map
+ * coordinate steps first — though four distinct vertices can't show it.
+ *
+ * The paint arithmetic is what turns 200 into the reference's bytes: the
+ * bottom tile's class-0 base includes the zone tile's own 255 (priority
+ * 20 <= everything), so one 200 lands as 255 and steals 400 from every
+ * other land layer — River-bed is {0,255} and DarkGround dies; the coast
+ * tile's higher priority (Dead_Land 60) usually finds base 0 and keeps
+ * the bare 200.
+ */
+export function paintWaterMarks(
+  layers: TerrainLayer[],
+  marks: WaterMark[],
+  coastTile: TerrainTileInfo | null,
+  deepWaterBottom: TerrainTileInfo | null,
+  size: number,
+): void {
+  const v = size + 1;
+  for (const m of marks) {
+    const tile = m.band === 'sea' ? deepWaterBottom : coastTile ?? deepWaterBottom;
+    paint(layers, tile, m.y, m.x, 200, v);
+    paint(layers, tile, m.y + 1, m.x, 200, v);
+    paint(layers, tile, m.y, m.x + 1, 200, v);
+    paint(layers, tile, m.y + 1, m.x + 1, 200, v);
+  }
+}
+
+/**
+ * The half-tile river plane, laid out the way GroundTerrain.bin stores it —
+ * data[(2y+j)*w + (2x+i)], w = 2*(size+1)-1, y-major like every other
+ * plane. (The engine's in-memory rows (floor+0x48) came out TRANSPOSED
+ * against the file in the byte comparison; the kernels and the stamp are
+ * swap-symmetric and the cell visit order transposes with them, so the
+ * port holds the plane in file orientation outright.)
+ */
+export interface RiverPlane {
+  w: number;
+  data: Uint8Array;
+}
+
+export function makeRiverPlane(size: number): RiverPlane {
+  const w = 2 * (size + 1) - 1;
+  return { w, data: new Uint8Array(w * w) };
+}
+
+/**
+ * `0xECF080` — the terrain processor's sea half, called once per zone from
+ * the carve's tail (0xECBD2A) with that zone's sea vector, before the
+ * +0xCC rebuild. Two stages, drawless:
+ *
+ * Per sea tile in vector order: the DeepWaterTile (params +0x150) at the
+ * four corners, the literal 200 again — interior vertices reach 255 on
+ * their second paint (base 200 + 200), the one-vertex ring around the
+ * deep sea keeps 200; then the river-plane stamp: the 4x4 half-tile block
+ * at (2x, 2y) takes v = 7 - border[y][x] (the ADJUSTED border, so a sea
+ * tile always lands the > 5 branch = 255; the v*80 ladder below it is
+ * dead code on this path), each cell guarded against the plane's dims.
+ *
+ * Then the blur: k = 0..2*count-1 walks the vector TWICE (list[k % count],
+ * 0xECF380's idiv), skipping tiles outside 1 <= x,y <= size-3 (the guard
+ * that keeps every kernel read in bounds — the reads themselves are
+ * unguarded). Per tile, two in-place sub-passes over its 4x4 block, cells
+ * row-major: first a DISTANCE-2 kernel — the four neighbours one full
+ * tile away on the half-grid — then a distance-1 kernel, both
+ * (N + S + E + W + 2*C) / 6 in unsigned integers (the 0xAAAAAAABh magic).
+ *
+ * The engine interleaves the corner paints and the stamp per tile; the
+ * port splits them — the paints live on the layers, the stamp on the
+ * plane, and the two never read each other — because the chain must
+ * stamp the plane at carve time (the border seed is dented later by the
+ * connections) while the layers only exist once fillTerrain has run.
+ */
+export function paintSeaCorners(
+  layers: TerrainLayer[],
+  sea: Tile[],
+  deepWaterTile: TerrainTileInfo | null,
+  size: number,
+): void {
+  const v = size + 1;
+  for (const [x, y] of sea) {
+    paint(layers, deepWaterTile, y, x, 200, v);
+    paint(layers, deepWaterTile, y, x + 1, 200, v);
+    paint(layers, deepWaterTile, y + 1, x, 200, v);
+    paint(layers, deepWaterTile, y + 1, x + 1, 200, v);
+  }
+}
+
+/** The river-plane half of `0xECF080` — the 4x4 stamps, then the two-kernel blur. */
+export function stampZoneSeaRiver(
+  river: RiverPlane,
+  sea: Tile[],
+  border: Int32Array[],
+  size: number,
+): void {
+  const { w, data } = river;
+  for (const [x, y] of sea) {
+    const b = 7 - border[y]![x]!;
+    const val = b > 5 || b * 80 >= 255 ? 255 : b * 80;
+    for (let hx = 2 * x; hx < 2 * x + 4; hx++) {
+      for (let hy = 2 * y; hy < 2 * y + 4; hy++) {
+        if (hx < w && hy < w) data[hy * w + hx] = val;
+      }
+    }
+  }
+
+  const n = sea.length;
+  for (let k = 0; k < 2 * n; k++) {
+    const [x, y] = sea[k % n]!;
+    if (x < 1 || y < 1 || x > size - 3 || y > size - 3) continue;
+    for (const d of [2, 1]) {
+      for (let hx = 2 * x; hx < 2 * x + 4; hx++) {
+        for (let hy = 2 * y; hy < 2 * y + 4; hy++) {
+          const sum = data[hy * w + hx - d]! + data[hy * w + hx + d]!
+            + data[(hy - d) * w + hx]! + data[(hy + d) * w + hx]! + 2 * data[hy * w + hx]!;
+          data[hy * w + hx] = Math.trunc(sum / 6);
+        }
       }
     }
   }

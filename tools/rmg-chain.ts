@@ -48,8 +48,10 @@ import { readTownShared, readTownSpecializations } from '../src/rmg/town-data.ts
 import type { TownShared } from '../src/rmg/town-data.ts';
 import { placeTowns } from '../src/rmg/towns.ts';
 import type { TownsResult } from '../src/rmg/towns.ts';
+import { makeRiverPlane, stampZoneSeaRiver } from '../src/rmg/terrain.ts';
+import type { RiverPlane } from '../src/rmg/terrain.ts';
 import { carveWaterBorder, placeWaterTreasures, waterDepth } from '../src/rmg/water-border.ts';
-import type { PlacedWaterTreasure } from '../src/rmg/water-border.ts';
+import type { PlacedWaterTreasure, WaterMark } from '../src/rmg/water-border.ts';
 import { SHIPYARD_HREF, placeShipyard } from '../src/rmg/shipyards.ts';
 import type { PlacedShipyard } from '../src/rmg/shipyards.ts';
 import { placeZoneUpgradeBuildings } from '../src/rmg/upgrade-buildings.ts';
@@ -98,6 +100,21 @@ export interface Chain {
     treasures: Map<number, PlacedWaterTreasure[]>;
     /** One per water zone with the Shipyard bit, from the connections sweep. */
     shipyards: Map<number, PlacedShipyard>;
+    /** The carve's terrain 200-marks per zone, in carve order — for paintWaterMarks. */
+    marks: Map<number, WaterMark[]>;
+    /**
+     * Floor 0's zone grid BEFORE the carve — FillTerrain runs earlier than
+     * the water border (0xEABA33 vs 0xEABB1D), so its vertex walk must see
+     * the un-carved zones; the carved grid only serves the road painter.
+     */
+    gridBeforeCarve: Int32Array[];
+    /**
+     * The river plane, stamped and blurred per zone inside the carve
+     * (0xECF080 reads the border AS ADJUSTED at that moment — the
+     * connections dent it later, so the plane can't be replayed after
+     * the chain).
+     */
+    river: RiverPlane;
     drawsAfter: number;
   } | null;
   conn: ConnectionsResult;
@@ -176,7 +193,9 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   if (setup.water !== 0) {
     water = {
       depth: waterDepth(8), kept: new Map(), sea: new Map(), waterLedger: new Map(),
-      repel: new Map(), treasures: new Map(), shipyards: new Map(), drawsAfter: 0,
+      repel: new Map(), treasures: new Map(), shipyards: new Map(),
+      marks: new Map(), gridBeforeCarve: filled.floors[0]!.map((row) => Int32Array.from(row)),
+      river: makeRiverPlane(size), drawsAfter: 0,
     };
     for (const z of floorIterationOrder(loaded.zones.filter((zz) => zz.floor === 0))) {
       const carved = carveWaterBorder({
@@ -186,6 +205,12 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
       water.kept.set(z.index, carved.kept);
       water.sea.set(z.index, carved.sea);
       water.waterLedger.set(z.index, carved.waterLedger);
+      water.marks.set(z.index, carved.marks);
+      // The carve's tail hands the sea vector to 0xECF080 — the layer
+      // paints replay later (the test builds layers only at fillTerrain
+      // time), but the river plane is stamped and blurred HERE: the seed
+      // reads the border as this zone's carve just adjusted it.
+      stampZoneSeaRiver(water.river, carved.sea, distances[0]!, size);
       const repel: Tile[] = [];
       water.repel.set(z.index, repel);
       water.treasures.set(z.index, placeWaterTreasures({

@@ -11,11 +11,20 @@
 //             grid (+0xC4) takes -1 and the tile joins a local "sea" vector.
 //             EVERY zone tile's border then takes += (1 - depth) — the
 //             distance-to-border table is recalibrated to the new coastline.
-//             (Tiles whose adjusted border lands in {0,1} get coast marks,
-//             and -depth < border < 0 sea marks — four corner writes of 200
-//             through 0xEB1590 and a shared engine object; terrain-side,
-//             drawless, NOT modelled yet: a named hole for the terrain
-//             stage.) Then the zone's tile list (+0xCC) is rebuilt keeping
+//             Right there, per tile in list order, the carve paints terrain:
+//             adjusted border in (-depth, 0) puts four corner writes of 200
+//             (a literal — TransitiveTileIntensity is never read here either)
+//             of the params' DeepWaterBottom through PaintTile 0xEB1590
+//             (0xECB96A..0xECBA95), and adjusted border in {0,1} — the
+//             unsigned `cmp ..,1 / ja` at 0xECBADE — the same four corners
+//             of the PRESET's WaterCoastTile (+0x88, cached; an empty ref
+//             falls back to DeepWaterBottom, 0xECBB79). The two bands are
+//             exclusive; the marks are recorded here and painted by
+//             terrain.ts's paintWaterMarks in the same order. After the
+//             loop the zone hands its sea vector to the terrain processor
+//             (0xECF080 at 0xECBD2A) — the DeepWaterTile corners and the
+//             river-plane stamp+blur, see terrain.ts. Then the zone's
+//             tile list (+0xCC) is rebuilt keeping
 //             adjusted border >= 0 — note the RIM: a tile with original
 //             border == depth-1 is disowned by the grid but KEPT in the
 //             list — and the rest moves to the water ledger (+0x148).
@@ -58,6 +67,14 @@ export interface WaterCarveInput {
   depth: number;
 }
 
+/** One coast/sea 200-mark — a tile whose four corners the carve paints. */
+export interface WaterMark {
+  x: number;
+  y: number;
+  /** 'sea' = DeepWaterBottom (adjusted border in (-depth, 0)); 'coast' = the preset's WaterCoastTile (adjusted in {0,1}). */
+  band: 'sea' | 'coast';
+}
+
 export interface WaterCarveResult {
   /** The rebuilt `+0xCC` — adjusted border >= 0, rim included. */
   kept: Tile[];
@@ -65,18 +82,24 @@ export interface WaterCarveResult {
   sea: Tile[];
   /** The `+0x148` water ledger — adjusted border < 0. */
   waterLedger: Tile[];
+  /** The carve's terrain marks, in tiles order — paintWaterMarks replays them. */
+  marks: WaterMark[];
 }
 
 /** The carve half of `0xECB7D0` — no draws. */
 export function carveWaterBorder(input: WaterCarveInput): WaterCarveResult {
   const { grid, border, zoneIndex, tiles, depth } = input;
   const sea: Tile[] = [];
+  const marks: WaterMark[] = [];
   for (const [x, y] of tiles) {
     if (border[y]![x]! < depth) {
       sea.push([x, y]);
       grid[y]![x] = -1;
     }
     border[y]![x] += 1 - depth;
+    const adj = border[y]![x]!;
+    if (adj > -depth && adj < 0) marks.push({ x, y, band: 'sea' });
+    else if (adj === 0 || adj === 1) marks.push({ x, y, band: 'coast' });
   }
   const kept: Tile[] = [];
   const waterLedger: Tile[] = [];
@@ -84,7 +107,7 @@ export function carveWaterBorder(input: WaterCarveInput): WaterCarveResult {
     if (border[t[1]]![t[0]]! >= 0) kept.push(t);
     else waterLedger.push(t);
   }
-  return { kept, sea, waterLedger };
+  return { kept, sea, waterLedger, marks };
 }
 
 export interface WaterTreasuresInput {

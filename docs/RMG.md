@@ -198,16 +198,68 @@ vectors), so a RIM tile in the list gets its real distance, not the
 zoneless 1000 — only the blocks' seed scan can see the difference,
 every other reader hides the rim behind a border gate.
 
-Named holes: the carve's coast/sea marking (four corner writes of 200
-through 0xEB1590 per coastal tile and a shared engine object — drawless,
-terrain-side, waits for the terrain stage); what a failed 0xEB43D0
-creation skips; the water hash detail that made `floorIterationOrder`
-take its key as size_t (the sea's -1 hashes to bucket 8 of 13).
+**The water terrain — the whole of the island's GroundTerrain.bin, byte
+for byte** (`test-rmg-water`'s terrain tail): all NINE texture layers
+(the surface seven plus the two the water adds) and the river plane,
+12,597 wet half-vertices. The 19 KB the file grew by is exactly the two
+extra mask blocks; everything else rides in planes both files carry. The
+writers, read from the executable:
 
-What remains of the water reference is the TERRAIN: the water layers of
-`GroundTerrain.bin` (it grew by 19 KB — the sea textures, the coast
-marking, the 0xECF760 height pass over map-wide water), and then the
-`.h5m` emission for all three references.
+- **The carve's own marks** (inside 0xECB7D0, per tile in `+0xCC` order,
+  right after the border adjustment): adjusted border in (-depth, 0)
+  paints the params' **DeepWaterBottom** (`+0x158` — River-bed) on the
+  tile's four corner vertices, adjusted border in {0,1} (the unsigned
+  `cmp ..,1 / ja` at 0xECBADE) paints the PRESET's **WaterCoastTile**
+  (`+0x88` — Inferno's is its Dead_Land, the same document its
+  SecondaryRoadTile names; the shipped table has one empty entry and the
+  fallback is DeepWaterBottom, 0xECBB79). Both bands push the LITERAL
+  200 — TransitiveTileIntensity is never read here either. The paint
+  arithmetic makes the reference bytes: the bottom tile's priority 20
+  puts the zone tile's own 255 in its class-0 base, so one 200 clamps to
+  255 and steals 400 — River-bed is {0,255} and the water fringe loses
+  its other land layers — while the coast tile's priority 60 usually
+  finds base 0 and keeps the bare 200. Port: `WaterMark`s recorded by
+  `carveWaterBorder`, replayed by `terrain.ts`'s `paintWaterMarks`.
+- **The sea layer and the river plane** (`0xECF080` — the terrain
+  processor's sea half, called once per zone from the carve's tail at
+  0xECBD2A with that zone's sea vector, before the `+0xCC` rebuild).
+  Per sea tile: the params' **DeepWaterTile** (`+0x150` — Water.xdb) at
+  the four corners, the literal 200 again — interior vertices reach 255
+  on their second paint, the one-vertex ring around the deep sea keeps
+  200; then the river-plane stamp: the 4x4 half-tile block at (2x, 2y)
+  takes `v = 7 - border` (adjusted, so the sea always lands the > 5
+  branch = 255; the v*80 ladder is dead code on this path). Then the
+  blur: `k = 0..2*count-1` walks the vector TWICE (`list[k % count]`),
+  skipping tiles outside 1 <= x,y <= size-3 (the guard that keeps the
+  unguarded kernel reads in bounds); per tile two in-place sub-passes
+  over its block, cells row-major — a DISTANCE-2 kernel (the four
+  neighbours one full TILE away on the half-grid), then a distance-1
+  kernel, both `(N + S + E + W + 2*C) / 6` unsigned (the 0xAAAAAAABh
+  magic). The engine's in-memory plane came out TRANSPOSED against the
+  file; the kernels and visit order transpose with it, so the port
+  (`stampZoneSeaRiver`) holds the plane in file orientation. The stamp
+  must run at carve time — the seed reads the border as the carve just
+  adjusted it, and the connections dent the grid later — so the chain
+  stamps per zone inside the water block while the corner paints replay
+  at fillTerrain time (`paintSeaCorners`; the two touch disjoint state).
+
+The late pass `0xECF760` (called at 0xEAC206, after the road painter)
+turned out NOT to be about the sea: its 0x80 occupancy bits are the
+LAKES (heights -0.5 on their corners, a flood-fill flatten of each lake
+body to min - 0.1, three smoothing passes with kernels 0.8/0.025 and
+0.2/0.1 around a base-height field 0xECF9A0 of sin/cos noise clamped to
+a 9.0 plateau, roads sunk -1.0) — the HEIGHT planes, still unported.
+The RMG writes no passability plane at all: the engine derives the
+vertex water kind from the painted texture classes at terrain-build time
+(0xA20143: classes 3/4 → 1, land/road → 0).
+
+Named holes: what a failed 0xEB43D0 creation skips; the water hash
+detail that made `floorIterationOrder` take its key as size_t (the
+sea's -1 hashes to bucket 8 of 13).
+
+What remains of the water reference is the `.h5m` emission for all three
+references — for which the non-mask planes (the 0xECF760/0xECF9A0
+height field, ground flags, passability) still need a writer.
 
 **The underground run is in FULL LOCKSTEP — all 70,799 draws**
 (`test-rmg-underground`): the chain to 4475 —
