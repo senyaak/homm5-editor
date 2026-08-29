@@ -9,10 +9,11 @@
 // (their derivations are unread — docs/RMG.md names the holes).
 // Everything else is the run's.
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { buildRmgMapDesc } from '../src/rmg/emit.ts';
+import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
+import { buildRmgTexts } from '../src/rmg/emit-texts.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import type { ChainOptions } from './rmg-chain.ts';
 import { runFull } from './rmg-run.ts';
@@ -141,6 +142,40 @@ for (const spec of RUNS) {
       writeFileSync(join('_tmp', `ours-map-${spec.label}.xdb`), ours);
       console.log(`  (ours dumped to _tmp/ours-map-${spec.label}.xdb)`);
     }
+  }
+
+  // The text files, against the fully unpacked archive when it is laid out.
+  const fullBase = join('_tmp', 'oracle', `full-${spec.label}`, 'Maps', 'RMG');
+  if (existsSync(fullBase)) {
+    const guidDir = join(fullBase, readdirSync(fullBase)[0]!);
+    const texts = buildRmgTexts(dir, {
+      mapName: grab(/<MapName>([^<]*)<\/MapName>/),
+      template: spec.template,
+      sizeIndex: [72, 96, 136, 176, 216, 256, 320].indexOf(c.size),
+      underground: spec.twoLevel,
+      water: Boolean(c.water),
+      monsterStrength: c.setup.monsterStrength,
+      players,
+      seed: REFERENCE_SEED,
+    });
+    let bad = 0;
+    for (const t of texts) {
+      const refFile = join(guidDir, t.name);
+      if (!existsSync(refFile)) { bad++; console.log(`    ${t.name}: not in the archive`); continue; }
+      if (!readFileSync(refFile).equals(t.data)) { bad++; console.log(`    ${t.name}: differs`); }
+    }
+    check(`the ${texts.length} text files are byte-identical`, bad === 0, `${bad} differ`);
+
+    const tag = buildRmgMapTag({ tiles: c.size, twoLevel: spec.twoLevel, players });
+    check('map-tag.xdb is byte-identical',
+      readFileSync(join(guidDir, 'map-tag.xdb'), 'utf8') === tag);
+    let miniBad = 0;
+    for (let f = 0; f < (spec.twoLevel ? 2 : 1); f++) {
+      if (readFileSync(join(guidDir, `minimap_floor_0${f + 1}.xdb`), 'utf8') !== buildMinimapXdb(f)) miniBad++;
+    }
+    check('the minimap Texture documents are byte-identical', miniBad === 0, `${miniBad} differ`);
+  } else {
+    console.log(`  (no ${fullBase} — the text half is skipped)`);
   }
 }
 

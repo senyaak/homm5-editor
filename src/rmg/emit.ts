@@ -351,6 +351,61 @@ function patchNth(text: string, marker: string, replacement: string, n: number):
   return text.slice(0, i) + replacement + text.slice(i + marker.length);
 }
 
+/** The RMG's map-tag.xdb — the lobby-facing summary next to map.xdb. */
+export function buildRmgMapTag(input: {
+  tiles: number; twoLevel: boolean; players: number;
+}): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<AdvMapDescTag>',
+    '\t<AdvMapDesc href="map.xdb#xpointer(/AdvMapDesc)"/>',
+    '\t<NameFileRef href="mapname-text-0.txt"/>',
+    '\t<DescriptionFileRef href="mapdesc-text-0.txt"/>',
+    `\t<TileX>${input.tiles}</TileX>`,
+    `\t<TileY>${input.tiles}</TileY>`,
+    '\t<MapGoal href="mapobjective-text-0.txt"/>',
+    '\t<CustomMapGoal>true</CustomMapGoal>',
+    '\t<teams>',
+    ...Array.from({ length: input.players }, () => '\t\t<Item>1</Item>'),
+    '\t</teams>',
+    '\t<thumbnailImages>',
+    '\t\t<Item href="minimap_floor_01.xdb#xpointer(/Texture)"/>',
+    ...(input.twoLevel ? ['\t\t<Item href="minimap_floor_02.xdb#xpointer(/Texture)"/>'] : []),
+    '\t</thumbnailImages>',
+    `\t<HasUnderground>${input.twoLevel}</HasUnderground>`,
+    '\t<RandomMap>true</RandomMap>',
+    '\t<CustomGameMap>false</CustomGameMap>',
+    '\t<Version>1</Version>',
+    '</AdvMapDescTag>',
+  ].join(NL) + NL;
+}
+
+/** The minimap's Texture document — one per floor, fixed but for the name. */
+export function buildMinimapXdb(floor: number): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<Texture>',
+    '\t<SrcName href=""/>',
+    `\t<DestName href="minimap_floor_0${floor + 1}.dds"/>`,
+    '\t<Type>REGULAR</Type>',
+    '\t<ConversionType>CONVERT_ORDINARY</ConversionType>',
+    '\t<AddrType>CLAMP</AddrType>',
+    '\t<Format>TF_8888</Format>',
+    '\t<Width>256</Width>',
+    '\t<Height>256</Height>',
+    '\t<MappingSize>0</MappingSize>',
+    '\t<NMips>1</NMips>',
+    '\t<Gain>0</Gain>',
+    '\t<AverageColor>0</AverageColor>',
+    '\t<InstantLoad>true</InstantLoad>',
+    '\t<IsDXT>false</IsDXT>',
+    '\t<FlipY>false</FlipY>',
+    '\t<StandardExport>true</StandardExport>',
+    '\t<UseS3TC>false</UseS3TC>',
+    '</Texture>',
+  ].join(NL) + NL;
+}
+
 /** The whole map.xdb text for a finished RMG run. */
 export function buildRmgMapDesc(input: RmgMapInput): string {
   let text = buildBlankMap({
