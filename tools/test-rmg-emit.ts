@@ -13,7 +13,13 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
+import { buildTerrainFile } from '../src/rmg/emit-terrain.ts';
 import { buildRmgTexts } from '../src/rmg/emit-texts.ts';
+import { heightsToFile, latePass } from '../src/rmg/heights.ts';
+import { readTileInfo } from '../src/rmg/preset-table.ts';
+import { fillTerrain, paintRoads, paintSeaCorners, paintWaterMarks } from '../src/rmg/terrain.ts';
+import { floorIterationOrder } from '../src/rmg/zones.ts';
+import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import type { ChainOptions } from './rmg-chain.ts';
 import { runFull } from './rmg-run.ts';
@@ -174,6 +180,89 @@ for (const spec of RUNS) {
       if (readFileSync(join(guidDir, `minimap_floor_0${f + 1}.xdb`), 'utf8') !== buildMinimapXdb(f)) miniBad++;
     }
     check('the minimap Texture documents are byte-identical', miniBad === 0, `${miniBad} differ`);
+
+    // --- GroundTerrain.bin (and the underground file), assembled whole.
+    // The passability plane is exempted: the references are EDITOR saves
+    // whose blocked tiles come from a scene-geometry query the port does
+    // not model; the RMG itself serializes all-ones (docs/RMG.md).
+    const transitive = c.params.defaultTransitiveTile ? readTileInfo(dir, c.params.defaultTransitiveTile) : null;
+    const floorsLayers = c.water
+      ? [fillTerrain(c.size, c.size, c.loaded.zones, [c.water.gridBeforeCarve], c.presets, transitive)[0]!]
+      : fillTerrain(c.size, c.size, c.loaded.zones, c.floors.map((f) => f.grid), c.presets, transitive);
+    if (c.water) {
+      const deepWaterBottom = c.params.deepWaterBottom ? readTileInfo(dir, c.params.deepWaterBottom) : null;
+      const deepWaterTile = c.params.deepWaterTile ? readTileInfo(dir, c.params.deepWaterTile) : null;
+      for (const [zi, zoneMarks] of c.water.marks) {
+        const lz = c.loaded.zones.find((z) => z.index === zi)!;
+        paintWaterMarks(floorsLayers[0]!, zoneMarks,
+          c.presets.get(lz.terrainRace)?.waterCoastTile ?? null, deepWaterBottom, c.size);
+        paintSeaCorners(floorsLayers[0]!, c.water.sea.get(zi)!, deepWaterTile, c.size);
+      }
+    }
+    for (let f = 0; f < c.floors.length; f++) {
+      paintRoads(floorsLayers[f]!, c.size, c.floors[f]!.grid, c.floors[f]!.occ,
+        floorIterationOrder(c.loaded.zones.filter((z) => z.floor === f)).map((z) => {
+          const preset = c.presets.get(c.loaded.zones.find((lz) => lz.index === z.index)!.terrainRace);
+          return {
+            zoneIndex: z.index,
+            roadTile: preset?.roadTile ?? null,
+            secondaryRoadTile: preset?.secondaryRoadTile ?? null,
+          };
+        }));
+    }
+    latePass(r.heightPlane, {
+      size: c.size, occupancy: c.occ, border: c.border, grid: c.grid,
+      raceOf: (zi) => c.loaded.zones.find((z) => z.index === zi)?.race,
+      objects: r.objects,
+    });
+    const N = (c.size + 1) * (c.size + 1);
+    const terrainVs = (label: string, ours: Buffer, refFile: string): void => {
+      const refRaw = readFileSync(refFile);
+      const pass = passabilityPlane(parseTerrain(refRaw));
+      // The 0x0e record's payload byte right before the passability block
+      // is UNINITIALISED in the engine (the determinism check caught it
+      // flipping between identical runs) — exempted with the plane.
+      const garbageAt = pass ? pass.dataOff - 23 : -1;
+      let bad = 0;
+      let firstBad = -1;
+      for (let i = 0; i < Math.max(ours.length, refRaw.length); i++) {
+        if (pass && i >= pass.dataOff && i < pass.dataOff + pass.count) continue;
+        if (i === garbageAt) continue;
+        if (ours[i] !== refRaw[i]) { bad++; if (firstBad < 0) firstBad = i; }
+      }
+      check(`${label} is byte-identical outside the passability plane`, bad === 0,
+        bad ? `${bad} bytes differ, first at ${firstBad} (ours ${ours.length}b ref ${refRaw.length}b)` : `${ours.length} bytes`);
+      if (bad && process.env['H5E_DBG_EMIT']) {
+        writeFileSync(join('_tmp', `ours-${spec.label}-${label}`), ours);
+      }
+    };
+    const layerEntry = (l: { path: string; mask: Uint8Array }): { path: string; mask: Uint8Array } => ({
+      path: l.path.includes('#xpointer') ? l.path : `${l.path}#xpointer(/AdvMapTile)`,
+      mask: l.mask,
+    });
+    if (spec.label === 'underground') {
+      // KNOWN GAP: the underground run's SURFACE floor ran the lakes for
+      // real, and the lake terrain painter (the Water/River-bed layers
+      // and the lakes' river-plane stamp) is not ported yet — the file
+      // cannot assemble whole until it is. docs/RMG.md names the hole.
+      console.log('  (GroundTerrain.bin skipped — the lake terrain painter is not ported yet)');
+    } else {
+      terrainVs('GroundTerrain.bin', buildTerrainFile({
+        tiles: c.size,
+        layers: floorsLayers[0]!.map(layerEntry),
+        heights: heightsToFile(r.heightPlane),
+        flags: new Uint8Array(N).fill(16),
+        water: c.water?.river.data,
+      }), join(guidDir, 'GroundTerrain.bin'));
+    }
+    if (spec.twoLevel) {
+      terrainVs('UndergroundTerrain.bin', buildTerrainFile({
+        tiles: c.size,
+        layers: floorsLayers[1]!.map(layerEntry),
+        heights: r.vertexHeights[1]!.floats,
+        flags: r.vertexHeights[1]!.bytes,
+      }), join(guidDir, 'UndergroundTerrain.bin'));
+    }
   } else {
     console.log(`  (no ${fullBase} — the text half is skipped)`);
   }

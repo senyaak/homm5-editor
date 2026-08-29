@@ -117,8 +117,19 @@ Emitting all-ones is byte-identical to what the game's own RMG
 produces; matching the editor-saved plane would mean porting the
 editor's 3D collision query — a named hole, not a plan.
 
-Next: assembling GroundTerrain.bin (all planes byte-exact, passability
-exempted as above), the minimap DDS, then packing the `.h5m`.
+**GroundTerrain.bin ASSEMBLES WHOLE** (`emit-terrain.ts` — the blank
+writer generalised to N layers, its multi-layer counters read off the
+reference framing and verified to the byte: `E_i = 2N + 2·len_i + 53`
+per layer, a `01 E 02 F 01` bridge between layers, `D = 2·region + 1`):
+the surface file, the island file (water plane included) and
+UndergroundTerrain.bin are byte-identical outside the passability plane
+(exempted as above) and ONE uninitialised byte — the 0x0e record's
+payload, the same byte the determinism check once caught flipping
+between identical runs. The one file that cannot assemble yet is the
+underground RUN's surface floor: its zone 2 ran the LAKES for real, and
+the lake terrain painter — the Water/River-bed_grass layers and the
+lakes' river-plane stamp — is not ported. That painter is the next
+reverse target; then the minimap DDS and packing the `.h5m`.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -733,6 +744,8 @@ is what it is belongs next to the number.
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
 | `heights.ts` | the height plane: relief cones, the late pass `0xECF760` | **done, bit-identical** on all three references — 24,147 vertices |
 | `emit.ts` | the map.xdb emitter: per-type object bodies over the blank skeleton | **done — all three references byte-identical** |
+| `emit-texts.ts` | the archive's UTF-16LE texts from the Params word files | **done — all three references byte-identical** |
+| `emit-terrain.ts` | the GroundTerrain.bin writer, N layers | **done** — three of four files whole; the ug surface floor waits on the lake painter |
 
 ### The number stream, and why it comes first
 
