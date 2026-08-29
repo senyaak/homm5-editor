@@ -98,8 +98,27 @@ run's OrcishDwelling04 is the live case. Underground towns wear their
 four faction-coloured point lights and the lit crystals their one, both
 rendered from the run's records.
 
-Next: the ground-flags and passability planes, then assembling
-GroundTerrain.bin and packing the `.h5m`.
+**The GROUND FLAGS need no port and the PASSABILITY verdict is in.** The
+flags plane is `CTerrain+0x24` — the level's byte vertex grid the port
+already computes: a surface floor is the constructor's uniform 16
+forever (`0xEB2B60`, the same call that fills the heights 6.0 — and
+whose underground branch turned out to be the long-missing writer of
+the massif frame `createVertexHeights` had reconstructed from
+measurement), and the underground floor is the massif carve's byte grid,
+which matches the reference plane 5,329/5,329. The passability plane the
+GAME's RMG never writes — it is filled with 1 at init and serialized
+as-is; the only zero-writing setter in the executable is dead code. The
+references' blocked tiles come from the EDITOR'S RE-SAVE: every ordered
+reference is an editor Save-As, and the editor derives passability per
+tile with a scene-GEOMETRY intersection query (editor `0x491F70` /
+`0x461750` — tile centre against the placed models' collision, which no
+tile-data model reproduces: the best occupancy-based fit reaches 89.7%).
+Emitting all-ones is byte-identical to what the game's own RMG
+produces; matching the editor-saved plane would mean porting the
+editor's 3D collision query — a named hole, not a plan.
+
+Next: assembling GroundTerrain.bin (all planes byte-exact, passability
+exempted as above), the minimap DDS, then packing the `.h5m`.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
