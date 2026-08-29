@@ -25,7 +25,7 @@ import {
 } from '../src/rmg/heights.ts';
 import { createVertexHeights } from '../src/rmg/massif-carve.ts';
 import type { VertexHeights } from '../src/rmg/massif-carve.ts';
-import { readMineShared } from '../src/rmg/mines.ts';
+import { MINE_TYPES, readMineShared } from '../src/rmg/mines.ts';
 import { PRISON_HREF } from '../src/rmg/prisons.ts';
 import { recomputeRoom, zoneTiles } from '../src/rmg/placement.ts';
 import type { Footprint, Tile } from '../src/rmg/placement.ts';
@@ -44,10 +44,18 @@ import { runChain, ZoneFill } from './rmg-chain.ts';
 
 const HALF_PI = Math.PI / 2;
 
-/** One placed object — the height pass's view plus identity for checks. */
+/** One placed object — the height pass's view plus what the emitter writes. */
 export interface RunObject extends HeightObject {
   name: string;
   kind: string;
+  /** The `Shared` href as the map file records it (with its xpointer). */
+  shared?: string;
+  /** Monsters: the army behind the object; `Shared` is stacks[0]'s document. */
+  army?: { stacks: Array<{ creature: string; amount: number }>; mood: number };
+  /** Treasures: a custom Amount, or null for a stock pile. */
+  amount?: number | null;
+  /** Towns: the fields their body writes beyond the common head. */
+  town?: { playerId: number; hasTavern: boolean; specialization?: string };
 }
 
 export interface FullRun {
@@ -79,19 +87,39 @@ export function runFull(
   step('chain');
 
   const objects: RunObject[] = [];
-  const point = (kind: string, name: string, x: number, y: number, floor = 0, rot = 0): void => {
+  /** `Shared` hrefs are written with their xpointer; add it when the source lacks one. */
+  const pointered = (href: string, tag: string): string =>
+    href.includes('#xpointer') ? href : `${href}#xpointer(/${tag})`;
+  const treasureShared = (name: string): string =>
+    `/MapObjects/${name}.(AdvMapTreasureShared).xdb#xpointer(/AdvMapTreasureShared)`;
+  const sharedByCreature = new Map(c.tables.creatures.map((cr) => [cr.name, cr.monsterShared]));
+
+  const point = (
+    kind: string, name: string, x: number, y: number, floor = 0, rot = 0,
+    extra: Partial<RunObject> = {},
+  ): void => {
     objects.push({
       kind, name, x, y, z: 0, rot, floor, isStatic: false, blocked: [], firstActive: [0, 0],
+      ...extra,
     });
   };
   const object = (
     kind: string, name: string, x: number, y: number, rot: number, foot: Footprint,
-    floor = 0, extra: Partial<HeightObject> = {},
+    floor = 0, extra: Partial<RunObject> = {},
   ): void => {
     objects.push({
       kind, name, x, y, z: 0, rot, floor, isStatic: false,
       blocked: foot.blocked, firstActive: foot.active[0],
       ...extra,
+    });
+  };
+  const guardPoint = (
+    g: { name: string; stacks: Array<{ creature: string; amount: number }>; mood: number },
+    x: number, y: number, floor = 0, rot = 0,
+  ): void => {
+    point('guard', g.name, x, y, floor, rot, {
+      shared: sharedByCreature.get(g.stacks[0]!.creature),
+      army: { stacks: g.stacks, mood: g.mood },
     });
   };
 
@@ -104,12 +132,15 @@ export function runFull(
       object('town', t.name, t.pos.x, t.pos.y, t.rot, c.footprint(t.shared), floor, {
         craterTown: docType === 'TOWN_INFERNO' || t.shared.includes('Inferno'),
         skipFlattenTown: docType === 'TOWN_ACADEMY' || t.shared.includes('Academy'),
+        shared: pointered(t.shared, 'AdvMapTownShared'),
+        town: { playerId: t.playerId ?? 0, hasTavern: t.hasTavern ?? false, specialization: t.specialization },
       });
     } else {
       // Decorations are AdvMapStatic instances — the flatten skips them.
       objects.push({
         kind: 'decoration', name: t.name, x: t.pos.x, y: t.pos.y, z: 0, rot: t.rot,
         floor, isStatic: true, blocked: [],
+        shared: pointered(t.shared, 'AdvMapStaticShared'),
       });
     }
   }
@@ -121,26 +152,28 @@ export function runFull(
       void zi;
       for (const t of list) {
         object('water-treasure', t.name, t.x, t.y, t.q * HALF_PI,
-          c.footprint(c.params.waterTreasures[t.typeIndex]!));
+          c.footprint(c.params.waterTreasures[t.typeIndex]!), 0,
+          { shared: c.params.waterTreasures[t.typeIndex]!, amount: null });
       }
     }
   }
 
   // The connection guards.
-  for (const g of c.conn.guards) point('guard', g.name, g.x, g.y);
+  for (const g of c.conn.guards) guardPoint(g, g.x, g.y);
 
   // The second sweep's objects — teleport halves (each with its guard) and
   // the shipyards, zone by zone in the sweep's own order.
   for (let f = 0; f < c.floors.length; f++) {
     for (const z of floorIterationOrder(c.loaded.zones.filter((zz) => zz.floor === f))) {
       for (const t of c.teleports.get(z.index) ?? []) {
-        object('teleport', t.name, t.x, t.y, t.q * HALF_PI, c.footprint(t.href), f);
-        if (t.guard) point('guard', t.guard.name, t.guard.x, t.guard.y, f);
+        object('teleport', t.name, t.x, t.y, t.q * HALF_PI, c.footprint(t.href), f, { shared: t.href });
+        if (t.guard) guardPoint(t.guard, t.guard.x, t.guard.y, f);
       }
       const ship = c.water?.shipyards.get(z.index);
       if (ship) {
-        object('shipyard', ship.name, ship.x, ship.y, ship.q * HALF_PI, c.footprint(SHIPYARD_HREF), f);
-        if (ship.guard?.guard) point('guard', ship.guard.guard.name, ship.guard.x, ship.guard.y, f);
+        object('shipyard', ship.name, ship.x, ship.y, ship.q * HALF_PI, c.footprint(SHIPYARD_HREF), f,
+          { shared: SHIPYARD_HREF });
+        if (ship.guard?.guard) guardPoint(ship.guard.guard, ship.guard.x, ship.guard.y, f);
       }
     }
   }
@@ -171,16 +204,22 @@ export function runFull(
       ...fill.abandoned.flatMap((m) => m.actives),
     ]);
     for (const m of mines) {
-      object('mine', m.name, m.x, m.y, m.q * HALF_PI, readMineShared(dir, m.type), floor);
+      object('mine', m.name, m.x, m.y, m.q * HALF_PI, readMineShared(dir, m.type), floor,
+        { shared: `/MapObjects/${m.type}.(AdvMapMineShared).xdb#xpointer(/AdvMapMineShared)` });
+      // The guard and the piles record the seat walk's facing (mines.ts).
       if (m.guard) {
-        point('guard', m.guard.name, m.guard.x, m.guard.y, floor);
+        guardPoint(m.guard, m.guard.x, m.guard.y, floor, m.facing);
         seats.push([m.guard.x, m.guard.y]);
       }
-      for (const p of m.piles) point('pile', p.name, p.x, p.y, floor);
+      const pile = MINE_TYPES.find((t) => t.mine === m.type)!.pile;
+      for (const p of m.piles) {
+        point('pile', p.name, p.x, p.y, floor, m.facing, { shared: treasureShared(pile), amount: null });
+      }
     }
     for (const a of fill.abandoned) {
       object('abandoned-mine', a.name, a.x, a.y, a.q * HALF_PI,
-        c.footprint(pricePreset.abandonedMine!), floor);
+        c.footprint(pricePreset.abandonedMine!), floor,
+        { shared: pointered(pricePreset.abandonedMine!, 'AdvMapMineShared') });
     }
     step(`zone ${zone} mines`);
 
@@ -191,40 +230,54 @@ export function runFull(
       object('dwelling', d.name, d.x, d.y, d.q * HALF_PI, c.footprint(href), floor, {
         craterDwelling: CRATER_DWELLING_TYPES.has(docType),
         skipFlattenDwelling: SKIP_FLATTEN_DWELLING_TYPES.has(docType),
+        shared: pointered(href, 'AdvMapDwellingShared'),
       });
     }
     step(`zone ${zone} dwellings`);
 
+    const priced = (p: { name: string; x: number; y: number; q: number; type: string }): void => {
+      object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor,
+        { shared: pointered(p.type, 'AdvMapBuildingShared') });
+    };
     for (const u of fill.upgradeBuildings()) {
-      object('building', u.name, u.x, u.y, u.q * HALF_PI, c.footprint(u.type), floor);
-      if (u.guard?.guard) point('guard', u.guard.guard.name, u.guard.x, u.guard.y, floor);
+      priced(u);
+      // The 0xED3200 door's guard records the BUILDING's own rotation.
+      if (u.guard?.guard) guardPoint(u.guard.guard, u.guard.x, u.guard.y, floor, u.q * HALF_PI);
       if (u.guard) seats.push([u.guard.x, u.guard.y]);
     }
     step(`zone ${zone} upgradeBuildings`);
 
     for (const p of fill.prisons()) {
-      object('prison', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(PRISON_HREF), floor);
+      object('prison', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(PRISON_HREF), floor,
+        { shared: pointered(PRISON_HREF, 'AdvMapPrisonShared') });
     }
     step(`zone ${zone} prisons`);
 
     for (const s of fill.shrines()) {
-      object('shrine', s.name, s.x, s.y, s.q * HALF_PI,
-        c.footprint(`/MapObjects/${s.type}.(AdvMapShrineShared).xdb`), floor);
+      const href = `/MapObjects/${s.type}.(AdvMapShrineShared).xdb`;
+      object('shrine', s.name, s.x, s.y, s.q * HALF_PI, c.footprint(href), floor,
+        { shared: pointered(href, 'AdvMapShrineShared') });
     }
     step(`zone ${zone} shrines`);
 
-    for (const p of fill.resourceBuildings()) object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor);
+    for (const p of fill.resourceBuildings()) priced(p);
     step(`zone ${zone} resourceBuildings`);
-    for (const p of fill.treasuryBuildings()) object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor);
+    for (const p of fill.treasuryBuildings()) priced(p);
     step(`zone ${zone} treasuryBuildings`);
-    for (const p of fill.luckMorale()) object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor);
+    for (const p of fill.luckMorale()) priced(p);
     step(`zone ${zone} luckMorale`);
-    for (const p of fill.shops()) object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor);
+    for (const p of fill.shops()) priced(p);
     step(`zone ${zone} shops`);
 
-    for (const o of fill.observatories()) object('building', o.name, o.x, o.y, o.q * HALF_PI, c.footprint(o.type), floor);
-    for (const t of fill.treasures()) point('treasure', t.name, t.x, t.y, floor, t.q * HALF_PI);
-    for (const t of fill.chests()) point('treasure', t.name, t.x, t.y, floor, t.q * HALF_PI);
+    for (const o of fill.observatories()) priced(o);
+    for (const t of fill.treasures()) {
+      point('treasure', t.name, t.x, t.y, floor, t.q * HALF_PI,
+        { shared: treasureShared(t.type), amount: null });
+    }
+    for (const t of fill.chests()) {
+      point('treasure', t.name, t.x, t.y, floor, t.q * HALF_PI,
+        { shared: treasureShared(t.type), amount: null });
+    }
     step(`zone ${zone} tail`);
 
     roads.set(zone, fill.road());
@@ -287,6 +340,7 @@ export function runFull(
       objects.push({
         kind: 'static', name: s.name, x: s.x, y: s.y, z: 0, rot: s.angle,
         floor: f, isStatic: true, blocked: [],
+        shared: pointered(s.type, 'AdvMapStaticShared'),
       });
     }
     step(`zone ${tz.index} big statics`);
@@ -312,6 +366,7 @@ export function runFull(
       objects.push({
         kind: 'static', name: s.name, x: s.x, y: s.y, z: 0, rot: s.angle,
         floor: f, isStatic: true, blocked: [],
+        shared: pointered(s.type, 'AdvMapStaticShared'),
       });
     }
     step(`zone ${tz.index} one-tile statics`);
@@ -323,9 +378,15 @@ export function runFull(
     const lz = c.loaded.zones.find((z) => z.index === tz.index)!;
     if (lz.floor === 0) continue;
     const fill = fills.get(tz.index)!;
-    for (const t of fill.lateTreasures()) point('treasure', t.name, t.x, t.y, lz.floor, t.q * HALF_PI);
+    for (const t of fill.lateTreasures()) {
+      point('treasure', t.name, t.x, t.y, lz.floor, t.q * HALF_PI,
+        { shared: treasureShared(t.type), amount: null });
+    }
     step(`zone ${tz.index} late treasures`);
-    for (const t of fill.lateChests()) point('treasure', t.name, t.x, t.y, lz.floor, t.q * HALF_PI);
+    for (const t of fill.lateChests()) {
+      point('treasure', t.name, t.x, t.y, lz.floor, t.q * HALF_PI,
+        { shared: treasureShared(t.type), amount: null });
+    }
     step(`zone ${tz.index} late chests`);
   }
 
@@ -352,9 +413,14 @@ export function runFull(
       monsterStrength: c.setup.monsterStrength, tables: c.tables,
     }, c.rng);
     for (const b of result) {
-      if (b.guard) point('guard', b.guard.name, b.guardAt[0], b.guardAt[1], lz.floor, b.guardRotation);
+      if (b.guard) guardPoint(b.guard, b.guardAt[0], b.guardAt[1], lz.floor, b.guardRotation);
       for (const item of b.items) {
-        point(item.kind === 'artifact' ? 'artifact' : 'treasure', item.name, item.x, item.y, lz.floor, item.rotation);
+        point(item.kind === 'artifact' ? 'artifact' : 'treasure', item.name, item.x, item.y,
+          lz.floor, item.rotation, {
+            shared: pointered(item.href,
+              item.kind === 'artifact' ? 'AdvMapArtifactShared' : 'AdvMapTreasureShared'),
+            amount: item.kind === 'artifact' ? null : item.amount,
+          });
       }
     }
     step(`zone ${tz.index} blocks filled`);

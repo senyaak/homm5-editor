@@ -118,6 +118,8 @@ export interface PlacedMine {
   q: number;
   guard: (Guard & { x: number; y: number }) | null;
   piles: Array<{ name: string; x: number; y: number }>;
+  /** The Rot the guard AND the piles record — the seat walk's (q + j) * pi/2, unnormalised. */
+  facing: number;
   /**
    * The stamp's active tiles in stamp order — what the engine pushes into
    * `zone+0x11C`, the list the roads phase later wires with 0x10 roads.
@@ -199,6 +201,31 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
         }
       }
 
+      // The map file records a FACING on the guard and the piles, and the
+      // reference's values fit one rule exactly: a walk from the quadrant
+      // ITSELF (`FOUR[(q + j) & 3]`), with the angle accumulating an
+      // unnormalised (q + j) * pi/2 — a q = 0 seat found two attempts in
+      // writes pi, and a q = 2 one writes the full 2*pi. That walk lands
+      // on the same tile as the one above on every reference run; the
+      // check throws the moment the two models part, so the divergence
+      // names itself instead of shipping a wrong map.
+      let facing = 0;
+      if (guardAt) {
+        for (let j = 0; j < 4; j++) {
+          const [dx, dy] = FOUR[(q + j) & 3]!;
+          const x = base[0] + dx;
+          const y = base[1] + dy;
+          if (x < 0 || x >= size || y < 0 || y >= size) continue;
+          if (isFree(occupancy[y * size + x]!)) {
+            if (x !== guardAt[0] || y !== guardAt[1]) {
+              throw new Error(`mine at ${at[0]}:${at[1]}: the q-order seat walk disagrees (${x}:${y} vs ${guardAt[0]}:${guardAt[1]})`);
+            }
+            facing = ((q + j) * Math.PI) / 2;
+            break;
+          }
+        }
+      }
+
       let guard: PlacedMine['guard'] = null;
       if (guardAt) {
         const level =
@@ -238,7 +265,7 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
         }
       }
 
-      placed.push({ type: spec.mine, name, x: at[0], y: at[1], q, guard, piles, actives: footprintTiles });
+      placed.push({ type: spec.mine, name, x: at[0], y: at[1], q, guard, piles, facing, actives: footprintTiles });
     }
   }
   return placed;

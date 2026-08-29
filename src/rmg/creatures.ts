@@ -23,6 +23,8 @@ export interface CreatureInfo {
   id: number;
   name: string;
   power: number;
+  /** The creature document's `MonsterShared` href — what a placed monster's `Shared` writes. */
+  monsterShared: string;
 }
 
 /** Ids the guard setter refuses outright, whatever their Power says. */
@@ -36,11 +38,13 @@ export function readCreatures(dataRoot: string): CreatureInfo[] {
   return findAll(objects, 'Item').map((item, id) => {
     const href = find(item, 'Obj')?.attrs['href'];
     let power = 0;
+    let monsterShared = '';
     if (href) {
       const path = href.replace(/#xpointer\(.*\)$/, '').replace(/^\//, '');
       const doc = find(parse(readFileSync(join(dataRoot, path), 'utf8')), 'Creature');
       power = doc ? Number.parseInt(childText(doc, 'Power'), 10) || 0 : 0;
+      monsterShared = (doc ? find(doc, 'MonsterShared')?.attrs['href'] : undefined) ?? '';
     }
-    return { id, name: childText(item, 'ID'), power };
+    return { id, name: childText(item, 'ID'), power, monsterShared };
   });
 }

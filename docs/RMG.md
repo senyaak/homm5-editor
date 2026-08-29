@@ -77,7 +77,22 @@ double intermediates, one rounding per store — which is why the plateau
 survives the smoothing at exactly 9.0 where the game's own SSE kernel
 would drift it by 1.9e-6 per pass. Phase 15 below has the details.
 
-Next: the ground-flags and passability planes, then emitting the `.h5m`.
+**The MAP.XDB EMITTER closes the surface document** (`emit.ts`,
+`test-rmg-emit`): the whole 860,435-byte file, byte for byte. The blank
+skeleton (`buildBlankMap`) is patched at its known value-level spots —
+the drawn ambient light, the text refs, the active player slots, the
+emptied rosters, the thumbnail, the live `sRMGProps`, the dialogs camera
+— and the objects render through one fixed body per AdvMap type, in the
+run's slot order, `Rot` as `%g` of the stored f32. Three inputs are not
+the generator's and come from outside: the GUID (CoCreateGuid), the
+MapName (typed into the dialog) and the dialogs camera (derivation
+unread). Two facing rules surfaced on the way: a mine's guard and piles
+record the seat walk's `(q + j) * pi/2` UNNORMALISED (a q=2 seat found
+straight ahead writes the full 2*pi), and an upgrade building's guard
+records the building's own rotation.
+
+Next: the ground-flags and passability planes, the water and underground
+documents, then packing the `.h5m`.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -691,7 +706,7 @@ is what it is belongs next to the number.
 | `artifacts.ts` | the artifact table the distributor's pool is built from | **done** — cost and the generated flag, in id order |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
 | `heights.ts` | the height plane: relief cones, the late pass `0xECF760` | **done, bit-identical** on all three references — 24,147 vertices |
-| `emit.ts` | the finished map, handed to `src/map/` | |
+| `emit.ts` | the map.xdb emitter: per-type object bodies over the blank skeleton | **done for the surface reference — 860,435 bytes, byte-identical** |
 
 ### The number stream, and why it comes first
 
@@ -2247,6 +2262,7 @@ npm run test-rmg-treasure-blocks # the treasure blocks live: growth and fill per
 npm run test-rmg-road-painter # the road painter: all seven GroundTerrain.bin layers byte-identical
 npm run test-rmg-underground # the WHOLE two-floor run: the carve, the lakes for real, 1423 objects to 70799
 npm run test-rmg-heights   # the height plane: all three references' floor-0 planes, bit for bit
+npm run test-rmg-emit      # the map.xdb emitter: the surface document, byte for byte
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste
