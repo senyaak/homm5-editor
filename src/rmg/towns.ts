@@ -80,6 +80,8 @@ export interface PlacedObject {
   kind: 'town' | 'decoration';
   /** `item_<signed int32>` — the name the engine mints from two draws. */
   name: string;
+  /** The zone's floor — an underground town's object stands on floor 1. */
+  floor: number;
   pos: MapPos;
   /** Radians: q * pi/2, as the map file records it. */
   rot: number;
@@ -280,6 +282,7 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
       objects.push({
         kind: 'town',
         name,
+        floor: zone.floor,
         pos: toMapPos(ta, tb),
         rot,
         shared: proto.path,
@@ -300,6 +303,7 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
         objects.push({
           kind: 'decoration',
           name: dname,
+          floor: zone.floor,
           pos: toMapPos(ea, eb),
           rot: dq * HALF_PI,
           shared: decorations[dpick]!.replace(/#xpointer\(.*\)$/, ''),

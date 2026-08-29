@@ -386,6 +386,12 @@ export function flattenPass(h: HeightPlane, mask: Uint8Array, input: HeightsInpu
     const offs: Offset[] = [...obj.blocked];
     if (obj.firstActive) offs.push(obj.firstActive);
     const rotated = rotateOffsets(offs, obj.rot);
+    if (process.env['H5E_DBG_FLATTEN'] && rotated.length) {
+      const xs = rotated.map(([dx]) => dx + obj.x);
+      const ys = rotated.map(([, dy]) => dy + obj.y);
+      console.log(`  [flat] ${(obj as { name?: string }).name ?? '?'} at ${obj.x}:${obj.y} rot ${obj.rot.toFixed(3)} `
+        + `box x ${Math.min(...xs)}..${Math.max(...xs)} y ${Math.min(...ys)}..${Math.max(...ys)} (${rotated.length} offs)`);
+    }
     for (const [dx, dy] of rotated) {
       const mx = Math.trunc(fl(dx + obj.x));
       const my = Math.trunc(fl(dy + obj.y));

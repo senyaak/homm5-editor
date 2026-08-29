@@ -59,9 +59,11 @@ the masks — Dead_Land's theft from Lava — falls in line. **All seven
 layers of the reference `GroundTerrain.bin` are now byte-identical, with
 no forgiveness clause left.**
 
-**The HEIGHT PLANE closes the surface file's float half** (`0xECF760` →
-`heights.ts`, `test-rmg-heights`): all 9,409 vertices of the reference's
-height plane, bit for bit. The plane starts at the level constructor's
+**The HEIGHT PLANE closes the float half of ALL THREE references**
+(`0xECF760` → `heights.ts`, `test-rmg-heights`, replaying through the
+shared full-run driver `tools/rmg-run.ts`): every vertex of the surface,
+island and underground floor-0 planes — 24,147 across the three files —
+bit for bit. The plane starts at the level constructor's
 6.0 (`0xEB2B60`), the statics add the mountain relief cones, and the
 late pass lays a sin/cos base field capped at +3.0 over it — the 9.0
 plateau is those two numbers — then dents roads and lakes, melts craters
@@ -271,9 +273,10 @@ detail that made `floorIterationOrder` take its key as size_t (the
 sea's -1 hashes to bucket 8 of 13).
 
 What remains of the water reference is the `.h5m` emission for all three
-references — the heights on ITS run (the sea band's interplay with the
-base field's zone reads has not been replayed yet), the ground flags and
-the passability derivation.
+references — the ground flags and the passability derivation (the
+heights closed on all three runs, sea band included: the base field
+reads the carve-adjusted border and the seaward dist term digs below the
+plateau exactly as the file has it).
 
 **The underground run is in FULL LOCKSTEP — all 70,799 draws**
 (`test-rmg-underground`): the chain to 4475 —
@@ -687,7 +690,7 @@ is what it is belongs next to the number.
 | `prisons.ts` | the prisons step `0xEBD1C0` | **done, live on the underground run** — 8 and 6 draws |
 | `artifacts.ts` | the artifact table the distributor's pool is built from | **done** — cost and the generated flag, in id order |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
-| `heights.ts` | the height plane: relief cones, the late pass `0xECF760` | **done, bit-identical** on the surface reference's 9,409 vertices |
+| `heights.ts` | the height plane: relief cones, the late pass `0xECF760` | **done, bit-identical** on all three references — 24,147 vertices |
 | `emit.ts` | the finished map, handed to `src/map/` | |
 
 ### The number stream, and why it comes first
@@ -2203,11 +2206,17 @@ established, now governing a whole file plane. The object positions'
 engine order is (+0x44, +0x48) = the port's (y, x) — the same (a, b)
 convention the town centres already used.
 
-Not yet replayed here: the water and underground runs' height planes
-(the sea carve adjusts the border table the base field reads, and the
-underground surface floor mixes in the massif's floor-0 grids), and the
-ground-flags/passability planes, whose derivation is a separate reverse
-target on the save path.
+The water and underground runs replay through the same functions with
+NOTHING water- or floor-specific added: the base field reads the
+carve-adjusted border table and the post-carve zone grid (a sea tile's
+zone is -1, so no race flip, and its negative dist term digs below the
+plateau), and the underground map's floor-0 plane is the same machinery
+over its own grids — the town-object floors decide which towns the
+craters and flattens see (`towns.ts` now records the floor). The shared
+full-run driver `tools/rmg-run.ts` is what collects the object list in
+slot order for all three runs — and is the emitter's foundation. Still
+separate: the ground-flags/passability planes, a reverse target on the
+save path.
 
 ## Tools
 
@@ -2237,7 +2246,7 @@ npm run test-rmg-statics   # the statics live: eight boundaries to 89798, 1325 o
 npm run test-rmg-treasure-blocks # the treasure blocks live: growth and fill per zone, to 92438 — the whole run
 npm run test-rmg-road-painter # the road painter: all seven GroundTerrain.bin layers byte-identical
 npm run test-rmg-underground # the WHOLE two-floor run: the carve, the lakes for real, 1423 objects to 70799
-npm run test-rmg-heights   # the height plane: the surface reference's 9409 vertices, bit for bit
+npm run test-rmg-heights   # the height plane: all three references' floor-0 planes, bit for bit
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste

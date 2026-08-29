@@ -1,0 +1,365 @@
+// The full reference run, once — the chain, the first MainObjects loop,
+// the roads phase, the statics, the additional objects and the treasure
+// blocks, for any of the three ordered references. The boundary suites
+// keep their own step-by-step replays; this runner exists for the passes
+// that need the WHOLE run's output at once — the height plane reads the
+// map's object list (every non-static object flattens its footprint),
+// and the emitter will read everything.
+//
+// Objects are collected in the map's slot (creation) order: towns and
+// their decorations, the water treasures, the connection guards, the
+// teleport halves and shipyards zone by zone, then the first loop's
+// placements per zone in step order, the statics, the late treasures and
+// the treasure blocks. Each record carries what the height pass needs
+// (position, rotation, floor, the shared footprint, the crater/hover
+// flags) plus its minted name and kind for the by-name checks and the
+// emitter to come.
+
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { readArtifacts, rmgArtifactPool } from '../src/rmg/artifacts.ts';
+import type { HeightObject, HeightPlane } from '../src/rmg/heights.ts';
+import {
+  CRATER_DWELLING_TYPES, SKIP_FLATTEN_DWELLING_TYPES, makeHeightPlane,
+} from '../src/rmg/heights.ts';
+import { createVertexHeights } from '../src/rmg/massif-carve.ts';
+import type { VertexHeights } from '../src/rmg/massif-carve.ts';
+import { readMineShared } from '../src/rmg/mines.ts';
+import { PRISON_HREF } from '../src/rmg/prisons.ts';
+import { recomputeRoom, zoneTiles } from '../src/rmg/placement.ts';
+import type { Footprint, Tile } from '../src/rmg/placement.ts';
+import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
+import { SHIPYARD_HREF } from '../src/rmg/shipyards.ts';
+import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
+import type { PlacedStatic } from '../src/rmg/statics-big.ts';
+import {
+  placeSubterraOneTileStatics, placeWaterOneTileStatics, placeZoneOneTileStatics,
+} from '../src/rmg/statics-one-tile.ts';
+import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
+import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
+import { floorIterationOrder } from '../src/rmg/zones.ts';
+import type { Chain, ChainOptions } from './rmg-chain.ts';
+import { runChain, ZoneFill } from './rmg-chain.ts';
+
+const HALF_PI = Math.PI / 2;
+
+/** One placed object — the height pass's view plus identity for checks. */
+export interface RunObject extends HeightObject {
+  name: string;
+  kind: string;
+}
+
+export interface FullRun {
+  c: Chain;
+  /** Every placed object in the map's slot order. */
+  objects: RunObject[];
+  /** Floor 0's height plane, carrying the constructor fill and the cones. */
+  heightPlane: HeightPlane;
+  /** Per floor, the massif vertex grids (meaningful on two-floor runs). */
+  vertexHeights: VertexHeights[];
+  roads: Map<number, Tile[]>;
+  mineActives: Map<number, Tile[]>;
+  guardSeats: Map<number, Tile[]>;
+  fills: Map<number, ZoneFill>;
+  statics: PlacedStatic[];
+}
+
+/**
+ * Run the whole reference generation. `onStep(label, draws)` fires after
+ * every step whose boundary a suite may want to hold.
+ */
+export function runFull(
+  dir: string,
+  options: ChainOptions = {},
+  onStep?: (label: string, draws: number) => void,
+): FullRun {
+  const c = runChain(dir, options);
+  const step = (label: string): void => onStep?.(label, c.rng.draws);
+  step('chain');
+
+  const objects: RunObject[] = [];
+  const point = (kind: string, name: string, x: number, y: number, floor = 0, rot = 0): void => {
+    objects.push({
+      kind, name, x, y, z: 0, rot, floor, isStatic: false, blocked: [], firstActive: [0, 0],
+    });
+  };
+  const object = (
+    kind: string, name: string, x: number, y: number, rot: number, foot: Footprint,
+    floor = 0, extra: Partial<HeightObject> = {},
+  ): void => {
+    objects.push({
+      kind, name, x, y, z: 0, rot, floor, isStatic: false,
+      blocked: foot.blocked, firstActive: foot.active[0],
+      ...extra,
+    });
+  };
+
+  // Towns and their decorations, in placement order.
+  for (const t of c.townResult.objects) {
+    const floor = t.floor;
+    if (t.kind === 'town') {
+      const docType = /<Type>(\w+)<\/Type>/.exec(
+        readFileSync(join(dir, t.shared.replace(/#xpointer.*$/, '').replace(/^\//, '')), 'utf8'))?.[1] ?? '';
+      object('town', t.name, t.pos.x, t.pos.y, t.rot, c.footprint(t.shared), floor, {
+        craterTown: docType === 'TOWN_INFERNO' || t.shared.includes('Inferno'),
+        skipFlattenTown: docType === 'TOWN_ACADEMY' || t.shared.includes('Academy'),
+      });
+    } else {
+      // Decorations are AdvMapStatic instances — the flatten skips them.
+      objects.push({
+        kind: 'decoration', name: t.name, x: t.pos.x, y: t.pos.y, z: 0, rot: t.rot,
+        floor, isStatic: true, blocked: [],
+      });
+    }
+  }
+
+  // The water treasures — placed inside the water border pass, per zone in
+  // carve (hash) order, before the connections.
+  if (c.water) {
+    for (const [zi, list] of c.water.treasures) {
+      void zi;
+      for (const t of list) {
+        object('water-treasure', t.name, t.x, t.y, t.q * HALF_PI,
+          c.footprint(c.params.waterTreasures[t.typeIndex]!));
+      }
+    }
+  }
+
+  // The connection guards.
+  for (const g of c.conn.guards) point('guard', g.name, g.x, g.y);
+
+  // The second sweep's objects — teleport halves (each with its guard) and
+  // the shipyards, zone by zone in the sweep's own order.
+  for (let f = 0; f < c.floors.length; f++) {
+    for (const z of floorIterationOrder(c.loaded.zones.filter((zz) => zz.floor === f))) {
+      for (const t of c.teleports.get(z.index) ?? []) {
+        object('teleport', t.name, t.x, t.y, t.q * HALF_PI, c.footprint(t.href), f);
+        if (t.guard) point('guard', t.guard.name, t.guard.x, t.guard.y, f);
+      }
+      const ship = c.water?.shipyards.get(z.index);
+      if (ship) {
+        object('shipyard', ship.name, ship.x, ship.y, ship.q * HALF_PI, c.footprint(SHIPYARD_HREF), f);
+        if (ship.guard?.guard) point('guard', ship.guard.guard.name, ship.guard.x, ship.guard.y, f);
+      }
+    }
+  }
+
+  // --- The first loop of MainObjects, template order, the engine's steps.
+  c.rng.next(); // the phase's prologue draw
+  const fills = new Map<number, ZoneFill>();
+  const mineActives = new Map<number, Tile[]>();
+  const roads = new Map<number, Tile[]>();
+  const guardSeats = new Map<number, Tile[]>();
+
+  for (const tz of c.template.zones) {
+    const zone = tz.index;
+    const fill = new ZoneFill(c, zone);
+    fills.set(zone, fill);
+    const lz = c.loaded.zones.find((z) => z.index === zone)!;
+    const floor = lz.floor;
+    const pricePreset = c.presets.get(lz.terrainRace)!;
+    const seats: Tile[] = [
+      ...(c.conn.passages.get(zone) ?? []).map(([a, b]) => [b, a] as Tile),
+      ...c.teleportGuardSeats(zone),
+    ];
+    guardSeats.set(zone, seats);
+
+    const mines = fill.mines();
+    mineActives.set(zone, [
+      ...mines.flatMap((m) => m.actives),
+      ...fill.abandoned.flatMap((m) => m.actives),
+    ]);
+    for (const m of mines) {
+      object('mine', m.name, m.x, m.y, m.q * HALF_PI, readMineShared(dir, m.type), floor);
+      if (m.guard) {
+        point('guard', m.guard.name, m.guard.x, m.guard.y, floor);
+        seats.push([m.guard.x, m.guard.y]);
+      }
+      for (const p of m.piles) point('pile', p.name, p.x, p.y, floor);
+    }
+    for (const a of fill.abandoned) {
+      object('abandoned-mine', a.name, a.x, a.y, a.q * HALF_PI,
+        c.footprint(pricePreset.abandonedMine!), floor);
+    }
+    step(`zone ${zone} mines`);
+
+    for (const d of fill.dwellings()) {
+      const href = pricePreset.dwellings.concat(c.presets.get(lz.race)!.dwellings)
+        .find((h) => c.footprint(h).path === d.type)!;
+      const docType = /<Type>(\w+)<\/Type>/.exec(readFileSync(join(dir, d.type.replace(/^\//, '')), 'utf8'))?.[1] ?? '';
+      object('dwelling', d.name, d.x, d.y, d.q * HALF_PI, c.footprint(href), floor, {
+        craterDwelling: CRATER_DWELLING_TYPES.has(docType),
+        skipFlattenDwelling: SKIP_FLATTEN_DWELLING_TYPES.has(docType),
+      });
+    }
+    step(`zone ${zone} dwellings`);
+
+    for (const u of fill.upgradeBuildings()) {
+      object('building', u.name, u.x, u.y, u.q * HALF_PI, c.footprint(u.type), floor);
+      if (u.guard?.guard) point('guard', u.guard.guard.name, u.guard.x, u.guard.y, floor);
+      if (u.guard) seats.push([u.guard.x, u.guard.y]);
+    }
+    step(`zone ${zone} upgradeBuildings`);
+
+    for (const p of fill.prisons()) {
+      object('prison', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(PRISON_HREF), floor);
+    }
+    step(`zone ${zone} prisons`);
+
+    for (const s of fill.shrines()) {
+      object('shrine', s.name, s.x, s.y, s.q * HALF_PI,
+        c.footprint(`/MapObjects/${s.type}.(AdvMapShrineShared).xdb`), floor);
+    }
+    step(`zone ${zone} shrines`);
+
+    for (const p of fill.resourceBuildings()) object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor);
+    step(`zone ${zone} resourceBuildings`);
+    for (const p of fill.treasuryBuildings()) object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor);
+    step(`zone ${zone} treasuryBuildings`);
+    for (const p of fill.luckMorale()) object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor);
+    step(`zone ${zone} luckMorale`);
+    for (const p of fill.shops()) object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor);
+    step(`zone ${zone} shops`);
+
+    for (const o of fill.observatories()) object('building', o.name, o.x, o.y, o.q * HALF_PI, c.footprint(o.type), floor);
+    for (const t of fill.treasures()) point('treasure', t.name, t.x, t.y, floor, t.q * HALF_PI);
+    for (const t of fill.chests()) point('treasure', t.name, t.x, t.y, floor, t.q * HALF_PI);
+    step(`zone ${zone} tail`);
+
+    roads.set(zone, fill.road());
+    step(`zone ${zone} road`);
+  }
+  step('first loop');
+
+  // --- The roads phase, floors then zones in hash order.
+  for (let f = 0; f < c.floors.length; f++) {
+    for (const z of floorIterationOrder(c.loaded.zones.filter((zz) => zz.floor === f))) {
+      const zone = c.zone(z.index);
+      const centre = c.townResult.centres.get(z.index);
+      const phase = buildZoneRoadsPhase({
+        size: c.size, grid: c.floors[f]!.grid, border: c.floors[f]!.border,
+        occupancy: c.floors[f]!.occ, zoneIndex: z.index,
+        townEntry: zone.town && centre ? [centre.b, centre.a] : null,
+        connectionPoints: [
+          ...(c.conn.passages.get(z.index) ?? []).map(([a, b]) => [b, a] as Tile),
+          ...c.teleportActives(z.index),
+        ],
+        mineActives: mineActives.get(z.index) ?? [],
+      }, c.rng);
+      roads.set(z.index, [...roads.get(z.index)!, ...phase.road08, ...phase.road10]);
+    }
+  }
+  step('roads phase');
+
+  // --- The statics, template order, big then one-tile per zone; the
+  // relief cones write floor 0's height plane as they land.
+  const heightPlane = makeHeightPlane(c.size, 6.0);
+  const vertexHeights = c.floors.map((_, f) => createVertexHeights(c.size, f));
+  const statics: PlacedStatic[] = [];
+
+  for (const tz of c.template.zones) {
+    const lz = c.loaded.zones.find((z) => z.index === tz.index)!;
+    const f = lz.floor;
+    const floor = c.floors[f]!;
+    const preset = c.presets.get(lz.terrainRace)!;
+    const fill = fills.get(tz.index)!;
+    const zoneRoads = roads.get(tz.index)!;
+    const subterranean = lz.kind !== 'zone' && lz.kind !== 'waterBordered';
+    const water = Boolean(c.water) && f === 0;
+
+    const big = placeZoneBigStatics({
+      size: c.size, grid: floor.grid, border: floor.border, occupancy: floor.occ, room: floor.room,
+      points: fill.points, zoneIndex: tz.index, floor: f,
+      settingRace: lz.race,
+      roads: zoneRoads, bigPositions: [], blockedList: fill.blocked,
+      bigStatics: preset.bigStatics.map((h) => c.footprint(h)),
+      mountains: preset.mountains.map((h) => c.footprint(h)),
+      overLakeCenterObjects: preset.overLakeCenterObjects.map((h) => c.footprint(h)),
+      overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => h ? c.footprint(h) : null),
+      mapAngle: c.setup.angle,
+      heightPlane: f === 0 ? heightPlane : undefined,
+      subterranean, vertexHeights: vertexHeights[f]!,
+      water: water || undefined, tiles: c.water?.kept.get(tz.index),
+    }, c.rng);
+    statics.push(...big.placed);
+    for (const s of big.placed) {
+      objects.push({
+        kind: 'static', name: s.name, x: s.x, y: s.y, z: 0, rot: s.angle,
+        floor: f, isStatic: true, blocked: [],
+      });
+    }
+    step(`zone ${tz.index} big statics`);
+
+    const oneInput = {
+      size: c.size, grid: floor.grid, border: floor.border, occupancy: floor.occ, room: floor.room,
+      points: fill.points, zoneIndex: tz.index, roads: zoneRoads,
+      smallBlockers: preset.oneTileSmallBlockers.map((h) => c.footprint(h)),
+      smallNonblockers: preset.oneTileSmallNonblockers.map((h) => c.footprint(h)),
+      bigObjects: preset.oneTileBigObjects.map((h) => c.footprint(h)),
+      mapAngle: c.setup.angle,
+    };
+    const one = subterranean
+      ? placeSubterraOneTileStatics({
+          ...oneInput, vertexHeights: vertexHeights[f]!,
+          pointLight: c.params.pointLightParams,
+        }, c.rng)
+      : water
+        ? placeWaterOneTileStatics({ ...oneInput, tiles: c.water!.kept.get(tz.index)! }, c.rng)
+        : placeZoneOneTileStatics(oneInput, c.rng);
+    statics.push(...one);
+    for (const s of one) {
+      objects.push({
+        kind: 'static', name: s.name, x: s.x, y: s.y, z: 0, rot: s.angle,
+        floor: f, isStatic: true, blocked: [],
+      });
+    }
+    step(`zone ${tz.index} one-tile statics`);
+  }
+  step('statics');
+
+  // --- Additional objects: the underground zones' late treasures.
+  for (const tz of c.template.zones) {
+    const lz = c.loaded.zones.find((z) => z.index === tz.index)!;
+    if (lz.floor === 0) continue;
+    const fill = fills.get(tz.index)!;
+    for (const t of fill.lateTreasures()) point('treasure', t.name, t.x, t.y, lz.floor, t.q * HALF_PI);
+    step(`zone ${tz.index} late treasures`);
+    for (const t of fill.lateChests()) point('treasure', t.name, t.x, t.y, lz.floor, t.q * HALF_PI);
+    step(`zone ${tz.index} late chests`);
+  }
+
+  // --- The treasure blocks, template order, each zone on its own floor.
+  const artifacts: ArtifactEntry[] = rmgArtifactPool(readArtifacts(dir), Boolean(c.water))
+    .map((a) => ({ id: a.id, cost: a.cost, href: a.href }));
+  for (const tz of c.template.zones) {
+    const lz = c.loaded.zones.find((z) => z.index === tz.index)!;
+    const fl = c.floors[lz.floor]!;
+    const centre = c.townResult.centres.get(tz.index);
+    const hasTown = Boolean(tz.town && centre);
+    recomputeRoom(fl.room, c.size, fl.grid, tz.index, roads.get(tz.index)!, c.water?.kept.get(tz.index));
+    const blocks = buildTreasureBlocks({
+      size: c.size, occupancy: fl.occ, room: fl.room,
+      tiles: c.water?.kept.get(tz.index) ?? zoneTiles(c.size, fl.grid, tz.index),
+      town: hasTown ? [centre!.b, centre!.a] : [0, 0], hasTown,
+      repel: guardSeats.get(tz.index)!,
+      totalValue: tz.treasureBlocksTotalValue,
+      distBetween: c.params.distBetweenTreasureBlocks,
+    }, c.rng);
+    step(`zone ${tz.index} blocks grown`);
+    const result = fillTreasureBlocks({
+      size: c.size, occupancy: fl.occ, blocks, artifacts,
+      monsterStrength: c.setup.monsterStrength, tables: c.tables,
+    }, c.rng);
+    for (const b of result) {
+      if (b.guard) point('guard', b.guard.name, b.guardAt[0], b.guardAt[1], lz.floor, b.guardRotation);
+      for (const item of b.items) {
+        point(item.kind === 'artifact' ? 'artifact' : 'treasure', item.name, item.x, item.y, lz.floor, item.rotation);
+      }
+    }
+    step(`zone ${tz.index} blocks filled`);
+  }
+  step('run');
+
+  return { c, objects, heightPlane, vertexHeights, roads, mineActives, guardSeats, fills, statics };
+}
