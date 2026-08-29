@@ -56,6 +56,14 @@ export interface RunObject extends HeightObject {
   amount?: number | null;
   /** Towns: the fields their body writes beyond the common head. */
   town?: { playerId: number; hasTavern: boolean; specialization?: string };
+  /** Underground towns' four lights, and a lit crystal's one. */
+  lights?: Array<{ x: number; y: number; z: number; color: readonly [number, number, number]; radius: number }>;
+  /** Monoliths: the pair's GroupID. */
+  groupId?: number;
+  /** Shipyards: the engine-computed ShipTile (derivation unread). */
+  shipTile?: readonly [number, number];
+  /** Dwellings of tier >= 3: the enabled-creature switch. */
+  creaturesEnabled?: number[];
 }
 
 export interface FullRun {
@@ -87,9 +95,17 @@ export function runFull(
   step('chain');
 
   const objects: RunObject[] = [];
-  /** `Shared` hrefs are written with their xpointer; add it when the source lacks one. */
-  const pointered = (href: string, tag: string): string =>
-    href.includes('#xpointer') ? href : `${href}#xpointer(/${tag})`;
+  /**
+   * `Shared` hrefs are written with their xpointer; when the source lacks
+   * one, the tag comes from the path's own `.(Tag).xdb` (the abandoned
+   * mine is an AdvMapAbanMineShared, whatever list it came from), with
+   * the caller's tag as the fallback.
+   */
+  const pointered = (href: string, tag: string): string => {
+    if (href.includes('#xpointer')) return href;
+    const own = /\.\((\w+)\)\.xdb$/.exec(href)?.[1];
+    return `${href}#xpointer(/${own ?? tag})`;
+  };
   const treasureShared = (name: string): string =>
     `/MapObjects/${name}.(AdvMapTreasureShared).xdb#xpointer(/AdvMapTreasureShared)`;
   const sharedByCreature = new Map(c.tables.creatures.map((cr) => [cr.name, cr.monsterShared]));
@@ -129,11 +145,25 @@ export function runFull(
     if (t.kind === 'town') {
       const docType = /<Type>(\w+)<\/Type>/.exec(
         readFileSync(join(dir, t.shared.replace(/#xpointer.*$/, '').replace(/^\//, '')), 'utf8'))?.[1] ?? '';
+      // An underground town wears four faction-coloured point lights; the
+      // colour table grows one entry per faction a reference has shown.
+      const TOWN_LIGHT_COLORS: Record<string, readonly [number, number, number]> = {
+        TOWN_FORTRESS: [1, 0.392157, 0.101961],
+      };
+      let lights: RunObject['lights'];
+      if (t.pointLights) {
+        const color = TOWN_LIGHT_COLORS[docType];
+        if (!color) throw new Error(`no light colour known for ${docType} — read it off this reference`);
+        lights = ([[0, -5], [0, 5], [-5, 0], [5, 0]] as const).map(([lx, ly]) => ({
+          x: lx, y: ly, z: t.pointLights!.z, color, radius: t.pointLights!.radius,
+        }));
+      }
       object('town', t.name, t.pos.x, t.pos.y, t.rot, c.footprint(t.shared), floor, {
         craterTown: docType === 'TOWN_INFERNO' || t.shared.includes('Inferno'),
         skipFlattenTown: docType === 'TOWN_ACADEMY' || t.shared.includes('Academy'),
         shared: pointered(t.shared, 'AdvMapTownShared'),
         town: { playerId: t.playerId ?? 0, hasTavern: t.hasTavern ?? false, specialization: t.specialization },
+        lights,
       });
     } else {
       // Decorations are AdvMapStatic instances — the flatten skips them.
@@ -166,14 +196,21 @@ export function runFull(
   for (let f = 0; f < c.floors.length; f++) {
     for (const z of floorIterationOrder(c.loaded.zones.filter((zz) => zz.floor === f))) {
       for (const t of c.teleports.get(z.index) ?? []) {
-        object('teleport', t.name, t.x, t.y, t.q * HALF_PI, c.footprint(t.href), f, { shared: t.href });
-        if (t.guard) guardPoint(t.guard, t.guard.x, t.guard.y, f);
+        object('teleport', t.name, t.x, t.y, t.q * HALF_PI, c.footprint(t.href), f,
+          { shared: pointered(t.href, 'AdvMapBuildingShared'), groupId: t.groupId });
+        // A teleport's guard records the teleport's own rotation (8/8 fit).
+        if (t.guard) guardPoint(t.guard, t.guard.x, t.guard.y, f, t.q * HALF_PI);
       }
       const ship = c.water?.shipyards.get(z.index);
       if (ship) {
-        object('shipyard', ship.name, ship.x, ship.y, ship.q * HALF_PI, c.footprint(SHIPYARD_HREF), f,
-          { shared: SHIPYARD_HREF });
-        if (ship.guard?.guard) guardPoint(ship.guard.guard, ship.guard.x, ship.guard.y, f);
+        // The facing quarter 0 is the engine's full 2*pi in the file.
+        object('shipyard', ship.name, ship.x, ship.y,
+          ship.q === 0 ? 2 * Math.PI : ship.q * HALF_PI, c.footprint(SHIPYARD_HREF), f,
+          { shared: pointered(SHIPYARD_HREF, 'AdvMapShipyardShared') });
+        // The shipyard's guard records one quarter BEHIND the facing (4/4 fit).
+        if (ship.guard?.guard) {
+          guardPoint(ship.guard.guard, ship.guard.x, ship.guard.y, f, ((ship.q + 3) & 3) * HALF_PI);
+        }
       }
     }
   }
@@ -231,6 +268,10 @@ export function runFull(
         craterDwelling: CRATER_DWELLING_TYPES.has(docType),
         skipFlattenDwelling: SKIP_FLATTEN_DWELLING_TYPES.has(docType),
         shared: pointered(href, 'AdvMapDwellingShared'),
+        // Tier >= 3 reuses descriptor 3 and switches its creature on.
+        creaturesEnabled: d.tier >= 3
+          ? Array.from({ length: 4 }, (_, k) => (k === d.tier - 3 ? 1 : 0))
+          : undefined,
       });
     }
     step(`zone ${zone} dwellings`);
@@ -335,14 +376,20 @@ export function runFull(
       subterranean, vertexHeights: vertexHeights[f]!,
       water: water || undefined, tiles: c.water?.kept.get(tz.index),
     }, c.rng);
+    // A lit crystal's colour is the params' Colors[zoneIndex % count].
+    const zoneColor = c.params.pointLightParams.colors.length
+      ? c.params.pointLightParams.colors[tz.index % c.params.pointLightParams.colors.length]!
+      : { x: 1, y: 1, z: 1 };
+    const staticRecord = (s: PlacedStatic): RunObject => ({
+      kind: 'static', name: s.name, x: s.x, y: s.y, z: 0, rot: s.angle,
+      floor: f, isStatic: true, blocked: [],
+      shared: pointered(s.type, 'AdvMapStaticShared'),
+      lights: s.light
+        ? [{ x: 0, y: 0, z: s.light.z, color: [zoneColor.x, zoneColor.y, zoneColor.z], radius: s.light.radius }]
+        : undefined,
+    });
     statics.push(...big.placed);
-    for (const s of big.placed) {
-      objects.push({
-        kind: 'static', name: s.name, x: s.x, y: s.y, z: 0, rot: s.angle,
-        floor: f, isStatic: true, blocked: [],
-        shared: pointered(s.type, 'AdvMapStaticShared'),
-      });
-    }
+    for (const s of big.placed) objects.push(staticRecord(s));
     step(`zone ${tz.index} big statics`);
 
     const oneInput = {
@@ -362,13 +409,7 @@ export function runFull(
         ? placeWaterOneTileStatics({ ...oneInput, tiles: c.water!.kept.get(tz.index)! }, c.rng)
         : placeZoneOneTileStatics(oneInput, c.rng);
     statics.push(...one);
-    for (const s of one) {
-      objects.push({
-        kind: 'static', name: s.name, x: s.x, y: s.y, z: 0, rot: s.angle,
-        floor: f, isStatic: true, blocked: [],
-        shared: pointered(s.type, 'AdvMapStaticShared'),
-      });
-    }
+    for (const s of one) objects.push(staticRecord(s));
     step(`zone ${tz.index} one-tile statics`);
   }
   step('statics');

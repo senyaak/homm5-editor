@@ -45,6 +45,14 @@ export interface EmitObject {
   army?: { stacks: Array<{ creature: string; amount: number }>; mood: number };
   amount?: number | null;
   town?: { playerId: number; hasTavern: boolean; specialization?: string };
+  /** The `<pointLights>` items — underground towns and lit crystals. */
+  lights?: Array<{ x: number; y: number; z: number; color: readonly [number, number, number]; radius: number }>;
+  /** Monoliths: the pair's GroupID (a plain AdvMapBuilding field). */
+  groupId?: number;
+  /** Shipyards: the ShipTile the engine computed (derivation unread). */
+  shipTile?: readonly [number, number];
+  /** Dwellings of tier >= 3: the enabled-creature switch. */
+  creaturesEnabled?: number[];
 }
 
 const MOODS: Record<number, string> = {
@@ -82,6 +90,27 @@ function typeOf(o: EmitObject): string {
 /** One object's `<Item>` block, exactly as the engine's serializer writes it. */
 export function renderObject(o: EmitObject): string[] {
   const type = typeOf(o);
+  const lights = o.lights?.length
+    ? [
+        '\t\t\t\t<pointLights>',
+        ...o.lights.flatMap((l) => [
+          '\t\t\t\t\t<Item>',
+          '\t\t\t\t\t\t<Pos>',
+          `\t\t\t\t\t\t\t<x>${l.x}</x>`,
+          `\t\t\t\t\t\t\t<y>${l.y}</y>`,
+          `\t\t\t\t\t\t\t<z>${l.z}</z>`,
+          '\t\t\t\t\t\t</Pos>',
+          '\t\t\t\t\t\t<Color>',
+          `\t\t\t\t\t\t\t<x>${fmtRot(l.color[0])}</x>`,
+          `\t\t\t\t\t\t\t<y>${fmtRot(l.color[1])}</y>`,
+          `\t\t\t\t\t\t\t<z>${fmtRot(l.color[2])}</z>`,
+          '\t\t\t\t\t\t</Color>',
+          `\t\t\t\t\t\t<Radius>${l.radius}</Radius>`,
+          '\t\t\t\t\t</Item>',
+        ]),
+        '\t\t\t\t</pointLights>',
+      ]
+    : ['\t\t\t\t<pointLights/>'];
   const head = [
     `\t\t<Item href="#n:inline(${type})" id="${o.name}">`,
     `\t\t\t<${type}>`,
@@ -94,7 +123,7 @@ export function renderObject(o: EmitObject): string[] {
     `\t\t\t\t<Floor>${o.floor}</Floor>`,
     '\t\t\t\t<Name/>',
     '\t\t\t\t<CombatScript/>',
-    '\t\t\t\t<pointLights/>',
+    ...lights,
     `\t\t\t\t<Shared href="${o.shared}"/>`,
   ];
   const tail = [`\t\t\t</${type}>`, '\t\t</Item>'];
@@ -134,15 +163,40 @@ export function renderObject(o: EmitObject): string[] {
         return [
           '\t\t\t\t<PlayerID>PLAYER_NONE</PlayerID>',
           ...CAPTURE_TRIGGER,
-          '\t\t\t\t<GroupID>0</GroupID>',
+          `\t\t\t\t<GroupID>${o.groupId ?? 0}</GroupID>`,
           '\t\t\t\t<showCameras/>',
+        ];
+      case 'AdvMapShipyard':
+        return [
+          '\t\t\t\t<ShipTile>',
+          `\t\t\t\t\t<x>${o.shipTile?.[0] ?? 0}</x>`,
+          `\t\t\t\t\t<y>${o.shipTile?.[1] ?? 0}</y>`,
+          '\t\t\t\t</ShipTile>',
+        ];
+      case 'AdvMapPrison':
+        return [
+          '\t\t\t\t<PrisonedHero/>',
+          '\t\t\t\t<RandomHero>true</RandomHero>',
+        ];
+      case 'AdvMapAbanMine':
+        return [
+          '\t\t\t\t<AvailableResources>',
+          ...[0, 0, 1, 1, 1, 1, 1].map((v) => `\t\t\t\t\t<Item>${v}</Item>`),
+          '\t\t\t\t</AvailableResources>',
+          ...CAPTURE_TRIGGER,
         ];
       case 'AdvMapDwelling':
         return [
           '\t\t\t\t<PlayerID>PLAYER_NONE</PlayerID>',
           ...CAPTURE_TRIGGER,
           '\t\t\t\t<RandomCreatures>false</RandomCreatures>',
-          '\t\t\t\t<creaturesEnabled/>',
+          ...(o.creaturesEnabled?.length
+            ? [
+                '\t\t\t\t<creaturesEnabled>',
+                ...o.creaturesEnabled.map((v) => `\t\t\t\t\t<Item>${v}</Item>`),
+                '\t\t\t\t</creaturesEnabled>',
+              ]
+            : ['\t\t\t\t<creaturesEnabled/>']),
           '\t\t\t\t<RndSource>RND_NONE</RndSource>',
           '\t\t\t\t<LinkToPlayer>PLAYER_NONE</LinkToPlayer>',
           '\t\t\t\t<LinkToTown/>',
@@ -307,14 +361,15 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
   const items = input.objects.flatMap((o) => renderObject(o));
   text = patch(text, '\t<objects/>', ['\t<objects>', ...items, '\t</objects>'].join(NL));
 
-  // The drawn ambient light; the RMG leaves the underground slot bare.
+  // The drawn ambient light; a two-level RMG map lights its underground
+  // with the fixed Tests/underground document.
   text = patch(text,
     '\t\t<Item href="/Lights/_(AmbientLight)/0_Default_AmbientLight.xdb#xpointer(/AmbientLight)"/>',
     `\t\t<Item href="${input.groundAmbientLight}"/>`);
   if (input.twoLevel) {
     text = patch(text,
       '\t\t<Item href="/Lights/_(AmbientLight)/Tests/Night.xdb#xpointer(/AmbientLight)"/>',
-      '\t\t<Item/>');
+      '\t\t<Item href="/Lights/_(AmbientLight)/Tests/underground.xdb#xpointer(/AmbientLight)"/>');
   }
 
   // The text-file refs.
@@ -349,9 +404,13 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
   text = patch(text, `\t<spellIDs>${NL}\t</spellIDs>`, '\t<spellIDs/>');
   text = patch(text, `\t<artifactIDs>${NL}\t</artifactIDs>`, '\t<artifactIDs/>');
 
-  // The minimap thumbnail.
-  text = patch(text, '\t<thumbnailImages/>',
-    ['\t<thumbnailImages>', '\t\t<Item href="minimap_floor_01.xdb#xpointer(/Texture)"/>', '\t</thumbnailImages>'].join(NL));
+  // The minimap thumbnails — one per floor.
+  text = patch(text, '\t<thumbnailImages/>', [
+    '\t<thumbnailImages>',
+    '\t\t<Item href="minimap_floor_01.xdb#xpointer(/Texture)"/>',
+    ...(input.twoLevel ? ['\t\t<Item href="minimap_floor_02.xdb#xpointer(/Texture)"/>'] : []),
+    '\t</thumbnailImages>',
+  ].join(NL));
 
   // sRMGProps, live.
   const s = input.sRMG;

@@ -43,6 +43,8 @@ export interface PlacedDwelling {
   y: number;
   /** The quadrant drawn — the rotation is `q * PI/2`. */
   q: number;
+  /** The requested tier — tier >= 3 reuses descriptor 3 and writes `creaturesEnabled[tier-3]`. */
+  tier: number;
 }
 
 export interface DwellingStepInput {
@@ -105,7 +107,7 @@ export function placeZoneDwellings(input: DwellingStepInput, rng: DrawSource): P
 
       const name = mintName(rng);
       stampFootprint(input, foot, tile, q);
-      placed.push({ type: foot.path, name, x: tile[0], y: tile[1], q });
+      placed.push({ type: foot.path, name, x: tile[0], y: tile[1], q, tier });
     }
   }
   return placed;

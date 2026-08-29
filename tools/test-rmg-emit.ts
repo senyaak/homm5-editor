@@ -1,21 +1,23 @@
-// The map.xdb emitter against the surface reference — the whole document,
+// The map.xdb emitter against all three references — each document whole,
 // byte for byte.
 //
 //   node tools/test-rmg-emit.ts
 //
-// Three inputs are not the generator's own and are read back from the
+// Inputs that are not the generator's own are read back from each
 // reference: the GUID (CoCreateGuid at run time), the MapName (typed into
-// the order dialog) and the dialogs camera (its derivation is unread —
-// docs/RMG.md names the hole). Everything else is the run's.
+// the order dialog), the dialogs camera and the shipyards' ShipTile
+// (their derivations are unread — docs/RMG.md names the holes).
+// Everything else is the run's.
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { buildRmgMapDesc } from '../src/rmg/emit.ts';
 import { RACE } from '../src/rmg/load-template.ts';
+import type { ChainOptions } from './rmg-chain.ts';
 import { runFull } from './rmg-run.ts';
 import { dataDir } from './game-dir.ts';
-import { REFERENCE_MAP, REFERENCE_SEED, hasReference } from './rmg-reference.ts';
+import { REFERENCE_MAP, REFERENCE_SEED, REFERENCE_UG_MAP, REFERENCE_WATER_MAP } from './rmg-reference.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -28,78 +30,117 @@ if (!existsSync(join(dir, 'RMG'))) {
   console.log('no unpacked RMG data — skipping');
   process.exit(0);
 }
-if (!hasReference()) {
-  console.log('no reference map.xdb — skipping');
-  process.exit(0);
-}
-
-const ref = readFileSync(REFERENCE_MAP, 'utf8');
-const grab = (re: RegExp): string => {
-  const m = re.exec(ref);
-  if (!m) throw new Error(`reference: ${re} not found`);
-  return m[1]!;
-};
-
-const r = runFull(dir);
-const c = r.c;
-check('the run ends on the traced 92438', c.rng.draws === 92438, `${c.rng.draws}`);
 
 const TOWN_BY_RACE: Record<number, string> = {
   [RACE.HEAVEN]: 'TOWN_HEAVEN', [RACE.PRESERVE]: 'TOWN_PRESERVE', [RACE.ACADEMY]: 'TOWN_ACADEMY',
   [RACE.DUNGEON]: 'TOWN_DUNGEON', [RACE.NECROMANCY]: 'TOWN_NECROMANCY', [RACE.INFERNO]: 'TOWN_INFERNO',
   [RACE.DWARF]: 'TOWN_FORTRESS', [RACE.STRONGHOLD]: 'TOWN_STRONGHOLD',
 };
-const players = 2;
-const races = Array.from({ length: players }, (_, i) =>
-  TOWN_BY_RACE[c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!);
 
-const camBlock = /<dialogs>[^]*?<\/dialogs>/.exec(ref)![0];
-const cam = (tag: string): string => new RegExp(`<${tag}>([^<]*)</${tag}>`).exec(camBlock)![1]!;
+interface RunSpec {
+  label: string;
+  options: ChainOptions;
+  endDraws: number;
+  refPath: string;
+  template: string;
+  mapSize: string;
+  waterAmount: string;
+  twoLevel: boolean;
+}
 
-const ours = buildRmgMapDesc({
-  tiles: c.size,
-  twoLevel: false,
-  objects: r.objects,
-  groundAmbientLight: c.params.groundTerrainLights[c.setup.ambientLightIndex]!,
-  players,
-  sRMG: {
-    version: 34,
-    seed: REFERENCE_SEED,
-    guid: grab(/<RMGguid>([^<]*)<\/RMGguid>/),
-    mapSize: 'MAP_SIZE_SMALL',
-    template: '/RMG/Templates/S1P2Z2M1.xdb#xpointer(/RMGTemplate)',
-    waterAmount: 'WATER_NONE',
-    monsterLevel: 'MONSTER_LEVEL_MEDIUM',
-    hasUnderground: false,
-    races,
-    mapName: grab(/<MapName>([^<]*)<\/MapName>/),
+const RUNS: RunSpec[] = [
+  {
+    label: 'surface', options: {}, endDraws: 92438, refPath: REFERENCE_MAP,
+    template: 'S1P2Z2M1', mapSize: 'MAP_SIZE_SMALL', waterAmount: 'WATER_NONE', twoLevel: false,
   },
-  camera: {
-    rod: cam('Rod'), pitch: cam('Pitch'), yaw: cam('Yaw'), fov: cam('FOV'),
-    anchor: [cam('x'), cam('y'), cam('z')],
+  {
+    label: 'water', options: { water: 2 }, endDraws: 65421, refPath: REFERENCE_WATER_MAP,
+    template: 'S1P2Z2M1', mapSize: 'MAP_SIZE_SMALL', waterAmount: 'WATER_ISLAND_MAP', twoLevel: false,
   },
-});
+  {
+    label: 'underground', options: { template: 'S0-1P2Z2K3.1T', size: 72, underground: true },
+    endDraws: 70799, refPath: REFERENCE_UG_MAP,
+    template: 'S0-1P2Z2K3.1T', mapSize: 'MAP_SIZE_TINY', waterAmount: 'WATER_NONE', twoLevel: true,
+  },
+];
 
-if (ours === ref) {
-  check('map.xdb is byte-identical to the reference', true, `${ours.length} bytes`);
-} else {
-  const a = ours.split('\r\n');
-  const b = ref.split('\r\n');
-  let firstDiff = -1;
-  for (let i = 0; i < Math.max(a.length, b.length); i++) {
-    if (a[i] !== b[i]) { firstDiff = i; break; }
+for (const spec of RUNS) {
+  console.log(`\nthe ${spec.label} run`);
+  if (!existsSync(spec.refPath)) {
+    console.log(`  (no ${spec.refPath} — skipped)`);
+    continue;
   }
-  let diffLines = 0;
-  for (let i = 0; i < Math.max(a.length, b.length); i++) if (a[i] !== b[i]) diffLines++;
-  check('map.xdb is byte-identical to the reference', false,
-    `${diffLines} differing lines of ${b.length}; first at ${firstDiff + 1}`);
-  for (let i = Math.max(0, firstDiff - 2); i < Math.min(firstDiff + 6, Math.max(a.length, b.length)); i++) {
-    console.log(`    ${i + 1} ref  ${b[i] ?? '<eof>'}`);
-    console.log(`    ${' '.repeat(String(i + 1).length)} ours ${a[i] ?? '<eof>'}`);
+  const ref = readFileSync(spec.refPath, 'utf8');
+  const grab = (re: RegExp): string => {
+    const m = re.exec(ref);
+    if (!m) throw new Error(`reference: ${re} not found`);
+    return m[1]!;
+  };
+
+  const r = runFull(dir, spec.options);
+  const c = r.c;
+  check(`the run ends on the traced ${spec.endDraws}`, c.rng.draws === spec.endDraws, `${c.rng.draws}`);
+
+  // The shipyards' ShipTile is engine-computed and unread — take each from
+  // the reference by minted name.
+  for (const o of r.objects) {
+    if (o.kind !== 'shipyard') continue;
+    const i = ref.indexOf(`id="${o.name}"`);
+    const m = /<ShipTile>\s*<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/.exec(ref.slice(i, i + 800));
+    if (m) o.shipTile = [Number(m[1]), Number(m[2])];
   }
-  if (process.env['H5E_DBG_EMIT']) {
-    writeFileSync(join('_tmp', 'ours-map.xdb'), ours);
-    console.log('  (ours dumped to _tmp/ours-map.xdb)');
+
+  const players = 2;
+  const races = Array.from({ length: players }, (_, i) =>
+    TOWN_BY_RACE[c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!);
+  const camBlock = /<dialogs>[^]*?<\/dialogs>/.exec(ref)![0];
+  const cam = (tag: string): string => new RegExp(`<${tag}>([^<]*)</${tag}>`).exec(camBlock)![1]!;
+
+  const ours = buildRmgMapDesc({
+    tiles: c.size,
+    twoLevel: spec.twoLevel,
+    objects: r.objects,
+    groundAmbientLight: c.params.groundTerrainLights[c.setup.ambientLightIndex]!,
+    players,
+    sRMG: {
+      version: 34,
+      seed: REFERENCE_SEED,
+      guid: grab(/<RMGguid>([^<]*)<\/RMGguid>/),
+      mapSize: spec.mapSize,
+      template: `/RMG/Templates/${spec.template}.xdb#xpointer(/RMGTemplate)`,
+      waterAmount: spec.waterAmount,
+      monsterLevel: 'MONSTER_LEVEL_MEDIUM',
+      hasUnderground: spec.twoLevel,
+      races,
+      mapName: grab(/<MapName>([^<]*)<\/MapName>/),
+    },
+    camera: {
+      rod: cam('Rod'), pitch: cam('Pitch'), yaw: cam('Yaw'), fov: cam('FOV'),
+      anchor: [cam('x'), cam('y'), cam('z')],
+    },
+  });
+
+  if (ours === ref) {
+    check('map.xdb is byte-identical to the reference', true, `${ours.length} bytes`);
+  } else {
+    const a = ours.split('\r\n');
+    const b = ref.split('\r\n');
+    let firstDiff = -1;
+    for (let i = 0; i < Math.max(a.length, b.length); i++) {
+      if (a[i] !== b[i]) { firstDiff = i; break; }
+    }
+    let diffLines = 0;
+    for (let i = 0; i < Math.max(a.length, b.length); i++) if (a[i] !== b[i]) diffLines++;
+    check('map.xdb is byte-identical to the reference', false,
+      `${diffLines} differing lines of ${b.length}; first at ${firstDiff + 1}`);
+    for (let i = Math.max(0, firstDiff - 2); i < Math.min(firstDiff + 6, Math.max(a.length, b.length)); i++) {
+      console.log(`    ${i + 1} ref  ${b[i] ?? '<eof>'}`);
+      console.log(`    ${' '.repeat(String(i + 1).length)} ours ${a[i] ?? '<eof>'}`);
+    }
+    if (process.env['H5E_DBG_EMIT']) {
+      writeFileSync(join('_tmp', `ours-map-${spec.label}.xdb`), ours);
+      console.log(`  (ours dumped to _tmp/ours-map-${spec.label}.xdb)`);
+    }
   }
 }
 
