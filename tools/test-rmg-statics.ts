@@ -81,7 +81,6 @@ const BOUNDARIES: Record<number, [number, number]> = {
   1: [40826, 44537], 2: [54730, 58742], 3: [69801, 73858], 4: [85446, 89798],
 };
 
-const heights = new Float32Array(SIZE * SIZE);
 const allStatics: PlacedStatic[] = [];
 for (const tz of c.template.zones) {
   const loadedZone = c.loaded.zones.find((z) => z.index === tz.index)!;
@@ -100,7 +99,7 @@ for (const tz of c.template.zones) {
     mountains: preset.mountains.map((h) => c.footprint(h)),
     overLakeCenterObjects: preset.overLakeCenterObjects.map((h) => c.footprint(h)),
     overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => h ? c.footprint(h) : null),
-    mapAngle: c.setup.angle, heights,
+    mapAngle: c.setup.angle,
   }, c.rng);
   allStatics.push(...big.placed);
   const [bigBoundary, oneBoundary] = BOUNDARIES[tz.index]!;

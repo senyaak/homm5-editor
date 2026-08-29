@@ -75,6 +75,8 @@
 
 import type { DrawSource } from './armies.ts';
 import { mintName } from './armies.ts';
+import { coneRelief } from './heights.ts';
+import type { HeightPlane } from './heights.ts';
 import { carveMassif } from './massif-carve.ts';
 import type { VertexHeights } from './massif-carve.ts';
 import { EIGHT, recomputeRoom, zoneTiles } from './placement.ts';
@@ -144,8 +146,8 @@ export interface BigStaticsInput {
   overLakeOneTileRandomObjects: Array<Footprint | null>;
   /** `world+0x5C` — mapSetup's one betweenFloat(0, 2pi). */
   mapAngle: number;
-  /** MUTATED when given: the level's height grid, for the relief cones. */
-  heights?: Float32Array;
+  /** MUTATED when given: the floor's vertex height plane, for the relief cones. */
+  heightPlane?: HeightPlane;
   /**
    * The subterranean override (`0xEC4A70`, shared by Subterra, Dwarven's
    * vt+0x40 and SubInferno's `0xEC92D0`): the massif carve replaces the
@@ -175,16 +177,8 @@ export interface BigStaticsResult {
 
 /** `0xED1660` — the mountain relief cone; drawless. */
 function raiseRelief(input: BigStaticsInput, at: Tile, q: number, blocked: readonly Tile[]): void {
-  if (!input.heights) return;
-  for (const off of blocked) {
-    const [dx, dy] = rotate(q, off);
-    const r = fl(Math.sqrt(fl(dx * dx + dy * dy)));
-    if (r >= fl(3.5)) continue;
-    const x = at[0] + dx;
-    const y = at[1] + dy;
-    if (x < 0 || x >= input.size || y < 0 || y >= input.size) continue;
-    input.heights[y * input.size + x] = fl(input.heights[y * input.size + x]! + fl(2 * fl(fl(3.5) - r)));
-  }
+  if (!input.heightPlane) return;
+  coneRelief(input.heightPlane, at[0], at[1], q, blocked);
 }
 
 /**

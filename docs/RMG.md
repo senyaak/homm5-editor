@@ -59,7 +59,23 @@ the masks — Dead_Land's theft from Lava — falls in line. **All seven
 layers of the reference `GroundTerrain.bin` are now byte-identical, with
 no forgiveness clause left.**
 
-Next: emitting the `.h5m`.
+**The HEIGHT PLANE closes the surface file's float half** (`0xECF760` →
+`heights.ts`, `test-rmg-heights`): all 9,409 vertices of the reference's
+height plane, bit for bit. The plane starts at the level constructor's
+6.0 (`0xEB2B60`), the statics add the mountain relief cones, and the
+late pass lays a sin/cos base field capped at +3.0 over it — the 9.0
+plateau is those two numbers — then dents roads and lakes, melts craters
+under Inferno towns (-1.0 within 8) and Inferno dwellings (-2.5 within
+2.5), flattens every non-static object's footprint to its average
+(Academy towns and dwellings hover and are skipped), floods each lake
+body to its corner minimum - 0.1, and smooths thrice. The pass needed
+the biggest arithmetic fact since the road wave, and it is visible in
+the file itself: **the reference is the EDITOR's x87 arithmetic** —
+double intermediates, one rounding per store — which is why the plateau
+survives the smoothing at exactly 9.0 where the game's own SSE kernel
+would drift it by 1.9e-6 per pass. Phase 15 below has the details.
+
+Next: the ground-flags and passability planes, then emitting the `.h5m`.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -244,22 +260,20 @@ writers, read from the executable:
   at fillTerrain time (`paintSeaCorners`; the two touch disjoint state).
 
 The late pass `0xECF760` (called at 0xEAC206, after the road painter)
-turned out NOT to be about the sea: its 0x80 occupancy bits are the
-LAKES (heights -0.5 on their corners, a flood-fill flatten of each lake
-body to min - 0.1, three smoothing passes with kernels 0.8/0.025 and
-0.2/0.1 around a base-height field 0xECF9A0 of sin/cos noise clamped to
-a 9.0 plateau, roads sunk -1.0) — the HEIGHT planes, still unported.
-The RMG writes no passability plane at all: the engine derives the
-vertex water kind from the painted texture classes at terrain-build time
-(0xA20143: classes 3/4 → 1, land/road → 0).
+turned out NOT to be about the sea: it is the surface HEIGHT plane —
+Phase 15, now ported (`heights.ts`, bit-identical on the surface
+reference). The RMG writes no passability plane at all: the engine
+derives the vertex water kind from the painted texture classes at
+terrain-build time (0xA20143: classes 3/4 → 1, land/road → 0).
 
 Named holes: what a failed 0xEB43D0 creation skips; the water hash
 detail that made `floorIterationOrder` take its key as size_t (the
 sea's -1 hashes to bucket 8 of 13).
 
 What remains of the water reference is the `.h5m` emission for all three
-references — for which the non-mask planes (the 0xECF760/0xECF9A0
-height field, ground flags, passability) still need a writer.
+references — the heights on ITS run (the sea band's interplay with the
+base field's zone reads has not been replayed yet), the ground flags and
+the passability derivation.
 
 **The underground run is in FULL LOCKSTEP — all 70,799 draws**
 (`test-rmg-underground`): the chain to 4475 —
@@ -673,6 +687,7 @@ is what it is belongs next to the number.
 | `prisons.ts` | the prisons step `0xEBD1C0` | **done, live on the underground run** — 8 and 6 draws |
 | `artifacts.ts` | the artifact table the distributor's pool is built from | **done** — cost and the generated flag, in id order |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
+| `heights.ts` | the height plane: relief cones, the late pass `0xECF760` | **done, bit-identical** on the surface reference's 9,409 vertices |
 | `emit.ts` | the finished map, handed to `src/map/` | |
 
 ### The number stream, and why it comes first
@@ -2130,6 +2145,70 @@ counter stands at 20420 through the whole pass, and the suite holds all
 seven layers to the file byte for byte, 607 SandRoad, 131 LavaRoad and
 175 Dead_Land vertices among them.
 
+### Phase 15 — the height plane (`0xECF760`) — ported, bit-identical
+
+`src/rmg/heights.ts`, `test-rmg-heights` — the whole surface reference
+plane, all 9,409 vertices bit for bit. GenerateMap calls the pass ONCE
+at 0xEAC206, right after the road painter; it touches floor 0 only (the
+underground floor's heights are the massif carve's). The chain:
+
+1. **The plane starts at 6.0** — the level constructor `0xEB2B60` fills
+   the float grid with 6.0 for a surface floor (and builds the
+   underground rock frame the massif port had to measure from the
+   reference: fill 36.0/0x20, interior carved to 18.0/0x10, low edges
+   ramped 36/30/24 — the same final state `createVertexHeights` writes).
+2. **The statics add the mountain cones** (`0xED1660`, `coneRelief`):
+   per rotated blocked tile within 3.5 of the static, ONE vertex takes
+   `+2·(3.5 − r)`.
+3. **The base field** (`0xECF9A0`): per vertex,
+   `min(sin(o/10)·sin(o/42)·cos(n/13)·sin(n/29) / 0.15f ± dist/3 + 12, 3)`
+   is ADDED — the cap makes 6+3 = the 9.0 plateau everywhere except
+   NECROMANCY/INFERNO zones, whose dist term is negated (they dig toward
+   the zone interior). Road tiles (occupancy 0x18) dent their four
+   corners −1.0 in the same walk; the dist/zone reads are transposed
+   with clamps against the write, which on the square map makes both
+   land on the vertex's own tile.
+4. **Lake dents**: every 0x80 tile takes −0.5 on its corners and leaves
+   the smoothing mask.
+5. **Craters** (`0xED0240`): an INFERNO town sets every vertex within
+   8.0 (of the position minus one) to their average −1.0; the INFERNO
+   dwellings (BuildingType 0x48..0x4B — DemonGate, ImpCrucible, Kennels,
+   the military post) do the same within 2.5 at −2.5.
+6. **The footprint flatten** (`0xED06D0`, runs twice — before the first
+   smooth and after the second): every non-static floor-0 object zeroes
+   the mask under its rotated footprint (shared blockedTiles + the FIRST
+   activeTiles entry, quarter-turned by `0xABE1D0` — x87 round-half-even
+   of rot/(π/2)+0.25) and sets the footprint's closed vertex set to its
+   average. The closure appends, through two STLPort hash_maps whose
+   bucket order fixes the vector, one vertex BELOW each column's lowest
+   and one RIGHT of each row's rightmost — the sanctuary's flat set is
+   what proved the axes. ACADEMY towns and the ACADEMY dwellings
+   (BuildingType 0x51, 0x55..0x57) hover and are skipped.
+7. **Smooth ×2** (`0xEB2580`, kernel 0.8 centre / 0.025 neighbours),
+   the mask refilled to all-ones between them.
+8. **The lake flood** (`0xECFE40`): each 8-connected 0x80 body is set,
+   all four corners of every member tile, to its corner minimum −0.1.
+9. **Smooth #3** (kernel 0.2/0.1), mask = ones minus the footprints —
+   which is why the flattened sets survive to the file exactly.
+
+**The arithmetic is the EDITOR's x87, and the file proves it.** The
+game's SSE codegen does the kernel per-tap in single precision, which
+drifts a constant-9 neighbourhood by +1.9e-6 per 0.8-pass; the reference
+holds 4,414 vertices at EXACTLY 9.0. The editor keeps intermediates on
+the x87 stack (53-bit precision) and rounds ONCE at each store — a sum
+of nine f32 products is exact in double, so the plateau comes back
+bit-perfect. The port therefore computes every chain in double over f32
+operands and rounds only into the plane — the same law the road wave
+established, now governing a whole file plane. The object positions'
+engine order is (+0x44, +0x48) = the port's (y, x) — the same (a, b)
+convention the town centres already used.
+
+Not yet replayed here: the water and underground runs' height planes
+(the sea carve adjusts the border table the base field reads, and the
+underground surface floor mixes in the massif's floor-0 grids), and the
+ground-flags/passability planes, whose derivation is a separate reverse
+target on the save path.
+
 ## Tools
 
 ```bash
@@ -2158,6 +2237,7 @@ npm run test-rmg-statics   # the statics live: eight boundaries to 89798, 1325 o
 npm run test-rmg-treasure-blocks # the treasure blocks live: growth and fill per zone, to 92438 — the whole run
 npm run test-rmg-road-painter # the road painter: all seven GroundTerrain.bin layers byte-identical
 npm run test-rmg-underground # the WHOLE two-floor run: the carve, the lakes for real, 1423 objects to 70799
+npm run test-rmg-heights   # the height plane: the surface reference's 9409 vertices, bit for bit
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste

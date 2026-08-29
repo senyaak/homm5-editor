@@ -225,7 +225,6 @@ console.log('\nthe statics over the islands');
 const STATIC_BOUNDARIES: Record<number, [number, number]> = {
   1: [35164, 36001], 2: [43700, 44769], 3: [52561, 53620], 4: [61962, 63227],
 };
-const heights = new Float32Array(c.size * c.size);
 for (const tz of c.template.zones) {
   const loadedZone = c.loaded.zones.find((z) => z.index === tz.index)!;
   const preset = c.presets.get(c.zoneRace(tz.index))!;
@@ -242,7 +241,7 @@ for (const tz of c.template.zones) {
     mountains: preset.mountains.map((h) => c.footprint(h)),
     overLakeCenterObjects: preset.overLakeCenterObjects.map((h) => c.footprint(h)),
     overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => h ? c.footprint(h) : null),
-    mapAngle: c.setup.angle, heights,
+    mapAngle: c.setup.angle,
     water: true, tiles: c.water!.kept.get(tz.index),
   }, c.rng);
   for (const p of big.placed) named.push(p);

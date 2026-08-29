@@ -171,7 +171,6 @@ const STATIC_BOUNDARIES: Record<number, [number, number]> = {
 };
 
 const vertexHeights = c.floors.map((_, f) => createVertexHeights(c.size, f));
-const surfaceHeights = new Float32Array(c.size * c.size);
 let staticsCount = 0;
 for (const tz of c.template.zones) {
   const loadedZone = c.loaded.zones.find((z) => z.index === tz.index)!;
@@ -192,7 +191,7 @@ for (const tz of c.template.zones) {
     mountains: preset.mountains.map((h) => c.footprint(h)),
     overLakeCenterObjects: preset.overLakeCenterObjects.map((h) => c.footprint(h)),
     overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => h ? c.footprint(h) : null),
-    mapAngle: c.setup.angle, heights: surfaceHeights,
+    mapAngle: c.setup.angle,
     subterranean, vertexHeights: vertexHeights[f]!,
   }, c.rng);
   for (const p of big.placed) named.push(p);

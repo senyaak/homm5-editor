@@ -89,7 +89,6 @@ for (const z of floorIterationOrder(c.loaded.zones.filter((zz) => zz.floor === 0
 }
 check('the roads phase ends on the traced 20420', c.rng.draws === 20420, `${c.rng.draws}`);
 
-const heights = new Float32Array(SIZE * SIZE);
 for (const tz of c.template.zones) {
   const loadedZone = c.loaded.zones.find((z) => z.index === tz.index)!;
   const preset = c.presets.get(c.zoneRace(tz.index))!;
@@ -104,7 +103,7 @@ for (const tz of c.template.zones) {
     mountains: preset.mountains.map((h) => c.footprint(h)),
     overLakeCenterObjects: preset.overLakeCenterObjects.map((h) => c.footprint(h)),
     overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => h ? c.footprint(h) : null),
-    mapAngle: c.setup.angle, heights,
+    mapAngle: c.setup.angle,
   }, c.rng);
   placeZoneOneTileStatics({
     size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room,
