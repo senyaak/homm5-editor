@@ -17,7 +17,9 @@ import { buildTerrainFile } from '../src/rmg/emit-terrain.ts';
 import { buildRmgTexts } from '../src/rmg/emit-texts.ts';
 import { heightsToFile, latePass } from '../src/rmg/heights.ts';
 import { readTileInfo } from '../src/rmg/preset-table.ts';
-import { fillTerrain, paintRoads, paintSeaCorners, paintWaterMarks } from '../src/rmg/terrain.ts';
+import {
+  fillTerrain, makeRiverPlane, paintLakes, paintRoads, paintSeaCorners, paintWaterMarks, stampZoneLakeRiver,
+} from '../src/rmg/terrain.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
 import { RACE } from '../src/rmg/load-template.ts';
@@ -199,6 +201,14 @@ for (const spec of RUNS) {
         paintSeaCorners(floorsLayers[0]!, c.water.sea.get(zi)!, deepWaterTile, c.size);
       }
     }
+    // The lakes' own painter runs inside the statics sweep — after the
+    // water carve's marks, before the road painter — and stamps the same
+    // river plane the sea does.
+    const river = c.water?.river ?? makeRiverPlane(c.size);
+    for (const lake of r.lakes) {
+      paintLakes(floorsLayers[0]!, lake, c.size);
+      stampZoneLakeRiver(river, lake);
+    }
     for (let f = 0; f < c.floors.length; f++) {
       paintRoads(floorsLayers[f]!, c.size, c.floors[f]!.grid, c.floors[f]!.occ,
         floorIterationOrder(c.loaded.zones.filter((z) => z.floor === f)).map((z) => {
@@ -240,21 +250,13 @@ for (const spec of RUNS) {
       path: l.path.includes('#xpointer') ? l.path : `${l.path}#xpointer(/AdvMapTile)`,
       mask: l.mask,
     });
-    if (spec.label === 'underground') {
-      // KNOWN GAP: the underground run's SURFACE floor ran the lakes for
-      // real, and the lake terrain painter (the Water/River-bed layers
-      // and the lakes' river-plane stamp) is not ported yet — the file
-      // cannot assemble whole until it is. docs/RMG.md names the hole.
-      console.log('  (GroundTerrain.bin skipped — the lake terrain painter is not ported yet)');
-    } else {
-      terrainVs('GroundTerrain.bin', buildTerrainFile({
-        tiles: c.size,
-        layers: floorsLayers[0]!.map(layerEntry),
-        heights: heightsToFile(r.heightPlane),
-        flags: new Uint8Array(N).fill(16),
-        water: c.water?.river.data,
-      }), join(guidDir, 'GroundTerrain.bin'));
-    }
+    terrainVs('GroundTerrain.bin', buildTerrainFile({
+      tiles: c.size,
+      layers: floorsLayers[0]!.map(layerEntry),
+      heights: heightsToFile(r.heightPlane),
+      flags: new Uint8Array(N).fill(16),
+      water: river.data,
+    }), join(guidDir, 'GroundTerrain.bin'));
     if (spec.twoLevel) {
       terrainVs('UndergroundTerrain.bin', buildTerrainFile({
         tiles: c.size,

@@ -173,6 +173,15 @@ export interface BigStaticsResult {
   lakeSeeds: Tile[];
   /** Every tile the lake blobs flooded (occupancy 0x80), for the painter. */
   lakeTiles: Tile[];
+  /**
+   * Per lake tile, what the terrain painter reads AT THAT MOMENT — the
+   * room grid as the head left it and the border table. Snapshotted here
+   * because the layers the paints land on only exist once fillTerrain has
+   * been replayed, by which time every zone behind this one has recomputed
+   * the room grid. `paintLakes` / `stampZoneLakeRiver` in terrain.ts.
+   */
+  lakeRoom: Int32Array;
+  lakeBorder: Int32Array;
 }
 
 /** `0xED1660` — the mountain relief cone; drawless. */
@@ -210,8 +219,17 @@ export function staticFits(
 const dist = ([ax, ay]: Tile, [bx, by]: Tile): number =>
   fl(Math.sqrt(fl((ax - bx) * (ax - bx) + (ay - by) * (ay - by))));
 
+interface GrownLakes {
+  seeds: Tile[];
+  blob: Tile[];
+  /** The blob's room and border readings, for the terrain painter. */
+  blobRoom: Int32Array;
+  blobBorder: Int32Array;
+  placed: PlacedStatic[];
+}
+
 /** The lakes prologue — `0xEBC260`; seeds, blob, decorations, one-tilers. */
-function growLakes(input: BigStaticsInput, rng: DrawSource): { seeds: Tile[]; blob: Tile[]; placed: PlacedStatic[] } {
+function growLakes(input: BigStaticsInput, rng: DrawSource): GrownLakes {
   const { size, grid, border, occupancy, room, zoneIndex } = input;
   const placed: PlacedStatic[] = [];
 
@@ -282,6 +300,15 @@ function growLakes(input: BigStaticsInput, rng: DrawSource): { seeds: Tile[]; bl
     }
   }
 
+  // What the terrain painter reads before anything behind it moves on.
+  const blobRoom = new Int32Array(blob.length);
+  const blobBorder = new Int32Array(blob.length);
+  for (let i = 0; i < blob.length; i++) {
+    const [bx, by] = blob[i]!;
+    blobRoom[i] = room[by]![bx]!;
+    blobBorder[i] = border[by]![bx]!;
+  }
+
   // The lake painter's tail (`0xECE680` → 0xecee65): DEEP WATER. Every
   // cell of the level (1..dim−2, own occupancy never tested) with at
   // least THREE of its eight neighbours at EXACTLY 0x80 turns 0x82 in a
@@ -338,7 +365,7 @@ function growLakes(input: BigStaticsInput, rng: DrawSource): { seeds: Tile[]; bl
     }
   }
 
-  return { seeds, blob, placed };
+  return { seeds, blob, blobRoom, blobBorder, placed };
 }
 
 /** The preset-Mountains pass — `0xEBCAF0`; empty list means zero draws. */
@@ -396,6 +423,8 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
   const placed: PlacedStatic[] = [];
   let lakeSeeds: Tile[] = [];
   let lakeTiles: Tile[] = [];
+  let lakeRoom: Int32Array = new Int32Array(0);
+  let lakeBorder: Int32Array = new Int32Array(0);
 
   if (input.subterranean) {
     // vt+0x40: recomputeRoom(0x3C, all=1) then the carve, then
@@ -412,6 +441,8 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
       const lakes = growLakes(input, rng);
       lakeSeeds = lakes.seeds;
       lakeTiles = lakes.blob;
+      lakeRoom = lakes.blobRoom;
+      lakeBorder = lakes.blobBorder;
       placed.push(...lakes.placed);
     }
     if (process.env['H5E_DEBUG_STATICS']) {
@@ -481,5 +512,5 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
     }
   }
 
-  return { placed, lakeSeeds, lakeTiles };
+  return { placed, lakeSeeds, lakeTiles, lakeRoom, lakeBorder };
 }

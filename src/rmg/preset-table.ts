@@ -44,6 +44,18 @@ export interface RacePreset {
    * SecondaryRoadTile; an empty ref falls back to DeepWaterBottom.
    */
   waterCoastTile: TerrainTileInfo | null;
+  /**
+   * `WaterTile` (`+0x64`) — the LAKE painter's surface layer, the literal
+   * 150 over every blob tile's corners. Four of the five lake races name
+   * Water.xdb here, Necropolis its Bog; the races that grow no lakes leave
+   * it empty. (The offsets fall out of the block's own chain: the shared
+   * refs are 8 bytes with their `*Strenght` int behind each, so RoadTile
+   * 0x4C, SecondaryRoadTile 0x58, WaterTile 0x64, WaterBottomTile 0x70,
+   * OtherTiles 0x7C, WaterCoastTile 0x88, OneTileSmallBlockers 0x90.)
+   */
+  waterTile: TerrainTileInfo | null;
+  /** `WaterBottomTile` (`+0x70`) — the lake bed, painted depth-scaled. */
+  waterBottomTile: TerrainTileInfo | null;
   /** `AbandonedMine` (`+0x198`) — what the abandoned-mines worker places. */
   abandonedMine: string | null;
   /** `TownProto` — the AdvMapTownShared a zone of this race builds. */
@@ -154,12 +166,16 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
     const road = tiles ? find(tiles, 'RoadTile')?.attrs['href'] : undefined;
     const secondary = tiles ? find(tiles, 'SecondaryRoadTile')?.attrs['href'] : undefined;
     const coast = tiles ? find(tiles, 'WaterCoastTile')?.attrs['href'] : undefined;
+    const lakeSurface = tiles ? find(tiles, 'WaterTile')?.attrs['href'] : undefined;
+    const lakeBottom = tiles ? find(tiles, 'WaterBottomTile')?.attrs['href'] : undefined;
     out.set(race, {
       defaultTile: def ? readTileInfo(dataRoot, def) : null,
       otherTiles: tiles ? hrefs(find(tiles, 'OtherTiles')).map((h) => readTileInfo(dataRoot, h)) : [],
       roadTile: road ? readTileInfo(dataRoot, road) : null,
       secondaryRoadTile: secondary ? readTileInfo(dataRoot, secondary) : null,
       waterCoastTile: coast ? readTileInfo(dataRoot, coast) : null,
+      waterTile: lakeSurface ? readTileInfo(dataRoot, lakeSurface) : null,
+      waterBottomTile: lakeBottom ? readTileInfo(dataRoot, lakeBottom) : null,
       abandonedMine: (obj ? find(obj, 'AbandonedMine')?.attrs['href'] : undefined) ?? null,
       townProto: (obj ? find(obj, 'TownProto')?.attrs['href'] : undefined) ?? null,
       overTownCenterObjects: obj ? hrefs(find(obj, 'OverTownCenterObjects')) : [],

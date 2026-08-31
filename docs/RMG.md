@@ -121,33 +121,69 @@ editor's 3D collision query — a named hole, not a plan.
 writer generalised to N layers, its multi-layer counters read off the
 reference framing and verified to the byte: `E_i = 2N + 2·len_i + 53`
 per layer, a `01 E 02 F 01` bridge between layers, `D = 2·region + 1`):
-the surface file, the island file (water plane included) and
-UndergroundTerrain.bin are byte-identical outside the passability plane
-(exempted as above) and ONE uninitialised byte — the 0x0e record's
+ALL FOUR reference terrain files — the surface one, the island one
+(water plane included), the underground run's surface floor and
+UndergroundTerrain.bin — are byte-identical outside the passability
+plane (exempted as above) and ONE uninitialised byte: the 0x0e record's
 payload, the same byte the determinism check once caught flipping
-between identical runs. The one file that cannot assemble yet is the
-underground RUN's surface floor: its zone 2 ran the LAKES for real, and
-the lake terrain painter — the Water/River-bed_grass layers and the
-lakes' river-plane stamp — is not ported.
+between identical runs.
 
-**That painter is the next reverse target**, and the questions to take
-to it are already shaped: WHO paints a lake's tiles (the tail of the
-lakes head `0xEBC260`, the deep-water pass `0xECE680` → `0xECEE65`, or
-a later pass of its own), WHICH documents it resolves — the reference's
-two new layers are `/RMG/Tiles/Water/Water.xdb` and
-`/RMG/Tiles/Haven/River-bed_grass.xdb`, so a params
-DeepWaterTile/DeepWaterBottom (`+0x150`/`+0x158`) and a preset field are
-the candidates — at what weight (the sea used the literal 200), over
-WHICH tiles (the whole blob, the `0x82` interior, the rim — the file
-carrying both layers suggests the interior and the rim differ), and
-whether the lakes stamp the river plane through the sea's own
-`0xECF080` and at what moment (the sea had to stamp AT CARVE TIME
-because the connections dent the border afterwards; the lakes run
-inside the statics, so their moment needs its own answer). The sea's
-half of all this is already read and ported — `stampZoneSeaRiver` /
-`paintSeaCorners` in `terrain.ts` and the water-terrain section above
-are the conventions to speak. After it: the minimap DDS and packing the
-`.h5m`.
+**The LAKE TERRAIN PAINTER is read and ported** (`0xECE680`, thiscall on
+the same CTerrainProcessor, called once per zone from the lakes head's
+tail at `0xEBCA90` and BEFORE the head's decorations; drawless). It is
+the same function whose own tail (`0xECEE65`) does the 0x82 deep-water
+conversion the statics already needed — that half stays in `growLakes`,
+the terrain half is `paintLakes` / `stampZoneLakeRiver` in `terrain.ts`.
+The documents are the PRESET'S, not the params': `WaterTile` (`+0x64`)
+and `WaterBottomTile` (`+0x70`) — Haven's are exactly the reference's
+two new layers, `/RMG/Tiles/Water/Water.xdb` and
+`/RMG/Tiles/Haven/River-bed_grass.xdb`, and the five races that name a
+WaterTile are the five the lakes gate opens for. (The offsets fall out
+of the Tiles block's own chain: the shared refs are 8 bytes with their
+`*Strenght` int behind each, so RoadTile 0x4C, SecondaryRoadTile 0x58,
+WaterTile 0x64, WaterBottomTile 0x70, OtherTiles 0x7C, WaterCoastTile
+0x88, OneTileSmallBlockers 0x90.)
+
+Per blob tile, in the head's collection order, the engine first counts
+how many of the four ORTHOGONAL neighbours are themselves blob tiles —
+a linear rescan of the whole vector per neighbour — and then:
+
+* paints the WaterTile at the four corners, the LITERAL 150 (0x96;
+  `TransitiveTileIntensity` is unread here too). Water.xdb is priority
+  253 TT_SMALL_WATER and alone in its class, so a rim vertex painted
+  once keeps 150 and an interior one painted again overflows to 255 —
+  the reference's 28 and 129 on the nose;
+* stamps the river plane, but ONLY where room > 3 AND at least THREE
+  orthogonal neighbours are lake — the blob's interior, the rim left
+  dry. The 4x4 half-tile block at (2x, 2y) takes
+  `min(255, (min(room, border) - 1) * 60)`. Unlike the sea's stamp
+  there is NO guard against the plane's dimensions, and unlike the
+  sea's blur no `1 <= x,y <= size-3` either: a lake sits deep inside
+  its zone by construction, so the engine never needed one;
+* paints the WaterBottomTile at the same four corners at
+  `min(200, (min(room, border) - c) * k)` — c/k are 4/15 when the
+  setting race is RACE_NECROMANCY (`cmp [ebp+18h],7`) and 2/30 for
+  everyone else. Nothing clamps this from BELOW: a shallow tile asks
+  for a negative weight and PaintTile takes it down its subtract
+  branch.
+
+Then the blur, the sea's verbatim: `k = 0..2*count-1` over
+`list[k % count]`, two in-place sub-passes per tile (distance 2, then
+distance 1), each cell `(N + S + E + W + 2*C) / 6`.
+
+The room and border readings travel WITH the blob (`lakeRoom` /
+`lakeBorder` off the statics sweep) because the painter runs inside the
+statics while the layers only exist once fillTerrain has been replayed,
+and every zone behind this one recomputes the room grid. The one thing
+the shipped tables cannot decide is whether `zone+0xEC` — the preset
+index the painter resolves — is the setting race or the terrain race:
+they only differ for the underground flavours and for surface Dungeon,
+and none of those is a lake race. Each of the three readings above was
+checked by sabotage: 4 bytes move for the 150, 198 for the bed ladder,
+551 for the river value, all of them inside the underground run's
+surface file and nowhere else.
+
+Next: the minimap DDS and packing the `.h5m`.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -740,7 +776,7 @@ is what it is belongs next to the number.
 | `fill-zones.ts` | `FillZones` | **done, held in lockstep**: an editor trace matched all 18,459 draws |
 | `border-tiles.ts` | `CalcBorderTiles` | **done** — drawless, held to the definition and the reference chain |
 | `preset-table.ts` | `RMGPresetTable` Tiles + AdvMapTile documents | **done** for what the painter reads |
-| `terrain.ts` | `FillTerrain`, and the road painter `0xECE3E0` | **done** — all seven of the reference file's mask layers byte for byte |
+| `terrain.ts` | `FillTerrain`, the road painter `0xECE3E0`, the water and LAKE painters | **done** — every mask layer of all four reference files, byte for byte |
 | `towns.ts` + `town-data.ts` | `PlaceTowns` | **done** — 16 draws, and both towns land where the engine put them |
 | `dist-to-towns.ts` | `FillDistToTownsTable` | **done** — drawless; its side effect is what later phases see |
 | `connections.ts` | `ZoneConnections`, land passages and guards | **done** — three guards on the engine's own tiles; teleports unported |
@@ -763,7 +799,7 @@ is what it is belongs next to the number.
 | `heights.ts` | the height plane: relief cones, the late pass `0xECF760` | **done, bit-identical** on all three references — 24,147 vertices |
 | `emit.ts` | the map.xdb emitter: per-type object bodies over the blank skeleton | **done — all three references byte-identical** |
 | `emit-texts.ts` | the archive's UTF-16LE texts from the Params word files | **done — all three references byte-identical** |
-| `emit-terrain.ts` | the GroundTerrain.bin writer, N layers | **done** — three of four files whole; the ug surface floor waits on the lake painter |
+| `emit-terrain.ts` | the GroundTerrain.bin writer, N layers | **done** — all four reference terrain files whole |
 
 ### The number stream, and why it comes first
 

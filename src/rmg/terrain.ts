@@ -287,6 +287,137 @@ export function stampZoneSeaRiver(
   }
 }
 
+/**
+ * What the lake painter is handed for one zone: the blob the lakes head
+ * collected, the two preset tiles it resolves and the race that picks its
+ * ladder. The room and border readings travel WITH the tiles because the
+ * painter runs inside the statics sweep while the layers only exist once
+ * fillTerrain has been replayed — and the room grid is recomputed again by
+ * every zone behind this one.
+ */
+export interface LakePaint {
+  /** The blob in the head's collection order — the vector the painter gets. */
+  tiles: Tile[];
+  /** Per tile, the room grid as the lakes head left it. */
+  room: Int32Array;
+  /** Per tile, the border table (the carve's adjustment included). */
+  border: Int32Array;
+  /** The preset's `WaterTile` (+0x64), resolved. */
+  waterTile: TerrainTileInfo | null;
+  /** The preset's `WaterBottomTile` (+0x70), resolved. */
+  waterBottomTile: TerrainTileInfo | null;
+  /** `zone+0x18` — RACE_NECROMANCY (7) reads the gentler ladder. */
+  settingRace: number;
+}
+
+/**
+ * How many of the four ORTHOGONAL neighbours are blob tiles themselves —
+ * the engine rescans the whole vector per neighbour with an exact float
+ * compare (0xECE785). The neighbour ORDER cannot show in a count.
+ */
+function lakeNeighbours(tiles: Tile[], x: number, y: number): number {
+  let n = 0;
+  for (const [d1, d2] of ORTHO) {
+    if (tiles.some(([tx, ty]) => tx === x + d1 && ty === y + d2)) n++;
+  }
+  return n;
+}
+
+/**
+ * The lakes' terrain half — `0xECE680`, thiscall on the same
+ * CTerrainProcessor, called once per zone from the lakes head's tail
+ * (0xEBCA90) with that zone's blob, the zone's preset index (`zone+0xEC`)
+ * and its setting race (`zone+0x18`), and BEFORE the head's decorations.
+ * The phase's own tail — the 0x82 occupancy conversion — lives in
+ * `growLakes`, where the sweep behind it needs the result; this is
+ * everything the phase writes to the LAYERS. Drawless.
+ *
+ * Per blob tile, in vector order:
+ *
+ *   * the preset's WaterTile at the four corners, the LITERAL 150 (0x96 —
+ *     TransitiveTileIntensity is not read here either). Water.xdb is
+ *     priority 253 TT_SMALL_WATER, alone in its class, so a rim vertex
+ *     painted once keeps 150 and an interior one painted again overflows
+ *     to 255 — the reference's 28 and 129;
+ *   * (the river-plane stamp, `stampZoneLakeRiver` below);
+ *   * the preset's WaterBottomTile at the same four corners, at
+ *     `min(200, (min(room, border) - c) * k)` — c/k are 4/15 when the
+ *     setting race is RACE_NECROMANCY (`cmp [ebp+18h],7` at 0xECE720) and
+ *     2/30 for everyone else. Nothing clamps this from BELOW: a shallow
+ *     tile can ask for a negative weight, which PaintTile takes down its
+ *     subtract branch. Haven's bed is River-bed_grass, priority 53 and
+ *     class 0, so it competes with the zone tile the same way the water
+ *     carve's bottom does.
+ *
+ * The two corner walks differ in order — the surface goes (x, x+1) then
+ * (y, y+1), the bed the other way round — which four distinct vertices
+ * cannot show; both are kept as the engine has them.
+ */
+export function paintLakes(layers: TerrainLayer[], lake: LakePaint, size: number): void {
+  const v = size + 1;
+  const sub = lake.settingRace === 7 ? 4 : 2;
+  const mul = lake.settingRace === 7 ? 15 : 30;
+  for (let i = 0; i < lake.tiles.length; i++) {
+    const [x, y] = lake.tiles[i]!;
+    paint(layers, lake.waterTile, y, x, 150, v);
+    paint(layers, lake.waterTile, y, x + 1, 150, v);
+    paint(layers, lake.waterTile, y + 1, x, 150, v);
+    paint(layers, lake.waterTile, y + 1, x + 1, 150, v);
+
+    const raw = (Math.min(lake.room[i]!, lake.border[i]!) - sub) * mul;
+    const w = raw >= 200 ? 200 : raw;
+    paint(layers, lake.waterBottomTile, y, x, w, v);
+    paint(layers, lake.waterBottomTile, y + 1, x, w, v);
+    paint(layers, lake.waterBottomTile, y, x + 1, w, v);
+    paint(layers, lake.waterBottomTile, y + 1, x + 1, w, v);
+  }
+}
+
+/**
+ * The river-plane half of `0xECE680` — the interleaved middle of the walk
+ * above, split out for the same reason the sea's is: the plane belongs to
+ * the run, the layers to the replay.
+ *
+ * A tile stamps only where room > 3 AND at least THREE of its four
+ * orthogonal neighbours are lake — the blob's interior, the rim left dry.
+ * The 4x4 half-tile block at (2x, 2y) takes `v = (min(room, border) - 1) *
+ * 60`, capped at 255, and — unlike the sea's stamp — is written with NO
+ * guard against the plane's dimensions: a lake sits deep inside its zone
+ * by construction, so the engine never needed one.
+ *
+ * Then the blur, the sea's verbatim: k = 0..2*count-1 over list[k % count],
+ * two in-place sub-passes per tile (distance 2, then distance 1), each cell
+ * (N + S + E + W + 2*C) / 6 in unsigned integers. The sea skips tiles
+ * outside 1 <= x,y <= size-3; the lakes' blur has no such guard either.
+ */
+export function stampZoneLakeRiver(river: RiverPlane, lake: LakePaint): void {
+  const { w, data } = river;
+  for (let i = 0; i < lake.tiles.length; i++) {
+    const [x, y] = lake.tiles[i]!;
+    if (lake.room[i]! <= 3) continue;
+    if (lakeNeighbours(lake.tiles, x, y) <= 2) continue;
+    const raw = (Math.min(lake.room[i]!, lake.border[i]!) - 1) * 60;
+    const val = raw >= 255 ? 255 : raw;
+    for (let hx = 2 * x; hx < 2 * x + 4; hx++) {
+      for (let hy = 2 * y; hy < 2 * y + 4; hy++) data[hy * w + hx] = val;
+    }
+  }
+
+  const n = lake.tiles.length;
+  for (let k = 0; k < 2 * n; k++) {
+    const [x, y] = lake.tiles[k % n]!;
+    for (const d of [2, 1]) {
+      for (let hx = 2 * x; hx < 2 * x + 4; hx++) {
+        for (let hy = 2 * y; hy < 2 * y + 4; hy++) {
+          const sum = data[hy * w + hx - d]! + data[hy * w + hx + d]!
+            + data[(hy - d) * w + hx]! + data[(hy + d) * w + hx]! + 2 * data[hy * w + hx]!;
+          data[hy * w + hx] = Math.trunc(sum / 6);
+        }
+      }
+    }
+  }
+}
+
 /** Haven and Preserve share a border-free peace (0xED0E1E). */
 const sameRace = (a: number, b: number): boolean =>
   a === b || (a === 3 && b === 4) || (a === 4 && b === 3);

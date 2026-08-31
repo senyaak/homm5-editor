@@ -36,6 +36,7 @@ import type { PlacedStatic } from '../src/rmg/statics-big.ts';
 import {
   placeSubterraOneTileStatics, placeWaterOneTileStatics, placeZoneOneTileStatics,
 } from '../src/rmg/statics-one-tile.ts';
+import type { LakePaint } from '../src/rmg/terrain.ts';
 import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
 import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
@@ -79,6 +80,12 @@ export interface FullRun {
   guardSeats: Map<number, Tile[]>;
   fills: Map<number, ZoneFill>;
   statics: PlacedStatic[];
+  /**
+   * Per zone that grew lakes, in statics order: what the lake terrain
+   * painter (`0xECE680`) was handed at the moment it ran. The paints and
+   * the river stamp replay later, once fillTerrain has built the layers.
+   */
+  lakes: LakePaint[];
 }
 
 /**
@@ -351,6 +358,7 @@ export function runFull(
   const heightPlane = makeHeightPlane(c.size, 6.0);
   const vertexHeights = c.floors.map((_, f) => createVertexHeights(c.size, f));
   const statics: PlacedStatic[] = [];
+  const lakes: LakePaint[] = [];
 
   for (const tz of c.template.zones) {
     const lz = c.loaded.zones.find((z) => z.index === tz.index)!;
@@ -388,6 +396,18 @@ export function runFull(
         ? [{ x: 0, y: 0, z: s.light.z, color: [zoneColor.x, zoneColor.y, zoneColor.z], radius: s.light.radius }]
         : undefined,
     });
+    if (big.lakeTiles.length) {
+      lakes.push({
+        tiles: big.lakeTiles, room: big.lakeRoom, border: big.lakeBorder,
+        // `zone+0xEC` — the preset index, the same entry FillTerrain paints
+        // the zone's ground from. No shipped template can tell it apart
+        // from the setting race here: terrainRace only differs for the
+        // underground flavours and for surface Dungeon, and none of those
+        // is a lake race.
+        waterTile: preset.waterTile, waterBottomTile: preset.waterBottomTile,
+        settingRace: lz.race,
+      });
+    }
     statics.push(...big.placed);
     for (const s of big.placed) objects.push(staticRecord(s));
     step(`zone ${tz.index} big statics`);
@@ -468,5 +488,5 @@ export function runFull(
   }
   step('run');
 
-  return { c, objects, heightPlane, vertexHeights, roads, mineActives, guardSeats, fills, statics };
+  return { c, objects, heightPlane, vertexHeights, roads, mineActives, guardSeats, fills, statics, lakes };
 }
