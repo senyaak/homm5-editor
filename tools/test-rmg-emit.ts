@@ -242,6 +242,20 @@ for (const spec of RUNS) {
       }
       check(`${label} is byte-identical outside the passability plane`, bad === 0,
         bad ? `${bad} bytes differ, first at ${firstBad} (ours ${ours.length}b ref ${refRaw.length}b)` : `${ours.length} bytes`);
+      // The passability plane is a KNOWN, MEASURED hole, not a clean
+      // exemption: the game's own RMG fills it too (a map generated from
+      // the in-game screen carries 1874 zeros of 5329), so our all-ones is
+      // wrong and not "what the generator writes". Print the delta every
+      // run so the suite never reads green on it. docs/RMG.md says what it
+      // would take to close.
+      if (pass) {
+        let planeBad = 0;
+        for (let i = 0; i < pass.count; i++) {
+          if (ours[pass.dataOff + i] !== refRaw[pass.dataOff + i]) planeBad++;
+        }
+        console.log(`  hole  ${label} passability: ${planeBad} of ${pass.count} vertices differ `
+          + `(${(100 * planeBad / pass.count).toFixed(1)}%) — we emit all-ones, the engine derives it from scene geometry`);
+      }
       if (bad && process.env['H5E_DBG_EMIT']) {
         writeFileSync(join('_tmp', `ours-${spec.label}-${label}`), ours);
       }
