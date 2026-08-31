@@ -128,8 +128,26 @@ payload, the same byte the determinism check once caught flipping
 between identical runs. The one file that cannot assemble yet is the
 underground RUN's surface floor: its zone 2 ran the LAKES for real, and
 the lake terrain painter — the Water/River-bed_grass layers and the
-lakes' river-plane stamp — is not ported. That painter is the next
-reverse target; then the minimap DDS and packing the `.h5m`.
+lakes' river-plane stamp — is not ported.
+
+**That painter is the next reverse target**, and the questions to take
+to it are already shaped: WHO paints a lake's tiles (the tail of the
+lakes head `0xEBC260`, the deep-water pass `0xECE680` → `0xECEE65`, or
+a later pass of its own), WHICH documents it resolves — the reference's
+two new layers are `/RMG/Tiles/Water/Water.xdb` and
+`/RMG/Tiles/Haven/River-bed_grass.xdb`, so a params
+DeepWaterTile/DeepWaterBottom (`+0x150`/`+0x158`) and a preset field are
+the candidates — at what weight (the sea used the literal 200), over
+WHICH tiles (the whole blob, the `0x82` interior, the rim — the file
+carrying both layers suggests the interior and the rim differ), and
+whether the lakes stamp the river plane through the sea's own
+`0xECF080` and at what moment (the sea had to stamp AT CARVE TIME
+because the connections dent the border afterwards; the lakes run
+inside the statics, so their moment needs its own answer). The sea's
+half of all this is already read and ported — `stampZoneSeaRiver` /
+`paintSeaCorners` in `terrain.ts` and the water-terrain section above
+are the conventions to speak. After it: the minimap DDS and packing the
+`.h5m`.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
