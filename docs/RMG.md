@@ -471,6 +471,31 @@ instruction. The float plane at `+0x54` guards the predicate's tail
 allocates it; that arm and the two flag arms are named as unexercised
 rather than claimed.
 
+**The minimap DDS is DATA, not a render — the last unported document.**
+`minimap_floor_%02d.dds` is 256x256 BGRA8, uncompressed, one mip. It
+LOOKS like a render and its statistics say otherwise only once you split
+the channels: 9,997 distinct RGB but four distinct alphas, and the top
+colours are near-duplicates a unit apart (1a1b26 and 1b1c27, 2a6c7f and
+2a6b7e). Up close a flat area wobbles between 126 and 127 with a period
+of three — an interpolation pattern, not noise, and 256/96 = 8/3 is
+where a period of three would come from.
+
+What settles it is the arithmetic. Every `AdvMapTile` document carries a
+`MinimapColor` float triple, and the picture is those colours HALVED:
+Lava's (77, 55, 53) against the dark zone's observed (38, 27, 26), and
+Dunes' (255, 217, 85) against the sand zone's (127, 108, 42) — one unit
+off in R, which is the wobble itself. The engine also holds a
+`MinimapColor` string and `CMinimapPosConverter`, so the drawing is a
+data pass over the same masks this port now emits byte for byte.
+
+Proven: the field exists on every tile, and two zones' flat colours are
+its half to within the wobble. NOT yet read: how the layers blend (mask
+weight is the obvious guess and only a guess), where the halving lives,
+what the four alphas mean, the 8/3 scaling, and the object icons — the
+triangles, squares and the town star drawn over the terrain. That is the
+next piece of work, and it is worth more than the .h5m: the editor needs
+the same picture.
+
 Named holes: what a failed 0xEB43D0 creation skips; the water hash
 detail that made `floorIterationOrder` take its key as size_t (the
 sea's -1 hashes to bucket 8 of 13).
