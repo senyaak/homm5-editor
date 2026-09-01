@@ -217,8 +217,28 @@ static int g_rmgTrace = 0;
 static int g_rmgRunActive = 0;
 /** `grids` in the config: dump the road lists and level grids at the roads boundary. */
 static int g_rmgGrids = 0;
+/**
+ * `pass` in the config: the PASSABILITY plane's zero count at every step
+ * boundary. The plane is `level+0x68` (data) / `+0x6C` (rows) / `+0x70`,
+ * `+0x74` (dims) — the same level object the grids dump already walks, filled
+ * with 1 by the terrain constructor `0xEB2B60` at `0xEB2D83`.
+ *
+ * WHY. The port emits all-ones and the references do not: a map ordered from
+ * the GAME's own generator carries 1874 zeros of 5329, so the generator fills
+ * the plane and we do not know where. Three cheap derivations were fitted and
+ * all died (footprints 79.6%, occupancy 82.4%, slope 70.1%), and the editor
+ * addresses an earlier reading named turned out to be an overlay toggle, not
+ * a per-tile query. So the question is no longer "what is the rule" but
+ * "WHICH STEP writes it" — and the step boundaries already exist. A count per
+ * boundary turns the whole generator into a bisection.
+ *
+ * Needs `trace` as well: the zone pointers this reads through are harvested
+ * by the GetZone detour, which only goes in under `trace`.
+ */
+static int g_rmgPass = 0;
 static int rmg_readable(const void *p, unsigned size);
 static void rmg_log_ints(const char *prefix, const int *vals, int count);
+static void rmg_dump_pass(void);
 /**
  * Zone pointers, harvested from the ENGINE'S OWN GetZone calls as they pass
  * through the trace hook. Asking GetZone ourselves crashed the editor — its
@@ -382,6 +402,7 @@ static void rmg_log_step(int zone, const char *fmt) {
   }
   line[i] = 0;
   rmg_log(line);
+  if (g_rmgPass) rmg_dump_pass();
 }
 
 /**
@@ -415,6 +436,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "seed") && read_int(&q, stop, &g_rmgSeed)) g_rmgForceSeed = 1;
     if (take_word(&q, stop, "trace")) g_rmgTrace = 1;
     if (take_word(&q, stop, "grids")) g_rmgGrids = 1;
+    if (take_word(&q, stop, "pass")) g_rmgPass = 1;
     if (take_word(&q, stop, "field")) g_rmgField = 1;
   }
   VirtualFree(buf, 0, MEM_RELEASE);
@@ -737,6 +759,54 @@ static void rmg_dump_grids(void) {
     }
   }
   rmg_log("grids dumped");
+}
+
+/**
+ * `pass <floor> <zeros> <ones>` — the passability plane, counted.
+ *
+ * One line per floor whose level could be reached through a harvested zone.
+ * The plane starts all ones, so the first boundary whose zero count is not 0
+ * is the step that fills it; if every boundary reads 0 the writer is not in
+ * GenerateMap at all and the save path is where to look next.
+ */
+static void rmg_dump_pass(void) {
+  int floorsDone[4] = { 0, 0, 0, 0 };
+  int id;
+  int seen = 0;
+  for (id = 0; id < 32; id++) {
+    BYTE *zone = g_rmgZones[id];
+    BYTE *world, *levels, *level;
+    unsigned char **rows;
+    int floor, dimA, dimB, r, ccol, zeros = 0, ones = 0;
+    int vals[3];
+    if (!zone || !rmg_readable(zone, 0x140)) continue;
+    if (*(int *)(zone + 0xEC) != id) continue;
+    floor = *(int *)(zone + 0xF4);
+    if (floor < 0 || floor >= 4 || floorsDone[floor]) continue;
+    world = *(BYTE **)(zone + 0x134);
+    if (!world || !rmg_readable(world, 0x40)) continue;
+    levels = *(BYTE **)(world + 0x34);
+    if (!levels || !rmg_readable(levels + floor * 0x120, 0x120)) continue;
+    level = levels + floor * 0x120;
+    dimA = *(int *)(level + 0x70);
+    dimB = *(int *)(level + 0x74);
+    rows = *(unsigned char ***)(level + 0x6C);
+    if (dimA <= 0 || dimA > 512 || dimB <= 0 || dimB > 512) continue;
+    if (!rows || !rmg_readable(rows, (unsigned)dimA * 4)) continue;
+    floorsDone[floor] = 1;
+    seen = 1;
+    for (r = 0; r < dimA; r++) {
+      if (!rows[r] || !rmg_readable(rows[r], (unsigned)dimB)) continue;
+      for (ccol = 0; ccol < dimB; ccol++) {
+        if (rows[r][ccol]) ones++; else zeros++;
+      }
+    }
+    vals[0] = floor;
+    vals[1] = zeros;
+    vals[2] = ones;
+    rmg_log_ints("pass ", vals, 3);
+  }
+  if (!seen) rmg_log("pass - no level reachable yet");
 }
 
 static char *__cdecl rmg_step_zone(const char *fmt, double secs, int zone) {
