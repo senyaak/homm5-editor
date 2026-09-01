@@ -239,6 +239,7 @@ static int g_rmgPass = 0;
 static int rmg_readable(const void *p, unsigned size);
 static void rmg_log_ints(const char *prefix, const int *vals, int count);
 static void rmg_dump_pass(void);
+static void rmg_dump_slot38(void);
 /**
  * Zone pointers, harvested from the ENGINE'S OWN GetZone calls as they pass
  * through the trace hook. Asking GetZone ourselves crashed the editor — its
@@ -807,6 +808,78 @@ static void rmg_dump_pass(void) {
     rmg_log_ints("pass ", vals, 3);
   }
   if (!seen) rmg_log("pass - no level reachable yet");
+  rmg_dump_slot38();
+}
+
+/**
+ * `vt <vtable> <+0x38 target>` — who the plane's writer actually is.
+ *
+ * GenerateMap fills the passability plane between the "treasure blocks set"
+ * and "finished creating map" log sites, drawlessly: it loops the LEVELS
+ * (stride 0x120), walks each level's chained table at `level+0xAC` / `+0xB0`
+ * — a pointer array of list heads, `[node]` the next link and `[node+8]` the
+ * payload — and calls the payload's virtual slot `+0x38` (0xEAC185).
+ *
+ * Which class that payload is cannot be settled from the executable: no
+ * AdvMap class implements `+0x38` with anything but a `ret` thunk, and a
+ * sweep of all 2314 RTTI classes gives 201 small look-alikes with unreliable
+ * attribution. So the vtable is read from the LIVE object instead — the same
+ * discipline as the zone dump, pointers the engine itself built. One line per
+ * distinct vtable, so the log stays short however many objects there are.
+ */
+static void *g_rmgSlotSeen[64];
+static int g_rmgSlotSeenCount = 0;
+
+static void rmg_dump_slot38(void) {
+  int floorsDone[4] = { 0, 0, 0, 0 };
+  int id;
+  for (id = 0; id < 32; id++) {
+    BYTE *zone = g_rmgZones[id];
+    BYTE *world, *levels, *level, **heads;
+    int floor, count, b;
+    if (!zone || !rmg_readable(zone, 0x140)) continue;
+    if (*(int *)(zone + 0xEC) != id) continue;
+    floor = *(int *)(zone + 0xF4);
+    if (floor < 0 || floor >= 4 || floorsDone[floor]) continue;
+    world = *(BYTE **)(zone + 0x134);
+    if (!world || !rmg_readable(world, 0x40)) continue;
+    levels = *(BYTE **)(world + 0x34);
+    if (!levels || !rmg_readable(levels + floor * 0x120, 0x120)) continue;
+    level = levels + floor * 0x120;
+    heads = *(BYTE ***)(level + 0xAC);
+    {
+      BYTE **end = *(BYTE ***)(level + 0xB0);
+      if (!heads || !end || end < heads) continue;
+      count = (int)(end - heads);
+    }
+    if (count <= 0 || count > 100000) continue;
+    if (!rmg_readable(heads, (unsigned)count * 4)) continue;
+    floorsDone[floor] = 1;
+    for (b = 0; b < count; b++) {
+      BYTE *node = heads[b];
+      int guard = 0;
+      while (node && guard++ < 100000) {
+        BYTE *obj;
+        if (!rmg_readable(node, 12)) break;
+        obj = *(BYTE **)(node + 8);
+        if (obj && rmg_readable(obj, 4)) {
+          BYTE *vt = *(BYTE **)obj;
+          if (vt && rmg_readable(vt, 0x3C)) {
+            int k, known = 0;
+            for (k = 0; k < g_rmgSlotSeenCount; k++) if (g_rmgSlotSeen[k] == (void *)vt) { known = 1; break; }
+            if (!known && g_rmgSlotSeenCount < 64) {
+              int v[2];
+              g_rmgSlotSeen[g_rmgSlotSeenCount++] = (void *)vt;
+              v[0] = (int)vt;
+              v[1] = (int)*(void **)(vt + 0x38);
+              rmg_log_ints("vt ", v, 2);
+            }
+          }
+        }
+        node = *(BYTE **)node;
+      }
+    }
+  }
 }
 
 static char *__cdecl rmg_step_zone(const char *fmt, double secs, int zone) {
