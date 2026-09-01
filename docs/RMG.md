@@ -930,6 +930,21 @@ and packs them as `Maps/RMG/<GUID>/…` inside a `.h5m`. That is the format the
 editor already reads and writes, so the port needs no new file work — only the
 decisions that fill it.
 
+**The archive itself cannot be byte-identical, and should not be aimed at.**
+Both references are 17 entries in case-insensitive name order, every one
+deflated (method 8) with general-purpose flags 0x2, made-by 0x14, version
+needed 20, external attributes 0x20, no extra fields and no comments. Two
+things then put it out of reach. Every entry carries the SAME DOS stamp —
+the wall clock of the run, `5d18:98b8` on the surface reference and
+`5d1a:ba11` on the water one — so two runs of the same seed differ. And
+the deflate stream is not zlib's: sweeping level, strategy, memLevel and
+windowBits over both references matches the stored bytes on nothing, and
+on the minimap DDS the game's encoder BEATS zlib -9 (128,145 bytes against
+129,368), so it is a stronger encoder rather than a differently-tuned
+zlib. The bar for `packProject` is therefore the entry set, their names,
+their order and their CONTENTS byte for byte — which is what the game
+reads — not the archive's own bytes.
+
 ## What the executable says about itself
 
 The generator narrates. Every phase reads the random-number counter on the way
