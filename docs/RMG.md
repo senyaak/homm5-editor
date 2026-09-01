@@ -646,17 +646,28 @@ Proven: every address, offset and arithmetic step above is read out of
 reference file.
 
 **The icons are the game's own art, copied pixel for pixel.** `0xDD00E0`
-first collects the objects worth an icon into three vectors — the filter
-is `[cast+0xEC]` being 0x63 or 0x64 — and the drawer then runs three
-loops over them, one per vector.
+first collects the objects worth an icon, and the drawer then runs a loop
+per collected list.
+
+WHICH objects. The object gets in if `[obj+0x04]()` hands back a
+component and that component's `[+0x08]()` says yes — the OWNERSHIP one,
+the thing that lets a player flag the object. Failing that, its shared
+document is dynamic-cast to `SAdvMapBuildingShared` and its `Type`
+(`+0xEC`, the field the registrar at `0xADFCA3` names and stamps with the
+class id `0x16130CC1`) has to be 0x27 — `BUILDING_SUBTERRA_GATE` by
+`types.xml`. A second list takes `Type` 0x63 and 0x64, the two campaign
+citadels. That is the whole rule, and it is why the reference's third
+dwelling gets no icon: a refugee camp cannot be flagged.
 
 The NAME is built with `sprintf` and looked up by string:
 
 - `Town_%d` when the object's shared document answers `[vtbl+0x3C]`;
-- else `Mine_%d` when `[vtbl+0x8C]()->[vtbl+0x24]()` hashes to
-  `0x16130CC3` or `0x16130CC5`;
+- else `Mine_%d` when `[vtbl+0x8C]()->[vtbl+0x24]()` gives `0x16130CC3`
+  or `0x16130CC5` — the class ids the registrars stamp right after the
+  names `AdvMapMineShared` (`0xAE4073`) and `AdvMapAbanMineShared`
+  (`0xAE49E6`), so the test is "is this an ordinary or an abandoned mine";
 - else `Object_%d`;
-- the second vector's loop always asks for `UnderworldExitEnter`, the
+- the subterra-gate list's loop always asks for `UnderworldExitEnter`, the
   third always for `Town_1`.
 
 `%d` is the owner from `[obj+0xC]`, and an owner above 8 skips the object
@@ -690,8 +701,9 @@ each mine's own `Pos` through the converter and the anchor rule lands
 within a pixel or two of where its stamp is — the mines' footprints are
 symmetric, so their centroid is their `Pos`; the two towns sit about a
 tile off, which is the centroid term doing its work. `Object_0` matches
-twice and nothing else matches at all: no heroes, no caravans, no
-underworld entrance on a one-floor map.
+twice — the Imp Crucible and the Workshop, both flaggable dwellings —
+and nothing else matches at all: not the third dwelling, a refugee camp,
+and no heroes, caravans or underworld entrance on a one-floor map.
 
 Still unread, and it costs the port nothing: where `this[+0x14]`'s flat
 colour comes from on the RMG path — the branch that would use it is dead
