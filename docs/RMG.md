@@ -432,15 +432,38 @@ written there all the same, while a hand-made Nival map carries a
 completely different camera. `RMG_CAMERA` in `emit.ts`; the suite no
 longer lifts it from the reference.
 
-**The shipyards' ShipTile is the one value still lifted.** Its shape is
-read: the placer (`0xECC0A0`) averages the zone's `+0xCC` tiles into a
-centroid, takes the shipyard minus it, and picks a quadrant angle by the
-dominant axis — pi/2 when dx <= 0, 3pi/2 when dx > 0, 0 when dy >= 0, pi
-when dy < 0, all plus pi/2. That angle is the shipyard's Rot, which the
-port already reproduces. The ShipTile itself comes out of `0xCB1960`,
-handed the position, that angle and `map+0x34` — ONE unread function,
-and the last thing between the port and a map it can generate for any
-template and any seed.
+**The shipyards' ShipTile is the one value still lifted, and it is now
+mapped end to end.** The placer (`0xECC0A0`) averages the zone's `+0xCC`
+tiles into a centroid, takes the shipyard minus it, and picks a quadrant
+angle off the dominant axis — pi/2 when dx <= 0, 3pi/2 when dx > 0, 0
+when dy >= 0, pi when dy < 0, all plus pi/2. Those are exactly the four
+Rot values the reference carries, and the port already reproduces them;
+the angle is NOT passed on, it is stashed for the object's own rotation.
+
+`0xCB1960` is the search, and it is a plain table walk: 46 entries of 16
+bytes at `0x10918E0`, each holding an OUTER offset pair and an INNER one
+a step closer to the yard — the ring (0,-4) (-1,-4) (1,-4) … outward
+first, corners next, sides last. It returns the OUTER pair of the first
+entry where the outer tile passes `0x9EC3C0` and the inner tile passes
+NEITHER `0x9EC3C0` NOR `0x9EB9E0`; nothing found means the shipyard
+candidate is dropped and the placer tries the next tile. All four
+ShipTiles of the water reference — (-1,4) (-1,-4) (0,4) (-2,-4) — are
+entries 6, 1, 5 and 3, inside the first ten, which is what a first-match
+walk of that ring should give.
+
+What is NOT ported yet is the predicate, and it is not one test but four.
+`0x9EC3C0` reads the four corner vertices of the byte plane at `+0x24` /
+`+0x28` (clamped to `[0, dim-2]`), and when any is non-zero it asks
+`0x9EBAE0` — a walk of the TEXTURE LAYER list (`+0x8`/`+0xC`, the same
+0x18-byte records PaintTile keeps) — then the river half-grid at `+0x48`
+against 0x8C, and finally a float plane at `+0x54` / `+0x58` against 0.0.
+So closing it needs two planes identified, the layer-class test read, and
+— the awkward part — the texture LAYERS available while the run is still
+placing objects. In the engine they are: FillTerrain runs at `0xEAB9FA`,
+long before the shipyards. In the port they are built only at emit time,
+so the chain has to grow a layer list earlier before this can be tried.
+That is the last thing between the port and a map it can generate for
+any template and any seed.
 
 Named holes: what a failed 0xEB43D0 creation skips; the water hash
 detail that made `floorIterationOrder` take its key as size_t (the
