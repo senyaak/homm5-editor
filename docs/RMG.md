@@ -720,6 +720,50 @@ proportion as the rest of the map — so what draws them is positional: the
 border ring, the layer walk `0x9EBAE0`, or a `TT_NONE` tile, the three
 arms uniform-16 flags leave open.
 
+**The surplus is OBJECTS, and the tile pass alone never could have made
+it.** Reading the last two arms out of `0xA4F6D0`'s chain finished the
+list and then contradicted it:
+
+- `0x9EBAE0` walks the tile's texture layers, casts each to `SAdvMapTile`
+  and, for any whose `Type` is 0x0B (`TT_BIG_WATER`), tests that layer's
+  mask at the tile's four corners — so it is "does big water cover this
+  tile". It feeds `kind 3`, not `kind 2`; the earlier reading had it under
+  the wrong one.
+- `0x9EC570` is three tests, not one: all four ground-flag corners zero,
+  OR `0x9EBAE0`, OR the RIVER half-grid at the tile's centre cell
+  `(2y+1, 2x+1)` above `0x8C` — the same river reading the shipyard
+  predicate ends on. It alone gives `kind 2`, and writes `TT_BIG_WATER`
+  into the descriptor's type.
+- `0x9EB4D0`, which fills that type on the ordinary path, returns the
+  winning layer's `Type` or 9 (`TT_NONE`) when the point is out of bounds
+  or no layer wins at all.
+
+On the run's map every one of those is inactive. The seven painted layers
+are Sand-Dunes, Sand_Cracked, Dead_Land, Lava, DarkGround, SandRoad and
+LavaRoad — no `TT_BIG_WATER` among them; the flags are uniformly 16, so
+neither the all-zero corners nor `0x9EB9E0` nor `0x9EBAC0` can fire; no
+tile is a river tile, or the halving would have disagreed somewhere and it
+agreed 8836 times out of 8836; and every tile got a real colour, so
+nothing came back `TT_NONE`. The border ring fits at NO width: scored for
+margins 0 to 16, every width from 2 up leaves walkable tiles inside the
+ring with the bit CLEAR, which a ring cannot do.
+
+So the per-tile pass cannot be the whole story, and it is not: `0xAD12A0`
+has six callers besides it, and `0xAD0F50`'s FIRST arm — before any
+`kind` is looked at — sets BOTH masks when the descriptor's `+0x10` is 1.
+`0xA4FF00` is one of those callers and it does set a 1 into the descriptor
+it passes. That is object registration, and the measurement agrees: of the
+1510 surplus tiles 33% sit exactly ON an object's position and 87% within
+one tile of one, against 7% and 51% for the walkable tiles that stay
+clear.
+
+So the mask a port has to reproduce is **the blocked tiles of the
+passability plane, plus the tiles the map's objects occupy** — with the
+water, river and border arms there for maps that have them. Named as
+measured rather than read: which `+0x10` the caller sets, and how far an
+object's registration reaches beyond its `Pos`, are the two pieces still
+taken from the correlation instead of the code.
+
 Proven: every address, offset and arithmetic step above is read out of
 `bin/H5_Game_H5E.exe`, and the four points above are measured off the
 reference file.
