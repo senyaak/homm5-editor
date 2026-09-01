@@ -263,7 +263,7 @@ export function quarterTurn(angle: number): number {
   return r & 3;
 }
 
-function rotateOffsets(offs: ReadonlyArray<Offset>, angle: number): Array<readonly [number, number]> {
+export function rotateOffsets(offs: ReadonlyArray<Offset>, angle: number): Array<readonly [number, number]> {
   const r = quarterTurn(angle);
   // r=0: identity; 1: (x,y)->(-y,x); 2: (-x,-y); 3: (y,-x) — the jump
   // table's (A,B,C) with dx = B*y + A*x, dy = A*y + C*x.

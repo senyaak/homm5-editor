@@ -764,6 +764,54 @@ measured rather than read: which `+0x10` the caller sets, and how far an
 object's registration reaches beyond its `Pos`, are the two pieces still
 taken from the correlation instead of the code.
 
+**AND THEN IT WAS READ, AND IT IS EXACT.** The two pieces above that were
+taken from correlation are now taken from the code, and the result checks
+against the engine's own mask dump with nothing left over.
+
+Virtual slot `+0xB4` is the **blocked**-tiles list. All the AdvMap classes
+reach it through the same virtual-base vtable, where every slot is an
+adjustor thunk onto a one-instruction getter: `+0xA4` is `0xAD0700`
+(`lea eax,[ecx-78h]`, the packed key), `+0xB4` is `0xAD06F0`
+(`lea eax,[ecx-68h]`) and `+0xB8` is `0xAD0800` (`lea eax,[ecx-5Ch]`) — two
+adjacent `{begin, end, capacity}` vectors of signed (dx, dy) byte pairs.
+Which of the two is which comes from what they stamp: `CWorld`'s register
+(`0xA55C10`, vtable `+0x14C`) calls `0xA4FF00` on the `+0xB4` list, which
+writes `descriptor+0x10 = 1`, and then `0xA500D0` on the `+0xB8` one, which
+writes 2 (or 3 when the object's own `[vt+0x3C]` says it is not currently
+interactive). `0xAD0F50` sets BOTH of the first two masks for type 1 —
+the same path naturally impassable terrain takes — while only type 2 reaches
+the third mask (`0xAD1344`), which is the active/entrance one. So the mask
+the minimap darkens by is the BLOCKED footprint, and the entrance tiles are
+not in it.
+
+Nothing rotates those pairs on the way out: every consumer — `0xA4FF00`,
+`0xA500D0`, `0xAD2970`, `0xAD9EF0`, `0xADA100`, `0xADB172`, `0xCB1545`,
+`0xC05DF2` — does `movsx` on the byte and adds it straight to the object's
+tile. The vector is a per-INSTANCE member (the document sits behind its own
+pointer at `-0x70`), so the rotation is baked in when it is filled, and the
+port gets there by turning the shared document's `blockedTiles` the same way
+the height pass does.
+
+The registration is also LIVE rather than cumulative. `CWorld` pairs
+`+0x14C` (register) with `+0x150` / `+0x154`, and `0xA55C60` is a real
+unregister: it copies the tile's descriptor, writes the owner and the type
+back to 0 and puts it back, which sends `0xAD0F50` down its clearing path.
+The movers call them around a move (`0xB296A2`/`0xB296B8` and again at
+`0xB29930`, `0xB32760`). So the mask holds the objects that are STANDING —
+which on a freshly generated map is all of them, but the port should not
+read it as "every object ever placed".
+
+**Checked**: the port's mask — the passability plane's zeros plus every
+floor-0 object's rotated blocked footprint, statics included — against the
+probe's 96x96 dump of the mask the terrain pass was handed: **9,216 tiles of
+9,216, not one either way**. The statics matter: they are 1,325 of the
+1,556 objects and their footprints are 1,078 of the mask's 1,510 tiles over
+the plane, and since the run record carries no blocked list for a static the
+port reads it from the shared document (`Chain.footprint`). With that mask
+the terrain layer stands at **8,783 tiles of 8,836 identical to the
+engine's**, and the 53 that are left are the document question above, not
+the darkening.
+
 Proven: every address, offset and arithmetic step above is read out of
 `bin/H5_Game_H5E.exe`, and the four points above are measured off the
 reference file.
