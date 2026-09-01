@@ -645,9 +645,57 @@ Proven: every address, offset and arithmetic step above is read out of
 `bin/H5_Game_H5E.exe`, and the four points above are measured off the
 reference file.
 
-Still unread: the icon art and its sizes, and where `this[+0x14]`'s flat
-colour comes from on the RMG path (it is dead there, so it costs the port
-nothing).
+**The icons are the game's own art, copied pixel for pixel.** `0xDD00E0`
+first collects the objects worth an icon into three vectors — the filter
+is `[cast+0xEC]` being 0x63 or 0x64 — and the drawer then runs three
+loops over them, one per vector.
+
+The NAME is built with `sprintf` and looked up by string:
+
+- `Town_%d` when the object's shared document answers `[vtbl+0x3C]`;
+- else `Mine_%d` when `[vtbl+0x8C]()->[vtbl+0x24]()` hashes to
+  `0x16130CC3` or `0x16130CC5`;
+- else `Object_%d`;
+- the second vector's loop always asks for `UnderworldExitEnter`, the
+  third always for `Town_1`.
+
+`%d` is the owner from `[obj+0xC]`, and an owner above 8 skips the object
+outright — 0 neutral, 1..8 the players. `0xDD3440` resolves the name
+against the `SWindowRelated` resource's named list (`[+0x44]..[+0x48]`,
+0x18 bytes an entry, `strncmp` at `0xF415D8`), which on disk is
+`UI/AdventureScreen-FPP-2/MinimapTextures.(WindowRelatedTextures).xdb` —
+55 entries pointing into `Textures/AdventureScreen-FPP-2/MinimapIcons/`.
+All of them are uncompressed BGRA8 with one level: `Town_%d` 15x16,
+`Hero_%d` 10x10, `Mine_%d` and `UnderworldExitEnter` 9x9, `Object_%d`
+6x6, plus `Caravan_%d` and `Caravan_stopped_%d`.
+
+The ANCHOR is the object's footprint centroid, not its `Pos`.
+`0xDCFF70` takes the object's world point (`[obj+0xA0]`), halves it —
+world units are two to the tile — and `floor`s it (`0x94AC3A` is the CRT
+`floor`), then adds the mean of the offsets in its two footprint lists
+(`[obj+0xB4]` and `[obj+0xB8]`, `i8` pairs). That point goes through the
+pos converter of `0xDCFB00`.
+
+The BLIT is `0xDCFDE0`: the icon's top-left lands at
+`(trunc(px) - trunc(w/2), trunc(py) - trunc(h/2))`, and each pixel whose
+own alpha byte is non-zero is copied as a whole dword — no blending, no
+scaling — with the destination clipped per pixel against the image's side.
+That is why the file's alphas are the icons' own.
+
+**Checked**: the reference map holds 18 `AdvMapMine` and 2 `AdvMapTown`,
+and the reference minimap holds exactly 18 `Mine_0` stamps and one
+`Town_1` and one `Town_2`, each matching all 60 (or 178) of its
+non-transparent pixels EXACTLY, at exactly one place in the image. Feeding
+each mine's own `Pos` through the converter and the anchor rule lands
+within a pixel or two of where its stamp is — the mines' footprints are
+symmetric, so their centroid is their `Pos`; the two towns sit about a
+tile off, which is the centroid term doing its work. `Object_0` matches
+twice and nothing else matches at all: no heroes, no caravans, no
+underworld entrance on a one-floor map.
+
+Still unread, and it costs the port nothing: where `this[+0x14]`'s flat
+colour comes from on the RMG path — the branch that would use it is dead
+on a generated map.
 
 Worth more than the `.h5m` alone: the editor needs the same picture.
 
