@@ -25,6 +25,8 @@ export interface TerrainTileInfo {
   priority: number;
   /** `TT_*` as the document spells it. */
   type: string;
+  /** `AdvMapTile+0x64` — the minimap's colour for this ground, each 0..1. */
+  minimapColor: readonly [number, number, number];
 }
 
 export interface RacePreset {
@@ -123,10 +125,14 @@ export function readTileInfo(dataRoot: string, href: string): TerrainTileInfo {
   const root = parse(readFileSync(join(dataRoot, path.replace(/^\//, '')), 'utf8'));
   const tile = find(root, 'AdvMapTile');
   if (!tile) throw new Error(`${path}: not an AdvMapTile`);
+  const colour = find(tile, 'MinimapColor');
   return {
     path,
     priority: Number.parseInt(childText(tile, 'Priority'), 10) || 0,
     type: childText(tile, 'Type'),
+    minimapColor: colour
+      ? [Number(childText(colour, 'x')), Number(childText(colour, 'y')), Number(childText(colour, 'z'))]
+      : [0, 0, 0],
   };
 }
 

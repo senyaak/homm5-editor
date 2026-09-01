@@ -51,6 +51,8 @@ export interface TerrainLayer {
   path: string;
   priority: number;
   type: string;
+  /** `AdvMapTile+0x64`, what the minimap paints this ground with. */
+  minimapColor: readonly [number, number, number];
   /** (size+1)^2 vertex weights, laid out plane[outer * (size+1) + inner]. */
   mask: Uint8Array;
 }
@@ -74,7 +76,10 @@ function paint(layers: TerrainLayer[], tile: TerrainTileInfo | null, o: number, 
     const conflict = layers.some((l) =>
       l.type !== 'TT_DIRT' && tileClass(l.type) === tileClass(tile.type) && l.priority === tile.priority);
     if (conflict) return;
-    layer = { path: tile.path, priority: tile.priority, type: tile.type, mask: new Uint8Array(v * v) };
+    layer = {
+      path: tile.path, priority: tile.priority, type: tile.type,
+      minimapColor: tile.minimapColor, mask: new Uint8Array(v * v),
+    };
     let at = layers.findIndex((l) => l.priority >= tile.priority);
     if (at === -1) at = layers.length;
     layers.splice(at, 0, layer);

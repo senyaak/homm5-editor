@@ -844,6 +844,69 @@ twice — the Imp Crucible and the Workshop, both flaggable dwellings —
 and nothing else matches at all: not the third dwelling, a refugee camp,
 and no heroes, caravans or underworld entrance on a one-floor map.
 
+**THE RESAMPLE IS PORTED, and it is exact.** `0x9743A0` turned out to be
+Schumacher's zoom.c with the half-pixel correction, and it is now
+[`src/rmg/resample.ts`](../src/rmg/resample.ts) line for line: contribution
+tables per axis, `center = (i + 0.5) / scale - 0.5`, `left = ceil(center -
+width)` (`0xF044CD`), `right = floor(center + width)` (`0x94AC3A`), a
+REFLECTING edge (`j < 0` mirrors to `-j`, `j >= n` to `2n - j - 1`),
+horizontal into a (dst.width x src.height) image and then vertical, every
+channel `trunc(sum + 0.5)` clamped to a byte. The weights are never
+normalised, which is exactly why a layer of uniform alpha 255 comes back as
+253 and 254.
+
+The filter needed one more thing read. `0x975800` is
+`sinc(x) * sinc(x/3)`, but its sine is NOT the CRT's: `0x9573B0` is a
+513-entry table at `0xFA2898` with linear interpolation, scaled by the float
+512/(2*pi) at `0xF4DC88`. The entries are not `(float)sin(...)` either —
+entry 1 is 0.012271500 where the correctly rounded value is 0.012271538,
+five ulps out — so the table has to be READ rather than recomputed, and five
+ulps is worth a few hundred pixels of a 256x256 image. It is
+[`src/exe/sine-table.ts`](../src/exe/sine-table.ts), and it is the one thing
+in the port that reads the executable to GENERATE rather than to patch.
+
+**Checked against the reference, and it holds byte for byte.** Feeding the
+ENGINE'S OWN 94x94 layer — the probe's `mmi` dump — through the port's
+resampler and comparing with `minimap_floor_01.dds` out of
+`178535184522222.h5m`: **64,018 pixels of 65,536 identical**, and the 1,518
+that differ form 26 blobs that are precisely the icon stamps the engine
+merges afterwards and this comparison leaves out — two 15x15 towns of 178
+pixels, eighteen 9x8 mines of 60, two objects of 38 and 36. Eight stray
+single-channel pixels remain, and their sums sit 2e-2 to 3e-1 away from a
+rounding boundary, which no floating-point difference could move: they are
+the probe run's layer against the reference run's, one uninitialised byte
+apart.
+
+**The tile-document walk is ported too**, coverage and all: `0x9ED7D0`'s
+bilinear with its byte widening, `0x9ED3E0` / `0x9ED2A0` with the running
+transparency, the 32.0 water gate. Two things the comparison settled that
+had been carried on trust:
+
+- **the plane's orientation is `plane[y * (size + 1) + x]`** — the port's
+  `markPassability` output against the probe's dump of `terrain[+0x6C]`,
+  9,409 equal and 0 different, where the transposed reading gives 3,212
+  different;
+- **a tile is darkened exactly where that plane reads 0**, and the 1,509
+  tiles the engine darkens on top of those are the objects — the same
+  surplus the mask dump showed, now seen from the other side, with not one
+  tile darkened by us that the engine leaves bright.
+
+**What is still open is 53 tiles of 8,836**, and it is worth stating
+narrowly. Our walk and the engine's picture disagree on 53, every one of
+them at a zone boundary and every one of them resolving to Sand-Dunes, the
+LOWEST-priority layer of the seven. The engine's own numbers rule out the
+obvious explanations: the reference file's layer order is ascending priority
+(read out of `GroundTerrain.bin`), the roads prove the walk visits the
+highest priority first (at a road tile SandRoad 255 beats Sand-Dunes 255,
+which only a descending walk gives), and **searching ALL 5,040 permutations
+of the layer vector under both scorings — `remaining * coverage` and
+coverage alone — the best any fixed order achieves is 33 wrong, never 0**.
+So the difference is not the order and not the tie-break: it is in what the
+drawer SEES. The likeliest candidate is that the minimap is drawn from the
+masks before something the save then normalises, and the one measurement
+that would settle it is a probe that logs, for a named disputed tile, each
+layer's coverage as `0x9ED7D0` returns it. That is one hook and one run.
+
 Still unread: where `this[+0x14]`'s flat colour comes from on the RMG path
 (`0xEA30D0` copies it from its owner's `+0xA0`). It costs the `.h5m`
 nothing, because the arm that would use it never fires on a generated map
