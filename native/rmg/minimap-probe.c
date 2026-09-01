@@ -37,14 +37,19 @@
 #define LOG_UNIT rmg_minimap_probe
 
 /**
- * The RMG's minimap STEP — game 0xEA30D0, `ret` (nothing on the stack). The
- * window, and it has to be this rather than the build below: the resample and
- * the file write happen after the build returns, and a window around the build
- * alone would miss half of what a run has to say.
+ * The minimap WRITE — game 0xDD1BD0, `ret 8`. The second half of the window.
+ *
+ * The window used to be the whole step (the editor's 0xCF4E30, game 0xEA30D0),
+ * on the reasoning that the build and the write are both inside it. A run said
+ * otherwise: the step opened and closed with nothing in it, and the build ran
+ * afterwards — so the save path reaches the build some other way than the one
+ * direct call the disassembly shows, and a window there watches the wrong
+ * thing. Two windows over the two functions we actually care about have no such
+ * assumption in them; `g_mmInside` counts rather than flags so they can nest.
  */
-#define MM_ED_STEP_RVA 0x8f4e30u
-static const BYTE MM_ED_STEP_HEAD[] = { 0x55, 0x8b, 0xec, 0x83, 0xe4, 0xf8 };
-/** The minimap build — game 0xDD0C70, `ret 4`. A marker inside the window. */
+#define MM_ED_WRITE_RVA 0x4b6570u
+static const BYTE MM_ED_WRITE_HEAD[] = { 0x81, 0xec, 0xa8, 0x01, 0x00, 0x00 };
+/** The minimap build — game 0xDD0C70, `ret 4`. The first half of the window. */
 #define MM_ED_DRAW_RVA 0x4b5f90u
 static const BYTE MM_ED_DRAW_HEAD[] = { 0x81, 0xec, 0x64, 0x01, 0x00, 0x00 };
 /** The icon blit — game 0xDCFDE0, `ret 0Ch`. Where each icon actually lands. */
@@ -72,8 +77,8 @@ typedef void(__fastcall *MmTerrainFn)(void *image, void *terrain, void *mask, co
 typedef char(__fastcall *MmSeaFn)(void *terrain, int x, int y);
 /** `(name, -, resource, flag)` — `edx` is the unused filler, as in the oracle. */
 typedef void *(__fastcall *MmIconFn)(void *name, void *edx, void *res, int flag);
-/** `(self)` — the whole step; nothing on the stack, so `edx` is filler. */
-typedef void(__fastcall *MmStepFn)(void *self, void *edx);
+/** `(pathBits, images, names, refs)` — thiscall plus two on the stack. */
+typedef void(__fastcall *MmWriteFn)(void *self, void *images, void *names, void *refs);
 /** `(image, -, x, y, icon)` — `edx` filler again, three on the stack. */
 typedef void(__fastcall *MmBlitFn)(void *image, void *edx, int x, int y, void *icon);
 /** `(dst, src, filter)` — the two are `{buf, rows, w, h}` sixteen-byte images. */
@@ -83,7 +88,7 @@ static MmDrawFn g_mmDrawOrig = NULL;
 static MmTerrainFn g_mmTerrainOrig = NULL;
 static MmSeaFn g_mmSeaOrig = NULL;
 static MmIconFn g_mmIconOrig = NULL;
-static MmStepFn g_mmStepOrig = NULL;
+static MmWriteFn g_mmWriteOrig = NULL;
 static MmBlitFn g_mmBlitOrig = NULL;
 static MmResampleFn g_mmResampleOrig = NULL;
 
@@ -248,13 +253,13 @@ static void __fastcall mm_terrain_hook(void *image, void *terrain, void *mask, c
   }
 }
 
-/** The window: the whole step, so the resample and the write are inside it. */
-static void __fastcall mm_step_hook(void *self, void *edx) {
-  log_line("=== minimap step begins");
-  g_mmInside = 1;
-  g_mmStepOrig(self, edx);
-  g_mmInside = 0;
-  log_line("=== minimap step ends");
+/** The other half of the window: the write, which is where the resample is. */
+static void __fastcall mm_write_hook(void *self, void *images, void *names, void *refs) {
+  log_line("=== minimap write begins");
+  g_mmInside++;
+  g_mmWriteOrig(self, images, names, refs);
+  g_mmInside--;
+  log_line("=== minimap write ends");
 }
 
 /**
@@ -330,11 +335,13 @@ static void *__fastcall mm_icon_hook(void *name, void *edx, void *res, int flag)
   return g_mmIconOrig(name, edx, res, flag);
 }
 
-/** A marker inside the window: the build, as opposed to the write after it. */
+/** The first half of the window: the build. */
 static void __fastcall mm_draw_hook(void *self, void *terrainVec, void *iconVec) {
-  log_line("--- minimap build begins");
+  log_line("=== minimap build begins");
+  g_mmInside++;
   g_mmDrawOrig(self, terrainVec, iconVec);
-  log_line("--- minimap build ends");
+  g_mmInside--;
+  log_line("=== minimap build ends");
 }
 
 /**
@@ -359,8 +366,8 @@ static int install_minimap_probe(void) {
   // LAST, because it is the window: until it is in, every hook above is inert,
   // and a half-installed probe that still opens its window would write a log
   // that looks complete and is not.
-  g_mmStepOrig = (MmStepFn)detour(MM_ED_STEP_RVA, MM_ED_STEP_HEAD, sizeof(MM_ED_STEP_HEAD),
-                                  &mm_step_hook, "minimap step");
+  g_mmWriteOrig = (MmWriteFn)detour(MM_ED_WRITE_RVA, MM_ED_WRITE_HEAD, sizeof(MM_ED_WRITE_HEAD),
+                                    &mm_write_hook, "minimap write");
   return g_mmTerrainOrig && g_mmSeaOrig && g_mmIconOrig && g_mmDrawOrig && g_mmBlitOrig
-      && g_mmResampleOrig && g_mmStepOrig;
+      && g_mmResampleOrig && g_mmWriteOrig;
 }
