@@ -650,6 +650,43 @@ the grid it needs.
   never fires on a generated map, and is named as unexercised rather than
   claimed.
 
+**And then the engine was asked directly.** `native/rmg/minimap-probe.c`
+puts four detours on the editor's image — the build, the terrain pass, the
+flat-colour predicate and the icon lookup — under the `minimap` word in
+`homm5-editor-rmg.txt`, and logs only between the build's entry and exit so
+the editor's own minimap panel stays out of it. One ordered run turned four
+inferences into readings:
+
+- **the side and the border are the engine's own numbers.** `mm side 94`,
+  `mm border 1`. The 94 that was scored off the reference picture, and the
+  border that pinned `desc[+0x4C]` and `desc[+0x1DC]`, are now stated
+  rather than fitted.
+- **the flat colour is 0x00000000.** Not the `0xFF027DF9` the in-game
+  callers pass: the RMG's owner never fills its `+0xA0`, so the argument
+  arrives zero. The last unread value in the whole drawer, and it is
+  nothing.
+- **the flat-colour arm is dead, measured.** `mm sea test calls 8836` —
+  94², every tile — against `mm sea test true 0`. Not one tile in a whole
+  map, which is what "the ground flags are 16 everywhere" predicted.
+- **the icon lists pair as read.** 22 names in order: `Town_1`, `Town_2`,
+  then eighteen `Mine_0` with two `Object_0` among them, and no
+  `UnderworldExitEnter` on a one-floor map. One list, drained once, with
+  the name chosen per object — exactly the count and the kinds that
+  matching icon pixels against the reference had found.
+
+**The mask is the passability plane, and it is more than that.** The probe
+dumps the mask the pass was handed, 96x96. Against the passability plane of
+the map that same run produced: 7706 tiles of 9216 agree, **1510 are set
+where the plane says walkable, and NOT ONE is clear where the plane says
+blocked**. So the mask CONTAINS the blocked tiles exactly and adds to
+them — which is the shape the code has, `0x9EBCB0` being one of five arms
+that set. 1069 of the extra 1510 touch a blocked tile, so most of the
+surplus is a rim; 441 are away from one and 157 sit within four tiles of
+the map edge. What is left to name is which arm draws that rim — on a
+generated map only the border ring, the layer walk `0x9EBAE0` and a
+`TT_NONE` tile can, since uniform-16 flags rule out the other two. A
+count per `kind` inside `0xAD0F50` is one hook and one more run.
+
 Proven: every address, offset and arithmetic step above is read out of
 `bin/H5_Game_H5E.exe`, and the four points above are measured off the
 reference file.
