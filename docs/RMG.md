@@ -580,14 +580,36 @@ the shipyard's water test, ported as `shipTile` in `shipyards.ts`. So the
 rule reads: a tile is darkened when the mask bit is set and the tile is
 NOT water.
 
-**The mask is the one input still unread.** `0xAD13C0` returns
-`container[+0x20] + floor * 0x58 + 0x10` — the first of THREE 0x18-byte
+**The darkening mask is the PASSABILITY PLANE.** `0xAD13C0` returns
+`container[+0x20] + floor * 0x58 + 0x10` — the first of three 0x18-byte
 bitmasks in a per-floor record (`+0x10`, `+0x28`, `+0x40`; the second has
-its own accessor at `0xAD13D0`, the third a bit setter at `0xAD1354`).
-Where it is filled is not read. What IS read is that the same drawer with
-the same mask builds the in-game adventure minimap (`0x748450`,
-`0x7484F0`, `0x746BF0`), and those callers pass a static flat colour —
-`0xFF027DF9` at `0x108E8CC` — where the RMG passes its owner's `+0xA0`.
+its own accessor at `0xAD13D0`, the third a bit setter inside `0xAD12A0`).
+`0xAD0F50` is what writes the first two, and `0xA4F6D0` is what calls it:
+a double loop over every tile of a floor that builds a small descriptor
+`{ type, ?, kind, …, flag }` and hands it over. The first mask ends up SET
+when
+
+- the tile is in the border ring — the bounds test against
+  `terrain[vtbl+0x68]()` jumps straight to `kind 5`;
+- `0x9EBCB0` says `terrain[+0x6C][ty][tx] == 0` — `kind 3`;
+- `0x9EC570` says the tile's four ground-flag corners are all zero, or
+  `0x9EBAE0` finds a layer of its class over the vertex — `kind 2`, and
+  the descriptor's type is written as 11, `TT_BIG_WATER`;
+- `0x9EB9E0` says the four corners DIFFER — `kind 3` again;
+- the type is 9, `TT_NONE`, or the descriptor's `+0x10` is 1,
+
+and CLEAR for `kind 1` (plain ground) and `kind 4` (the tile fell inside
+some object's footprint list, `[obj+0xBC]`). `0xAD2530` sets a bit,
+`0xAD2160` clears one — the two look identical to a fast read and are
+opposites.
+
+`terrain[+0x6C]` is the plane allocated at `0x9EC1C0` on `([+0]+1) ×
+([+4]+1)`, a vertex-sized u8 grid ADDRESSED PER TILE — which is exactly
+the passability plane of
+[TERRAIN_FORMAT.md](TERRAIN_FORMAT.md), 0 blocked and 1 walkable, and
+exactly how `classifyTiles` in `src/terrain/passability.ts` already reads
+it. So the minimap darkens impassable tiles, and the port already holds
+the grid it needs.
 
 **Checked against the reference**, `game/Maps/178535184522222.h5m` (the run
 `_tmp/oracle/reference/` was built from — its `map.xdb` and
@@ -609,14 +631,23 @@ the same mask builds the in-game adventure minimap (`0x748450`,
 - the four alphas are 253, 254, 255 and 11: the terrain layer's uniform
   0xFF comes back off the Lanczos pass as 253/254 (the filter runs on all
   four channels and the result is truncated), and 11 is 18 pixels of icon.
+- and the darkening IS the passability plane. Of the 3010 tiles whose
+  pixel is a pure colour, "halved exactly when the plane reads 0" holds
+  for 95.4% — and every one of the 138 misses is the same way round: a
+  tile the plane calls walkable that came out darkened anyway, which is
+  what the mask's OTHER set arms (border ring, `TT_NONE`, the layer arm)
+  are for. Not one tile the plane calls blocked came out undarkened, so
+  the `kind 4` arm — the one that would brighten an object's footprint —
+  never fires on a generated map, and is named as unexercised rather than
+  claimed.
 
 Proven: every address, offset and arithmetic step above is read out of
-`bin/H5_Game_H5E.exe`, and the three points above are measured off the
+`bin/H5_Game_H5E.exe`, and the four points above are measured off the
 reference file.
 
-Still unread: which grid the darkening mask is, the icon art and its
-sizes, and where `this[+0x14]`'s flat colour comes from on the RMG path
-(it is dead there, so it costs the port nothing).
+Still unread: the icon art and its sizes, and where `this[+0x14]`'s flat
+colour comes from on the RMG path (it is dead there, so it costs the port
+nothing).
 
 Worth more than the `.h5m` alone: the editor needs the same picture.
 
