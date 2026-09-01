@@ -33,6 +33,12 @@ export function fmtRot(v: number): string {
 }
 
 /** What one object's map entry needs — tools/rmg-run.ts records satisfy it. */
+/** What the generator writes into `<dialogs>` for every map it makes. */
+export const RMG_CAMERA = {
+  rod: '335.585', pitch: '-0.54063', yaw: '5.93275', fov: '35',
+  anchor: ['94.785', '59.4308', '2'] as [string, string, string],
+};
+
 export interface EmitObject {
   name: string;
   x: number;
@@ -327,8 +333,17 @@ export interface RmgMapInput {
     races: string[];
     mapName: string;
   };
-  /** The dialogs camera, verbatim from the run (derivation unread). */
-  camera: { rod: string; pitch: string; yaw: string; fov: string; anchor: [string, string, string] };
+  /**
+   * The dialogs camera. Not a derivation and not the operator's viewport: a
+   * CONSTANT the map creation writes, identical across all three ordered
+   * references (96 tiles and 72, with water and without) and, to the digits
+   * its build prints, in a map ordered from the GAME's own generator too.
+   * The anchor settles it — (94.785, 59.4308) sits OFF a 72-tile map and is
+   * written there all the same. A hand-made Nival map carries a completely
+   * different camera, so this is the generated-map default and nothing else.
+   * Overridable, but nothing needs to.
+   */
+  camera?: { rod: string; pitch: string; yaw: string; fov: string; anchor: [string, string, string] };
 }
 
 /** Replace a unique marker exactly once, or throw. */
@@ -521,7 +536,7 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
     '\t\t\t<ExpMultiplier>EXP_LITTLE</ExpMultiplier>');
 
   // The dialogs camera.
-  const cam = input.camera;
+  const cam = input.camera ?? RMG_CAMERA;
   text = patch(text, '\t<dialogs/>', [
     '\t<dialogs>',
     '\t\t<Item>',

@@ -5,7 +5,7 @@
 //
 // Inputs that are not the generator's own are read back from each
 // reference: the GUID (CoCreateGuid at run time), the MapName (typed into
-// the order dialog), the dialogs camera and the shipyards' ShipTile
+// the order dialog) and the shipyards' ShipTile
 // (their derivations are unread — docs/RMG.md names the holes).
 // Everything else is the run's.
 
@@ -102,8 +102,6 @@ for (const spec of RUNS) {
   const players = 2;
   const races = Array.from({ length: players }, (_, i) =>
     TOWN_BY_RACE[c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!);
-  const camBlock = /<dialogs>[^]*?<\/dialogs>/.exec(ref)![0];
-  const cam = (tag: string): string => new RegExp(`<${tag}>([^<]*)</${tag}>`).exec(camBlock)![1]!;
 
   const ours = buildRmgMapDesc({
     tiles: c.size,
@@ -122,10 +120,6 @@ for (const spec of RUNS) {
       hasUnderground: spec.twoLevel,
       races,
       mapName: grab(/<MapName>([^<]*)<\/MapName>/),
-    },
-    camera: {
-      rod: cam('Rod'), pitch: cam('Pitch'), yaw: cam('Yaw'), fov: cam('FOV'),
-      anchor: [cam('x'), cam('y'), cam('z')],
     },
   });
 

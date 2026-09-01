@@ -423,6 +423,25 @@ which the RMG fills in its own last pass (above) — is derived
 from the painted texture classes at terrain-build time (0xA20143:
 classes 3/4 → 1, land/road → 0).
 
+**The dialogs camera is not a hole — it is a CONSTANT.** All three
+ordered references carry the same Rod/Pitch/Yaw and the same anchor at
+96 tiles and at 72, with water and without, and a map ordered from the
+GAME's own generator carries it too (to the digits its build prints).
+The anchor settles it: (94.785, 59.4308) sits OFF a 72-tile map and is
+written there all the same, while a hand-made Nival map carries a
+completely different camera. `RMG_CAMERA` in `emit.ts`; the suite no
+longer lifts it from the reference.
+
+**The shipyards' ShipTile is the one value still lifted.** Its shape is
+read: the placer (`0xECC0A0`) averages the zone's `+0xCC` tiles into a
+centroid, takes the shipyard minus it, and picks a quadrant angle by the
+dominant axis — pi/2 when dx <= 0, 3pi/2 when dx > 0, 0 when dy >= 0, pi
+when dy < 0, all plus pi/2. That angle is the shipyard's Rot, which the
+port already reproduces. The ShipTile itself comes out of `0xCB1960`,
+handed the position, that angle and `map+0x34` — ONE unread function,
+and the last thing between the port and a map it can generate for any
+template and any seed.
+
 Named holes: what a failed 0xEB43D0 creation skips; the water hash
 detail that made `floorIterationOrder` take its key as size_t (the
 sea's -1 hashes to bucket 8 of 13).
