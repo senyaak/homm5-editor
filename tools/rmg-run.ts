@@ -36,6 +36,7 @@ import type { PlacedStatic } from '../src/rmg/statics-big.ts';
 import {
   placeSubterraOneTileStatics, placeWaterOneTileStatics, placeZoneOneTileStatics,
 } from '../src/rmg/statics-one-tile.ts';
+import { markPassability } from '../src/rmg/passability.ts';
 import type { LakePaint } from '../src/rmg/terrain.ts';
 import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
 import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
@@ -86,6 +87,11 @@ export interface FullRun {
    * the river stamp replay later, once fillTerrain has built the layers.
    */
   lakes: LakePaint[];
+  /**
+   * Per floor, the passability plane the run's last pass leaves — 1 where
+   * nothing reached, 0 over the open ground. See `passability.ts`.
+   */
+  passability: Uint8Array[];
 }
 
 /**
@@ -484,7 +490,20 @@ export function runFull(
     }
     step(`zone ${tz.index} blocks filled`);
   }
+  // GenerateMap's last write, between "treasure blocks set" and "finished
+  // creating map": one pass per level, over that level's zones.
+  const passability = c.floors.map((fl, f) => markPassability(
+    c.size, fl.grid, fl.border, fl.room,
+    c.template.zones
+      .filter((tz) => c.loaded.zones.find((z) => z.index === tz.index)!.floor === f)
+      .map((tz) => ({
+        index: tz.index,
+        tiles: c.water?.kept.get(tz.index) ?? zoneTiles(c.size, fl.grid, tz.index),
+        points: [...fills.get(tz.index)!.points, ...roads.get(tz.index)!],
+        water: Boolean(c.water) && f === 0,
+      })),
+  ));
   step('run');
 
-  return { c, objects, heightPlane, vertexHeights, roads, mineActives, guardSeats, fills, statics, lakes };
+  return { c, objects, heightPlane, vertexHeights, roads, mineActives, guardSeats, fills, statics, lakes, passability };
 }

@@ -106,47 +106,60 @@ the long-missing writer of the massif frame `createVertexHeights` had
 reconstructed from measurement), and the underground floor is the massif
 carve's byte grid, which matches the reference plane 5,329/5,329.
 
-**The PASSABILITY plane is an OPEN, MEASURED HOLE — and the verdict that
-once closed it was wrong.** That verdict said the game's RMG never
-writes the plane, that the references' zeros come from the editor's
-Save-As alone, and therefore that emitting all-ones is exactly what the
-generator produces. The first claim is false. A map ordered from the
-GAME'S OWN in-game generator (it lands in `<game>/H5E/`, where the game
-writes, not `<game>/Maps/`, where the editor does) carries **1,874 zeros
-of 5,329**. The game fills the plane too, so all-ones is simply wrong,
-and `test-rmg-emit` now PRINTS the delta on every run (`hole …
-passability: N of M vertices differ`) instead of exempting it silently.
+**The PASSABILITY plane is PORTED, and all four reference files are now
+byte-identical outright.** It cost two wrong verdicts before the right
+one, so the road is worth keeping.
 
-What IS established:
+The first verdict said the game's RMG never writes the plane and that
+all-ones is therefore exactly what the generator produces. False: a map
+ordered from the GAME'S OWN in-game generator (it lands in
+`<game>/H5E/`, where the game writes, not `<game>/Maps/`, where the
+editor does) carries 1,874 zeros of 5,329. The second guess was that the
+derivation must be a 3D scene query, and that porting it meant a
+collision subsystem. Also false, and three fitted rules had already said
+the plane was not a function of anything the port held — the objects'
+declared footprints 79.6%, the occupancy grid 82.4% / 75.9%, the terrain
+slope 70.1% / 74.7%.
 
-* the plane is `CTerrain+0x68` (data) / `+0x6C` (rows), dims `+0x70` /
-  `+0x74`, and the constructor fills it with 1 at `0xEB2D83`. That half
-  of the old reading holds;
-* it is boolean `{0,1}` in both the game's map and the editor's
-  references, and of the same order (1,874 against 1,994 zeros on the
-  same size) — ONE derivation to find, not two;
-* it is NOT a function of the placed objects' declared blocked
-  footprints. Five vertex rules were fitted against the underground
-  reference — four corners, own tile, all-four, any-three, any-two — and
-  the best reaches **79.6%**, WORSE than the old occupancy fit's 89.7%.
-  The footprints cover 92% of the reference's zeros but over-block by
-  1,740 vertices;
-* it really is a scene-geometry query. The editor's `0x491F70` walks the
-  tile grid (`fcom [esi+70h]` / `[esi+74h]` bound the two loops), builds
-  four corner points through `0x413460`, calls `0x461750`, and writes
-  **1** on one branch and **0** on the other into two row-arrays —
-  `[esi+0x4C]` for the surface floor, `[esi+0x5C]` for the underground.
+What settled it was the oracle, not more reading: a `pass` probe that
+counts the plane's zeros at every step boundary. The plane reads ALL
+ONES on every boundary of the surface run — zones filled in, main
+objects, roads, all four zones' statics, additional objects, treasure
+blocks — and 3,930 zeros at "finished creating map", with the draw
+counter at 92,438 on both sides. One drawless window, between the log
+sites `0xEAC0C3` and `0xEAC21F`.
 
-What that costs, and why it is not scheduled: porting it faithfully
-means loading the models' COLLISION geometry and running intersection
-tests — a subsystem, not a generator phase, and not the code Nival wrote
-to generate maps. Against that, one data point on how much it matters:
-Nival's own shipped campaign map `Maps/Scenario/A2C3M5` (176 tiles, 418
-objects) ships with its plane **all ones** — the derivation was never
-run for it, and the map plays. So the plane appears to be optional for
-play, and the hole costs byte-exactness rather than a working map. The
-decision to take it on or leave it measured is deliberate, not an
-oversight.
+The code in that window loops the LEVELS (stride 0x120), walks each
+level's chained table at `level+0xAC` / `+0xB0` — a pointer array of
+list heads, `[node]` the next link, `[node+8]` the payload — and calls
+the payload's virtual slot `+0x38` (`0xEAC185`). The payload is a
+**CGameZone**, read off the live object because no vtable in the
+executable would say so: not one AdvMap class implements `+0x38` with
+anything but a `ret` thunk, and a sweep of all 2,314 RTTI classes
+returns 201 small look-alikes. So this is a per-ZONE pass, which is
+exactly why no per-object rule could fit it.
+
+The slot itself (editor `0xBF9BC0`) recomputes the room grid with mask
+0x3C — the statics sweep's own list — then walks the zone's `+0xCC`
+tiles and marks
+
+    room > 2,   or   room <= 2 and border == 0
+
+where "mark" is `0x7949A0` on `map+0x60`, whose whole body is
+`plane_rows[floor][a][b] = 0`. A water-bordered zone overrides the slot
+(`0xC069E0`) with the same walk and the condition turned into an AND —
+`room > 2 and border > 1`, the coast left alone the way every other
+water rule keeps off it.
+
+Two things the byte comparison decided rather than the reading: the
+plane's rows are indexed the way the texture masks are (the engine's own
+indices are transposed against the file, as the river plane's already
+were), and the plane's sense is the opposite of its name — it starts at
+1 and this pass writes 0 into the OPEN ground. Ported in
+`passability.ts`; both halves of the rule were checked by sabotage (228
+and 117 bytes move for the base rule, 433 for the water one) and the
+suite no longer exempts anything but the single uninitialised engine
+byte.
 
 **GroundTerrain.bin ASSEMBLES WHOLE** (`emit-terrain.ts` — the blank
 writer generalised to N layers, its multi-layer counters read off the
@@ -154,8 +167,7 @@ reference framing and verified to the byte: `E_i = 2N + 2·len_i + 53`
 per layer, a `01 E 02 F 01` bridge between layers, `D = 2·region + 1`):
 ALL FOUR reference terrain files — the surface one, the island one
 (water plane included), the underground run's surface floor and
-UndergroundTerrain.bin — are byte-identical outside the passability
-plane (the open hole above, printed by the suite on every run) and ONE
+UndergroundTerrain.bin — are byte-identical but for ONE
 uninitialised byte: the 0x0e record's
 payload, the same byte the determinism check once caught flipping
 between identical runs.
@@ -407,7 +419,7 @@ The late pass `0xECF760` (called at 0xEAC206, after the road painter)
 turned out NOT to be about the sea: it is the surface HEIGHT plane —
 Phase 15, now ported (`heights.ts`, bit-identical on the surface
 reference). The vertex WATER KIND — a DIFFERENT plane from passability,
-which the game's own RMG does fill (the open hole above) — is derived
+which the RMG fills in its own last pass (above) — is derived
 from the painted texture classes at terrain-build time (0xA20143:
 classes 3/4 → 1, land/road → 0).
 
@@ -836,7 +848,8 @@ is what it is belongs next to the number.
 | `heights.ts` | the height plane: relief cones, the late pass `0xECF760` | **done, bit-identical** on all three references — 24,147 vertices |
 | `emit.ts` | the map.xdb emitter: per-type object bodies over the blank skeleton | **done — all three references byte-identical** |
 | `emit-texts.ts` | the archive's UTF-16LE texts from the Params word files | **done — all three references byte-identical** |
-| `emit-terrain.ts` | the GroundTerrain.bin writer, N layers | **done** — all four reference terrain files whole |
+| `emit-terrain.ts` | the GroundTerrain.bin writer, N layers | **done** — all four reference terrain files BYTE-IDENTICAL |
+| `passability.ts` | GenerateMap's last pass — the zone slot `+0x38` | **done** — the plane exact on all four files |
 
 ### The number stream, and why it comes first
 

@@ -228,34 +228,20 @@ for (const spec of RUNS) {
     const N = (c.size + 1) * (c.size + 1);
     const terrainVs = (label: string, ours: Buffer, refFile: string): void => {
       const refRaw = readFileSync(refFile);
+      // ONE byte is exempted, and it is the engine's own: the 0x0e record's
+      // payload right before the passability block is uninitialised — the
+      // determinism check caught it flipping between two identical runs.
+      // Everything else, the passability plane included, is ours to match.
       const pass = passabilityPlane(parseTerrain(refRaw));
-      // The 0x0e record's payload byte right before the passability block
-      // is UNINITIALISED in the engine (the determinism check caught it
-      // flipping between identical runs) — exempted with the plane.
       const garbageAt = pass ? pass.dataOff - 23 : -1;
       let bad = 0;
       let firstBad = -1;
       for (let i = 0; i < Math.max(ours.length, refRaw.length); i++) {
-        if (pass && i >= pass.dataOff && i < pass.dataOff + pass.count) continue;
         if (i === garbageAt) continue;
         if (ours[i] !== refRaw[i]) { bad++; if (firstBad < 0) firstBad = i; }
       }
-      check(`${label} is byte-identical outside the passability plane`, bad === 0,
+      check(`${label} is byte-identical`, bad === 0,
         bad ? `${bad} bytes differ, first at ${firstBad} (ours ${ours.length}b ref ${refRaw.length}b)` : `${ours.length} bytes`);
-      // The passability plane is a KNOWN, MEASURED hole, not a clean
-      // exemption: the game's own RMG fills it too (a map generated from
-      // the in-game screen carries 1874 zeros of 5329), so our all-ones is
-      // wrong and not "what the generator writes". Print the delta every
-      // run so the suite never reads green on it. docs/RMG.md says what it
-      // would take to close.
-      if (pass) {
-        let planeBad = 0;
-        for (let i = 0; i < pass.count; i++) {
-          if (ours[pass.dataOff + i] !== refRaw[pass.dataOff + i]) planeBad++;
-        }
-        console.log(`  hole  ${label} passability: ${planeBad} of ${pass.count} vertices differ `
-          + `(${(100 * planeBad / pass.count).toFixed(1)}%) — we emit all-ones, the engine derives it from scene geometry`);
-      }
       if (bad && process.env['H5E_DBG_EMIT']) {
         writeFileSync(join('_tmp', `ours-${spec.label}-${label}`), ours);
       }
@@ -270,6 +256,7 @@ for (const spec of RUNS) {
       heights: heightsToFile(r.heightPlane),
       flags: new Uint8Array(N).fill(16),
       water: river.data,
+      passability: r.passability[0],
     }), join(guidDir, 'GroundTerrain.bin'));
     if (spec.twoLevel) {
       terrainVs('UndergroundTerrain.bin', buildTerrainFile({
@@ -277,6 +264,7 @@ for (const spec of RUNS) {
         layers: floorsLayers[1]!.map(layerEntry),
         heights: r.vertexHeights[1]!.floats,
         flags: r.vertexHeights[1]!.bytes,
+        passability: r.passability[1],
       }), join(guidDir, 'UndergroundTerrain.bin'));
     }
   } else {
