@@ -432,38 +432,44 @@ written there all the same, while a hand-made Nival map carries a
 completely different camera. `RMG_CAMERA` in `emit.ts`; the suite no
 longer lifts it from the reference.
 
-**The shipyards' ShipTile is the one value still lifted, and it is now
-mapped end to end.** The placer (`0xECC0A0`) averages the zone's `+0xCC`
-tiles into a centroid, takes the shipyard minus it, and picks a quadrant
-angle off the dominant axis — pi/2 when dx <= 0, 3pi/2 when dx > 0, 0
-when dy >= 0, pi when dy < 0, all plus pi/2. Those are exactly the four
-Rot values the reference carries, and the port already reproduces them;
-the angle is NOT passed on, it is stashed for the object's own rotation.
+**The shipyards' ShipTile is PORTED — nothing is lifted from a
+reference any more.** The placer (`0xECC0A0`) averages the zone's `+0xCC`
+tiles into a centroid, takes the shipyard minus it and picks a quadrant
+angle off the dominant axis (pi/2 when dx <= 0, 3pi/2 when dx > 0, 0 when
+dy >= 0, pi when dy < 0, all plus pi/2). That angle never reaches the
+search — it is stashed for the object's own Rot, which the port already
+reproduced.
 
-`0xCB1960` is the search, and it is a plain table walk: 46 entries of 16
-bytes at `0x10918E0`, each holding an OUTER offset pair and an INNER one
-a step closer to the yard — the ring (0,-4) (-1,-4) (1,-4) … outward
-first, corners next, sides last. It returns the OUTER pair of the first
-entry where the outer tile passes `0x9EC3C0` and the inner tile passes
-NEITHER `0x9EC3C0` NOR `0x9EB9E0`; nothing found means the shipyard
-candidate is dropped and the placer tries the next tile. All four
-ShipTiles of the water reference — (-1,4) (-1,-4) (0,4) (-2,-4) — are
-entries 6, 1, 5 and 3, inside the first ten, which is what a first-match
-walk of that ring should give.
+`0xCB1960` is a SEARCH, not a formula: 46 entries of 16 bytes at
+`0x10918E0`, each an OUTER offset pair and an INNER one a step back
+toward the yard, ordered as a ring — the ±4 rows first, then the corners,
+then the sides. It returns the OUTER pair of the first entry whose outer
+tile is water and whose inner tile is neither water nor a transition;
+finding nothing drops the shipyard candidate outright, so a placed yard
+always has one.
 
-What is NOT ported yet is the predicate, and it is not one test but four.
-`0x9EC3C0` reads the four corner vertices of the byte plane at `+0x24` /
-`+0x28` (clamped to `[0, dim-2]`), and when any is non-zero it asks
-`0x9EBAE0` — a walk of the TEXTURE LAYER list (`+0x8`/`+0xC`, the same
-0x18-byte records PaintTile keeps) — then the river half-grid at `+0x48`
-against 0x8C, and finally a float plane at `+0x54` / `+0x58` against 0.0.
-So closing it needs two planes identified, the layer-class test read, and
-— the awkward part — the texture LAYERS available while the run is still
-placing objects. In the engine they are: FillTerrain runs at `0xEAB9FA`,
-long before the shipyards. In the port they are built only at emit time,
-so the chain has to grow a layer list earlier before this can be tried.
-That is the last thing between the port and a map it can generate for
-any template and any seed.
+The predicate looked like four tests and collapses to one. `0x9EC3C0`
+reads the four corner vertices of the GROUND FLAGS plane (`+0x24`,
+clamped to `[0, dim-2]`): all zero takes an early exit, otherwise it asks
+whether they DIFFER (`0x9EB9E0`, the same four bytes — that is the
+"transition" arm) and whether a texture layer of the right class covers
+the vertex (`0x9EBAE0`, a walk of the same 0x18-byte layer records
+PaintTile keeps). A surface floor's flags are the constructor's uniform
+16 forever, so they are never all zero, never differ, and the layer arm
+is unreachable — which is also what spares the port from having to build
+its texture layers mid-run. What is left is the river half-grid, sampled
+at the tile's CENTRE cell (2y+1, 2x+1) against 0x8C.
+
+Ported in `shipyards.ts` as `shipTile`, and all three map.xdb stay
+byte-identical with it computed instead of read back. Each part was
+checked by sabotage: reversing the ring moves 7 lines, dropping the
+inner-tile condition moves 3, and the threshold turns the water run red
+at 0x80 and at 0xC0 — ±1 around 0x8C does not move, so the reference
+pins the constant to a band and the exact byte comes from the
+instruction. The float plane at `+0x54` guards the predicate's tail
+(`> 0.0` refuses) but its dims gate the read and no generated map
+allocates it; that arm and the two flag arms are named as unexercised
+rather than claimed.
 
 Named holes: what a failed 0xEB43D0 creation skips; the water hash
 detail that made `floorIterationOrder` take its key as size_t (the

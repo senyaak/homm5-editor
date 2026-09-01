@@ -90,15 +90,6 @@ for (const spec of RUNS) {
   const c = r.c;
   check(`the run ends on the traced ${spec.endDraws}`, c.rng.draws === spec.endDraws, `${c.rng.draws}`);
 
-  // The shipyards' ShipTile is engine-computed and unread — take each from
-  // the reference by minted name.
-  for (const o of r.objects) {
-    if (o.kind !== 'shipyard') continue;
-    const i = ref.indexOf(`id="${o.name}"`);
-    const m = /<ShipTile>\s*<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/.exec(ref.slice(i, i + 800));
-    if (m) o.shipTile = [Number(m[1]), Number(m[2])];
-  }
-
   const players = 2;
   const races = Array.from({ length: players }, (_, i) =>
     TOWN_BY_RACE[c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!);

@@ -30,7 +30,7 @@ import { PRISON_HREF } from '../src/rmg/prisons.ts';
 import { recomputeRoom, zoneTiles } from '../src/rmg/placement.ts';
 import type { Footprint, Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
-import { SHIPYARD_HREF } from '../src/rmg/shipyards.ts';
+import { SHIPYARD_HREF, shipTile } from '../src/rmg/shipyards.ts';
 import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import type { PlacedStatic } from '../src/rmg/statics-big.ts';
 import {
@@ -219,7 +219,10 @@ export function runFull(
         // The facing quarter 0 is the engine's full 2*pi in the file.
         object('shipyard', ship.name, ship.x, ship.y,
           ship.q === 0 ? 2 * Math.PI : ship.q * HALF_PI, c.footprint(SHIPYARD_HREF), f,
-          { shared: pointered(SHIPYARD_HREF, 'AdvMapShipyardShared') });
+          {
+            shared: pointered(SHIPYARD_HREF, 'AdvMapShipyardShared'),
+            shipTile: c.water ? shipTile([ship.x, ship.y], c.water.river, c.size) ?? undefined : undefined,
+          });
         // The shipyard's guard records one quarter BEHIND the facing (4/4 fit).
         if (ship.guard?.guard) {
           guardPoint(ship.guard.guard, ship.guard.x, ship.guard.y, f, ((ship.q + 3) & 3) * HALF_PI);

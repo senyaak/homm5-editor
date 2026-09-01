@@ -204,3 +204,68 @@ export function placeShipyard(input: ShipyardInput, rng: DrawSource): PlacedShip
 
   return { name, x: placedAt[0], y: placedAt[1], q, guard };
 }
+
+/**
+ * The 46-entry ring `0xCB1960` walks, straight out of `0x10918E0`: per
+ * entry the OUTER offset — the one that becomes the ShipTile — and the
+ * INNER one, a step back toward the yard. Rows at ±4 first, then the
+ * corners, then the sides.
+ */
+const SHIP_RING: ReadonlyArray<readonly [number, number, number, number]> = [
+  [0, -4, 0, -3], [-1, -4, -1, -3], [1, -4, 1, -3], [-2, -4, -2, -3], [2, -4, 2, -3],
+  [0, 4, 0, 3], [-1, 4, -1, 3], [1, 4, 1, 3], [-2, 4, -2, 3], [2, 4, 2, 3],
+  [-3, -3, -2, -3], [-3, -3, -3, -2], [3, -3, 2, -3], [3, -3, 3, -2],
+  [-3, 3, -2, 3], [-3, 3, -3, 2], [3, 3, 2, 3], [3, 3, 3, 2],
+  [-4, -2, -3, -2], [4, -2, 3, -2], [-4, -1, -3, -1], [4, -1, 3, -1],
+  [-4, 0, -3, 0], [4, 0, 3, 0], [-4, 1, -3, 1], [4, 1, 3, 1], [-4, 2, -3, 2], [4, 2, 3, 2],
+  [-3, 2, -2, 2], [-3, 2, -3, 1], [3, 2, 2, 2], [3, 2, 3, 1],
+  [-3, -2, -2, -2], [-3, -2, -3, -1], [3, -2, 2, -2], [3, -2, 3, -1],
+  [0, 3, 0, 2], [-1, 3, -1, 2], [1, 3, 1, 2], [-2, 3, -2, 2], [2, 3, 2, 2],
+  [0, -3, 0, -2], [-1, -3, -1, -2], [1, -3, 1, -2], [-2, -3, -2, -2], [2, -3, 2, -2],
+];
+
+/**
+ * `ShipTile` — where the shipyard's boat sits, as an offset from the yard.
+ *
+ * `0xCB1960` is a search, not a formula: it walks the ring above and takes
+ * the OUTER offset of the first entry whose outer tile is water and whose
+ * inner tile is neither water nor a transition. Finding nothing drops the
+ * shipyard candidate entirely, so a placed yard always has one.
+ *
+ * "Water" is `0x9EC3C0`, and on a generated surface it collapses to one
+ * test. The predicate first reads the four corner vertices of the GROUND
+ * FLAGS plane (`+0x24`, clamped to `[0, dim-2]`): all zero takes an early
+ * exit, otherwise it asks whether they DIFFER (`0x9EB9E0`, the same four
+ * bytes) and whether a texture layer of the right class covers the vertex
+ * (`0x9EBAE0`). A surface floor's flags are the constructor's uniform 16
+ * forever — so they are never all zero, never differ, and the layer arm is
+ * unreachable. What is left is the river half-grid, sampled at the tile's
+ * CENTRE cell (2y+1, 2x+1) and compared against 0x8C — 140.
+ *
+ * The float plane at `+0x54` guards the tail (`> 0.0` refuses), but its
+ * dims gate the read and no generated map allocates it; that arm is
+ * untested here and named rather than guessed at. Same for the two flag
+ * arms above: they are dead on every floor this port produces, and a
+ * dwarven underground — whose flags are the massif carve's byte grid, not
+ * a uniform — would be where they wake up. No shipyard has ever been
+ * placed there, and none can be: shipyards are water-bordered zones only.
+ */
+export function shipTile(
+  at: readonly [number, number],
+  river: { w: number; data: Uint8Array },
+  size: number,
+): readonly [number, number] | null {
+  const { w, data } = river;
+  const water = (x: number, y: number): boolean => {
+    // The engine clamps both coordinates into [0, dim-2] before it reads.
+    const cx = x < 0 ? 0 : x > size - 1 ? size - 1 : x;
+    const cy = y < 0 ? 0 : y > size - 1 ? size - 1 : y;
+    return data[(2 * cy + 1) * w + (2 * cx + 1)]! > 0x8c;
+  };
+  for (const [ox, oy, ix, iy] of SHIP_RING) {
+    if (!water(at[0] + ox, at[1] + oy)) continue;
+    if (water(at[0] + ix, at[1] + iy)) continue;
+    return [ox, oy];
+  }
+  return null;
+}
