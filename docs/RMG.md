@@ -521,8 +521,9 @@ convert (`0x949FF0`) is `cvttss2si` — TRUNCATION, not rounding. So the
 colour does not arrive halved: the halving is a per-tile DARKENING of
 `R`, `G` and `B` (`>>1` each, alpha untouched), applied where the bit
 mask from `0xAD13C0` says to ask and `0x9EC3C0` answers no. Reading a
-zone's flat colour as "MinimapColor / 2" was right by accident — that
-zone happened to be a darkened one.
+zone's flat colour as "MinimapColor / 2" was right by accident — both
+zones sampled happened to be darkened ones, and the reference carries the
+undarkened form of the very same terrains as well.
 
 **The sampling is Lanczos-3, not linear.** `0xDD1BD0` copies both layers
 into one 0x20-byte pair (terrain at `+0x00`, icons at `+0x10`), then
@@ -530,14 +531,14 @@ resamples EACH to 256x256 through `0x9743A0` with mode 6. The filter
 table at `0x975154` sends 6 to `0x975800` with support 3.0 (`0xF4C7B8`),
 and `0x975800` is `sinc(x) * sinc(x/3)`, pi at `0xFA3DD8`. The icon layer
 is already 256, so `0x9743A0` takes its equal-size early exit into a
-plain copy; the terrain layer is the one that scales, and a 96-tile layer
-into 256 is 8/3 — which is exactly where a period of three comes from.
+plain copy; the terrain layer is the one that scales — 94 into 256 on the
+reference run, measured below, which is where the wobble comes from.
 
 **Then the two merge, icon over terrain**, one pixel at a time at
 `0xDD2590`: `out = icon.a ? icon : terrain`, bytes kept in place. Terrain
-pixels always carry alpha 0xFF and the icon layer starts at zero, so
-every alpha in the file that is not 0xFF belongs to an icon — which is
-what "four distinct alphas" was.
+pixels always carry alpha 0xFF and the icon layer starts at zero, so an
+alpha the resample cannot account for belongs to an icon — which is what
+"four distinct alphas" was.
 
 **The mapping the icons use** is the pos converter's `0xDCFB00`, and it
 agrees with the terrain pass:
@@ -550,22 +551,72 @@ out.y = 256 - (in.y - B) * 256 / (A - 2B)
 — the same border offset, the same y flip. North is up, as
 [MAP_PROPERTIES.md](MAP_PROPERTIES.md) has it.
 
+**Which tile document a tile gets** is `0x9EB800`, and it is two walks of
+the same list. `0x9ED3E0` goes over the tile's texture layers from the TOP
+down, keeps a running transparency (`remaining *= 1 - coverage/255`) and
+scores each layer by `remaining_before * coverage`; the best score wins and
+its document is returned. Only layers whose `Type` is 10 or 11 are
+considered — `TT_SMALL_WATER` and `TT_BIG_WATER` by `types.xml`. If the
+winner's score does not beat 32.0 of 255 (`0xF4BB38`), `0x9ED2A0` runs the
+identical walk with the gate INVERTED — every layer that is NOT water — and
+that answer is used instead. So: the dominant WATER layer if it covers
+more than about an eighth of the tile, otherwise the dominant land layer.
+Coverage itself (`0x9ED7D0`) is a bilinear sample of the layer's byte mask
+at the tile CENTRE (`+0.5` on both axes, `0xF4A0B0`), each fetched byte
+first widened as `b >= 0x80 ? 0xFF : b * 2` — so the mask is a vertex grid
+and the centre reads as the average of four.
+
+**Two of the three arms are dead on generated maps.** `0x9EC480` returns
+true only when the float plane at `terrain[+0x58]` is at most 0.0 AND all
+four of the tile's ground-flag corners are zero; a generated floor's flags
+are the constructor's uniform 16 forever (the same fact that made the
+shipyard predicate collapse), so it never fires and the flat colour is
+never used. The black arm needs a flag byte above `0x15` = 21 in that same
+plane, and 16 is not — so no tile is left black either. What remains for
+an RMG map is: the tile document's `MinimapColor`, halved or not.
+
+**And the halving predicate is one the port already has.** `0x9EC3C0` is
+the shipyard's water test, ported as `shipTile` in `shipyards.ts`. So the
+rule reads: a tile is darkened when the mask bit is set and the tile is
+NOT water.
+
+**The mask is the one input still unread.** `0xAD13C0` returns
+`container[+0x20] + floor * 0x58 + 0x10` — the first of THREE 0x18-byte
+bitmasks in a per-floor record (`+0x10`, `+0x28`, `+0x40`; the second has
+its own accessor at `0xAD13D0`, the third a bit setter at `0xAD1354`).
+Where it is filled is not read. What IS read is that the same drawer with
+the same mask builds the in-game adventure minimap (`0x748450`,
+`0x7484F0`, `0x746BF0`), and those callers pass a static flat colour —
+`0xFF027DF9` at `0x108E8CC` — where the RMG passes its owner's `+0xA0`.
+
+**Checked against the reference**, `game/Maps/178535184522222.h5m` (the run
+`_tmp/oracle/reference/` was built from — its `map.xdb` and
+`GroundTerrain.bin` hash equal):
+
+- the SOURCE SIDE IS 94, measured, not assumed. Scoring every candidate N
+  by how well the "pure colour" columns line up with `(i + 0.5) * 256 / N`
+  gives 16.1 for 94 against about 2 for every other N from 88 to 100 —
+  and 94 is `TileX - 2 * BorderSize` = `96 - 2`. So `desc[+0x4C]` is
+  `TileX` and `desc[+0x1DC]` is `BorderSize`. The old "256/96 = 8/3" was
+  the right shape and the wrong numbers.
+- the top colours are `trunc(MinimapColor * 255)` EXACTLY, in both forms:
+  Dunes full `ffd854` (359 px) and halved `7f6c2a` (3226), Sand_Cracked
+  `af9574` / `574a3a`, InfernoBricks `4d3634` / `261b1a`. Both forms of the
+  same terrain appear, which is what proves the halving is per-tile and not
+  a property of the colour. Truncation is what makes them exact —
+  the earlier "one unit off in R" was rounding in the reading, not in the
+  engine.
+- the four alphas are 253, 254, 255 and 11: the terrain layer's uniform
+  0xFF comes back off the Lanczos pass as 253/254 (the filter runs on all
+  four channels and the result is truncated), and 11 is 18 pixels of icon.
+
 Proven: every address, offset and arithmetic step above is read out of
-`bin/H5_Game_H5E.exe`, not fitted to the reference.
+`bin/H5_Game_H5E.exe`, and the three points above are measured off the
+reference file.
 
-Assumed, and named rather than claimed: that `0x9EC480` — a float plane
-at `terrain[+0x58]`, sampled at the tile's clamped corners, above 0.0 —
-is "water", and that `0x9EC3C0` (four corners of the byte grid, then
-`0x9EBAE0`, then a `> 0x8C` byte in the half-grid at `+0x48`, then the
-same float plane) is "passable". The shapes fit those names and nothing
-read says the names out loud.
-
-Still unread: where `this[+0x14]`'s flat colour comes from (`0xEA30D0`
-copies it from its owner's `+0xA0`); what the byte grid's `0x15` bound
-means; the icon art and its sizes; and the layer rule inside `0x9EB800` —
-it takes the topmost layer of type 10 or 11 whose coverage beats 32.0 of
-255 (`0xF4BB38`), sampled at the tile centre (`0x9ED3E0` walking the
-layer list backwards, `0x9ED7D0` sampling one).
+Still unread: which grid the darkening mask is, the icon art and its
+sizes, and where `this[+0x14]`'s flat colour comes from on the RMG path
+(it is dead there, so it costs the port nothing).
 
 Worth more than the `.h5m` alone: the editor needs the same picture.
 
