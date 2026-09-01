@@ -283,6 +283,14 @@ typedef int(__fastcall *RmgRouterFn)(void *self, void *edx, float *from, float *
 static RmgRouterFn g_rmgRouterOrig = NULL;
 /** `field` in the config: dump the router's cost field for the named routes. */
 static int g_rmgField = 0;
+/**
+ * `minimap` in the config: install the minimap probe (native/rmg/minimap-probe.c).
+ *
+ * The word is parsed here because this is where the config is read, and the
+ * probe is a different subject in a different file — it only asks the reader
+ * for one more word.
+ */
+static int g_rmgMinimap = 0;
 
 /** The five places the oracle needs, whichever executable this is. */
 static DWORD g_rmgTimeCallRva = RMG_TIME_CALL_RVA;
@@ -439,6 +447,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "grids")) g_rmgGrids = 1;
     if (take_word(&q, stop, "pass")) g_rmgPass = 1;
     if (take_word(&q, stop, "field")) g_rmgField = 1;
+    if (take_word(&q, stop, "minimap")) g_rmgMinimap = 1;
   }
   VirtualFree(buf, 0, MEM_RELEASE);
 }

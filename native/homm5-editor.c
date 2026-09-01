@@ -122,6 +122,10 @@
 // feature, off unless its own file is there, and it borrows nothing but the
 // core — the log, the text helpers and the detour.
 #include "rmg/oracle.c"
+// And its neighbour, for the same reason and under the same switch file: the
+// minimap is drawn at the end of a run, so what it does is only measurable in
+// the same instrumented launch.
+#include "rmg/minimap-probe.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -161,6 +165,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
     log_line("--- host is the map editor: the rmg oracle applies, nothing else does");
     load_rmg_config();
     if (g_rmgWanted) log_line(install_rmg_oracle() ? "rmg oracle installed" : "rmg oracle NOT installed");
+    // A second instrument under the same file, asked for by its own word: the
+    // minimap is built after the run the oracle watches, so it needs its own
+    // hooks and not a flag on the oracle's.
+    if (g_rmgMinimap)
+      log_line(install_minimap_probe() ? "minimap probe installed" : "minimap probe NOT installed");
     return TRUE;
   }
   // Before the config, because what this mirrors starts talking the moment the
