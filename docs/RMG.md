@@ -687,6 +687,39 @@ generated map only the border ring, the layer walk `0x9EBAE0` and a
 `TT_NONE` tile can, since uniform-16 flags rule out the other two. A
 count per `kind` inside `0xAD0F50` is one hook and one more run.
 
+**The widened probe closed the terrain half outright.** Two windows — the
+build and the write — with the mask, the ground flags, the plane at
+`terrain[+0x6C]` and the finished 94x94 LAYER all dumped, plus the icon
+blits and the resampler's arguments. One run:
+
+- **`terrain[+0x6C]` IS the passability plane**: 9409 bytes equal, 0
+  different, against the plane of the map that same run wrote. The 95.4%
+  the picture could support is now an identity.
+- **the ground flags are 16 on all 9409 vertices**, which is the premise
+  two of the arguments above rest on, now stated for this map rather than
+  carried over from two others.
+- **the colour rule is exact.** Of 8836 tiles in the layer, every one is
+  either a `MinimapColor` truncated at 255 (3776) or exactly its half
+  (5060). No third case, no black, and alpha is 0xFF on all of them.
+- **the halving rule is exact.** "Darkened exactly when the mask bit is
+  set" holds for 8836 tiles of 8836. Tile for tile, not sampled through a
+  resample. (The water exemption is not exercised here — this template
+  has none.)
+- **the resample is the engine's own statement**: `dst 256 256, src 94 94,
+  filter 6` for the terrain layer and `256 256, 256 256, filter 6` for the
+  icon layer, which is the equal-size early exit taken as a copy.
+- **the icon anchor is confirmed to the pixel.** `mm blit at 59 171` and
+  `179 95` for the two towns are exactly the centres the Town_1 and
+  Town_2 stamps were found at by matching pixels, and `84 201` is the
+  first mine's.
+
+So the mask is the only thing left with a gap in it: it CONTAINS the
+blocked tiles exactly (0 clear-only) and adds 1510 more. Those extra tiles
+are not a terrain kind — they carry the same documents in the same
+proportion as the rest of the map — so what draws them is positional: the
+border ring, the layer walk `0x9EBAE0`, or a `TT_NONE` tile, the three
+arms uniform-16 flags leave open.
+
 Proven: every address, offset and arithmetic step above is read out of
 `bin/H5_Game_H5E.exe`, and the four points above are measured off the
 reference file.

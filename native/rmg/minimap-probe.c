@@ -124,6 +124,27 @@ static void mm_log_row(const char *tag, int y, const BYTE *row, int bytes) {
 }
 
 /**
+ * A few numbers on one line, under THIS file's switch.
+ *
+ * Not the oracle's `rmg_log_ints`: that one writes to the oracle's own file,
+ * so the first run's blit and resample lines went to `homm5-editor-rmg.log`
+ * while everything else went to the run log. The data was all there and the
+ * log was not one log, which is worse than either.
+ */
+static void mm_log_ints(const char *prefix, const int *vals, int count) {
+  char line[256];
+  int i = 0, n = 0, k;
+  while (prefix[i] && i < 40) { line[i] = prefix[i]; i++; }
+  for (k = 0; k < count && i < (int)sizeof(line) - 14; k++) {
+    if (k) line[i++] = ' ';
+    num_to_dec(vals[k], line + i, &n);
+    i += n;
+  }
+  line[i] = 0;
+  log_line(line);
+}
+
+/**
  * A `V x V` byte plane of the terrain object, row by row.
  *
  * The two that matter are the GROUND FLAGS (`+0x28` rows, `+0x2C`/`+0x30`
@@ -274,7 +295,7 @@ static void __fastcall mm_blit_hook(void *image, void *edx, int x, int y, void *
     int pair[2];
     pair[0] = x;
     pair[1] = y;
-    rmg_log_ints("mm blit at ", pair, 2);
+    mm_log_ints("mm blit at ", pair, 2);
   }
   g_mmBlitOrig(image, edx, x, y, icon);
 }
@@ -295,7 +316,7 @@ static void __fastcall mm_resample_hook(void *dst, void *src, int filter) {
     vals[2] = (src && rmg_readable(src, 0x10)) ? s[2] : -1;
     vals[3] = (src && rmg_readable(src, 0x10)) ? s[3] : -1;
     vals[4] = filter;
-    rmg_log_ints("mm resample dst/src/filter ", vals, 5);
+    mm_log_ints("mm resample dst/src/filter ", vals, 5);
   }
   g_mmResampleOrig(dst, src, filter);
 }
