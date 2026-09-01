@@ -231,7 +231,8 @@ checked by sabotage: 4 bytes move for the 150, 198 for the bed ladder,
 551 for the river value, all of them inside the underground run's
 surface file and nowhere else.
 
-Next: the minimap DDS and packing the `.h5m`.
+Next: the minimap DDS — the drawer is read end to end (below), so what is
+left there is writing it — and packing the `.h5m`.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -471,46 +472,102 @@ instruction. The float plane at `+0x54` guards the predicate's tail
 allocates it; that arm and the two flag arms are named as unexercised
 rather than claimed.
 
-**The minimap DDS is DATA, not a render — the last unported document.**
-`minimap_floor_%02d.dds` is 256x256 BGRA8, uncompressed, one mip. It
-LOOKS like a render and its statistics say otherwise only once you split
-the channels: 9,997 distinct RGB but four distinct alphas, and the top
-colours are near-duplicates a unit apart (1a1b26 and 1b1c27, 2a6c7f and
-2a6b7e). Up close a flat area wobbles between 126 and 127 with a period
-of three — an interpolation pattern, not noise, and 256/96 = 8/3 is
-where a period of three would come from.
+**The minimap DDS is DATA, and now it is READ.** `minimap_floor_%02d.dds`
+is 256x256 BGRA8, uncompressed, one mip. The statistics said "data" —
+9,997 distinct RGB against four distinct alphas, top colours a unit apart
+(1a1b26 and 1b1c27), a flat area wobbling 126/127 with a period of three
+— but statistics could not say WHICH data, and the fit that tried
+("dominant layer's MinimapColor, halved, sampled linearly from the vertex
+grid") peaked at 74.9% over all eight orientations and settled nothing.
+Everything below is disassembly instead, and it explains every one of
+those statistics.
 
-What settles it is the arithmetic. Every `AdvMapTile` document carries a
-`MinimapColor` float triple, and the picture is those colours HALVED:
-Lava's (77, 55, 53) against the dark zone's observed (38, 27, 26), and
-Dunes' (255, 217, 85) against the sand zone's (127, 108, 42) — one unit
-off in R, which is the wobble itself. The engine also holds a
-`MinimapColor` string and `CMinimapPosConverter`, so the drawing is a
-data pass over the same masks this port now emits byte for byte.
+**The chain.** `0xEA30D0` is the RMG's minimap step (its only caller is
+`0xEA7DFD`, its own only callees below are `0xDD0C70` and `0xDD1BD0`). It
+builds a `CSimplePosConverter` (RTTI locator `0x103DA28`) over the map,
+calls `0xDD0C70` to DRAW, `0xDD1BD0` to WRITE the `.dds` and its
+`Texture` `.xdb`, and patches `thumbnailImages` into both documents.
 
-The field is registered at `AdvMapTile+0x64` (`0x9EECF5` names it), and
-the filename is built at `0xDD1CD7`.
+**Two layers per floor, not one.** `0xDD0C70` sizes two images per floor
+through `0xDCFD40` — the image is `+0x18` buffer, `+0x1C` row pointers,
+`+0x20`/`+0x24` width/height, `+0x28` side, `+0x2C` dirty:
 
-Proven: the field exists on every tile, and two zones' flat colours are
-its half to within the wobble.
+- the TERRAIN layer, square of side `N = desc[+0x4C] - 2 * desc[+0x1DC]`,
+  one pixel per playable tile;
+- the ICON layer, square of side 256, zero-filled, where the objects go
+  (`Town_%d`, `Mine_%d`, `Object_%d`, `UnderworldExitEnter`, placed by
+  `0xDD3440` and `0xDCFDE0`).
 
-A NEGATIVE RESULT worth not repeating: the picture is NOT reproduced by
-"dominant layer's MinimapColor, halved, sampled linearly from the vertex
-grid". Rendering that model and correlating a dark/light mask against
-the reference over all eight orientations gives 74.9% at best, with no
-orientation standing out and the dark fraction itself off (32.6% in the
-reference against 25.8% in the model). The broad shapes do agree, so the
-colours are right and the SAMPLING is not — but which of the mapping,
-the blend or the halving is wrong cannot be settled by fitting, and
-fitting is what failed three times over on the passability plane before
-the oracle bisected it in one run.
+**The terrain pass** is `0xDD0660`, small enough to state whole. With
+`A = desc[+0x4C]`, `B = desc[+0x1DC]`, `N = A - 2B`, for pixel `(x, y)`:
 
-So the next move on the minimap is to READ the drawer, not to fit it:
-up from `AdvMapTile+0x64`, or down from the filename site, or through
-`CMinimapPosConverter`. Still unread besides the mapping: what the four
-alphas mean and how the object icons — the triangles, squares and the
-town star — are drawn over the terrain. Worth more than the .h5m alone:
-the editor needs the same picture.
+```
+tile = (tx, ty) = (B + x, B + (N - 1 - y))        ; row index is N-1-outer
+
+colour = 0xFF000000                               ; opaque black
+if terrain[+0x64] and byteGrid[ty][tx] > 0x15:    ; leave it black
+elif water(0x9EC480, tx, ty):  colour = this[+0x14]        ; one flat colour
+else:
+    rec = tileDoc(0x9EB800, tx, ty)
+    colour = 0xFF<<24 | trunc(rec[+0x64]*255)<<16
+                      | trunc(rec[+0x68]*255)<<8
+                      | trunc(rec[+0x6C]*255)
+if askMask(0xAD13C0) and not 0x9EC3C0(tx, ty):  R, G, B >>= 1
+```
+
+`rec[+0x64]` is the `MinimapColor` triple (`AdvMapTile+0x64`, named at
+`0x9EECF5`); the multiplier is the float 255.0 at `0xF4A1E8` and the
+convert (`0x949FF0`) is `cvttss2si` — TRUNCATION, not rounding. So the
+colour does not arrive halved: the halving is a per-tile DARKENING of
+`R`, `G` and `B` (`>>1` each, alpha untouched), applied where the bit
+mask from `0xAD13C0` says to ask and `0x9EC3C0` answers no. Reading a
+zone's flat colour as "MinimapColor / 2" was right by accident — that
+zone happened to be a darkened one.
+
+**The sampling is Lanczos-3, not linear.** `0xDD1BD0` copies both layers
+into one 0x20-byte pair (terrain at `+0x00`, icons at `+0x10`), then
+resamples EACH to 256x256 through `0x9743A0` with mode 6. The filter
+table at `0x975154` sends 6 to `0x975800` with support 3.0 (`0xF4C7B8`),
+and `0x975800` is `sinc(x) * sinc(x/3)`, pi at `0xFA3DD8`. The icon layer
+is already 256, so `0x9743A0` takes its equal-size early exit into a
+plain copy; the terrain layer is the one that scales, and a 96-tile layer
+into 256 is 8/3 — which is exactly where a period of three comes from.
+
+**Then the two merge, icon over terrain**, one pixel at a time at
+`0xDD2590`: `out = icon.a ? icon : terrain`, bytes kept in place. Terrain
+pixels always carry alpha 0xFF and the icon layer starts at zero, so
+every alpha in the file that is not 0xFF belongs to an icon — which is
+what "four distinct alphas" was.
+
+**The mapping the icons use** is the pos converter's `0xDCFB00`, and it
+agrees with the terrain pass:
+
+```
+out.x =       (in.x - B) * 256 / (A - 2B)
+out.y = 256 - (in.y - B) * 256 / (A - 2B)
+```
+
+— the same border offset, the same y flip. North is up, as
+[MAP_PROPERTIES.md](MAP_PROPERTIES.md) has it.
+
+Proven: every address, offset and arithmetic step above is read out of
+`bin/H5_Game_H5E.exe`, not fitted to the reference.
+
+Assumed, and named rather than claimed: that `0x9EC480` — a float plane
+at `terrain[+0x58]`, sampled at the tile's clamped corners, above 0.0 —
+is "water", and that `0x9EC3C0` (four corners of the byte grid, then
+`0x9EBAE0`, then a `> 0x8C` byte in the half-grid at `+0x48`, then the
+same float plane) is "passable". The shapes fit those names and nothing
+read says the names out loud.
+
+Still unread: where `this[+0x14]`'s flat colour comes from (`0xEA30D0`
+copies it from its owner's `+0xA0`); what the byte grid's `0x15` bound
+means; the icon art and its sizes; and the layer rule inside `0x9EB800` —
+it takes the topmost layer of type 10 or 11 whose coverage beats 32.0 of
+255 (`0xF4BB38`), sampled at the tile centre (`0x9ED3E0` walking the
+layer list backwards, `0x9ED7D0` sampling one).
+
+Worth more than the `.h5m` alone: the editor needs the same picture.
 
 Named holes: what a failed 0xEB43D0 creation skips; the water hash
 detail that made `floorIterationOrder` take its key as size_t (the
