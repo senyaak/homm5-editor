@@ -566,14 +566,23 @@ at the tile CENTRE (`+0.5` on both axes, `0xF4A0B0`), each fetched byte
 first widened as `b >= 0x80 ? 0xFF : b * 2` — so the mask is a vertex grid
 and the centre reads as the average of four.
 
-**Two of the three arms are dead on generated maps.** `0x9EC480` returns
-true only when the float plane at `terrain[+0x58]` is at most 0.0 AND all
-four of the tile's ground-flag corners are zero; a generated floor's flags
-are the constructor's uniform 16 forever (the same fact that made the
-shipyard predicate collapse), so it never fires and the flat colour is
-never used. The black arm needs a flag byte above `0x15` = 21 in that same
-plane, and 16 is not — so no tile is left black either. What remains for
-an RMG map is: the tile document's `MinimapColor`, halved or not.
+**Two of the three arms are dead on generated maps — but only on those.**
+`0x9EC480` returns true when the float plane at `terrain[+0x58]` is at
+most 0.0 AND all four of the tile's ground-flag corners are zero, and flag
+0 is SEA ([TERRAIN_FORMAT.md](TERRAIN_FORMAT.md)). A generated floor never
+digs one: the flags plane of BOTH references — the surface run and the
+WATER run — is 16 at all 9409 vertices, because the RMG's water is
+texture layers of `TT_SMALL_WATER`/`TT_BIG_WATER` over ordinary ground,
+which the tile-document rule picks up by itself. The black arm needs a
+flag above `0x15` = 21 in that same plane, and 16 is not. So what remains
+for an RMG map is the tile document's `MinimapColor`, halved or not —
+and the water reference bears that out: its minimap is 1906 pixels of
+`027cf9`, exactly `trunc(Water.xdb's MinimapColor * 255)`, while the flat
+colour the in-game path passes (`0xFF027DF9` at `0x108E8CC`) shows up 17
+times in 65536, which is blend spatter and not a fill.
+
+On an AUTHORED map with a real dug sea the arm does fire, so the editor's
+own minimap will need the colour the RMG path never reaches for.
 
 **And the halving predicate is one the port already has.** `0x9EC3C0` is
 the shipyard's water test, ported as `shipTile` in `shipyards.ts`. So the
@@ -705,9 +714,11 @@ twice — the Imp Crucible and the Workshop, both flaggable dwellings —
 and nothing else matches at all: not the third dwelling, a refugee camp,
 and no heroes, caravans or underworld entrance on a one-floor map.
 
-Still unread, and it costs the port nothing: where `this[+0x14]`'s flat
-colour comes from on the RMG path — the branch that would use it is dead
-on a generated map.
+Still unread: where `this[+0x14]`'s flat colour comes from on the RMG path
+(`0xEA30D0` copies it from its owner's `+0xA0`). It costs the `.h5m`
+nothing, because the arm that would use it never fires on a generated map
+— but it is not a hole the EDITOR can leave open, since an authored map
+with a dug sea reaches it.
 
 Worth more than the `.h5m` alone: the editor needs the same picture.
 
