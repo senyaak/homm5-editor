@@ -658,15 +658,33 @@ reference file.
 first collects the objects worth an icon, and the drawer then runs a loop
 per collected list.
 
-WHICH objects. The object gets in if `[obj+0x04]()` hands back a
-component and that component's `[+0x08]()` says yes — the OWNERSHIP one,
-the thing that lets a player flag the object. Failing that, its shared
-document is dynamic-cast to `SAdvMapBuildingShared` and its `Type`
-(`+0xEC`, the field the registrar at `0xADFCA3` names and stamps with the
-class id `0x16130CC1`) has to be 0x27 — `BUILDING_SUBTERRA_GATE` by
-`types.xml`. A second list takes `Type` 0x63 and 0x64, the two campaign
-citadels. That is the whole rule, and it is why the reference's third
-dwelling gets no icon: a refugee camp cannot be flagged.
+WHICH objects, and into which of THREE lists — one per loop, each with
+its own name:
+
+- `[obj+0x04]()` hands back a component whose `[+0x08]()` says yes — the
+  OWNERSHIP one, the thing that lets a player flag the object. These are
+  the `Town_%d` / `Mine_%d` / `Object_%d` ones.
+- else the shared document dynamic-casts to `SAdvMapBuildingShared` and
+  its `Type` (`+0xEC`, the field the registrar at `0xADFCA3` names and
+  stamps with the class id `0x16130CC1`) is 0x27 —
+  `BUILDING_SUBTERRA_GATE` by `types.xml`. These get
+  `UnderworldExitEnter`.
+- and a list of its own for `Type` 0x63 and 0x64, the two campaign
+  citadels, drawn with a fixed `Town_1`.
+
+That is the whole rule, and it is why the reference's third dwelling gets
+no icon: a refugee camp cannot be flagged. The gate list is NOT dead
+either — the underground reference carries one `Subterranean_Gate_In` and
+one `Subterranean_Gate_Out`, and its two minimaps carry exactly one
+`UnderworldExitEnter` stamp each, matching all 60 pixels.
+
+Worth knowing for the port: the drawer gets those runtime components at
+all because `0xDD0C70` BUILDS A GAME first — it fills a creation record
+(the name `no-id`, seed `0x75BCD15` = 123456789) and calls `0xB8D020`,
+`0xB8CE10` and `0xB90140`, saying `Failed to initialize players!` when
+that goes wrong. That is also why the darkening mask exists by the time
+the terrain pass runs. A port has no such instance and has to compute the
+same grids itself.
 
 The NAME is built with `sprintf` and looked up by string:
 
@@ -675,9 +693,7 @@ The NAME is built with `sprintf` and looked up by string:
   or `0x16130CC5` — the class ids the registrars stamp right after the
   names `AdvMapMineShared` (`0xAE4073`) and `AdvMapAbanMineShared`
   (`0xAE49E6`), so the test is "is this an ordinary or an abandoned mine";
-- else `Object_%d`;
-- the subterra-gate list's loop always asks for `UnderworldExitEnter`, the
-  third always for `Town_1`.
+- else `Object_%d`.
 
 `%d` is the owner from `[obj+0xC]`, and an owner above 8 skips the object
 outright — 0 neutral, 1..8 the players. `0xDD3440` resolves the name
