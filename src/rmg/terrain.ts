@@ -326,7 +326,8 @@ function lakeNeighbours(tiles: Tile[], x: number, y: number): number {
 /**
  * The lakes' terrain half — `0xECE680`, thiscall on the same
  * CTerrainProcessor, called once per zone from the lakes head's tail
- * (0xEBCA90) with that zone's blob, the zone's preset index (`zone+0xEC`)
+ * (0xEBCA90) with that zone's blob, its own zone ID (`zone+0xEC`, handed
+ * to the zone lookup `0xE9FF00` — the preset is the resolved `zone+0x20`)
  * and its setting race (`zone+0x18`), and BEFORE the head's decorations.
  * The phase's own tail — the 0x82 occupancy conversion — lives in
  * `growLakes`, where the sweep behind it needs the result; this is

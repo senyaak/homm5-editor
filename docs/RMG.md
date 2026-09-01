@@ -206,11 +206,15 @@ distance 1), each cell `(N + S + E + W + 2*C) / 6`.
 The room and border readings travel WITH the blob (`lakeRoom` /
 `lakeBorder` off the statics sweep) because the painter runs inside the
 statics while the layers only exist once fillTerrain has been replayed,
-and every zone behind this one recomputes the room grid. The one thing
-the shipped tables cannot decide is whether `zone+0xEC` — the preset
-index the painter resolves — is the setting race or the terrain race:
-they only differ for the underground flavours and for surface Dungeon,
-and none of those is a lake race. Each of the three readings above was
+and every zone behind this one recomputes the room grid. `zone+0xEC` —
+the value the painter hands `0xE9FF00` — is the ZONE'S OWN ID, not a
+race: the call is the zone lookup (the same one whose failure at
+`0xEA414A` skips a zone whole), and the preset comes from the resolved
+`zone+0x20`, which is the terrain-race entry FillTerrain paints the
+ground from. That was left open when the phase was first written down
+and is now settled; the oracle's grids dump reads the same field as an
+id (`native/rmg/oracle.c`, the zone-mismatch guard). Each of the three
+readings above was
 checked by sabotage: 4 bytes move for the 150, 198 for the bed ladder,
 551 for the river value, all of them inside the underground run's
 surface file and nowhere else.

@@ -399,11 +399,9 @@ export function runFull(
     if (big.lakeTiles.length) {
       lakes.push({
         tiles: big.lakeTiles, room: big.lakeRoom, border: big.lakeBorder,
-        // `zone+0xEC` — the preset index, the same entry FillTerrain paints
-        // the zone's ground from. No shipped template can tell it apart
-        // from the setting race here: terrainRace only differs for the
-        // underground flavours and for surface Dungeon, and none of those
-        // is a lake race.
+        // The painter looks the zone up by its own id (`zone+0xEC`) and
+        // reads the preset off `zone+0x20` — the terrain-race entry, the
+        // same one FillTerrain paints the zone's ground from.
         waterTile: preset.waterTile, waterBottomTile: preset.waterBottomTile,
         settingRace: lz.race,
       });
