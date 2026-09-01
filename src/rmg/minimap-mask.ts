@@ -27,8 +27,8 @@
 // A generated floor's flags are a uniform 16 everywhere, so only the plane
 // and the objects speak.
 
-import type { Offset } from './heights.ts';
 import { rotateOffsets } from './heights.ts';
+import type { Offset } from './town-data.ts';
 
 /** One object as the mask reads it: where it stands and what it blocks. */
 export interface MaskObject {
