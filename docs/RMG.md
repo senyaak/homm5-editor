@@ -488,13 +488,29 @@ off in R, which is the wobble itself. The engine also holds a
 `MinimapColor` string and `CMinimapPosConverter`, so the drawing is a
 data pass over the same masks this port now emits byte for byte.
 
+The field is registered at `AdvMapTile+0x64` (`0x9EECF5` names it), and
+the filename is built at `0xDD1CD7`.
+
 Proven: the field exists on every tile, and two zones' flat colours are
-its half to within the wobble. NOT yet read: how the layers blend (mask
-weight is the obvious guess and only a guess), where the halving lives,
-what the four alphas mean, the 8/3 scaling, and the object icons — the
-triangles, squares and the town star drawn over the terrain. That is the
-next piece of work, and it is worth more than the .h5m: the editor needs
-the same picture.
+its half to within the wobble.
+
+A NEGATIVE RESULT worth not repeating: the picture is NOT reproduced by
+"dominant layer's MinimapColor, halved, sampled linearly from the vertex
+grid". Rendering that model and correlating a dark/light mask against
+the reference over all eight orientations gives 74.9% at best, with no
+orientation standing out and the dark fraction itself off (32.6% in the
+reference against 25.8% in the model). The broad shapes do agree, so the
+colours are right and the SAMPLING is not — but which of the mapping,
+the blend or the halving is wrong cannot be settled by fitting, and
+fitting is what failed three times over on the passability plane before
+the oracle bisected it in one run.
+
+So the next move on the minimap is to READ the drawer, not to fit it:
+up from `AdvMapTile+0x64`, or down from the filename site, or through
+`CMinimapPosConverter`. Still unread besides the mapping: what the four
+alphas mean and how the object icons — the triangles, squares and the
+town star — are drawn over the terrain. Worth more than the .h5m alone:
+the editor needs the same picture.
 
 Named holes: what a failed 0xEB43D0 creation skips; the water hash
 detail that made `floorIterationOrder` take its key as size_t (the
