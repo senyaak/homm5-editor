@@ -77,7 +77,20 @@ function dominant(
     const layer = layers[i]!;
     const isWater = layer.type === 'TT_SMALL_WATER' || layer.type === 'TT_BIG_WATER';
     if (isWater !== water) continue;
-    const c = coverage(layer.mask, dim, tx + 0.5, ty + 0.5) & 0xff;
+    // THE BASE LAYER COVERS EVERYTHING. The map is created with one ground
+    // under all of it and the zones paint on top; nothing carves the base
+    // back, because the painter only takes from layers of the same class at a
+    // DIFFERENT priority once a vertex would pass 255, which a single 255
+    // never does. `GroundTerrain.bin` then stores the base cut down to where
+    // it still shows — so the file and the live terrain disagree about this
+    // one layer, and the drawer reads the live one. Measured: the probe's
+    // dump of the vector the drawer walks has the first layer at 255 on all
+    // 9,409 vertices where the file has 4,668, the other six byte-identical.
+    // It is worth 53 tiles of 8,836, every one at a zone boundary where the
+    // top layer covers two corners of four: 127 against the base's 255 taken
+    // at the transparency the top layer left, 128 — which is why the base
+    // wins there and only there.
+    const c = i === 0 ? 255 : coverage(layer.mask, dim, tx + 0.5, ty + 0.5) & 0xff;
     const score = Math.fround(remaining * c);
     if (score > best) {
       best = score;

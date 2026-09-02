@@ -147,6 +147,7 @@
     "test-rmg-water": "node tools/test-rmg-water.ts",
     "test-rmg-heights": "node tools/test-rmg-heights.ts",
     "test-rmg-emit": "node tools/test-rmg-emit.ts",
+    "test-rmg-minimap": "node tools/test-rmg-minimap.ts",
     "test-artifact-scripts": "node tools/test-artifact-scripts.ts",
     "test-skill-scripts": "node tools/test-skill-scripts.ts",
     "test-e2e-setup": "node tools/test-e2e-setup.ts",

@@ -22,6 +22,9 @@ import { join, resolve } from 'node:path';
 export const REFERENCE_DIR = join('_tmp', 'oracle', 'reference');
 export const REFERENCE_MAP = join(REFERENCE_DIR, 'map.xdb');
 export const REFERENCE_TERRAIN = join(REFERENCE_DIR, 'GroundTerrain.bin');
+/** The engine's own minimap for a floor, 0-based; the file is 1-based. */
+export const referenceMinimap = (dir: string, floor: number): string =>
+  join(dir, `minimap_floor_0${floor + 1}.dds`);
 
 /** The seed the reference was ordered with — every suite replays it. */
 export const REFERENCE_SEED = 1785351845;
@@ -115,7 +118,8 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
     for (const entry of readdirSync(dir)) {
       const path = join(dir, entry);
       if (statSync(path).isDirectory()) walk(path);
-      else if (entry === 'map.xdb' || entry === 'GroundTerrain.bin' || entry === 'UndergroundTerrain.bin') {
+      else if (entry === 'map.xdb' || entry === 'GroundTerrain.bin' || entry === 'UndergroundTerrain.bin'
+        || /^minimap_floor_\d+\.dds$/.test(entry)) {
         found[entry] = path;
       }
     }
@@ -147,9 +151,12 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
   const dir = water ? REFERENCE_WATER_DIR : underground ? REFERENCE_UG_DIR : REFERENCE_DIR;
   mkdirSync(dir, { recursive: true });
   const laid: string[] = [];
-  for (const name of underground
+  // The minimaps come too: they are the one document the port has to draw
+  // rather than assemble, so the suite needs the engine's own picture.
+  const minimaps = Object.keys(found).filter((n) => n.startsWith('minimap_floor_'));
+  for (const name of (underground
     ? ['map.xdb', 'GroundTerrain.bin', 'UndergroundTerrain.bin']
-    : ['map.xdb', 'GroundTerrain.bin']) {
+    : ['map.xdb', 'GroundTerrain.bin']).concat(minimaps)) {
     const target = join(dir, name);
     copyFileSync(found[name]!, target);
     laid.push(target);

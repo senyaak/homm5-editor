@@ -44,18 +44,30 @@ export const LANCZOS3_SUPPORT = 3;
 /** A resampling kernel: the weight at a distance, zero beyond the support. */
 export type Filter = (t: number) => number;
 
-/** `0x975800` — sinc(t) * sinc(t/3), on the engine's table sine. */
+/**
+ * sinc(t) * sinc(t/3) — the EDITOR's copy, `0x7911C0`, not the game's.
+ *
+ * The two builds' filters are the same shape and not the same arithmetic, and
+ * the reference minimaps are the editor's output. Two differences survive
+ * into the bytes: the editor multiplies by the constant 1/3 where the game
+ * DIVIDES by 3.0, and it works in x87 where the game rounds each step back to
+ * a float. Both matter here only because a handful of resampled channels sit
+ * within 1e-4 of their rounding boundary — but the bar is the byte.
+ */
 export function lanczos3(sine: EngineSine): Filter {
   return (t: number): number => {
     const x = t < 0 ? -t : t;
     if (x >= LANCZOS3_SUPPORT) return 0;
     const a = x * Math.PI;
     const first = a === 0 ? 1 : engineSin(sine, Math.fround(a)) / a;
-    const b = (x / 3) * Math.PI;
+    const b = x * ONE_THIRD * Math.PI;
     const second = b === 0 ? 1 : engineSin(sine, Math.fround(b)) / b;
-    return first * second;
+    return second * first;
   };
 }
+
+/** `0x111DA50` — the editor's own third, which is not what dividing gives. */
+const ONE_THIRD = 0.3333333333333333;
 
 /** One output sample's inputs: which source lines it reads and at what weight. */
 interface Contribution {

@@ -44,12 +44,23 @@ export function readEngineSine(exePath: string): EngineSine {
   return { table, scale: pe.buf.readFloatLE(scaleAt) };
 }
 
-/** `0x9573B0` — the engine's sine of a float, table and interpolation both. */
+/**
+ * The engine's sine of a float — the EDITOR's copy, `0xED3A80`.
+ *
+ * Both builds carry the same table and the same scale, byte for byte, and
+ * differ only in how they compute with them: the game's `0x9573B0` is SSE and
+ * rounds every step back to a float, the editor's is x87 and keeps 80 bits
+ * from the multiply to the final add. The port speaks the EDITOR's, as it
+ * does for the road wave and the height plane, because the references are
+ * the editor's output — and here it is worth ten bytes of the reference
+ * minimap: the float-rounded weights move a resampled channel that sat
+ * 3e-5 from its rounding boundary. Doubles are not 80 bits either, but they
+ * are nearer to it than floats by nine orders of magnitude.
+ */
 export function engineSin(sine: EngineSine, x: number): number {
-  const t = Math.fround(x * sine.scale);
-  const i = Math.trunc(Math.fround(t - 0.5));
-  const f = Math.fround(t - i);
+  const t = Math.fround(x) * sine.scale;
+  const i = Math.trunc(t - 0.5);
   const idx = i & 0x1ff;
   const a = sine.table[idx]!;
-  return Math.fround(Math.fround(Math.fround(sine.table[idx + 1]! - a) * f) + a);
+  return a + (sine.table[idx + 1]! - a) * (t - i);
 }

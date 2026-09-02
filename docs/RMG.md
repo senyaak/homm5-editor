@@ -231,8 +231,9 @@ checked by sabotage: 4 bytes move for the 150, 198 for the bed ladder,
 551 for the river value, all of them inside the underground run's
 surface file and nowhere else.
 
-Next: the minimap DDS — the drawer is read end to end (below), so what is
-left there is writing it — and packing the `.h5m`.
+Next: packing the `.h5m`. The minimap is WRITTEN and checked against the
+engine's own file (`test-rmg-minimap`) — header byte-identical, ten channel
+bytes of 262,144 apart, all of them named below.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -954,6 +955,67 @@ drawer SEES. The likeliest candidate is that the minimap is drawn from the
 masks before something the save then normalises, and the one measurement
 that would settle it is a probe that logs, for a named disputed tile, each
 layer's coverage as `0x9ED7D0` returns it. That is one hook and one run.
+
+**AND THE 53 WERE THE BASE LAYER.** The probe was widened onto the vector the
+drawer actually walks — every record's document and its whole mask plane —
+and one run said it outright: **six of the seven masks are byte-identical to
+`GroundTerrain.bin`'s, and the seventh, the lowest-priority one, reads 255 on
+all 9,409 vertices where the file has it on 4,668.** The map is created with
+one ground under all of it and the zones paint on top; nothing carves the
+base back, because the painter only takes from layers of the same class at a
+DIFFERENT priority once a vertex would pass 255, which a single 255 never
+does. The file then stores the base cut down to where it still shows. So the
+live terrain and the saved file disagree about exactly one layer, and the
+drawer reads the live one.
+
+That is worth 53 tiles and not one more: at a zone boundary the top layer
+covers two corners of four — coverage 127, score 127 — and the base, taken at
+the transparency the top layer left, scores 255 * 0.50196 = 128. Which is why
+the base wins there and only there, and why no order of the seven could ever
+have fitted it: with the file's masks the base has nothing to win with.
+**The terrain layer is now 8,836 tiles of 8,836 against the engine's own.**
+
+Two things the same run settled about the ICONS:
+
+- **the anchor is the mean over BOTH footprint lists.** Feeding each object's
+  tile plus the mean of its rotated `blockedTiles` AND `activeTiles` through
+  the converter lands all 22 of the run's blits exactly; blocked alone lands
+  8, and the two lists' means summed lands 1. (The blit's own arguments are
+  the CENTRE — the half-size subtraction happens inside `0xDCFDE0`.)
+- **the flaggable gate is not the class.** The run places three
+  `AdvMapDwellingShared` objects and the engine draws two icons: the REFUGEE
+  CAMP is passed over. Nothing in the data separates it — not
+  `PossessionMarkerTile` (every building has one, Windmill and Temple
+  included), not `EffectWhenOwned` (Windmill and Temple have one, Crypt does
+  not), not `RandomType`, not any field of the instance in `map.xdb`. So the
+  port names it: `UNFLAGGABLE_DWELLINGS` in
+  [`minimap-icons.ts`](../src/rmg/minimap-icons.ts) is one building type from
+  one map, and it stays that way until the component behind `[obj+0x04]()` is
+  read.
+
+**THE WHOLE FILE, THEN** (`test-rmg-minimap`): 262,272 bytes against the
+reference's, the **header byte-identical** — the engine declares its single
+mip in the flags and the caps as well as the count, so `writeDDS` learned to
+say so when asked — and **10 channel bytes of 262,144 different**, each a
+single channel by one.
+
+Those ten are named rather than forgiven, and the naming is most of the work:
+three horizontal intermediates come out 4e-5 above a `.5` boundary where the
+engine has them below, and the vertical pass spreads each over its column —
+flipping the one intermediate byte at (126, row 2) reproduces that whole
+column, 0 rows differing. What it is NOT: the filter (the editor's `0x7911C0`
+and the game's `0x975800` were both read, they differ only in `x * (1/3)`
+against `x / 3` and in x87 against float32, and neither variant moves a
+byte); the sine (both builds carry the SAME 513-entry table and the same
+scale, byte for byte, and the true `sin` is worse over the picture as a whole
+— 6,299 bytes against 5,801); the sine's argument (over all 6,144 of them,
+rounding the product once through 80 bits and twice through a double give the
+same float — checked by two-product, 0 disagreements); or the accumulation
+(the engine keeps four 80-bit accumulators in the x87 stack, and the disputed
+sum is 200.50003562139992 under exact compensated summation, the same to the
+last bit as ours). So the difference is smaller than any arithmetic this port
+can name, and the next step is to emulate the x87 filter exactly rather than
+to guess again.
 
 Still unread: where `this[+0x14]`'s flat colour comes from on the RMG path
 (`0xEA30D0` copies it from its owner's `+0xA0`). It costs the `.h5m`
