@@ -16,7 +16,7 @@
 // quietly on nothing.
 
 import { existsSync, mkdirSync, readdirSync, copyFileSync, statSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 /** Everything the reference-backed suites read. */
 export const REFERENCE_DIR = join('_tmp', 'oracle', 'reference');
@@ -161,5 +161,16 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(import.meta.filename
     copyFileSync(found[name]!, target);
     laid.push(target);
   }
+  // The WHOLE map folder too, under `archive/`: the pack suite compares the
+  // entry set and every entry's bytes, and a reference that carries only the
+  // three documents cannot say what the other fourteen should be.
+  const mapDir = dirname(found['map.xdb']!);
+  const archiveDir = join(dir, 'archive');
+  mkdirSync(archiveDir, { recursive: true });
+  for (const entry of readdirSync(mapDir)) {
+    if (statSync(join(mapDir, entry)).isDirectory()) continue;
+    copyFileSync(join(mapDir, entry), join(archiveDir, entry));
+  }
   console.log(`reference laid out from ${archive}:\n  ${laid.join('\n  ')}`);
+  console.log(`  ${archiveDir} (${readdirSync(archiveDir).length} entries)`);
 }

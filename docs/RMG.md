@@ -231,9 +231,13 @@ checked by sabotage: 4 bytes move for the 150, 198 for the bed ladder,
 551 for the river value, all of them inside the underground run's
 surface file and nowhere else.
 
-Next: packing the `.h5m`. The minimap is WRITTEN and checked against the
-engine's own file (`test-rmg-minimap`) — header byte-identical, ten channel
-bytes of 262,144 apart, all of them named below.
+**The port is complete as a generator.** `npm run rmg-pack` orders a map and
+writes the `.h5m`, and against the reference the archive's 17 entries come out
+15 byte-identical with the other two apart by the two amounts named below —
+one uninitialised engine byte in the terrain file, ten channel bytes in the
+minimap. What is left is not the generator: an entry point in the editor's
+own interface, and the same run against the underground and water references
+end to end.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -1229,6 +1233,36 @@ A template is a declaration and nothing more. `S1P2Z2M1.xdb`, the smallest:
 and packs them as `Maps/RMG/<GUID>/…` inside a `.h5m`. That is the format the
 editor already reads and writes, so the port needs no new file work — only the
 decisions that fill it.
+
+**AND THE ARCHIVE IS WRITTEN.** `tools/rmg-pack.ts` orders a map and produces
+the `.h5m`:
+
+```bash
+npm run rmg-pack -- --game <dir> --seed 1785351845
+npm run rmg-pack -- --game <dir> --seed 7 --template S0-1P2Z2K3.1T --size 72 --underground
+```
+
+The step between the phases and the archive is `tools/rmg-build.ts`, and it
+exists because three suites had each grown their own copy of the same replay —
+fill the terrain, paint the water marks and the sea corners, then the lakes,
+then the roads, then run the height late pass. That is one function now, and
+the file list it returns is the whole map: `map.xdb`, `map-tag.xdb`, the
+eleven texts, `GroundTerrain.bin` (and the underground one), a minimap `.dds`
+and `.xdb` per floor, and the empty `1.test` the engine writes as a marker.
+The two values the generator does not make come in as arguments — the GUID
+(`CoCreateGuid`) and the map's name (typed into the dialog).
+
+**Checked entry by entry** (`test-rmg-pack`): ordered with the reference's own
+GUID and name, **15 of the 17 entries are byte-identical, and the other two
+differ by exactly the two amounts this document already names** — the one
+uninitialised byte in `GroundTerrain.bin`'s 0x0e record, and the minimap's ten
+channel bytes. That holds through the archive as well as before it: packing
+the map and reading the entries back out gives the same two.
+
+The archive's own bytes are not the engine's and are not aimed at, for the two
+reasons above: one DOS stamp per run, and a deflate stream zlib -9 cannot
+reach. What the game reads is the entry set, their names and their contents,
+and those are the engine's.
 
 **The archive itself cannot be byte-identical, and should not be aimed at.**
 Both references are 17 entries in case-insensitive name order, every one
