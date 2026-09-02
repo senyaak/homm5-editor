@@ -1264,6 +1264,31 @@ reasons above: one DOS stamp per run, and a deflate stream zlib -9 cannot
 reach. What the game reads is the entry set, their names and their contents,
 and those are the engine's.
 
+**AND ANY GENERATED MAP IS NOW AN ORACLE.** A map carries its own order —
+`sRMGProps` records the seed, the template, the size, the water, the players,
+the GUID and the name — so `npm run rmg-diff-map -- <map.h5m>` reads all of it
+back, replays the run and says which of the entries the port reproduces. No
+seed has to be typed and no reference has to be laid out: order a map in the
+editor, save it, point this at it.
+
+What it says about the maps to hand:
+
+- three separately saved maps of the REFERENCE order come out **16 of 17**,
+  the odd one the minimap's named ten bytes;
+- a fourth of the same order comes out 14 of 17, and the two extra are
+  `caption-text-0/1.txt`: that map carries a localised default string where
+  the others carry the map's name. Something about how it was saved, not
+  about what was generated — worth knowing, not yet read;
+- **`S2-3P2Z7N2`, 96x96, seven zones, two floors — an order the port has
+  never been checked against — runs to completion** (240,548 draws, 1,945
+  objects) and writes all 20 entries, with the texts and the map tag
+  byte-identical; `map.xdb`, both terrain files and both minimaps do not
+  match. So the port is exact on what it was built against and diverges on a
+  template it has not seen, which is what an untested claim looks like when
+  it is finally tested.
+- two of the maps carry no `<Template>` at all, so they were not made by this
+  path — the in-game generator's output is a thread of its own.
+
 **The SEED is a parameter now, and that is worth saying plainly.** Until this
 step the chain was hard-wired to 1785351845 — the port had never been run on
 anything else, because every check it has is against that one order.
