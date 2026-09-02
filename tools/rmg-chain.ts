@@ -75,6 +75,18 @@ export interface ChainOptions {
   /** Map side in tiles — 96 for the surface run, 72 for the underground one. */
   size?: number;
   underground?: boolean;
+  /**
+   * How many players the order asked for. Defaults to the references' 2, and
+   * it is a DRAWN value: `createMap` spends a coin on it either way, and the
+   * count feeds the zone loading, so this is not a label.
+   */
+  players?: number;
+  /**
+   * MonsterLevel, 0 weak .. 4 impossible. Defaults to the references' 1
+   * (MEDIUM). It multiplies every connection guard, so it is not a label
+   * either.
+   */
+  monsterStrength?: number;
   /** WaterAmount (0/1/2); the water reference supplies 2 — see map-setup.ts. */
   water?: number;
 }
@@ -177,8 +189,14 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   };
 
   const rng = new RmgRandom(options.seed ?? SEED);
-  const made = createMap(template, { players: 2, size: 8, underground: options.underground }, rng);
-  const setup = mapSetup(params, { monsterStrength: 1, water: options.water ?? 0 }, rng);
+  // `size: 8` is the order in the TEMPLATE's units, and the conversion from
+  // the dialog's map size to that number is `vt+0x18`, which is unread — so
+  // this stays the references' 8 and `options.size` only lays out the grid.
+  // An order of another size is not something this chain can honestly make.
+  const made = createMap(template,
+    { players: options.players ?? 2, size: 8, underground: options.underground }, rng);
+  const setup = mapSetup(params,
+    { monsterStrength: options.monsterStrength ?? 1, water: options.water ?? 0 }, rng);
   const loaded = loadTemplate(template, {
     twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
     playerCount: made.players, mapSize: size, pointLightZoneRadius: params.pointLightParams.zoneRadius,

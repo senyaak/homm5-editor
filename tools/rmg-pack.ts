@@ -45,6 +45,8 @@ if (args.includes('--help')) {
   console.log(`--size <tiles>        one of ${MAP_SIZES.join(' ')}, default 96`);
   console.log('--underground         two floors');
   console.log('--water <0|1|2>       0 none, 2 island map — what the dialog\'s checkbox orders');
+  console.log('--players <n>         default 2, clamped to the template\'s own range');
+  console.log('--monsters <0..4>     MonsterLevel, default 1 (medium); it scales every guard');
   console.log('--name <text>         the map\'s name, default "RMG <seed>"');
   console.log('--guid <G>            default random, as CoCreateGuid makes one');
   console.log('--out <file.h5m>      default <game>/Maps/<name>.h5m');
@@ -66,14 +68,32 @@ if (!MAP_SIZES.includes(size as (typeof MAP_SIZES)[number])) {
 }
 const underground = args.includes('--underground');
 const water = num('water') ?? 0;
+const players = num('players') ?? 2;
+const monsters = num('monsters') ?? 1;
 const mapName = flag('name') ?? `RMG ${seed}`;
 
-const options: ChainOptions = { seed, template, size, underground, water: water || undefined };
-console.log(`generating ${template} ${size}x${size}, seed ${seed}`
-  + `${underground ? ', underground' : ''}${water ? `, water ${water}` : ''}`);
+// WHAT THIS TOOL CAN HONESTLY ORDER. The dialog's map size reaches the
+// generator as a number in the TEMPLATE's own units, and that conversion is
+// `vt+0x18` — unread. So the chain always orders the references' 8, and
+// `--size` only lays out the grid: at any other size the draws are one
+// order's and the grid is another's, which is a map no engine would make. It
+// stays available because a grid is sometimes what you want, and it says so
+// rather than looking checked.
+const CHECKED_SIZES = underground ? [72] : [96];
+if (!CHECKED_SIZES.includes(size) && !args.includes('--unchecked')) {
+  console.error(`--size ${size} is not an order this port can make: the dialog's size reaches the`);
+  console.error('generator through a conversion nobody has read, so the draws would be the');
+  console.error(`references' (${CHECKED_SIZES.join('/')}) while the grid is yours. --unchecked does it anyway.`);
+  process.exit(2);
+}
+
+const options: ChainOptions = {
+  seed, template, size, underground, water: water || undefined, players, monsterStrength: monsters,
+};
+console.log(`generating ${template} ${size}x${size}, seed ${seed}, ${players} players`
+  + `, monsters ${monsters}${underground ? ', underground' : ''}${water ? `, water ${water}` : ''}`);
 const run = runFull(dir, options);
-const players = Math.max(...run.c.loaded.zones.map((z) => z.playerNo ?? 0));
-console.log(`  ${run.c.rng.draws} draws, ${players} players, ${run.objects.length} objects`);
+console.log(`  ${run.c.rng.draws} draws, ${run.objects.length} objects`);
 
 // CoCreateGuid's shape, which is what the engine stamps into the map and names
 // the folder with. Ours is random the same way; nothing reads it back.

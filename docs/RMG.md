@@ -1318,6 +1318,39 @@ zlib. The bar for `packProject` is therefore the entry set, their names,
 their order and their CONTENTS byte for byte — which is what the game
 reads — not the archive's own bytes.
 
+### What of an ORDER the port actually honours
+
+The template is not the question: `template.ts` reads it whole — every zone's
+Size, Town, Mines, Dwellings, Prisons, AbandonedMines, Shipyard, CanBeWater,
+CanBePlayerStart, Wide, its TreasureDensity, TreasureChestDensity,
+TreasureBlocksTotalValue, ShrinePoints, ShopPoints, BuffPoints,
+UpgBuildingsDensity, ResourceBuildingsDensity, RedwoodObservatoryDensity,
+LuckMoralBuildingsDensity, LandCartographer, DenOfThieves, GraalOnMap and
+TownGuardStrenght, plus MinPlayers/MaxPlayers, MinMapSize/MaxMapSize,
+Underground and every connection with its GuardStrenght, Guarded and TwoWay.
+Those fields ARE the generator's input; the whole port is what it computes
+from them.
+
+The ORDER — what the dialog around the template asks for — is a different
+matter, and until now most of it was pinned to the references' values without
+saying so:
+
+| the dialog asks | the port |
+|---|---|
+| seed | ordered (`--seed`) |
+| template | ordered (`--template`) |
+| underground | ordered (`--underground`) |
+| water | ordered (`--water`, 0/1/2) |
+| players | ordered (`--players`) — a DRAWN value, and it feeds zone loading |
+| monster level | ordered (`--monsters`) — it scales every connection guard |
+| **map size** | **not orderable.** The dialog's size reaches `createMap` in the TEMPLATE's own units and the conversion is `vt+0x18`, unread. The chain orders the references' 8; `--size` lays out the grid only, and `rmg-pack` refuses a size the references never used unless `--unchecked` says to do it anyway |
+| RandomTowns, ResourceMultiplier, ExpMultiplier, Grail, StartHero | not ordered — `map.xdb` carries the references' fixed values |
+
+And the settings that ARE ordered are ordered, not checked: only the three
+reference orders have a map from the engine to be compared against. `npm run
+rmg-diff-map` is what turns any other order into a check — order it in the
+editor, save it, point the tool at the file.
+
 ## What the executable says about itself
 
 The generator narrates. Every phase reads the random-number counter on the way
