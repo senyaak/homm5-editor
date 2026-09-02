@@ -1000,7 +1000,11 @@ Two things the same run settled about the ICONS:
   everything else true. A literal set in the code, kept nowhere — the
   predicate re-reads the document every call — and the same three appear again
   in `CAdvMapDwelling`'s constructor at `0xD0F1D5`. They are the three neutral
-  "buy creatures here" dwellings.
+  "buy creatures here" dwellings. The shipped `types.xml` agrees with the three
+  literals to the number — BUILDING_FIRE_LAKE 84, BUILDING_REFUGEE_CAMP 94,
+  BUILDING_ELEMENTAL_CONFLUX 95 against `0x54`, `0x5E`, `0x5F`, with
+  BUILDING_IMP_CRUCIBLE 73 and BUILDING_WORKSHOP 85 outside the set — so the
+  port can key on the names and the data says the same thing the code does.
 
 **THE WHOLE FILE, THEN** (`test-rmg-minimap`): 262,272 bytes against the
 reference's, the **header byte-identical** — the engine declares its single
