@@ -67,6 +67,20 @@ static const BYTE MM_ED_SEA_HEAD[] = { 0x8b, 0x41, 0x2c, 0x83, 0xe8, 0x02 };
 /** The icon lookup by name — game 0xDD3440, `ret 8`. */
 #define MM_ED_ICON_RVA 0x4b5710u
 static const BYTE MM_ED_ICON_HEAD[] = { 0x51, 0x89, 0x0c, 0x24, 0x8d, 0x4c, 0x24, 0x08 };
+/**
+ * The layer walk's COVERAGE sampler — game 0x9ED7D0, `ret 8`.
+ *
+ * Found by walking the editor's own call chain rather than by matching bytes:
+ * the terrain pass (0x8b4fc0) calls the document chooser at 0xCD62E0 (game
+ * 0x9EB800), which calls the water walk 0xCD78A0 and the land walk 0xCD79D0
+ * (game 0x9ED3E0 / 0x9ED2A0), and both call this. Reading those three in the
+ * EDITOR's image also answered a question the port had open: the editor is
+ * x87 where the game is SSE, but the walk, the scoring and the bilinear are
+ * step for step the same, so the arithmetic is not what makes the port and
+ * the reference picture disagree on 53 tiles.
+ */
+#define MM_ED_COVER_RVA 0x8d73c0u
+static const BYTE MM_ED_COVER_HEAD[] = { 0x83, 0xec, 0x14, 0xd9, 0x44, 0x24, 0x18 };
 
 /** `(image, terrainVector, iconVector)` — `edx` is a real argument here. */
 typedef void(__fastcall *MmDrawFn)(void *self, void *terrainVec, void *iconVec);
@@ -83,6 +97,8 @@ typedef void(__fastcall *MmWriteFn)(void *self, void *images, void *names, void 
 typedef void(__fastcall *MmBlitFn)(void *image, void *edx, int x, int y, void *icon);
 /** `(dst, src, filter)` — the two are `{buf, rows, w, h}` sixteen-byte images. */
 typedef void(__fastcall *MmResampleFn)(void *dst, void *src, int filter);
+/** `(mask, -, x, y)` — thiscall with two floats; `edx` is the filler again. */
+typedef int(__fastcall *MmCoverFn)(void *plane, void *edx, float x, float y);
 
 static MmDrawFn g_mmDrawOrig = NULL;
 static MmTerrainFn g_mmTerrainOrig = NULL;
@@ -91,9 +107,12 @@ static MmIconFn g_mmIconOrig = NULL;
 static MmWriteFn g_mmWriteOrig = NULL;
 static MmBlitFn g_mmBlitOrig = NULL;
 static MmResampleFn g_mmResampleOrig = NULL;
+static MmCoverFn g_mmCoverOrig = NULL;
 
 /** Are we inside the RMG's own minimap build? Nothing logs outside it. */
 static int g_mmInside = 0;
+/** The layer vector's first record, so a coverage call can name its layer. */
+static const BYTE *g_mmLayerBase = NULL;
 /** The flat-colour predicate, counted over one terrain pass. */
 static int g_mmSeaCalls = 0;
 static int g_mmSeaTrue = 0;
@@ -174,6 +193,72 @@ static void mm_dump_plane(const char *tag, const void *terrain, unsigned rowsOff
   for (y = 0; y < h; y++) {
     if (!rows[y] || !rmg_readable(rows[y], (unsigned)w)) continue;
     mm_log_row(tag, y, rows[y], w);
+  }
+}
+
+/**
+ * The terrain's LAYER VECTOR, whole: every record's document and its mask.
+ *
+ * This is the reading the port is now stuck on. `0x9EB800` picks a tile's
+ * document by walking `[terrain+8] .. [terrain+0xC]`, records of 0x18 bytes —
+ * `{+0 ?, +4 rows, +8 w, +0xC h, +0x10 document}` — backwards, scoring each by
+ * `remaining * coverage`. The port reproduces 8,783 tiles of 8,836 that way
+ * and loses 53, all at zone boundaries and all to the LOWEST-priority layer;
+ * and searching every one of the 5,040 orders of the seven layers under both
+ * scorings never reaches zero, so the order is not what differs. What is left
+ * is the input: whether the vector the drawer walks holds the same masks, in
+ * the same number, as the `GroundTerrain.bin` the save then writes. Dumping
+ * the whole thing answers that without another guess — and if the masks do
+ * match, the `mmc` lines below say which layer the engine measured what at.
+ *
+ * The document is read rather than resolved: `[rec+0x10]` is a reference whose
+ * first word is the object once the map is loaded, and `+0x60` / `+0x64` are
+ * its `Type` and `MinimapColor`, which is enough to name the layer.
+ */
+static void mm_dump_layers(const void *terrain) {
+  const BYTE *t = (const BYTE *)terrain;
+  const BYTE *begin, *end;
+  int count, i;
+  g_mmLayerBase = NULL;
+  if (!terrain || !rmg_readable(terrain, 0x10)) {
+    log_line("mml unreadable");
+    return;
+  }
+  begin = *(const BYTE *const *)(t + 8);
+  end = *(const BYTE *const *)(t + 0xc);
+  log_num("mml tiles x ", *(const int *)(t + 0));
+  log_num("mml tiles y ", *(const int *)(t + 4));
+  if (!begin || !end || end < begin) {
+    log_line("mml vector unreadable");
+    return;
+  }
+  g_mmLayerBase = begin;
+  count = (int)((end - begin) / 0x18);
+  log_num("mml count ", count);
+  for (i = 0; i < count && i < 32; i++) {
+    const BYTE *rec = begin + i * 0x18;
+    const BYTE *doc;
+    char tag[8];
+    int n = 0;
+    if (!rmg_readable(rec, 0x18)) {
+      log_num("mml record unreadable ", i);
+      continue;
+    }
+    log_num("mml layer ", i);
+    doc = *(const BYTE *const *)(rec + 0x10);
+    if (doc && rmg_readable(doc, 0x70)) {
+      log_num("mml type ", *(const int *)(doc + 0x60));
+      log_hex("mml colour x ", *(const DWORD *)(doc + 0x64));
+      log_hex("mml colour y ", *(const DWORD *)(doc + 0x68));
+      log_hex("mml colour z ", *(const DWORD *)(doc + 0x6c));
+    } else {
+      log_line("mml document unreadable");
+    }
+    // Tag the rows with the layer's index, so one pass of the log splits them.
+    tag[0] = 'm'; tag[1] = 'm'; tag[2] = 'l';
+    num_to_dec(i, tag + 3, &n);
+    tag[3 + n] = 0;
+    mm_dump_plane(tag, rec, 4, 8, 0xc);
   }
 }
 
@@ -259,6 +344,7 @@ static void __fastcall mm_terrain_hook(void *image, void *terrain, void *mask, c
     log_num("mm border ", border);
     if (colour && rmg_readable(colour, 4)) log_hex("mm flat colour ", *colour);
     else log_line("mm flat colour unreadable");
+    mm_dump_layers(terrain);
     mm_dump_mask(mask);
     mm_dump_plane("mmf", terrain, 0x28, 0x2c, 0x30);
     mm_dump_plane("mmp", terrain, 0x6c, 0x70, 0x74);
@@ -319,6 +405,30 @@ static void __fastcall mm_resample_hook(void *dst, void *src, int filter) {
     mm_log_ints("mm resample dst/src/filter ", vals, 5);
   }
   g_mmResampleOrig(dst, src, filter);
+}
+
+/**
+ * Every coverage the walk measures: which layer, which tile, what it got.
+ *
+ * One line per layer per tile — 94 x 94 x 7 of them, which is a big log and
+ * the right size for the question. With the layer dump above naming the
+ * records, this turns the disagreement into arithmetic: if the engine's
+ * coverage matches what the port computes from the same mask, the walk is
+ * what differs; if it does not, the mask is.
+ *
+ * The point arrives as the tile centre, so `(int)x` is the tile.
+ */
+static int __fastcall mm_cover_hook(void *plane, void *edx, float x, float y) {
+  int r = g_mmCoverOrig(plane, edx, x, y);
+  if (g_mmInside && g_mmLayerBase) {
+    int vals[4];
+    vals[0] = (int)(((const BYTE *)plane - g_mmLayerBase) / 0x18);
+    vals[1] = (int)x;
+    vals[2] = (int)y;
+    vals[3] = r;
+    mm_log_ints("mmc ", vals, 4);
+  }
+  return r;
 }
 
 /** The flat-colour predicate: counted, never narrated — it runs once a tile. */
@@ -384,11 +494,13 @@ static int install_minimap_probe(void) {
   g_mmResampleOrig = (MmResampleFn)detour(MM_ED_RESAMPLE_RVA, MM_ED_RESAMPLE_HEAD,
                                           sizeof(MM_ED_RESAMPLE_HEAD), &mm_resample_hook,
                                           "minimap resample");
+  g_mmCoverOrig = (MmCoverFn)detour(MM_ED_COVER_RVA, MM_ED_COVER_HEAD, sizeof(MM_ED_COVER_HEAD),
+                                    &mm_cover_hook, "minimap layer coverage");
   // LAST, because it is the window: until it is in, every hook above is inert,
   // and a half-installed probe that still opens its window would write a log
   // that looks complete and is not.
   g_mmWriteOrig = (MmWriteFn)detour(MM_ED_WRITE_RVA, MM_ED_WRITE_HEAD, sizeof(MM_ED_WRITE_HEAD),
                                     &mm_write_hook, "minimap write");
   return g_mmTerrainOrig && g_mmSeaOrig && g_mmIconOrig && g_mmDrawOrig && g_mmBlitOrig
-      && g_mmResampleOrig && g_mmWriteOrig;
+      && g_mmResampleOrig && g_mmCoverOrig && g_mmWriteOrig;
 }
