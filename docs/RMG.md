@@ -1682,9 +1682,45 @@ if (players > MaxPlayers || players < MinPlayers) players = MinPlayers
 Too many players falls back to the **minimum**. The engine's bug, kept, with
 a test naming it deliberate.
 
-Still open here: the units↔size-index conversions (the generator's vt+0x14 /
-vt+0x18) — which is also what the template's 5..14 "size" range measures —
-and the forced-underground fit checks for a map too small for its players.
+Still open here: the two units↔size-index conversions themselves — the block
+that calls them is read and written down below, and what is left is naming the
+class they hang off. The forced-underground fit check IS read: a template
+whose MinMapSize exceeds the units of size index 6 gets `settings[0x1C] =
+0x100`, which is the path that then skips the underground coin.
+
+**The size fit, read** (`0xEAB460`, the engine's `createMap`; it has no direct
+callers, so it is reached through the generator's own vtable at `0xFF3C60`).
+The block around the size draw is this, and it names both conversions:
+
+```
+if (template.maxMapSize != 1):
+    maxUnits = settings->vt[0x14](6)        ; size INDEX 6 -> template units
+    if (template.minMapSize > maxUnits):    ; the template wants more than the
+        settings[0x1C] = 0x100              ; biggest map there is
+    elif settings[0x1C]:                    ; an underground was asked for
+        settings[0x1C] = 0
+        settings[0x1D] = below(2) != 0      ; 0xEAB5A2 — the coin that REPLACES
+                                            ; the first next(), not a fourth draw
+next()                                      ; 0xEB13A0
+if settings[0x1E]:                          ; the size was left to the generator
+    units = template.minMapSize + below(template.maxMapSize - template.minMapSize + 1)
+    twoFloors = settings[0x1C] == 0 and settings[0x1D] != 0
+    size = settings->vt[0x18](twoFloors ? units / 2 : units)   ; units -> INDEX
+    this[0x20] = size
+```
+
+So `vt+0x14` turns a size index into the template's own units and `vt+0x18`
+turns units back into an index, and the two-floor halving happens on the
+UNITS, before the conversion — which is what
+[`create-map.ts`](../src/rmg/create-map.ts) already models. What the index
+then means is settled: it indexes the table at `0xFF291C`, read into a map as
+72 / 96 / 136 / 176 / 216 / 256 / 320, and `0xE9FFE4` is where the engine
+takes `[edx*4 + 0xFF291C]` and stores it as the map's TileX.
+
+Still open, and now narrowed to one thing: the two conversions belong to the
+SETTINGS object (`arg2`), not to the generator, so its class has to be named
+before its slots can be read. Until then a size other than the references'
+cannot be ordered, and `rmg-pack` says so instead of guessing.
 
 #### Map sizes, pinned down
 
