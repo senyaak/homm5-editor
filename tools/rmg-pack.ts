@@ -68,7 +68,7 @@ const underground = args.includes('--underground');
 const water = num('water') ?? 0;
 const mapName = flag('name') ?? `RMG ${seed}`;
 
-const options: ChainOptions = { template, size, underground, water: water || undefined };
+const options: ChainOptions = { seed, template, size, underground, water: water || undefined };
 console.log(`generating ${template} ${size}x${size}, seed ${seed}`
   + `${underground ? ', underground' : ''}${water ? `, water ${water}` : ''}`);
 const run = runFull(dir, options);

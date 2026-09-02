@@ -1264,6 +1264,20 @@ reasons above: one DOS stamp per run, and a deflate stream zlib -9 cannot
 reach. What the game reads is the entry set, their names and their contents,
 and those are the engine's.
 
+**The SEED is a parameter now, and that is worth saying plainly.** Until this
+step the chain was hard-wired to 1785351845 — the port had never been run on
+anything else, because every check it has is against that one order.
+`ChainOptions.seed` opens it, and six other seeds generate end to end without
+a stumble, each a different map (54,344 to 100,281 draws where the reference
+spends 92,438). What that does NOT say is that those maps are the engine's:
+there is no oracle for them short of ordering the same seed in the editor and
+diffing. So `test-rmg-pack` asks of two of them only what can be asked without
+one — the run completes, the seventeen entries are there, the terrain parses
+with its passability plane, the minimap is a 256x256 surface — and the rest is
+named as unchecked rather than assumed. (The startable rules flag every RMG
+map, the ENGINE'S OWN included, for having no player colours: a random map is
+coloured when it is started, so that check says nothing here either way.)
+
 **The archive itself cannot be byte-identical, and should not be aimed at.**
 Both references are 17 entries in case-insensitive name order, every one
 deflated (method 8) with general-purpose flags 0x2, made-by 0x14, version

@@ -63,6 +63,13 @@ export const SIZE = 96;
 
 /** The knobs the ordered reference runs differ by. */
 export interface ChainOptions {
+  /**
+   * The order's seed. Defaults to the reference run's, which is the only one
+   * every phase has been checked against — another seed replays the same
+   * ported code on different draws, and nothing here knows whether it reaches
+   * a branch the port has not written.
+   */
+  seed?: number;
   /** Template file name without the extension; the surface run's default. */
   template?: string;
   /** Map side in tiles — 96 for the surface run, 72 for the underground one. */
@@ -169,7 +176,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     powerByName: new Map(creatures.map((c) => [c.name, c.power])),
   };
 
-  const rng = new RmgRandom(SEED);
+  const rng = new RmgRandom(options.seed ?? SEED);
   const made = createMap(template, { players: 2, size: 8, underground: options.underground }, rng);
   const setup = mapSetup(params, { monsterStrength: 1, water: options.water ?? 0 }, rng);
   const loaded = loadTemplate(template, {

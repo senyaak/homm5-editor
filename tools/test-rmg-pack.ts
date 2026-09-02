@@ -93,5 +93,30 @@ for (const file of ours) {
 // make their file one of the ones that differ, and saying so is the point.
 check('every entry is byte-identical, bar the minimap\'s named ten', bad <= 1, `${bad} entries differ`);
 
+// OTHER SEEDS, which have no oracle at all. The reference is one order, and
+// every phase is checked against it; nothing says the ported code will not
+// walk into a branch it never wrote on a different draw. This cannot say
+// those maps are RIGHT — only the engine can — but it says the run completes
+// and the archive is the shape a map has, which is the difference between an
+// untested claim and an unmade one.
+for (const seed of [42, 20260902]) {
+  const other = runFull(dir, { seed });
+  const built = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), other, {
+    seed, template: 'S1P2Z2M1', players: 2, underground: false, water: 0,
+    guid: '00000000-0000-0000-0000-000000000000', mapName: `seed ${seed}`,
+  });
+  const names = built.map((f) => f.name).sort();
+  const terrain = built.find((f) => f.name === 'GroundTerrain.bin')!;
+  const minimap = built.find((f) => f.name === 'minimap_floor_01.dds')!;
+  check(`seed ${seed} builds the same ${theirs.length} entries`,
+    names.length === theirs.length && names.every((n, i) => n === theirs[i]), `${names.length}`);
+  check(`seed ${seed} draws a different map`, other.c.rng.draws !== run.c.rng.draws,
+    `${other.c.rng.draws} draws against the reference's ${run.c.rng.draws}`);
+  check(`seed ${seed}'s terrain parses and carries its passability plane`,
+    passabilityPlane(parseTerrain(terrain.data)) !== null);
+  check(`seed ${seed}'s minimap is a 256x256 surface`,
+    minimap.data.length === 128 + 256 * 256 * 4, `${minimap.data.length} bytes`);
+}
+
 console.log(failures ? `\n${failures} failed` : '\nall good');
 process.exit(failures ? 1 : 0);
