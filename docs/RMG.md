@@ -982,16 +982,25 @@ Two things the same run settled about the ICONS:
   the converter lands all 22 of the run's blits exactly; blocked alone lands
   8, and the two lists' means summed lands 1. (The blit's own arguments are
   the CENTRE — the half-size subtraction happens inside `0xDCFDE0`.)
-- **the flaggable gate is not the class.** The run places three
-  `AdvMapDwellingShared` objects and the engine draws two icons: the REFUGEE
-  CAMP is passed over. Nothing in the data separates it — not
+- **the flaggable gate is two calls and a switch, and it is READ.** The run
+  places three `AdvMapDwellingShared` objects and the engine draws two icons:
+  the REFUGEE CAMP is passed over, and nothing in the data separates it — not
   `PossessionMarkerTile` (every building has one, Windmill and Temple
   included), not `EffectWhenOwned` (Windmill and Temple have one, Crypt does
-  not), not `RandomType`, not any field of the instance in `map.xdb`. So the
-  port names it: `UNFLAGGABLE_DWELLINGS` in
-  [`minimap-icons.ts`](../src/rmg/minimap-icons.ts) is one building type from
-  one map, and it stays that way until the component behind `[obj+0x04]()` is
-  read.
+  not), not `RandomType`, not any field of the instance in `map.xdb`, and
+  there is no ownership table in `GameMechanics/RefTables`. The executable
+  says why. `[obj+0x04]` is `GetFlagged()` (`0xAD0230`, the subobject at
+  `+0xC8`; null for monsters, treasures, statics and heroes). Then `[+0x18]`
+  is `GetDwelling()`, and a TOWN's and a MINE's return null (`0xAC0309` /
+  `0xD2A40C`, both `jmp 0x4797F0`) — a null ACCEPTS, which is why they always
+  carry an icon. Only a dwelling reaches the predicate `0xD0F960`, whose whole
+  body is a dynamic_cast to `SAdvMapDwellingShared` and three subtractions on
+  the `Type` at `+0xEC`: `0x54` BUILDING_FIRE_LAKE, `0x5E`
+  BUILDING_REFUGEE_CAMP, `0x5F` BUILDING_ELEMENTAL_CONFLUX all return false,
+  everything else true. A literal set in the code, kept nowhere — the
+  predicate re-reads the document every call — and the same three appear again
+  in `CAdvMapDwelling`'s constructor at `0xD0F1D5`. They are the three neutral
+  "buy creatures here" dwellings.
 
 **THE WHOLE FILE, THEN** (`test-rmg-minimap`): 262,272 bytes against the
 reference's, the **header byte-identical** — the engine declares its single

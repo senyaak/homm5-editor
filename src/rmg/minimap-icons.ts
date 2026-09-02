@@ -80,17 +80,32 @@ export function iconNameFor(shared: string, owner: number, buildingType = ''): s
 }
 
 /**
- * Dwellings the ownership component refuses.
+ * The three dwellings that cannot be flagged — READ, not fitted.
  *
- * MEASURED, NOT READ. The reference run places three `AdvMapDwellingShared`
- * objects and the engine draws two icons: the Refugee Camp is passed over,
- * though its document, its class and its `map.xdb` fields all look like the
- * other two's. Whatever the component consults, it is not `PossessionMarker
- * Tile`, `EffectWhenOwned`, `RandomType` or anything the instance carries —
- * all four were checked and none separates them. So this is one name, from
- * one map, until the gate itself is read.
+ * The collector's gate is two virtual calls. `[obj+0x04]` is
+ * `GetFlagged()` (`0xAD0230`, `lea eax,[ecx-44h]` — the flagged subobject at
+ * `+0xC8`, null for monsters, treasures, statics and heroes), and then
+ * `[+0x18]` is `GetDwelling()`: a TOWN's and a MINE's return null
+ * (`0xAC0309` / `0xD2A40C`, both `jmp 0x4797F0`, `xor eax,eax`) and a null
+ * ACCEPTS outright, which is why they always carry an icon. Only a dwelling
+ * reaches the predicate, `0xD0F960`, and its whole body is a dynamic_cast to
+ * `SAdvMapDwellingShared` followed by three subtractions on the `Type` at
+ * `+0xEC`:
+ *
+ *     sub eax,54h  je false     ; BUILDING_FIRE_LAKE
+ *     sub eax,0Ah  je false     ; BUILDING_REFUGEE_CAMP
+ *     sub eax,1    je false     ; BUILDING_ELEMENTAL_CONFLUX
+ *     mov al,1
+ *
+ * So it is a literal set in the executable, not a table and not a field — the
+ * predicate re-reads the shared document every call and keeps nothing. The
+ * same three appear again in `CAdvMapDwelling`'s constructor (`0xD0F1D5`).
+ * They are the three neutral "buy creatures here" dwellings, which is what
+ * the game does with them.
  */
-const UNFLAGGABLE_DWELLINGS: ReadonlySet<string> = new Set(['BUILDING_REFUGEE_CAMP']);
+const UNFLAGGABLE_DWELLINGS: ReadonlySet<string> = new Set([
+  'BUILDING_FIRE_LAKE', 'BUILDING_REFUGEE_CAMP', 'BUILDING_ELEMENTAL_CONFLUX',
+]);
 
 /** Every minimap icon by the name the drawer asks for, as BGRA bitmaps. */
 export function loadMinimapIcons(dataRoot: string): Map<string, Bitmap> {
