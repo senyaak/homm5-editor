@@ -1645,9 +1645,11 @@ does not repeat its first: two identical orders in one process came out with
 different statics — the divergence begins in the statics block of `map.xdb`,
 Mountains against Hellpikes, with the draw counters still agreeing at the
 border-table step, so it is state surviving between generations rather than a
-different number stream. That is an open question and a trap for the batch;
-until it is understood, anything compared gets a launch of its own. One order
-per launch IS reproducible: twice over, the whole output matched except the
+different number stream. That is an open question, and the standing rule is
+simply ONE LAUNCH, ONE ORDER — the batch's ability to take a list stays, for
+making maps in bulk, but nothing that will be compared shares a process. A
+launch costs fifteen seconds and a wrong comparison costs an afternoon. One
+order per launch IS reproducible: twice over, the whole output matched except the
 `RMGguid`, which is drawn fresh every time, and ONE byte of `GroundTerrain.bin`
 at offset 160305 — the uninitialised byte the port already knew about. The
 probe subtracts exactly those two and nothing else.
@@ -1733,11 +1735,30 @@ ordering the same map produces the identical output — while zone 0's
 `TreasureDensity` and `Prisons` in the same file rewrite twenty-odd thousand
 bytes of terrain, so the probe was not asleep.
 
-That a map has an underground is the ORDER's business, not the template's: the
-dialog's checkbox and our `-underground` switch decide it, and `create-map.ts`
-already takes it from the request. The Grail is placed by the upgrade-buildings
-step in the favoured zone regardless of the flag. So the two are data the
-format carries and the engine ignores.
+That a map has an underground is the ORDER's business — the dialog's checkbox
+and our `-underground` switch decide it, and `create-map.ts` already takes it
+from the request. The Grail is placed by the upgrade-buildings step in the
+favoured zone regardless of the flag. So the two fields are data the format
+carries and the engine ignores.
+
+**But "the template's `Underground` is dead" is not the same sentence as "the
+underground and the template have nothing to do with each other", and the
+second one is false.** Ask for an underground in the dialog and templates
+disappear from the list — which is an observation about the UI, and the filter
+explains it without reading the field. At `0xCF7B58` the requested size is
+DOUBLED before it is matched against the template's `MinMapSize`/`MaxMapSize`,
+and the template is additionally required to have `MaxMapSize >= 10`; the plain
+comparison at `0xCF7B38` is the other branch. Doubling the area is exactly what
+a second floor costs, so the underground choice narrows the offered templates
+through their SIZE RANGE. The link is real and it is indirect: the engine
+consults `MinMapSize` and `MaxMapSize`, never `Underground`.
+
+What is proved here and what is not: the doubling branch and its `>= 10` gate
+are read out of the code, and so is the pair of adjacent flags in the screen's
+own request record — `[ebx+0x0C]` and `[ebx+0x0D]`, both clear — that selects it.
+That those two flags ARE the underground checkbox is inference from what the
+branch does, not something the disassembly says. Finding the handler that
+writes them would settle it.
 
 The eligibility filter deserves a name, because it is why `MinPlayers`,
 `MaxMapSize` and `TestTemplate` are read at all: at `0xCF7B17` the editor walks
