@@ -67,7 +67,14 @@ for (const [i, order] of orders.entries()) {
   process.stdout.write(`  ${i + 1}. ${order} … `);
   rmSync(join(runs, '1'), { recursive: true, force: true });
   writeFileSync(ordersFile, `# written by tools/rmg-batch.ts — one launch, one order\n${order}\n`, 'latin1');
-  execFileSync(editor, ['--rmg'], { cwd: bin, stdio: 'ignore' });
+  // A LAUNCH IS ALLOWED TO DIE. An order can crash the editor — a bad `-poke`
+  // will — and one dead launch must not take the rest of the list with it.
+  try {
+    execFileSync(editor, ['--rmg'], { cwd: bin, stdio: 'ignore' });
+  } catch {
+    console.log('the editor did not come back — read bin/homm5-editor-rmg.log');
+    continue;
+  }
   const one = join(runs, '1');
   if (!existsSync(one)) {
     console.log('the engine kept nothing — read bin/homm5-editor-rmg.log');

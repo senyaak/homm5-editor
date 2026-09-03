@@ -32,6 +32,11 @@
 // and the orders are lines in `bin/homm5-editor-rmg-orders.txt`:
 //
 //   RMG/Templates/S1P2Z2M1.xdb -seed 1785351845 -size 1 -resource 1 -exp 1
+//   RMG/Templates/S1P2Z2M1.xdb -seed 1785351845 -size 1 -monsters 2
+//
+// `-poke <offset> <value>` and `-pokeb` say any field of the request by DECIMAL
+// offset — the instrument that turned each guess about a field into a launch
+// instead of a rebuild, and the reason the list above is short and true.
 //
 // ONE LAUNCH IS ONE ORDER: a file holding several has its first one run and
 // the rest reported untouched, because a launch's second generation does not
@@ -108,9 +113,39 @@
  * the same shape as the command-line site above.
  */
 #define RMG_CLI_REQUEST_RVA 0x67e10u
-/** `+0x98` ResourceMultiplier and `+0xA0` ExpMultiplier, both enums from zero. */
+/**
+ * The fields of that record this batch can say.
+ *
+ * The record is EMBEDDED IN THE GENERATOR AT `+0x10`, which is what ties the
+ * offsets down: the copy at the top of `GenerateMap` is `lea ecx,[esi+10h]`
+ * before `0xCFB500`, so every offset here is a generator offset minus 0x10 —
+ * and each one lands on something already known from the other side.
+ * `+0x0D` is the underground, which the console handler writes and the
+ * generator reads at `+0x1D`; `+0x10` is the size, read at `+0x20` to index
+ * the size table at `0xFF291C`; `+0x50` is the monster strength.
+ *
+ * EVERY ONE OF THESE WAS PUT TO THE ENGINE, not just derived, with `-poke`
+ * below: `+0x50` moved MonsterLevel to STRONG, `+0x94` turned the Minimap
+ * off, `+0x95` turned RandomTowns on, `+0xA5` turned the Grail on, and the
+ * two multipliers reproduced the reference exactly. The defaults agree with
+ * what a command-ordered map records — MEDIUM, minimap on, no grail.
+ *
+ * WATER IS NOT HERE, and that is the finding rather than a gap in the
+ * reading. Every other field of the map's `InitialParams` has its place in
+ * this record; `WaterAmount` has none, and eleven offsets were poked one
+ * launch at a time to be sure of it. The generator takes its water from
+ * `GenerateMap`'s first stack ARGUMENT instead — `0xCF9B9E` reassigns `esi`
+ * to `[ebp+8]` and only then reads `+0x58` as the amount, promoting 1 to 2
+ * and setting the water bit at `+0xA6` that `LoadTemplate` branches on. That
+ * object is not this one: poking this record at `+0x58` kills the editor,
+ * because here `+0x54` is the players vector and `+0x58` is its `end`. So
+ * ordering water needs that argument identified first, and until it is there
+ * is no `-water` switch — a switch that silently does nothing is worse than
+ * none.
+ */
 #define RMG_CLI_RESOURCE_OFF 0x98u
 #define RMG_CLI_EXP_OFF 0xa0u
+#define RMG_CLI_MONSTERS_OFF 0x50u
 
 /** `wstring::wstring(begin, end)` — the only kind of string that door takes. */
 #define RMG_CLI_WSTR_RVA 0x7d00u
@@ -356,6 +391,21 @@ static void rmg_cli_keep(int which) {
  */
 static int g_rmgResource = -1;
 static int g_rmgExp = -1;
+static int g_rmgMonsters = -1;
+
+/**
+ * `-poke <offset> <value>` / `-pokeb` — one field of the request, said outright.
+ *
+ * A named switch is a claim about which offset holds what, and a claim is worth
+ * one experiment. `-monsters` was right the first time and `-water` was not,
+ * both of them derived the same way from the same copy — so rather than guess
+ * again and rebuild for each guess, this says any offset and lets a launch
+ * answer. What it finds becomes a named switch; it stays because the next field
+ * will need it too.
+ */
+#define RMG_POKE_MAX 8
+static struct { unsigned off; int value; int wide; } g_rmgPoke[RMG_POKE_MAX];
+static int g_rmgPokes = 0;
 
 typedef void *(__fastcall *RmgRequestCtorFn)(void *self, void *edx);
 static RmgRequestCtorFn g_rmgRequestCtor;
@@ -365,6 +415,12 @@ static void *__fastcall rmg_request_ctor_hook(void *self, void *edx) {
   void *made = g_rmgRequestCtor(self, edx);
   if (g_rmgResource >= 0) *(int *)((BYTE *)self + RMG_CLI_RESOURCE_OFF) = g_rmgResource;
   if (g_rmgExp >= 0) *(int *)((BYTE *)self + RMG_CLI_EXP_OFF) = g_rmgExp;
+  if (g_rmgMonsters >= 0) *(int *)((BYTE *)self + RMG_CLI_MONSTERS_OFF) = g_rmgMonsters;
+  for (int i = 0; i < g_rmgPokes; i++) {
+    BYTE *at = (BYTE *)self + g_rmgPoke[i].off;
+    if (g_rmgPoke[i].wide) *(int *)at = g_rmgPoke[i].value;
+    else *at = (BYTE)g_rmgPoke[i].value;
+  }
   return made;
 }
 
@@ -409,6 +465,8 @@ static void rmg_cli_run_order(const char *from, const char *to) {
   // rather than the previous order's.
   g_rmgResource = -1;
   g_rmgExp = -1;
+  g_rmgMonsters = -1;
+  g_rmgPokes = 0;
   const char *p = from;
   while (p < to) {
     p = rmg_cli_spaces(p, to);
@@ -428,15 +486,35 @@ static void rmg_cli_run_order(const char *from, const char *to) {
     }
     // Ours as well, and taken out of the line for the same reason as the seed:
     // the engine's parser would read an unknown switch as the template's name.
-    if (rmg_cli_word_is(word, p, "-resource") || rmg_cli_word_is(word, p, "-exp")) {
-      int forResource = rmg_cli_word_is(word, p, "-resource");
+    if (rmg_cli_word_is(word, p, "-poke") || rmg_cli_word_is(word, p, "-pokeb")) {
+      int wide = rmg_cli_word_is(word, p, "-poke");
+      const char *q = rmg_cli_spaces(p, to);
+      int off = 0, value = 0;
+      if (read_int(&q, to, &off)) {
+        q = rmg_cli_spaces(q, to);
+        if (read_int(&q, to, &value) && g_rmgPokes < RMG_POKE_MAX) {
+          g_rmgPoke[g_rmgPokes].off = (unsigned)off;
+          g_rmgPoke[g_rmgPokes].value = value;
+          g_rmgPoke[g_rmgPokes].wide = wide;
+          g_rmgPokes++;
+          rmg_log_pair("cli: poke ", off, value);
+        }
+        p = q;
+      }
+      continue;
+    }
+    int *ours = NULL;
+    if (rmg_cli_word_is(word, p, "-resource")) ours = &g_rmgResource;
+    else if (rmg_cli_word_is(word, p, "-exp")) ours = &g_rmgExp;
+    else if (rmg_cli_word_is(word, p, "-monsters")) ours = &g_rmgMonsters;
+    if (ours) {
       const char *q = rmg_cli_spaces(p, to);
       int value = 0;
       if (read_int(&q, to, &value)) {
-        if (forResource) g_rmgResource = value; else g_rmgExp = value;
+        *ours = value;
         p = q;
       } else {
-        rmg_log("cli: -resource/-exp with no number after it - leaving the default");
+        rmg_log("cli: a switch of ours with no number after it - leaving the default");
       }
       continue;
     }

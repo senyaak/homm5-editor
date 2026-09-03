@@ -1368,6 +1368,36 @@ the engine's CLI-ordered run emits two caption texts and calls the objectives'
 emitted two more before them, calls the same two `caption-text-2/3`. The
 counter should follow what is actually emitted; it does not yet.
 
+**The rest of that record, put to the engine one field at a time.** `-poke
+<offset> <value>` and `-pokeb` write any offset of the request (decimal), which
+turns a guess about a field into a launch instead of a rebuild — and it earned
+its place immediately, because the first four offsets derived from the copy
+gave three right answers and one wrong one.
+
+| request | field | how it was shown |
+| --- | --- | --- |
+| `+0x0D` | underground | the console handler writes it; the generator reads `+0x1D` |
+| `+0x10` | map size | generator `+0x20`, the index into the size table at `0xFF291C` |
+| `+0x18` | players | the handler writes it |
+| `+0x50` | monster strength | `-monsters 2` records `MONSTER_LEVEL_STRONG`; default 1 is MEDIUM |
+| `+0x94` | minimap | poked to 0, the map records `<Minimap>false` |
+| `+0x95` | random towns | poked to 1, the map records `<RandomTowns>true` |
+| `+0x98` `+0xA0` | the two multipliers | they reproduce the reference exactly |
+| `+0xA5` | grail | poked to 1, the map records `<Grail>true` |
+
+**And WATER is not in that record at all** — which is a finding, not a gap in
+the reading. Every other field of the map's `InitialParams` has a place there;
+`WaterAmount` has none, and eleven offsets were poked a launch apiece to be
+sure. The generator takes its water from `GenerateMap`'s first stack ARGUMENT
+instead: `0xCF9B9E` reassigns `esi` to `[ebp+8]` and only then reads `+0x58` as
+the amount, promoting 1 to 2 and setting the water bit at `+0xA6` that
+`LoadTemplate` branches on. That object is not the request — poking the request
+at `+0x58` kills the editor, because there `+0x54` is the players vector and
+`+0x58` is its `end`. So the batch cannot order water yet, and there is no
+`-water` switch: a switch that silently does nothing is worse than none. What
+would close it is identifying that argument, which is one focused reading and
+not a guess.
+
 **Four things this cost, each of them a measurement rather than a guess, and
 each of them a trap the next person would fall into.**
 
@@ -1563,8 +1593,10 @@ saying so:
 | water | ordered (`--water`, 0/1/2) |
 | players | ordered (`--players`) — a DRAWN value, and it feeds zone loading |
 | monster level | ordered (`--monsters`) — it scales every connection guard |
+| water | **not orderable from the command** — the setting is not in the record the command fills; see below |
 | **map size** | **not orderable.** The dialog's size reaches `createMap` in the TEMPLATE's own units and the conversion is `vt+0x18`, unread. The chain orders the references' 8; `--size` lays out the grid only, and `rmg-pack` refuses a size the references never used unless `--unchecked` says to do it anyway |
 | **ResourceMultiplier, ExpMultiplier** | **ordered** (`-resource`, `-exp`) — and they are not cosmetic: see below |
+| monster level | **ordered** (`-monsters`) — the PORT still only models MEDIUM, so `rmg-diff-map` says so and the difference is now measurable rather than untestable |
 | RandomTowns, Grail, StartHero | not ordered — `map.xdb` carries the references' fixed values |
 
 And the settings that ARE ordered are ordered, not checked: only the three
