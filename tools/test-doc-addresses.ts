@@ -60,9 +60,25 @@ function onBoundary(pe: PEFile, va: number): boolean {
   return false;
 }
 
+/**
+ * Addresses the prose cites as DATA, and which one image happens to map inside
+ * its own `.text`.
+ *
+ * "Is this code?" is asked of both executables at once, so a `.rdata` address
+ * in the game lands in the editor's code section by coincidence of layout and
+ * is then held to an instruction boundary it was never going to meet. These
+ * are the RTTI type descriptors `struct-use.ts` is given — data by
+ * construction, a class's name and nothing else.
+ */
+const DATA = new Set([
+  0x10b70d4, // .?AUSRMGParameters@NDb@@
+  0x10b70ac, // .?AUSTable_RMGPreset_Race@NDb@@
+]);
+
 const unresolved: number[] = [];
 const codeAddresses: number[] = [];
 for (const va of cited) {
+  if (DATA.has(va)) continue;
   if (images.some((pe) => pe.isCode(va))) codeAddresses.push(va);
   else if (images.every((pe) => pe.offsetOf(va) === null)) unresolved.push(va);
 }

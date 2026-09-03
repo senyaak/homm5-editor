@@ -10,6 +10,15 @@
 // and `LuckMoralBuildingsDensity` are what the files say, and renaming them on
 // the way in would mean every reader of this port has to translate back before
 // they can grep the data. See docs/RMG.md.
+//
+// FOUR OF THESE FIELDS FEED NOTHING, and they are marked below rather than
+// dropped: the format carries them, so a reader that skipped them would be a
+// reader of a different format. `GraalOnMap` and `Underground` are read by no
+// instruction in either executable; `RedwoodObservatoryDensity` and
+// `DenOfThieves` are handed to the step that places those objects, which never
+// looks at them and decides both from the zone's tile count and a roll. Each
+// was checked twice — over the whole image, and by generating the same map with
+// the field changed. See "Which fields the engine actually reads".
 
 import { readFileSync } from 'node:fs';
 
@@ -52,8 +61,11 @@ export interface RmgZone {
   resourceBuildingsDensity: number;
   treasureBuildingPoints: number;
   treasureBlocksTotalValue: number;
+  /** DEAD: the step rolls 2-in-10 for a den and never reads this. */
   denOfThieves: number;
+  /** DEAD: the step places the zone's tiles / 1000 + 1, whatever this says. */
   redwoodObservatoryDensity: number;
+  /** Read, and handed to a worker whose whole body is `ret 4`. */
   buffPoints: number;
 }
 
@@ -71,13 +83,16 @@ export interface RmgTemplate {
   name: string;
   zones: RmgZone[];
   connections: RmgConnection[];
+  /** DEAD: parsed, defaulted, copied, and branched on by no instruction. */
   graalOnMap: boolean;
   /** The four `CreateMap` reads to decide players and size. */
   minPlayers: number;
   maxPlayers: number;
   minMapSize: number;
   maxMapSize: number;
+  /** DEAD as well: the ORDER decides the underground, never the template. */
   underground: boolean;
+  /** Read by the editor's template list, to hide a template from the dialog. */
   testTemplate: boolean;
 }
 

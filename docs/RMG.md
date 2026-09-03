@@ -193,7 +193,8 @@ how many of the four ORTHOGONAL neighbours are themselves blob tiles —
 a linear rescan of the whole vector per neighbour — and then:
 
 * paints the WaterTile at the four corners, the LITERAL 150 (0x96;
-  `TransitiveTileIntensity` is unread here too). Water.xdb is priority
+  `TransitiveTileIntensity` is unread here too — and, it turns out,
+  everywhere). Water.xdb is priority
   253 TT_SMALL_WATER and alone in its class, so a rim vertex painted
   once keeps 150 and an interior one painted again overflows to 255 —
   the reference's 28 and 129 on the nose;
@@ -237,7 +238,7 @@ writes the `.h5m`, and against the reference the archive's 17 entries come out
 one uninitialised engine byte in the terrain file, ten channel bytes in the
 minimap.
 
-**What is decided next, in this order.**
+**Two things were decided next, and both are done.**
 
 1. **An oracle on demand.** Every order but the three references has no map
    from the engine to be compared against, and that is what `S2-3P2Z7N2`
@@ -246,18 +247,21 @@ minimap.
    anything — but it carries a CONSOLE COMMAND that does, with parameters of
    its own. "Ordering a generation from outside the dialog" below is what was
    found, what it can be told, and what it still cannot.
-2. **What every template and params field is for.** `template.ts` reads about
-   forty fields; which of them the engine CONSUMES, and how, is a different
-   question. The rule for the sweep: a field that consumes nothing is either a
-   default for something read elsewhere or a wrapper over something that is
-   read, so "this field is dead" needs absence proved over the WHOLE image
-   rather than over the phases read so far. The four such claims made here —
-   `TransitiveTileIntensity`, both `*RoadTileStrenght`, the observatories'
-   `&params[i]` — are stated more strongly than they were earned and are to be
-   re-checked that way. With step 1 in hand a field's meaning is testable
-   rather than only readable: generate two maps differing in one field and
-   diff them. Experimental templates belong in `H5E/`, never in the game's own
-   `RMG/Templates`, which the native generator reads too.
+2. **What every template and params field is for** — "Which fields the engine
+   actually reads" below. Every field of `RMG/Params/Default.xdb`, of a
+   template and of its zones has been put to two questions: does any
+   instruction in either executable read it, and does changing it change the
+   map. **Sixteen of the parameters' fifty-five feed nothing**, along with the
+   template's `GraalOnMap` and `Underground` and its zones'
+   `RedwoodObservatoryDensity` and `DenOfThieves`; `BuffPoints` is read and
+   handed to a worker whose whole body is `ret 4`. All four of the claims that
+   were stated more strongly than they were earned — `TransitiveTileIntensity`,
+   both `*RoadTileStrenght`, the observatories' `&params[i]` — came out TRUE,
+   and are now settled over the whole image and against the engine rather than
+   over one function. Two things it left open: `CanBeWater` is unread by the
+   code and unreachable by the probe, because the console command has no water
+   switch; and a launch's SECOND order does not repeat its first, which is a
+   trap for the batch and an unexplained piece of engine state.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -411,7 +415,8 @@ writers, read from the executable:
   (`+0x88` — Inferno's is its Dead_Land, the same document its
   SecondaryRoadTile names; the shipped table has one empty entry and the
   fallback is DeepWaterBottom, 0xECBB79). Both bands push the LITERAL
-  200 — TransitiveTileIntensity is never read here either. The paint
+  200 — TransitiveTileIntensity is never read here either, nor anywhere
+  else in the image. The paint
   arithmetic makes the reference bytes: the bottom tile's priority 20
   puts the zone tile's own 255 in its class-0 base, so one 200 clamps to
   255 and steals 400 — River-bed is {0,255} and the water fringe loses
@@ -1502,8 +1507,11 @@ UpgBuildingsDensity, ResourceBuildingsDensity, RedwoodObservatoryDensity,
 LuckMoralBuildingsDensity, LandCartographer, DenOfThieves, GraalOnMap and
 TownGuardStrenght, plus MinPlayers/MaxPlayers, MinMapSize/MaxMapSize,
 Underground and every connection with its GuardStrenght, Guarded and TwoWay.
-Those fields ARE the generator's input; the whole port is what it computes
-from them.
+Those fields are the generator's input — **most of them.** Five of the ones
+named above reach nothing at all: `GraalOnMap`, `Underground`,
+`RedwoodObservatoryDensity`, `DenOfThieves` and, in the sense that matters,
+`BuffPoints`. "Which fields the engine actually reads" below is the sweep that
+settled it, on the code and then on the engine.
 
 The ORDER — what the dialog around the template asks for — is a different
 matter, and until now most of it was pinned to the references' values without
@@ -1524,6 +1532,292 @@ And the settings that ARE ordered are ordered, not checked: only the three
 reference orders have a map from the engine to be compared against. `npm run
 rmg-diff-map` is what turns any other order into a check — order it in the
 editor, save it, point the tool at the file.
+
+## Which fields the engine actually reads
+
+A data format read out of an executable comes with a second question behind
+every field: does anything CONSUME it? The XML says what may be written, the
+serialiser says where it lands, and neither says whether one instruction ever
+looks at it again. Answering that for the whole of `RMG/Params/Default.xdb` and
+the whole of a template is what this section records — twice over, once by
+reading the code and once by changing the file and generating the map again,
+because a claim about the code is worth exactly one experiment.
+
+### The three instruments
+
+**`tools/reverse/struct-fields.ts` — the field map, out of the serialiser.**
+Every xdb-backed structure has one function that walks its fields and says the
+two things a map needs in the same breath: `lea eax,[edi+<offset>]`, where the
+value goes, and `push <"Name">`, what the file calls it. So the map is READ,
+not inferred from the XML's order or from sizes guessed by type:
+
+```bash
+node tools/reverse/struct-fields.ts --at 0xb9e5d0   # SRMGParameters, 0x44..0x21C
+node tools/reverse/struct-fields.ts --at 0xb9b520   # one template zone, 0x04..0x74
+node tools/reverse/struct-fields.ts --at 0xb9c1a0   # SRMGTemplate, 0x50..0x8A
+```
+
+Two idioms live in those functions and the difference decides the answer. A
+plain field pushes its address as an argument, so the `lea` comes BEFORE the
+name; a nested one opens a block named by the string and only then writes into
+the field, so the `lea` comes AFTER. Pairing on "the last lea" alone reads the
+second kind one field out of step — every text reference in `SRMGParameters`
+came out twelve bytes low, `MapName` at `MapDescription`'s offset and so on
+down the block — and the listing looks perfectly reasonable while being wrong.
+The pairing takes the nearest unclaimed address in either direction, the one
+before first, and it is why the map closes at `0x21C` with no hole, which is
+the size the reflection table registers. There are TWO serialisers for most
+structures, one that reads the file into the object and one that writes it
+back, and only the reader carries real offsets — the writer builds each value
+in a temporary and gives every field the same `[esp+0Ch]`. A listing where
+every offset is equal is that one.
+
+**`tools/reverse/struct-use.ts` — who reads which field, over the whole image.**
+`trace.ts field 0x44` answers for every structure at once, because an offset is
+just a number; that is fine for finding a lead and useless for "nothing reads
+this", which is the claim a sweep exists to make. So this one starts from the
+DOOR — the place the pointer comes from — taints the register, walks each
+caller forward and writes down every `[tainted + N]`:
+
+```bash
+node tools/reverse/struct-use.ts --getter 0xeaff80 --cast 0x10b70d4 --min 0x44 --fields 0xb9e5d0
+node tools/reverse/struct-use.ts --cast 0x10b3350 --min 0x40 --fields 0xb9c1a0
+node tools/reverse/struct-use.ts --cast 0x10b3350 --deref 0x5c --min 0x4 --fields 0xb9b520
+```
+
+Three kinds of door, and the second is why the first alone lies. `--getter`
+roots at every call to the function that returns the pointer. `--cast` roots at
+every `dynamic_cast` to the class's RTTI type descriptor — the same door after
+the compiler INLINED the getter, which in the game build it does everywhere
+hot: rooted at the calls alone, `SRMGParameters` came out with eleven fields
+nothing reads, four of them read by an inlined copy of its own getter, the mine
+guard levels among them. `--deref <offset>` moves the question one step in, to
+what a pointer field leads to: a template's zones have no door of their own,
+they are reached by walking a stride from `template+0x5C` and by nothing else.
+`--fields` joins the result against the field map, so the answer comes out in
+the file's own words and ends with the list of fields nothing read.
+
+What the sweep cannot see it says out loud. A pointer that leaves the walk —
+pushed as an argument, moved to `ecx` for a method call — is printed under
+ESCAPES, and an absence is only earned once those are accounted for; in the
+parameters' case every one of them is the getter's own cache store or the
+resource release, except three `push`es that turned out to be a leaked taint
+rather than the pointer. A door that leads to no read at all is printed too.
+
+**The type descriptors**, which are what `--cast` is given:
+
+| class | game | editor | getter (game / editor) |
+| --- | --- | --- | --- |
+| `SRMGParameters` | `0x10B70D4` | `0x129DF0C` | `0xEAFF80` / `0xCFB010` |
+| `SRMGTemplate` | `0x10B3350` | `0x128CEE0` | inlined / `0x87F770` |
+| `STable_RMGPreset_Race` | `0x10B70AC` | — | — |
+
+The editor build keeps a real getter for each and inlines it once beside it
+(`0xCF7D7E` writing the `+0x54` cache, `0xCF6EEA` writing the `+0x4C` one),
+plus a non-caching holder-assign for the template at `0x87E8A0`; the game build
+inlines both everywhere. `--cast` covers all of it either way.
+
+**`tools/rmg-field-probe.ts` — and then the engine is asked.** A loose file
+under `<game>/data/` wins over the copy inside `data.pak`, which is measured
+rather than assumed: cutting `Mine1LevelMaxRadius` from 20 to 8 moved a mine
+from x=32 to x=18 and repainted 23,640 bytes of terrain. So each field gets a
+value far from the shipped one, the same order is generated again, and the
+output is compared:
+
+```bash
+node tools/rmg-field-probe.ts --game <dir> --control    # fields the sweep says ARE read
+node tools/rmg-field-probe.ts --game <dir> --unread     # fields it says are not
+node tools/rmg-field-probe.ts --game <dir> --template --unread
+```
+
+A template is copied to `data/RMGProbe/Probe.xdb` and ordered from there, so
+the game's own `RMG/Templates` — which the native generator lists — is never
+touched; the loose file is removed again when the probe ends.
+
+The controls are the point. A probe that reports "no change" for everything is
+a broken probe, and the only way to know the difference is to run it on fields
+that must move the map: `Mine1LevelMaxRadius`, `DistBetweenTreasureBlocks` and
+`JunctionMinBorderDistance` each rewrite tens of thousands of terrain bytes, a
+template's zone-0 `TreasureDensity` and `Prisons` likewise.
+
+**One order per launch, and that is not a preference.** A launch's SECOND order
+does not repeat its first: two identical orders in one process came out with
+different statics — the divergence begins in the statics block of `map.xdb`,
+Mountains against Hellpikes, with the draw counters still agreeing at the
+border-table step, so it is state surviving between generations rather than a
+different number stream. That is an open question and a trap for the batch;
+until it is understood, anything compared gets a launch of its own. One order
+per launch IS reproducible: twice over, the whole output matched except the
+`RMGguid`, which is drawn fresh every time, and ONE byte of `GroundTerrain.bin`
+at offset 160305 — the uninitialised byte the port already knew about. The
+probe subtracts exactly those two and nothing else.
+
+### `RMGParameters` — sixteen of its fifty-five fields feed nothing
+
+Read in both builds, and each read located: the six mine radii, the four guard
+levels and `BasicLeverGuardPower`, `JunctionMinBorderDistance`,
+`DistBetweenTreasureBlocks`, both terrain lights and the point-light block bar
+one field, six of the eight text references, all five tile references,
+`MapSizeNames`, all four objective and water texts, `MonsterStrenghtNames`,
+`GroundTerrainLights`, `Obelisk`, `Grail` and `WaterTreasures`.
+
+Ten of the sixteen are numbers, and a number can be put to the engine as well
+as to the disassembler. Nothing reads these — no instruction in the game build,
+none in the editor build — and changing each one leaves the generated map
+identical byte for byte. The eleventh row is `MinDist`, which lives inside
+`PointLightParams` rather than at the top level and so is not one of the
+sixteen:
+
+| field | shipped | probed with | verdict |
+| --- | --- | --- | --- |
+| `RMGVersion` | 37 | 99 | inert |
+| `TeleportMinBorderDistance` | 2 | 9 | inert |
+| `TeleportMaxBorderDistance` | 10 | 30 | inert |
+| `DistBetweenLakes` | 10 | 40 | inert |
+| `CreatureMinStackAmount` | 5 | 40 | inert |
+| `CreatureMaxStackAmount` | 70 | 9 | inert |
+| `MinDistanceBetweenBigObjects` | 15 | 2 | inert |
+| `MinDistanceBetweenTreasureBlocks` | 5 | 25 | inert |
+| `TransitiveTileIntensity` | 200 | 250 | inert |
+| `ShipyardGuardsLevelCoef` | 20 | 40 | inert |
+| `PointLightParams/MinDist` | 11 | 40 | inert on a surface map |
+
+The remaining six the sweep finds no reader for are beyond the probe's reach,
+being text or lists rather than numbers: `ScenarioCaption`,
+`ScenarioDescription`, `CreatureStackParams` (all three of its fields),
+`Templates` (empty in the shipped file), `ResourceMineColors` and
+`MonsterLevelCoef` (also empty).
+
+`MonsterLevelCoef` and `ShipyardGuardsLevelCoef` are the strongest verdicts in
+the table: **no instruction in the generator's whole address range even uses
+their displacements** (`+0x1E4`, `+0x1F0`), so there is nothing left to check by
+hand. The shipyard guard was already suspected — it is `BasicLeverGuardPower ×
+ConnectionGuardLevel × 20` with the 20 an immediate at `0xECC901` — and this
+settles it over the image rather than over one function.
+
+**`TransitiveTileIntensity` is settled, and the earlier claim was right for the
+wrong reason.** It was written down twice as "never read here", meaning in the
+paint step; the honest version needed the whole image, and it now has one. Ten
+instructions in the generator's range carry the displacement `+0x168` and every
+one was looked at: four are `mov dword ptr [esi+168h],<string>` in an unrelated
+constructor, six are the price-list walk at `0xEB975F` reading a vector's
+`begin`/`end` pair at `+0x168`/`+0x16C` of a different object. The 200 in the
+file reaches nothing, and 250 changes no byte of the map.
+
+`CreatureMinStackAmount`, `CreatureMaxStackAmount` and the whole
+`CreatureStackParams` block being inert is worth pausing on, because the names
+promise the opposite: guard stack sizes come from somewhere else entirely — the
+`SetMonster` path the port already models, `BasicLeverGuardPower × the type's
+level` — and these three numbers are a design that was never wired up.
+
+### `SRMGTemplate` — `GraalOnMap` and `Underground` are dead
+
+The template object is `0x50` of base and then ten fields:
+
+| off | field | read by |
+| --- | --- | --- |
+| `+0x50` | Name | the editor's template list |
+| `+0x5C` `+0x60` `+0x64` | Zones — begin, end, capacity | everything |
+| `+0x68` `+0x6C` | Connections — begin, end | the connections phase |
+| `+0x74` | **GraalOnMap** | **nothing** |
+| `+0x78` `+0x7C` | MinPlayers, MaxPlayers | the eligibility filter and the player draw |
+| `+0x80` `+0x84` | MinMapSize, MaxMapSize | the same two |
+| `+0x88` | **Underground** | **nothing** |
+| `+0x89` | TestTemplate | the eligibility filter |
+
+`GraalOnMap` and `Underground` are parsed by the serialiser, given defaults by
+the constructor (`0x8800FE`, `0x880117` in the editor), copied field for field
+when a template object is copied (`0x881195`), and then branched on by no
+instruction in either executable. Setting each to `true` in a template and
+ordering the same map produces the identical output — while zone 0's
+`TreasureDensity` and `Prisons` in the same file rewrite twenty-odd thousand
+bytes of terrain, so the probe was not asleep.
+
+That a map has an underground is the ORDER's business, not the template's: the
+dialog's checkbox and our `-underground` switch decide it, and `create-map.ts`
+already takes it from the request. The Grail is placed by the upgrade-buildings
+step in the favoured zone regardless of the flag. So the two are data the
+format carries and the engine ignores.
+
+The eligibility filter deserves a name, because it is why `MinPlayers`,
+`MaxMapSize` and `TestTemplate` are read at all: at `0xCF7B17` the editor walks
+the template list rejecting anything with `TestTemplate` set, then anything
+whose size range does not contain the chosen size and whose player range does
+not contain the chosen count. That is the DIALOG's list, not the generator —
+and the console command bypasses it, which is why `rmg` will happily generate
+from a template the dialog would not have offered.
+
+### The template's ZONE — three of its twenty-five feed nothing
+
+A zone item is `0x74` bytes and twenty-five fields, and the item pointer is
+never handed out by a getter: it is `template+0x5C` plus a multiple of the
+stride, which is why the sweep needs `--deref`. Nine sites in the whole image
+step by that stride, all of them between `0xEA1D40` and `0xEA5B70`.
+
+| off | field | read by |
+| --- | --- | --- |
+| `+0x04` | Index | the per-zone driver, `0xEA414A` |
+| `+0x08` | Setting | LoadTemplate, `0xEA2358` — compared against 1, 2, 0 |
+| `+0x0C` | **CanBeWater** | **nothing found** |
+| `+0x10` | Size | LoadTemplate's floor balancing |
+| `+0x14` | CanBePlayerStart | LoadTemplate, `0xEA2370`/`0xEA23DF`/`0xEA243B` |
+| `+0x15` | Town | the town step, `0xEA5CB0` |
+| `+0x18` | TownGuardStrenght | the town step, `0xEA5FC6` — × `BasicLeverGuardPower` |
+| `+0x1C` | Shipyard | LoadTemplate, `0xEA2526`, water branch only |
+| `+0x20` | Mines | the mines step, `0xEB6030` — the address is formed at `0xEA4228` |
+| `+0x2C` | AbandonedMines | the abandoned-mines step |
+| `+0x30` | Dwellings | the dwellings step, `0xEB8C2C` — address formed at `0xEA456B` |
+| `+0x3C` … `+0x64` | the eleven density and points fields | their price-list workers |
+| `+0x68` | **DenOfThieves** | **nothing** |
+| `+0x6C` | **RedwoodObservatoryDensity** | **nothing** |
+| `+0x70` | BuffPoints | read, and thrown away — see below |
+
+**The observatory claim was right, and now it is earned.** `0xEBF930` IS the
+observatory and den-of-thieves step — its two static holders resolve
+`Redwood_Observatory` and `Den_Of_Thieves` — and it IS handed the whole zone
+item at `0xEA52FE`. It then never reads it: its argument is only reachable as
+`[ebp+8]`, its body contains no such reference, and `ebp` is repurposed as a
+general register partway through. Both numbers come from somewhere else
+entirely — the observatory count is **the zone's tile count ÷ 1000 + 1**
+(`0xEBF948`), and the den of thieves is **a 2-in-10 roll**, once per zone, on
+non-start zones only (`0xEBFC3C`). So the two densities in every shipped
+template are decoration: changing zone 0's from 100 to 400 and its
+`DenOfThieves` from 1 to 9 leaves the map identical.
+
+**`BuffPoints` is why READ and CONSUMED are two words.** The driver does read
+`+0x70` and does pass it — to `0xEC04D0`, whose entire body is `ret 4`. The
+static sweep therefore counts it read, and the probe finds it inert, and both
+are right about different things.
+
+**`CanBeWater` is the one field neither instrument settles.** No read of `+0x0C`
+appears anywhere: LoadTemplate's every dereference of the item was enumerated
+(`+4`, `+8`, `+0x10`, `+0x14`, `+0x1C`) and this is not among them, and the
+water branch is taken on a GENERATOR-level flag instead. But the console
+command has no water switch, so every map this batch can order is dry, and a
+probe on a dry map could not tell an unread field from an unreachable one. It
+stands as unread by the code, unprobed by the engine.
+
+### The preset table — the road strengths reach nothing
+
+`RMGPresetTable.xdb` carries a `*Strenght` int behind each of its four tile
+references, 100 in every race. The road painter puts the literal 255 at a
+tile's four corners, which is what made them suspect; the probe settles it.
+Changing **every** occurrence in the document — all nine races at once —
+changes no byte of the map, for `RoadTileStrenght`, `SecondaryRoadTileStrenght`,
+`WaterTileStrenght` and `WaterBottomTileStrenght` alike.
+
+The control that makes those four mean something is `GuardStrenght`: changing
+every one of its 484 occurrences DOES move `map.xdb`, so the loose file is
+being read and the probe is not asleep. It is also the limit of this
+particular probe — it is document-wide, so it cannot separate the vector where
+`GuardStrenght` is live (upgrade buildings, pushed into `0xED3200`) from the
+four where it is dead, and the earlier finding about those four stands
+untouched by it.
+
+Three fields of the preset's statics block — `SetProbability`,
+`ConcurentProbability`, `BorderWidth` — also came out inert, but only five
+races carry that block and the reference order may not use one of them, so
+that is a lead rather than a verdict.
 
 ## What the executable says about itself
 
@@ -3232,8 +3526,9 @@ takes its zone's RoadTile (preset `+0x4C`), else the SecondaryRoadTile
 GetZone and silently skipped when missing. The tile paints its FOUR
 corner vertices at the literal 255 — `RoadTileStrenght` and
 `SecondaryRoadTileStrenght` sit in the data at 100 and are never read,
-the same fate as `TransitiveTileIntensity` — through the ordinary
-PaintTile, which is the whole of the layer arithmetic:
+the same fate as `TransitiveTileIntensity`, all three of them settled
+over the whole image and then on the engine ("Which fields the engine
+actually reads") — through the ordinary PaintTile, which is the whole of the layer arithmetic:
 
 - Dead_Land (Inferno's secondary, `TT_LAVA`, priority 60) shares Lava's
   class, so its 255 overflows the 255 base and strips Lava — the 175
