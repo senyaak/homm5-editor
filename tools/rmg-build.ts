@@ -46,6 +46,18 @@ export interface MapOrder {
   /** `CoCreateGuid`'s, uppercase with dashes. */
   guid: string;
   mapName: string;
+  /**
+   * The dialog's Minimap tick, default on.
+   *
+   * Off is worth having because it costs the generator NOTHING — the same
+   * order with it off spends the same 92438 draws and writes the same terrain
+   * — while taking the port's one remaining difference off the table: with no
+   * minimap asked for the engine writes neither `minimap_floor_0N.dds` nor its
+   * `.xdb`, and the map points its thumbnail at a stock texture instead. A
+   * sweep ordered that way shows only real differences. It HIDES the ten-byte
+   * minimap debt rather than paying it, which is the whole of what it does.
+   */
+  minimap?: boolean;
 }
 
 /** One entry of the archive, named the way the map folder holds it. */
@@ -202,11 +214,14 @@ export function buildMapFiles(
           races,
           mapName: order.mapName,
         },
+        minimap: order.minimap !== false,
       }), 'utf8'),
     },
     {
       name: 'map-tag.xdb',
-      data: Buffer.from(buildRmgMapTag({ tiles: c.size, twoLevel, players: order.players }), 'utf8'),
+      data: Buffer.from(buildRmgMapTag({
+        tiles: c.size, twoLevel, players: order.players, minimap: order.minimap !== false,
+      }), 'utf8'),
     },
     // Empty, and the engine writes it — a marker rather than a document.
     { name: '1.test', data: Buffer.alloc(0) },
@@ -251,10 +266,12 @@ export function buildMapFiles(
     });
   }
 
-  const sine = readEngineSine(exePath);
-  const icons = loadMinimapIcons(dataRoot);
-  for (let f = 0; f < c.floors.length; f++) {
-    files.push(...minimapFiles(dataRoot, run, f, layers[f]!, river, sine, icons));
+  if (order.minimap !== false) {
+    const sine = readEngineSine(exePath);
+    const icons = loadMinimapIcons(dataRoot);
+    for (let f = 0; f < c.floors.length; f++) {
+      files.push(...minimapFiles(dataRoot, run, f, layers[f]!, river, sine, icons));
+    }
   }
   return files;
 }

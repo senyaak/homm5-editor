@@ -321,6 +321,12 @@ export interface RmgMapInput {
   groundAmbientLight: string;
   /** How many player slots are active (the first N). */
   players: number;
+  /**
+   * The dialog's Minimap tick. With it off the engine writes no minimap files
+   * and points the thumbnail at a stock texture, and says so in the record —
+   * two lines, and nothing else about the map changes.
+   */
+  minimap?: boolean;
   sRMG: {
     version: number;
     seed: number;
@@ -369,7 +375,12 @@ function patchNth(text: string, marker: string, replacement: string, n: number):
 /** The RMG's map-tag.xdb — the lobby-facing summary next to map.xdb. */
 export function buildRmgMapTag(input: {
   tiles: number; twoLevel: boolean; players: number;
+  /** The order's Minimap tick — the tag carries the same thumbnail as the map. */
+  minimap?: boolean;
 }): string {
+  const thumb = (floor: number): string => (input.minimap === false
+    ? '\t\t<Item href="/UI/RMGScreen/GriffinPicAdopted.(Texture).xdb#xpointer(/Texture)"/>'
+    : `\t\t<Item href="minimap_floor_0${floor}.xdb#xpointer(/Texture)"/>`);
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<AdvMapDescTag>',
@@ -384,8 +395,8 @@ export function buildRmgMapTag(input: {
     ...Array.from({ length: input.players }, () => '\t\t<Item>1</Item>'),
     '\t</teams>',
     '\t<thumbnailImages>',
-    '\t\t<Item href="minimap_floor_01.xdb#xpointer(/Texture)"/>',
-    ...(input.twoLevel ? ['\t\t<Item href="minimap_floor_02.xdb#xpointer(/Texture)"/>'] : []),
+    thumb(1),
+    ...(input.twoLevel ? [thumb(2)] : []),
     '\t</thumbnailImages>',
     `\t<HasUnderground>${input.twoLevel}</HasUnderground>`,
     '\t<RandomMap>true</RandomMap>',
@@ -474,11 +485,15 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
   text = patch(text, `\t<spellIDs>${NL}\t</spellIDs>`, '\t<spellIDs/>');
   text = patch(text, `\t<artifactIDs>${NL}\t</artifactIDs>`, '\t<artifactIDs/>');
 
-  // The minimap thumbnails — one per floor.
+  // The minimap thumbnails — one per floor, or the stock picture when the
+  // order asked for no minimap at all.
+  const thumb = (floor: number): string => (input.minimap === false
+    ? '\t\t<Item href="/UI/RMGScreen/GriffinPicAdopted.(Texture).xdb#xpointer(/Texture)"/>'
+    : `\t\t<Item href="minimap_floor_0${floor}.xdb#xpointer(/Texture)"/>`);
   text = patch(text, '\t<thumbnailImages/>', [
     '\t<thumbnailImages>',
-    '\t\t<Item href="minimap_floor_01.xdb#xpointer(/Texture)"/>',
-    ...(input.twoLevel ? ['\t\t<Item href="minimap_floor_02.xdb#xpointer(/Texture)"/>'] : []),
+    thumb(1),
+    ...(input.twoLevel ? [thumb(2)] : []),
     '\t</thumbnailImages>',
   ].join(NL));
 
@@ -529,7 +544,9 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
     ].join(NL),
     ['\t\t\t<PlayersInfo>', ...playersInfo, '\t\t\t</PlayersInfo>'].join(NL));
   text = patch(text, '\t\t\t<MapName/>', `\t\t\t<MapName>${s.mapName}</MapName>`);
-  text = patch(text, '\t\t\t<Minimap>false</Minimap>', '\t\t\t<Minimap>true</Minimap>');
+  if (input.minimap !== false) {
+    text = patch(text, '\t\t\t<Minimap>false</Minimap>', '\t\t\t<Minimap>true</Minimap>');
+  }
   text = patch(text, '\t\t\t<ResourceMultiplier>RESOURCE_MISERABLE</ResourceMultiplier>',
     '\t\t\t<ResourceMultiplier>RESOURCE_LITTLE</ResourceMultiplier>');
   text = patch(text, '\t\t\t<ExpMultiplier>EXP_MISERABLE</ExpMultiplier>',

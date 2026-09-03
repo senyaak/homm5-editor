@@ -85,6 +85,10 @@ const template = one(/<Template href="\/RMG\/Templates\/([^.]+)\.xdb/, 'Template
 const waterName = one(/<WaterAmount>(\w+)</, 'WaterAmount');
 const monster = one(/<MonsterLevel>(\w+)</, 'MonsterLevel');
 const underground = /<HasUnderground>true</.test(text);
+// The order's Minimap tick, taken from the record like everything else: an
+// order made with it off writes no minimap files, and the port must not write
+// them either or the comparison reports a difference the order asked for.
+const minimap = !/<Minimap>false</.test(text);
 
 const SIZE_NAMES = [
   'MAP_SIZE_TINY', 'MAP_SIZE_SMALL', 'MAP_SIZE_MEDIUM', 'MAP_SIZE_LARGE',
@@ -99,7 +103,8 @@ if (size === undefined || water < 0) {
 }
 console.log(`${archive}`);
 console.log(`  ordered: ${template} ${sizeName.replace('MAP_SIZE_', '').toLowerCase()} ${size}x${size},`
-  + ` ${players} players, seed ${seed}, ${waterName}, ${monster}${underground ? ', underground' : ''}`);
+  + ` ${players} players, seed ${seed}, ${waterName}, ${monster}${underground ? ', underground' : ''}`
+  + `${minimap ? '' : ', no minimap'}`);
 // The chain always orders MEDIUM: mapSetup takes a fixed monsterStrength of 1.
 // Saying so beats a silent mismatch buried in an object's army.
 if (monster !== 'MONSTER_LEVEL_MEDIUM') {
@@ -109,7 +114,7 @@ if (monster !== 'MONSTER_LEVEL_MEDIUM') {
 const run = runFull(dir, { seed, template, size, underground, water: water || undefined });
 console.log(`  replayed: ${run.c.rng.draws} draws, ${run.objects.length} objects`);
 const ours = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), run,
-  { seed, template, players, underground, water, guid, mapName });
+  { seed, template, players, underground, water, guid, mapName, minimap });
 
 const ourNames = new Set(ours.map((f) => f.name));
 const missing = [...theirs.keys()].filter((n) => !ourNames.has(n));
