@@ -1293,37 +1293,87 @@ All three are ours to close from the extension that is already imported into
 the editor: `0xdede00` is the same command line arriving at the END of
 `InitInstance`, the seed hook is already installed, and a save is a call.
 
-**Two of the three are closed** — `native/rmg/cli.c`:
+**All three are closed** — `native/rmg/cli.c`. One launch, any number of
+orders, and the engine's own map beside every one of them:
 
 ```
-H5_MapEditor_H5E.exe --rmg S1P2Z2M1 -seed 1785351845
-H5_MapEditor_H5E.exe --rmg "S1P2Z2M1 -seed 42; S1P2Z2M1 -seed 43 -size 1"
+H5_MapEditor_H5E.exe --rmg
 ```
 
-Semicolons separate orders; each one is the engine's own `rmg` line plus our
-`-seed`, which is taken out before the line is handed over (an unknown switch
-would be read as part of the template's name). The DLL reads the ask off
-`GetCommandLineA` at load — early enough to turn the oracle on for the run,
-which is why a batch never comes back with no readings in it — and runs the
-orders from a detour on `0xdede00`, the moment the editor was going to open a
-document. Then the process ends: the readings are already on disk, a line at a
-time, and an editor left on the screen would only have to be closed before the
-next launch.
+with `bin/homm5-editor-rmg-orders.txt` holding one order to a line:
 
-Three addresses, all the editor's, all checked against their bytes first —
+```
+RMG/Templates/S1P2Z2M1.xdb -seed 1785351845
+RMG/Templates/S1P2Z2M1.xdb -seed 1785351845 -size 1
+```
+
+Each order is the engine's own `rmg` line plus our `-seed`, which is taken out
+before the line is handed over (an unknown switch would be read as part of the
+template's name). The DLL reads the ask off `GetCommandLineA` at load — early
+enough to turn the oracle on for the run, which is why a batch never comes back
+with no readings in it — and says the lines from a detour on `0xdede00`, the
+moment the editor was going to open a document. Then the process ends.
+
+Four addresses, all the editor's, all checked against their bytes first —
 written here as this document writes them, and in the C file as RVAs, which is
 what a detour takes: `0xdede00` (the argument site, seven bytes and two whole
 instructions, the second one's operand relocated), `0xe342b0` (`Execute`, whose
-`this` IS the wide string), `0x407d00` (`wstring(begin, end)`, which allocates
-through the engine's own allocator so the console may do anything with the line
-it would do with a typed one). The line is not freed afterwards, deliberately:
-the deleter is behind an import thunk the loader rewrites, and a wrong free in
-a process that is about to exit costs more than the buffer.
+`this` IS the wide string), `0x407d00` (`wstring(begin, end)`), `0x4031d0` and
+`0xe33520` (a narrow string and the engine's named-value lookup, which are the
+self-test). Neither string is freed afterwards, deliberately: the deleter is
+behind an import thunk the loader rewrites, and a wrong free in a process about
+to exit costs more than the buffer.
 
-What is still open is the save. Nothing in the 79 registered commands writes a
-`.h5m`, so a batch buys the DRAW COUNTS for any order — which is what a
-diverging phase needs — and not the byte comparison, which still wants a map
-saved by hand.
+**Four things this cost, each of them a measurement rather than a guess, and
+each of them a trap the next person would fall into.**
+
+- **A SPACE in the editor's command line kills it.** `H5_MapEditor_H5E.exe foo`
+  puts up "Can't load foo file"; `"foo bar"` dies at `0x5f9d22` with every
+  register zero, long before the argument reaches anything of ours — proved by
+  running the same line with the detour deliberately not written. That is why
+  the orders live in a file and the command line is the bare `--rmg`.
+- **The return value of `Execute` means nothing.** It answers -1 to `help`, to
+  `rmg`, and to a `setvar` that demonstrably lands. So the batch does not read
+  it; it asks a question with two engine-owned halves instead — `setvar h5e_door
+  = 7` through the door, then the engine's own `0xe33520` lookup — and writes
+  `door 7` before the first order. Without that check the first three sessions
+  read "the door does not work" off a number that never meant it.
+- **A cfg is not a way to run a command.** `0xe345f0` executes
+  `..\profiles\*.cfg` and is the path `map_editor_mode` itself arrives by, but
+  it only *sets values*: `setvar` through it lands, `exit` and `rmg` through it
+  do nothing at all.
+- **The template is a PATH, not a name.** `rmg S1P2Z2M1` does nothing;
+  `rmg RMG/Templates/S1P2Z2M1.xdb` generates. A leading slash also does nothing.
+
+**And the command saves.** `rmg` writes the map itself, to
+`data\RMGTemp\CurrentMap\` — the same sixteen documents a `.h5m` holds, loose,
+overwritten by the next order. So each order's files are copied to
+`bin\rmg-runs\<n>\` before the next one runs, which is the byte comparison the
+port had for exactly one order until now.
+
+**The first thing the batch answered, in its first working launch.** Seed
+1785351845 on `S1P2Z2M1` at three sizes:
+
+| `-size` | what the map records | draws |
+| --- | --- | --- |
+| 0 | `MAP_SIZE_TINY` | 49,660 |
+| 1 | `MAP_SIZE_SMALL` | 91,114 |
+| 2 (the default) | `MAP_SIZE_MEDIUM` | 200,217 |
+
+So **`-size` is the dialog's own MapSize index**, and the conversion `vt+0x18`
+that `rmg-pack`'s `--size` is guarded behind is a conversion of that index — the
+question the guard names is answered on the ordering side, whatever the reading
+of `vt+0x18` turns out to say.
+
+The SMALL run is the reference's order and comes out 91,114 against the
+reference's 92,438. Diffing the two maps' `sRMGProps` says why, and says it
+exactly: everything agrees — size, players, template, water, monsters,
+underground, both races — except **`ResourceMultiplier`** and
+**`ExpMultiplier`**, `RESOURCE_LITTLE`/`EXP_LITTLE` in the reference against
+`RESOURCE_NORMAL`/`EXP_NORMAL` from the command. The command has no switch for
+either. That is a 1,324-draw difference with a named cause and two fields to
+read next, which is a better place to stand than "another order, another
+number".
 
 **The data, on the other hand, is already ours** — plain XML under
 `data-unpacked/RMG/`, unpacked from `a2p1-data.pak`:

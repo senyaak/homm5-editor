@@ -456,6 +456,25 @@ static void load_rmg_config(void) {
 // The two hooks.
 
 /**
+ * A BATCH's seeds, one per generation, in the order the orders were given.
+ *
+ * The config's single `seed` line answers "which map" for a launch that makes
+ * one. A batch makes several, and it cannot set the seed just before each,
+ * because the orders it queues are all queued before any of them runs — the
+ * engine executes a cfg's commands from its main loop, not where they were
+ * said. So the seeds queue too, and this is where one is taken: the hook fires
+ * exactly once per generation, so the Nth firing is the Nth order.
+ *
+ * A zero means "that order did not ask for one" and the clock decides, which
+ * the run still writes down. Filled by native/rmg/cli.c, which is spliced in
+ * below this file and so can reach these while the reverse is not true.
+ */
+#define RMG_SEED_QUEUE 64
+static int g_rmgSeedQueue[RMG_SEED_QUEUE];
+static int g_rmgSeedQueued = 0;
+static int g_rmgSeedTaken = 0;
+
+/**
  * Where the seed is born: the engine asking the clock what time it is.
  *
  * Answering with a number of our own is what makes a specific map askable for,
@@ -467,6 +486,11 @@ static void load_rmg_config(void) {
  */
 static long __cdecl rmg_time_hook(void *arg) {
   long real = g_time ? g_time(arg) : 0;
+  if (g_rmgSeedTaken < g_rmgSeedQueued) {
+    int queued = g_rmgSeedQueue[g_rmgSeedTaken++];
+    if (queued) return (long)queued;
+    return real;
+  }
   return g_rmgForceSeed ? (long)g_rmgSeed : real;
 }
 
