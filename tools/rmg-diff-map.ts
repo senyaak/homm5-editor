@@ -1,6 +1,7 @@
 // Any map the ENGINE generated, against the same map from the port.
 //
 //   npm run rmg-diff-map -- --game <dir> "game/Maps/<the run>.h5m"
+//   npm run rmg-diff-map -- --game <dir> game/bin/rmg-runs/1
 //
 // A map carries its own order: `sRMGProps` records the seed, the template,
 // the size, the water and the players it was asked for, and the GUID and name
@@ -8,11 +9,18 @@
 // the editor, save it, point this at it, and it says which of the seventeen
 // entries the port reproduces and which it does not.
 //
+// EITHER AN ARCHIVE OR A FOLDER, because the two ways of ordering a map end
+// differently. Saving from the editor's dialog writes a packed `.h5m`; the
+// console command the batch uses leaves the documents loose in
+// `data/RMGTemp/CurrentMap`, which `native/rmg/cli.c` copies to
+// `bin/rmg-runs/<n>`. They are the same seventeen files either way, so this
+// takes whichever it is pointed at and the batch needs no packing step.
+//
 // This is the oracle every seed but the reference's is missing. Playing a
 // generated map says only that it loads; this says whether it is the map the
 // engine would have made.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { readEntries } from '../src/format/pak.ts';
@@ -34,20 +42,32 @@ if (!existsSync(join(dir, 'RMG'))) {
 }
 const game = gameDir();
 
-const entries = readEntries(readFileSync(archive));
-const mapEntry = entries.find((e) => e.name.endsWith('/map.xdb') || e.name === 'map.xdb');
+const theirs = new Map<string, Buffer>();
+if (statSync(archive).isDirectory()) {
+  for (const name of readdirSync(archive)) {
+    const path = join(archive, name);
+    if (statSync(path).isFile()) theirs.set(name, readFileSync(path));
+  }
+} else {
+  const entries = readEntries(readFileSync(archive));
+  const holder = entries.find((e) => e.name.endsWith('/map.xdb') || e.name === 'map.xdb');
+  if (!holder) {
+    console.error(`${archive} holds no map.xdb — is it a map?`);
+    process.exit(2);
+  }
+  const folder = holder.name.slice(0, holder.name.lastIndexOf('/'));
+  for (const e of entries) {
+    if (folder && !e.name.startsWith(`${folder}/`)) continue;
+    theirs.set(e.name.slice(folder ? folder.length + 1 : 0), e.data);
+  }
+}
+const mapEntry = theirs.get('map.xdb');
 if (!mapEntry) {
   console.error(`${archive} holds no map.xdb — is it a map?`);
   process.exit(2);
 }
-const folder = mapEntry.name.slice(0, mapEntry.name.lastIndexOf('/'));
-const theirs = new Map<string, Buffer>();
-for (const e of entries) {
-  if (folder && !e.name.startsWith(`${folder}/`)) continue;
-  theirs.set(e.name.slice(folder ? folder.length + 1 : 0), e.data);
-}
 
-const text = mapEntry.data.toString('utf8');
+const text = mapEntry.toString('utf8');
 const one = (re: RegExp, what: string): string => {
   const m = re.exec(text);
   if (!m) {

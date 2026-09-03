@@ -1267,7 +1267,7 @@ strings and its parser is `0x73c910`:
 | the first non-switch word | the template href | — | `#xpointer(/RMGTemplate)` is appended when absent; "Couldn't find template " if it does not resolve |
 | `-players <n>` | `props+0x20` | 2 | |
 | `-size <n>` | `props+0x28` | 2 | |
-| `-underground <n>` | `props+0x25` | 0 | stored as a bool |
+| `-underground <n>` | `props+0x25` | 0 | stored as a bool; reaches the request's `+0x0D`, which is also what the dialog's template filter reads |
 | `start` | `props+0x2C` | absent | play the map once it exists |
 
 The handler copies those into the settings struct the generator takes (built
@@ -1313,9 +1313,9 @@ RMG/Templates/S1P2Z2M1.xdb -seed 1785351845
 RMG/Templates/S1P2Z2M1.xdb -seed 1785351845 -size 1
 ```
 
-Each order is the engine's own `rmg` line plus our `-seed`, which is taken out
-before the line is handed over (an unknown switch would be read as part of the
-template's name). The DLL reads the ask off `GetCommandLineA` at load — early
+Each order is the engine's own `rmg` line plus our `-seed`, `-resource` and
+`-exp`, all three taken out before the line is handed over (an unknown switch
+would be read as part of the template's name). The DLL reads the ask off `GetCommandLineA` at load — early
 enough to turn the oracle on for the run, which is why a batch never comes back
 with no readings in it — and says the lines from a detour on `0xdede00`, the
 moment the editor was going to open a document. Then the process ends.
@@ -1329,6 +1329,34 @@ instructions, the second one's operand relocated), `0xe342b0` (`Execute`, whose
 self-test). Neither string is freed afterwards, deliberately: the deleter is
 behind an import thunk the loader rewrites, and a wrong free in a process about
 to exit costs more than the buffer.
+
+**And the command does not order the same map the dialog does — until it is
+made to.** The first CLI order of the reference's own seed and template came
+out 970 draws short and a different map, and the two `sRMGProps` blocks
+differed in exactly two lines: `RESOURCE_NORMAL`/`EXP_NORMAL` against the
+reference's `RESOURCE_LITTLE`/`EXP_LITTLE`.
+
+That is not a property recorded after the fact. The console handler builds the
+RMG request with `0x467E10` and fills three of its fields — the size at
+`+0x10`, the underground at `+0x0D`, the players at `+0x18` — leaving the rest
+at the constructor's defaults, and two of those defaults are the multipliers at
+`+0x98` and `+0xA0`, both **NORMAL**. The enum runs MISERABLE, LITTLE, NORMAL,
+LOTS, MUCH from zero, so NORMAL is 2 and the constructor's `mov [esi+98h],edi`
+with `edi = 2` is where the difference comes from. The record lives on the
+handler's stack, so nothing outside can reach it — which is why `-resource` and
+`-exp` are applied by a detour on that constructor (`native/rmg/cli.c`), the
+values stashed while the order is parsed and written the moment the request is
+built.
+
+**With them said, the batch reproduces the reference exactly.** The same order
+with `-resource 1 -exp 1` lands on **92438**, the reference's own count, and
+`rmg-diff-map` puts the port's map against the engine's at **13 of 15 entries
+byte-identical** — `GroundTerrain.bin` among them — with the minimap's ten
+channel bytes and one numbering difference left. The numbering is the port's:
+the engine's CLI-ordered run emits two caption texts and calls the objectives'
+`caption-text-0/1`, while the port, fitted to a dialog-ordered reference that
+emitted two more before them, calls the same two `caption-text-2/3`. The
+counter should follow what is actually emitted; it does not yet.
 
 **Four things this cost, each of them a measurement rather than a guess, and
 each of them a trap the next person would fall into.**
@@ -1526,7 +1554,8 @@ saying so:
 | players | ordered (`--players`) — a DRAWN value, and it feeds zone loading |
 | monster level | ordered (`--monsters`) — it scales every connection guard |
 | **map size** | **not orderable.** The dialog's size reaches `createMap` in the TEMPLATE's own units and the conversion is `vt+0x18`, unread. The chain orders the references' 8; `--size` lays out the grid only, and `rmg-pack` refuses a size the references never used unless `--unchecked` says to do it anyway |
-| RandomTowns, ResourceMultiplier, ExpMultiplier, Grail, StartHero | not ordered — `map.xdb` carries the references' fixed values |
+| **ResourceMultiplier, ExpMultiplier** | **ordered** (`-resource`, `-exp`) — and they are not cosmetic: see below |
+| RandomTowns, Grail, StartHero | not ordered — `map.xdb` carries the references' fixed values |
 
 And the settings that ARE ordered are ordered, not checked: only the three
 reference orders have a map from the engine to be compared against. `npm run
@@ -1753,12 +1782,15 @@ a second floor costs, so the underground choice narrows the offered templates
 through their SIZE RANGE. The link is real and it is indirect: the engine
 consults `MinMapSize` and `MaxMapSize`, never `Underground`.
 
-What is proved here and what is not: the doubling branch and its `>= 10` gate
-are read out of the code, and so is the pair of adjacent flags in the screen's
-own request record — `[ebx+0x0C]` and `[ebx+0x0D]`, both clear — that selects it.
-That those two flags ARE the underground checkbox is inference from what the
-branch does, not something the disassembly says. Finding the handler that
-writes them would settle it.
+**And the flag is named, not guessed.** The branch is selected when
+`[ebx+0x0C]` is clear and `[ebx+0x0D]` is set, and `+0x0D` of that record is
+where the console command's own handler puts the value of `-underground`
+(`0x73CEDB`, the settings built one instruction earlier by `0x467E10`; the
+slots are named by `net-probe --frame`, not counted by eye). So the record is
+the RMG request, `+0x0D` is the underground, and asking for one doubles the
+size the template's range has to contain. The first version of this paragraph
+had the condition backwards — "both clear" — which is what reading a
+`cmp`/`jne` pair without following the fall-through gets you.
 
 The eligibility filter deserves a name, because it is why `MinPlayers`,
 `MaxMapSize` and `TestTemplate` are read at all: at `0xCF7B17` the editor walks

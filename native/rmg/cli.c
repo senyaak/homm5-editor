@@ -83,6 +83,31 @@
  * sets values; it does not invoke commands, which is what a batch needs.
  */
 #define RMG_CLI_EXEC_LINE_RVA 0xa342b0u
+/**
+ * The RMG REQUEST's constructor — where an order's defaults come from.
+ *
+ * The console command fills three fields of the record this builds — the size
+ * at `+0x10`, the underground at `+0x0D`, the players at `+0x18` (0x73cea0
+ * builds it, 0x73cecc onward fills it; the slots named by `net-probe --frame`)
+ * — and leaves everything else at what this constructor put there. Two of
+ * those defaults are the multipliers, `+0x98` and `+0xA0`, both NORMAL: the
+ * enum runs MISERABLE, LITTLE, NORMAL, LOTS, MUCH from zero, and NORMAL is 2.
+ *
+ * That is the whole difference between an order given here and the same order
+ * given in the dialog, and it is not cosmetic — the reference run was ordered
+ * LITTLE and lands 970 draws away from the same order given as a command. So
+ * the batch has to be able to say them, and this is the only place they can be
+ * said from: the record lives on the handler's stack and nothing outside can
+ * reach it.
+ *
+ * Seven bytes, two whole instructions, the second one's operand relocated —
+ * the same shape as the command-line site above.
+ */
+#define RMG_CLI_REQUEST_RVA 0x67e10u
+/** `+0x98` ResourceMultiplier and `+0xA0` ExpMultiplier, both enums from zero. */
+#define RMG_CLI_RESOURCE_OFF 0x98u
+#define RMG_CLI_EXP_OFF 0xa0u
+
 /** `wstring::wstring(begin, end)` — the only kind of string that door takes. */
 #define RMG_CLI_WSTR_RVA 0x7d00u
 /** `string::string(const char *)` — the narrow one, for asking after a name. */
@@ -319,6 +344,27 @@ static void rmg_cli_keep(int which) {
 }
 
 /**
+ * What the next order wants the two multipliers to be, or -1 for the default.
+ *
+ * Set while an order is parsed and read by the hook below, which runs inside
+ * the command's own handler a moment later — the same hand-off the seed queue
+ * makes, and safe for the same reason: one order runs at a time.
+ */
+static int g_rmgResource = -1;
+static int g_rmgExp = -1;
+
+typedef void *(__fastcall *RmgRequestCtorFn)(void *self, void *edx);
+static RmgRequestCtorFn g_rmgRequestCtor;
+
+/** The request, built as the engine builds it, then told what we were told. */
+static void *__fastcall rmg_request_ctor_hook(void *self, void *edx) {
+  void *made = g_rmgRequestCtor(self, edx);
+  if (g_rmgResource >= 0) *(int *)((BYTE *)self + RMG_CLI_RESOURCE_OFF) = g_rmgResource;
+  if (g_rmgExp >= 0) *(int *)((BYTE *)self + RMG_CLI_EXP_OFF) = g_rmgExp;
+  return made;
+}
+
+/**
  * One order: our own `-seed` taken out of it, everything else handed to `rmg`.
  *
  * The engine's parser takes what is left after its own switches as the
@@ -355,6 +401,10 @@ static void rmg_cli_run_order(const char *from, const char *to) {
   // order is QUEUED here and generated later, so a seed set now would be the
   // seed of whichever order was parsed last (native/rmg/oracle.c).
   int wanted = 0;
+  // Each order says its own; one that says nothing gets the engine's default
+  // rather than the previous order's.
+  g_rmgResource = -1;
+  g_rmgExp = -1;
   const char *p = from;
   while (p < to) {
     p = rmg_cli_spaces(p, to);
@@ -369,6 +419,20 @@ static void rmg_cli_run_order(const char *from, const char *to) {
         p = q;
       } else {
         rmg_log("cli: -seed with no number after it - the engine will pick one");
+      }
+      continue;
+    }
+    // Ours as well, and taken out of the line for the same reason as the seed:
+    // the engine's parser would read an unknown switch as the template's name.
+    if (rmg_cli_word_is(word, p, "-resource") || rmg_cli_word_is(word, p, "-exp")) {
+      int forResource = rmg_cli_word_is(word, p, "-resource");
+      const char *q = rmg_cli_spaces(p, to);
+      int value = 0;
+      if (read_int(&q, to, &value)) {
+        if (forResource) g_rmgResource = value; else g_rmgExp = value;
+        p = q;
+      } else {
+        rmg_log("cli: -resource/-exp with no number after it - leaving the default");
       }
       continue;
     }
@@ -548,6 +612,14 @@ static int install_rmg_cli(void) {
   g_rmgCliVar = (VarLookupFn)(base + RMG_CLI_VAR_RVA);
   g_rmgCliExecLine = (ExecLineFn)(base + RMG_CLI_EXEC_LINE_RVA);
   g_rmgCliWString = (WStringRangeFn)(base + RMG_CLI_WSTR_RVA);
+
+  static const BYTE ctorHead[] = { 0x6a, 0xff, 0x68, 0x59, 0x87, 0x02, 0x01 };
+  static const BYTE ctorSkip[] = { 0, 0, 0, 1, 1, 1, 1 };
+  g_rmgRequestCtor = (RmgRequestCtorFn)detour_relocated(
+      RMG_CLI_REQUEST_RVA, ctorHead, ctorSkip, sizeof(ctorHead),
+      (void *)rmg_request_ctor_hook, "the rmg request");
+  rmg_log(g_rmgRequestCtor ? "cli: the multipliers can be ordered"
+                           : "cli: the multipliers cannot be ordered - defaults stand");
 
   g_rmgCliArgOrig = detour_relocated(RMG_CLI_ARG_RVA, argHead, argSkip, sizeof(argHead),
                                      (void *)rmg_cli_arg_hook, "the editor's command line");
