@@ -235,9 +235,30 @@ surface file and nowhere else.
 writes the `.h5m`, and against the reference the archive's 17 entries come out
 15 byte-identical with the other two apart by the two amounts named below —
 one uninitialised engine byte in the terrain file, ten channel bytes in the
-minimap. What is left is not the generator: an entry point in the editor's
-own interface, and the same run against the underground and water references
-end to end.
+minimap.
+
+**What is decided next, in this order.**
+
+1. **An oracle on demand.** Every order but the three references has no map
+   from the engine to be compared against, and that is what `S2-3P2Z7N2`
+   showing 15 of 20 means. So: look for COMMAND-LINE ARGUMENTS on
+   `H5_MapEditor_H5E.exe` — the string table and the `argv` parsing near the
+   entry point. If the editor can be told to generate and save from a command
+   line, a batch of oracles costs nothing and no detour is needed. Only if it
+   cannot: a detour that reads a LIST of orders from `bin/homm5-editor-rmg.txt`
+   and saves each map, so one launch produces many.
+2. **What every template and params field is for.** `template.ts` reads about
+   forty fields; which of them the engine CONSUMES, and how, is a different
+   question. The rule for the sweep: a field that consumes nothing is either a
+   default for something read elsewhere or a wrapper over something that is
+   read, so "this field is dead" needs absence proved over the WHOLE image
+   rather than over the phases read so far. The four such claims made here —
+   `TransitiveTileIntensity`, both `*RoadTileStrenght`, the observatories'
+   `&params[i]` — are stated more strongly than they were earned and are to be
+   re-checked that way. With step 1 in hand a field's meaning is testable
+   rather than only readable: generate two maps differing in one field and
+   diff them. Experimental templates belong in `H5E/`, never in the game's own
+   `RMG/Templates`, which the native generator reads too.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
