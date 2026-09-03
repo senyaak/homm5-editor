@@ -22,13 +22,14 @@
 // there, so the game's own `RMG/Templates` — which the native generator lists —
 // is never touched.
 //
-// ONE ORDER PER LAUNCH, and that is not a preference. A launch's SECOND order
-// does not repeat its first: two identical orders in one process came out with
-// different statics, so something survives between generations inside the
-// executable. One order per launch IS reproducible — twice over, the whole
-// output matched except the `RMGguid`, drawn fresh every time, and ONE byte of
-// GroundTerrain.bin, the uninitialised one the port already knows about. Both
-// are subtracted below; anything else is the field's doing.
+// ONE ORDER PER LAUNCH, which is now the extension's own rule rather than this
+// tool's discipline: a launch's SECOND order does not repeat its first, so the
+// extension runs one and `tools/rmg-batch.ts` relaunches for the rest. Each
+// variant here gets its own launch for that reason. One order per launch IS
+// reproducible — twice over, the whole output matched except the `RMGguid`,
+// drawn fresh every time, and ONE byte of GroundTerrain.bin, the uninitialised
+// one the port already knows about. Both are subtracted below; anything else
+// is the field's doing.
 
 import { execFileSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

@@ -31,8 +31,12 @@
 //
 // and the orders are lines in `bin/homm5-editor-rmg-orders.txt`:
 //
-//   RMG/Templates/S1P2Z2M1.xdb -seed 1785351845
-//   RMG/Templates/S1P2Z2M1.xdb -seed 1785351845 -size 1
+//   RMG/Templates/S1P2Z2M1.xdb -seed 1785351845 -size 1 -resource 1 -exp 1
+//
+// ONE LAUNCH IS ONE ORDER: a file holding several has its first one run and
+// the rest reported untouched, because a launch's second generation does not
+// repeat what its first would have made alone. `tools/rmg-batch.ts` orders
+// several by relaunching the editor for each.
 //
 // The command line carries no orders and cannot: a SPACE in it takes the editor
 // down before any of this runs (see the reading above `rmg_cli_take_orders`).
@@ -525,9 +529,25 @@ static void rmg_cli_check_the_door(void) {
  * its readings between one line and the next, and the seeds line up with them
  * without anything having to be predicted.
  */
+/**
+ * ONE ORDER, THEN OUT — and the refusal is the feature.
+ *
+ * This used to run every line of the file in the one process, which is faster
+ * and wrong: a launch's SECOND generation does not repeat what its first would
+ * have produced alone. Two identical orders in one process came out with
+ * different statics while their draw counters still agreed at the border
+ * table, so something survives between generations inside the executable, and
+ * a number measured after the first one is plausible, stable and false. It
+ * already cost two rows of the `-size` table, both of them re-measured.
+ *
+ * So a launch runs the FIRST order and reports how many it left. Looping is
+ * `tools/rmg-batch.ts`, which relaunches the editor for each — the same
+ * convenience with a fresh process under every map. A file holding one line,
+ * which is what that tool writes, never meets this at all.
+ */
 static void rmg_cli_run_all(void) {
   const char *p = g_rmgCliOrders;
-  int count = 0;
+  int count = 0, left = 0;
   rmg_cli_check_the_door();
   while (*p) {
     const char *stop = p;
@@ -535,9 +555,15 @@ static void rmg_cli_run_all(void) {
     const char *from = rmg_cli_spaces(p, stop);
     const char *to = stop;
     while (to > from && (to[-1] == ' ' || to[-1] == '\t')) to--;
-    if (to > from) { rmg_cli_run_order(from, to); count++; }
+    if (to > from) {
+      if (count) left++;
+      else { rmg_cli_run_order(from, to); count++; }
+    }
     p = *stop ? stop + 1 : stop;
   }
+  // Short on purpose: the log's line buffer clips, and a message that loses
+  // its tail is a message that says something else.
+  if (left) rmg_log_pair("cli: left for rmg-batch.ts ", left, 0);
   rmg_log_pair("cli: orders done ", count, g_rmgSeedTaken);
 }
 

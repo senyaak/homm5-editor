@@ -1299,14 +1299,24 @@ ours to close from the extension already imported into the editor: `0xdede00`
 is the same command line arriving at the END of `InitInstance`, and the seed
 hook is already installed.
 
-**All three are closed** — `native/rmg/cli.c`. One launch, any number of
-orders, and the engine's own map beside every one of them:
+**All three are closed** — `native/rmg/cli.c`. The engine's own map beside any
+order, and **one launch under every map**:
 
 ```
 H5_MapEditor_H5E.exe --rmg
 ```
 
-with `bin/homm5-editor-rmg-orders.txt` holding one order to a line:
+with `bin/homm5-editor-rmg-orders.txt` holding THE order — several maps are
+ordered by `tools/rmg-batch.ts`, which relaunches the editor for each and keeps
+them in `bin/rmg-batch/<n>/`:
+
+```bash
+node tools/rmg-batch.ts --game <dir> --orders orders.txt
+```
+
+A file holding several lines has its first one run and the rest reported
+untouched, which is the mechanism refusing the mistake rather than a comment
+asking the reader not to make it. One order to a line:
 
 ```
 RMG/Templates/S1P2Z2M1.xdb -seed 1785351845
@@ -1385,13 +1395,13 @@ overwritten by the next order. So each order's files are copied to
 `bin\rmg-runs\<n>\` before the next one runs, which is the byte comparison the
 port had for exactly one order until now.
 
-**The first thing the batch answered, in its first working launch.** Seed
-1785351845 on `S1P2Z2M1` at three sizes:
+**The first thing the batch answered.** Seed 1785351845 on `S1P2Z2M1` at three
+sizes, ONE LAUNCH EACH:
 
 | `-size` | what the map records | draws |
 | --- | --- | --- |
-| 0 | `MAP_SIZE_TINY` | 49,660 |
-| 1 | `MAP_SIZE_SMALL` | 91,114 |
+| 0 | `MAP_SIZE_TINY` | 50,150 |
+| 1 | `MAP_SIZE_SMALL` | 91,468 |
 | 2 (the default) | `MAP_SIZE_MEDIUM` | 200,217 |
 
 So **`-size` is the dialog's own MapSize index**, and the conversion `vt+0x18`
@@ -1399,15 +1409,15 @@ that `rmg-pack`'s `--size` is guarded behind is a conversion of that index — t
 question the guard names is answered on the ordering side, whatever the reading
 of `vt+0x18` turns out to say.
 
-The SMALL run is the reference's order and comes out 91,114 against the
-reference's 92,438. Diffing the two maps' `sRMGProps` says why, and says it
-exactly: everything agrees — size, players, template, water, monsters,
-underground, both races — except **`ResourceMultiplier`** and
-**`ExpMultiplier`**, `RESOURCE_LITTLE`/`EXP_LITTLE` in the reference against
-`RESOURCE_NORMAL`/`EXP_NORMAL` from the command. The command has no switch for
-either. That is a 1,324-draw difference with a named cause and two fields to
-read next, which is a better place to stand than "another order, another
-number".
+**Two of those three numbers were wrong the first time, and the way they were
+wrong is the whole argument for one launch per order.** The first version of
+this table came out of ONE launch of three orders, and read 49,660 / 91,114 /
+200,217. Re-measured a launch at a time, only the row that had been that
+launch's FIRST order survives — MEDIUM, 200,217, unchanged — while SMALL and
+TINY, which had been its second and third, move to 91,468 and 50,150. A batch
+that shares a process reports its first order honestly and every one after it
+with the previous run's leavings mixed in, and the numbers it gives are
+plausible, stable and wrong. The table above is the re-measurement.
 
 **The data, on the other hand, is already ours** — plain XML under
 `data-unpacked/RMG/`, unpacked from `a2p1-data.pak`:
@@ -1669,16 +1679,15 @@ that must move the map: `Mine1LevelMaxRadius`, `DistBetweenTreasureBlocks` and
 `JunctionMinBorderDistance` each rewrite tens of thousands of terrain bytes, a
 template's zone-0 `TreasureDensity` and `Prisons` likewise.
 
-**One order per launch, and that is not a preference.** A launch's SECOND order
-does not repeat its first: two identical orders in one process came out with
-different statics — the divergence begins in the statics block of `map.xdb`,
-Mountains against Hellpikes, with the draw counters still agreeing at the
-border-table step, so it is state surviving between generations rather than a
-different number stream. That is an open question, and the standing rule is
-simply ONE LAUNCH, ONE ORDER — the batch's ability to take a list stays, for
-making maps in bulk, but nothing that will be compared shares a process. A
-launch costs fifteen seconds and a wrong comparison costs an afternoon. One
-order per launch IS reproducible: twice over, the whole output matched except the
+**One order per launch, and the extension now enforces it.** A launch's SECOND
+order does not repeat its first: two identical orders in one process came out
+with different statics — the divergence begins in the statics block of
+`map.xdb`, Mountains against Hellpikes, with the draw counters still agreeing
+at the border-table step, so it is state surviving between generations rather
+than a different number stream. Why it survives is an open question; that it
+does is measured, and it had already put two wrong numbers in the `-size`
+table. So the loop moved OUT of the extension into `tools/rmg-batch.ts`, which
+starts the editor again for every order. One order per launch IS reproducible: twice over, the whole output matched except the
 `RMGguid`, which is drawn fresh every time, and ONE byte of `GroundTerrain.bin`
 at offset 160305 — the uninitialised byte the port already knew about. The
 probe subtracts exactly those two and nothing else.
