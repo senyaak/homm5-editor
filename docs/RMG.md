@@ -263,6 +263,37 @@ minimap.
    switch; and a launch's SECOND order does not repeat its first, which is a
    trap for the batch and an unexplained piece of engine state.
 
+**What is next, and it is a run rather than a reading.** The oracle exists now:
+any order can be given to the engine and the map it makes compared with the
+port's, byte for byte. What has never been done is asking it of the templates
+nobody has ordered — the port is held to THREE references and there are
+twenty-two templates.
+
+1. **The sweep.** Every template, one seed, no minimap, one launch per order:
+
+   ```bash
+   node tools/rmg-batch.ts --game <dir> --orders orders.txt
+   node tools/rmg-diff-map.ts --game <dir> game/bin/rmg-batch/<n>
+   ```
+
+   Each order reads `RMG/Templates/<name>.xdb -seed 1785351845 -size 1
+   -resource 1 -exp 1 -pokeb 148 0`, the last of which is the minimap tick.
+   TWO differences are known in advance and are not findings: the
+   `caption-text` numbering (two bytes of `map.xdb`) and, if a monster level
+   is ever ordered, the port's MEDIUM-only setup.
+
+2. **A second seed over every template that passed.** One seed is one path: a
+   template that agrees once is not a template that agrees. This is the same
+   trap that put two wrong numbers in the `-size` table, and it costs another
+   twenty-two launches to avoid.
+
+3. **Then the debts, in the order the sweep prices them** — the `caption-text`
+   counter, the minimap's ten channel bytes, monster levels other than MEDIUM.
+
+4. **Water, as a second dimension**, once `GenerateMap`'s first argument is
+   identified. It is also the only way to reach a zone's `CanBeWater`, the one
+   field of the format the sweep of readers could not settle.
+
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
 water). It is game content, so it is not committed:
