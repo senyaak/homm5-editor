@@ -1270,28 +1270,29 @@ by `0x467e10`, no vtable, ~0xA8 bytes, size at `+0x10`, underground at
 `+0x11`, players at `+0x1C`) and calls `CRandomMapGenerator::GenerateMap`
 straight — the editor's vtable `0x117203c` slot `+0x4`, the function at
 `0xcf9930`, which is the same `[esi+0x90]`-then-`time()` seed region the
-oracle already detours. **There is no seed parameter**, and no save: the map
-is generated, named, printed to the console, and started if asked.
+oracle already detours. **There is no seed parameter** — but the map IS saved,
+which reading the handler did not say and running it did: the engine's own
+narration ends "map saved", and the sixteen documents are in
+`data\RMGTemp\CurrentMap\`.
 
-**And console lines can be fed from a file.** `0xe345f0` is "execute this cfg
-as a script" — it prints `Executing ` and runs each line as a command — and
-`InitInstance` calls it three times before anything else:
-`..\profiles\startup.cfg` (which does not exist on disk, so it is free to
-create), `..\profiles\editor_a2.cfg`, `..\profiles\p2pdir.cfg`. The files in
-`profiles/` are exactly that, command scripts: `setvar map_editor_mode = 1`,
-`mainmenu`. One line executes through `0xe342b0`, whose `this` IS the
-`std::wstring` holding the line and which takes nothing else — the cleanest
-door in the image. 79 commands are registered through `0xe33010`; `rmg` and
-`generatemap` are two of them, and none of the other 77 saves a map.
+**And a line can be said to the console without a person.** `0xe342b0` executes
+one, and its `this` IS the `std::wstring` holding it — the cleanest door in the
+image. 79 commands are registered through `0xe33010`, `rmg` and `generatemap`
+among them. Its neighbour `0xe345f0` executes a whole cfg — it prints
+`Executing `, and `InitInstance` calls it three times before anything else, on
+`..\profiles\startup.cfg` (which does not exist on disk), `editor_a2.cfg` and
+`p2pdir.cfg` — but a cfg only SETS VALUES: `setvar map_editor_mode = 1` through
+it lands, `rmg` and `exit` through it do nothing at all. Measured both ways;
+see the four traps below.
 
-**So the shape of the oracle is settled, and its two gaps are named.** The
+**So the shape of the oracle is settled, and its one real gap is named.** The
 engine will generate on command, with the template, the players, the size and
-the floor count all ordered — but the three cfg files run at the TOP of
-`InitInstance`, before the data storage exists, which is too early for a
-template to resolve; and the command neither takes a seed nor writes a `.h5m`.
-All three are ours to close from the extension that is already imported into
-the editor: `0xdede00` is the same command line arriving at the END of
-`InitInstance`, the seed hook is already installed, and a save is a call.
+the floor count all ordered, and it saves what it made — but the three cfg
+files run at the TOP of `InitInstance`, before the data storage exists, which
+is too early for a template to resolve, and the command takes no seed. Both are
+ours to close from the extension already imported into the editor: `0xdede00`
+is the same command line arriving at the END of `InitInstance`, and the seed
+hook is already installed.
 
 **All three are closed** — `native/rmg/cli.c`. One launch, any number of
 orders, and the engine's own map beside every one of them:
