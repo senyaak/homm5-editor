@@ -376,6 +376,23 @@ static void rmg_log_pair(const char *prefix, int a, int b) {
   rmg_log(line);
 }
 
+/** The same, with a third number — `below()`'s limit after its value. */
+static void rmg_log_triple(const char *prefix, int a, int b, int c) {
+  char line[160];
+  int i = 0;
+  while (prefix[i] && i < 60) { line[i] = prefix[i]; i++; }
+  int n = 0;
+  num_to_dec(a, line + i, &n);
+  i += n;
+  line[i++] = ' ';
+  num_to_dec(b, line + i, &n);
+  i += n;
+  line[i++] = ' ';
+  num_to_dec(c, line + i, &n);
+  line[i + n] = 0;
+  rmg_log(line);
+}
+
 /**
  * `step <draws> <zone> <what just finished>` — one narration line, as a reading.
  *
@@ -563,7 +580,16 @@ static int __fastcall rmg_below_trace(int n) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
   int before = *(int *)(base + g_rmgCounterFieldRva);
   int v = g_rmgBelowOrig(n);
-  if (*(int *)(base + g_rmgCounterFieldRva) != before) rmg_trace_draw("tb ", v);
+  // THE LIMIT IS LOGGED TOO, and it is worth more than the value. The two
+  // sides drawing different numbers says only that they disagree; the limits
+  // say WHAT each was choosing among — "the engine picked one of 3 where the
+  // port picked one of 30" names the loop, and the value alone never did.
+  // The dividend is the same on both sides, so a limit can also be recovered
+  // from a value by arithmetic — but that gives a handful of candidates, and
+  // this gives the number.
+  if (*(int *)(base + g_rmgCounterFieldRva) != before && g_rmgRunActive) {
+    rmg_log_triple("tb ", *(int *)(base + g_rmgCounterFieldRva), v, n);
+  }
   return v;
 }
 

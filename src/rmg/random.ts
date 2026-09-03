@@ -59,8 +59,12 @@ export class RmgRandom {
    * `between` reports as `b` because the engine's own between draws through
    * below, and the trace mirrors what the detours see. For `f` the value is
    * the FLOAT'S BITS, matching the hook's union trick.
+   *
+   * `limit` comes with a `b` draw and is the half that identifies the call
+   * site: two sides drawing different numbers only disagree, while "one of 3
+   * against one of 30" names which loop they are in.
    */
-  onDraw: ((kind: 'n' | '6' | 'b' | 'f', value: number) => void) | null = null;
+  onDraw: ((kind: 'n' | '6' | 'b' | 'f', value: number, limit?: number) => void) | null = null;
 
   /** The seed as the map records it (`sRMGProps/RMGstartseed`). */
   readonly seed: number;
@@ -104,7 +108,7 @@ export class RmgRandom {
   below(limit: number): number {
     if (limit === 0) return 0;
     const value = Number(((this.step() >> 16n) & MASK47) % BigInt(limit >>> 0));
-    this.onDraw?.('b', value);
+    this.onDraw?.('b', value, limit);
     return value;
   }
 

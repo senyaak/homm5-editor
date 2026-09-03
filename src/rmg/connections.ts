@@ -105,7 +105,7 @@ export interface ConnectionsInput {
  * in scan order, and returned in the engine's hash-bucket order of the
  * neighbour index.
  */
-function collectCandidates(
+export function collectCandidates(
   grid: Int32Array[],
   size: number,
   zoneIndex: number,

@@ -89,6 +89,23 @@ export interface ChainOptions {
   monsterStrength?: number;
   /** WaterAmount (0/1/2); the water reference supplies 2 — see map-setup.ts. */
   water?: number;
+  /**
+   * Every draw as it is taken, for `tools/rmg-diff-draws.ts`. It has to be
+   * attached here rather than by the caller: the RNG is made inside this
+   * function, and by the time a caller holds `c.rng` the chain has run.
+   */
+  onDraw?: (kind: string, value: number, limit?: number) => void;
+  /**
+   * Which tile a FillZones jitter draw was deciding. Same reason — the sweep
+   * loop is in here, and the trace's context is worth more than its index.
+   */
+  jitter?: (sweep: number, a: number, b: number) => void;
+  /**
+   * The draw counter as each phase ends. "The 13807th draw disagrees" is a
+   * number; "the 13807th draw is in zoneConnections, which starts at 13798"
+   * is a place to read, and the difference between the two is this callback.
+   */
+  onPhase?: (label: string, draws: number) => void;
 }
 
 export interface Chain {
@@ -189,27 +206,37 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   };
 
   const rng = new RmgRandom(options.seed ?? SEED);
+  if (options.onDraw) rng.onDraw = options.onDraw;
+  const phase = (label: string): void => options.onPhase?.(label, rng.draws);
+  phase('start');
   // `size: 8` is the order in the TEMPLATE's units, and the conversion from
   // the dialog's map size to that number is `vt+0x18`, which is unread — so
   // this stays the references' 8 and `options.size` only lays out the grid.
   // An order of another size is not something this chain can honestly make.
   const made = createMap(template,
     { players: options.players ?? 2, size: 8, underground: options.underground }, rng);
+  phase('createMap');
   const setup = mapSetup(params,
     { monsterStrength: options.monsterStrength ?? 1, water: options.water ?? 0 }, rng);
+  phase('mapSetup');
   const loaded = loadTemplate(template, {
     twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
     playerCount: made.players, mapSize: size, pointLightZoneRadius: params.pointLightParams.zoneRadius,
   }, rng);
+  phase('loadTemplate');
   const placed = generateGameZones(size, size,
     loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng);
-  const filled = fillZones(size, size, placed.zones, made.twoFloors, rng);
+  phase('placeZones');
+  const filled = fillZones(size, size, placed.zones, made.twoFloors, rng,
+    options.jitter ? { jitter: options.jitter } : undefined);
+  phase('fillZones');
   const distances = calcBorderTiles(size, size, filled.floors);
   const townResult = placeTowns({
     size, template, zones: loaded.zones, floors: filled.floors, distances,
     radii: new Map(placed.zones.map((z) => [z.index, z.r])),
     presets, towns, specializations: readTownSpecializations(dir),
   }, rng);
+  phase('towns');
   // The water border — the engine runs it between "towns placed" and the
   // dist-to-towns tables (0xEABB1D): the sea depth by size index, then every
   // floor-0 zone's vt+0x24 in the level's hash order. The carve is drawless;
@@ -246,13 +273,16 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     water.drawsAfter = rng.draws;
   }
 
+  phase('waterBorder');
   fillDistToTowns(size, filled.floors, loaded.zones, townResult.centres);
+  phase('distToTowns');
   const conn = zoneConnections({
     size, template, zones: loaded.zones, floors: filled.floors, distances,
     guardPowerUnit: params.basicLeverGuardPower * params.connectionGuardLevel,
     monsterStrength: setup.monsterStrength, tables,
   }, rng);
 
+  phase('connections');
   const floors = filled.floors.map((grid, f) => ({
     grid, border: distances[f]!, occ: townResult.occupancy[f]!,
     room: Array.from({ length: size }, () => new Int32Array(size)),
@@ -355,6 +385,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
       }
     }
   }
+  phase('teleports');
   const grid = floors[0]!.grid;
   const border = floors[0]!.border;
   const occ = floors[0]!.occ;

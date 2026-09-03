@@ -20,12 +20,12 @@
 // generated map says only that it loads; this says whether it is the map the
 // engine would have made.
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { readEntries } from '../src/format/pak.ts';
 import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
-import { MAP_SIZES, buildMapFiles } from './rmg-build.ts';
+import { buildMapFiles } from './rmg-build.ts';
+import { describeOrder, readOrder } from './rmg-order.ts';
 import { runFull } from './rmg-run.ts';
 import { dataDir, gameDir } from './game-dir.ts';
 
@@ -33,7 +33,7 @@ const args = process.argv.slice(2);
 // The map is the one bare word that is not some flag's value.
 const TAKES_A_VALUE = new Set(['--game', '--data', '--write']);
 const archive = args.find((a, i) => !a.startsWith('--') && !TAKES_A_VALUE.has(args[i - 1] ?? ''));
-if (!archive || !existsSync(archive)) {
+if (!archive) {
   console.error('point me at a generated map: node tools/rmg-diff-map.ts --game <dir> <map.h5m>');
   process.exit(2);
 }
@@ -44,72 +44,13 @@ if (!existsSync(join(dir, 'RMG'))) {
 }
 const game = gameDir();
 
-const theirs = new Map<string, Buffer>();
-if (statSync(archive).isDirectory()) {
-  for (const name of readdirSync(archive)) {
-    const path = join(archive, name);
-    if (statSync(path).isFile()) theirs.set(name, readFileSync(path));
-  }
-} else {
-  const entries = readEntries(readFileSync(archive));
-  const holder = entries.find((e) => e.name.endsWith('/map.xdb') || e.name === 'map.xdb');
-  if (!holder) {
-    console.error(`${archive} holds no map.xdb — is it a map?`);
-    process.exit(2);
-  }
-  const folder = holder.name.slice(0, holder.name.lastIndexOf('/'));
-  for (const e of entries) {
-    if (folder && !e.name.startsWith(`${folder}/`)) continue;
-    theirs.set(e.name.slice(folder ? folder.length + 1 : 0), e.data);
-  }
-}
-const mapEntry = theirs.get('map.xdb');
-if (!mapEntry) {
-  console.error(`${archive} holds no map.xdb — is it a map?`);
-  process.exit(2);
-}
+const read = readOrder(archive);
+if (typeof read === 'string') { console.error(read); process.exit(2); }
+const { order, files: theirs } = read;
+const { seed, guid, mapName, template, size, players, water, monster, underground, minimap } = order;
 
-const text = mapEntry.toString('utf8');
-const one = (re: RegExp, what: string): string => {
-  const m = re.exec(text);
-  if (!m) {
-    console.error(`${archive}: no ${what} — this map was not generated`);
-    process.exit(2);
-  }
-  return m[1]!;
-};
-const seed = Number(one(/<RMGstartseed>(\d+)</, 'RMGstartseed'));
-const guid = one(/<RMGguid>([^<]*)</, 'RMGguid');
-const mapName = one(/<MapName>([^<]*)</, 'MapName');
-const sizeName = one(/<MapSize>(\w+)</, 'MapSize');
-const players = Number(one(/<Players>(\d+)</, 'Players'));
-// `[^"]+` and not `[^.]+`: half the stock templates have a dot in the NAME —
-// `S0-1P2Z2K3.1T.xdb`, `S3-5P2Z7N2.2.xdb` — and a stricter class stopped at the
-// first one, so those maps read as "not generated".
-const template = one(/<Template href="\/RMG\/Templates\/([^"]+)\.xdb/, 'Template');
-const waterName = one(/<WaterAmount>(\w+)</, 'WaterAmount');
-const monster = one(/<MonsterLevel>(\w+)</, 'MonsterLevel');
-const underground = /<HasUnderground>true</.test(text);
-// The order's Minimap tick, taken from the record like everything else: an
-// order made with it off writes no minimap files, and the port must not write
-// them either or the comparison reports a difference the order asked for.
-const minimap = !/<Minimap>false</.test(text);
-
-const SIZE_NAMES = [
-  'MAP_SIZE_TINY', 'MAP_SIZE_SMALL', 'MAP_SIZE_MEDIUM', 'MAP_SIZE_LARGE',
-  'MAP_SIZE_EXTRALARGE', 'MAP_SIZE_HUGE', 'MAP_SIZE_IMPOSSIBLE',
-];
-const sizeIndex = SIZE_NAMES.indexOf(sizeName);
-const size = MAP_SIZES[sizeIndex];
-const water = ['WATER_NONE', 'WATER_PRESENT', 'WATER_ISLAND_MAP'].indexOf(waterName);
-if (size === undefined || water < 0) {
-  console.error(`${archive}: ${sizeName} / ${waterName} is not an order this port can replay`);
-  process.exit(2);
-}
 console.log(`${archive}`);
-console.log(`  ordered: ${template} ${sizeName.replace('MAP_SIZE_', '').toLowerCase()} ${size}x${size},`
-  + ` ${players} players, seed ${seed}, ${waterName}, ${monster}${underground ? ', underground' : ''}`
-  + `${minimap ? '' : ', no minimap'}`);
+console.log(`  ordered: ${describeOrder(order)}`);
 // The chain always orders MEDIUM: mapSetup takes a fixed monsterStrength of 1.
 // Saying so beats a silent mismatch buried in an object's army.
 if (monster !== 'MONSTER_LEVEL_MEDIUM') {
