@@ -294,6 +294,45 @@ twenty-two templates.
    identified. It is also the only way to reach a zone's `CanBeWater`, the one
    field of the format the sweep of readers could not settle.
 
+### The sweep, run
+
+Twenty-two orders, twenty-two launches, seed 1785351845, no minimap. The engine
+made all twenty-two. It also **clamps the size**: `-size 1` came back as SMALL
+for the small templates, MEDIUM for `S2-*`, LARGE for `S3-*` and HUGE for
+`S6-*`/`S7-*`, so an order below a template's own range is raised to it rather
+than refused — the comparison is still honest because `rmg-diff-map` reads the
+size back out of the map it is given.
+
+| the template | what the port reproduces |
+| --- | --- |
+| `S1P2Z2M1` | **everything.** 12 of 13 entries byte-identical, the 13th being the two `caption-text` bytes that are known |
+| `S0-1P2Z2K3.1T`, `.2T`, `S0-1P2Z2K3T` | **every object, every text, every terrain plane but one.** `map.xdb` differs by the same two known bytes; masks, ground flags, passability and the river plane are identical; only HEIGHTS differ |
+| the other seventeen with a zone count of three or more | `map.xdb` differs wholesale — the object layer diverges |
+| `S7-22P2-8Z15K2.4c` | the port refuses it: fifteen zones, and the fourteenth would rehash the queue whose order has never been read |
+
+**The line falls exactly at the zone count.** All four two-zone templates
+reproduce the object layer; every template with three zones or more diverges,
+`S1P2Z3K5.1` — three zones, two connections, the smallest of them — included.
+Two zones is the case where the container's iteration order cannot be observed,
+because any order of two is the order the engine used. So the sweep did not
+find seventeen bugs; it found one place where a reading was never tested, and
+the reference template is the reason it went unnoticed for so long.
+
+**And the near miss is one plane.** For the three `S0-1P2Z2K3*` maps the only
+difference in the whole file set is the height plane: 404 vertices of 9409 on
+`.2T` (max delta 0.065), 583 on `T` (0.565), 816 on `.1T` — and that last one
+is not noise. Around tile (43,76) the engine digs a bowl to 5.73 where the port
+leaves the plateau at 8.92, a 3.19 drop over a five-tile core with a wide
+skirt, while every other plane of the same file agrees. So the heights carry
+two separate debts: a smoothing pass that drifts in the third decimal, and at
+least one feature the port does not carve at all.
+
+**Next, and it is a reading rather than a run.** `tools/rmg-diff-draws.ts`
+names the first draw where the port and the engine disagree, and it is the
+tool that turns "the objects diverge" into a line number — but it hardcodes
+the reference order. Pointed at a three-zone template it would say where the
+zone loop first takes a different turn.
+
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
 water). It is game content, so it is not committed:

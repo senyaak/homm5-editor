@@ -20,7 +20,7 @@
 // generated map says only that it loads; this says whether it is the map the
 // engine would have made.
 
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { readEntries } from '../src/format/pak.ts';
@@ -30,7 +30,9 @@ import { runFull } from './rmg-run.ts';
 import { dataDir, gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
-const archive = args.find((a) => !a.startsWith('--') && args[args.indexOf(a) - 1] !== '--game');
+// The map is the one bare word that is not some flag's value.
+const TAKES_A_VALUE = new Set(['--game', '--data', '--write']);
+const archive = args.find((a, i) => !a.startsWith('--') && !TAKES_A_VALUE.has(args[i - 1] ?? ''));
 if (!archive || !existsSync(archive)) {
   console.error('point me at a generated map: node tools/rmg-diff-map.ts --game <dir> <map.h5m>');
   process.exit(2);
@@ -81,7 +83,10 @@ const guid = one(/<RMGguid>([^<]*)</, 'RMGguid');
 const mapName = one(/<MapName>([^<]*)</, 'MapName');
 const sizeName = one(/<MapSize>(\w+)</, 'MapSize');
 const players = Number(one(/<Players>(\d+)</, 'Players'));
-const template = one(/<Template href="\/RMG\/Templates\/([^.]+)\.xdb/, 'Template');
+// `[^"]+` and not `[^.]+`: half the stock templates have a dot in the NAME —
+// `S0-1P2Z2K3.1T.xdb`, `S3-5P2Z7N2.2.xdb` — and a stricter class stopped at the
+// first one, so those maps read as "not generated".
+const template = one(/<Template href="\/RMG\/Templates\/([^"]+)\.xdb/, 'Template');
 const waterName = one(/<WaterAmount>(\w+)</, 'WaterAmount');
 const monster = one(/<MonsterLevel>(\w+)</, 'MonsterLevel');
 const underground = /<HasUnderground>true</.test(text);
@@ -125,6 +130,19 @@ if (missing.length || extra.length) {
     + `${extra.length ? `, they do not hold [${extra.join(' ')}]` : ''}`);
 } else {
   console.log(`  entries: the same ${ours.length}`);
+}
+
+// `--write <dir>` puts OUR side on disk. A count of differing bytes says a
+// file is wrong; the plane-by-plane readers (`tools/diff-terrain.ts`) say what
+// is wrong about it, and they need two files to read.
+const writeTo = (() => {
+  const i = args.indexOf('--write');
+  return i >= 0 ? args[i + 1] : undefined;
+})();
+if (writeTo) {
+  mkdirSync(writeTo, { recursive: true });
+  for (const file of ours) writeFileSync(join(writeTo, file.name), file.data);
+  console.log(`  ours written to ${writeTo}`);
 }
 
 let same = 0;
