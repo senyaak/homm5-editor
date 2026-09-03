@@ -1293,6 +1293,38 @@ All three are ours to close from the extension that is already imported into
 the editor: `0xdede00` is the same command line arriving at the END of
 `InitInstance`, the seed hook is already installed, and a save is a call.
 
+**Two of the three are closed** — `native/rmg/cli.c`:
+
+```
+H5_MapEditor_H5E.exe --rmg S1P2Z2M1 -seed 1785351845
+H5_MapEditor_H5E.exe --rmg "S1P2Z2M1 -seed 42; S1P2Z2M1 -seed 43 -size 1"
+```
+
+Semicolons separate orders; each one is the engine's own `rmg` line plus our
+`-seed`, which is taken out before the line is handed over (an unknown switch
+would be read as part of the template's name). The DLL reads the ask off
+`GetCommandLineA` at load — early enough to turn the oracle on for the run,
+which is why a batch never comes back with no readings in it — and runs the
+orders from a detour on `0xdede00`, the moment the editor was going to open a
+document. Then the process ends: the readings are already on disk, a line at a
+time, and an editor left on the screen would only have to be closed before the
+next launch.
+
+Three addresses, all the editor's, all checked against their bytes first —
+written here as this document writes them, and in the C file as RVAs, which is
+what a detour takes: `0xdede00` (the argument site, seven bytes and two whole
+instructions, the second one's operand relocated), `0xe342b0` (`Execute`, whose
+`this` IS the wide string), `0x407d00` (`wstring(begin, end)`, which allocates
+through the engine's own allocator so the console may do anything with the line
+it would do with a typed one). The line is not freed afterwards, deliberately:
+the deleter is behind an import thunk the loader rewrites, and a wrong free in
+a process that is about to exit costs more than the buffer.
+
+What is still open is the save. Nothing in the 79 registered commands writes a
+`.h5m`, so a batch buys the DRAW COUNTS for any order — which is what a
+diverging phase needs — and not the byte comparison, which still wants a map
+saved by hand.
+
 **The data, on the other hand, is already ours** — plain XML under
 `data-unpacked/RMG/`, unpacked from `a2p1-data.pak`:
 

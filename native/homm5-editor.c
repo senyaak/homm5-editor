@@ -126,6 +126,9 @@
 // minimap is drawn at the end of a run, so what it does is only measurable in
 // the same instrumented launch.
 #include "rmg/minimap-probe.c"
+// And what ORDERS the runs those two watch. After them because it sets the
+// oracle's seed for each order in turn, which is a global of the oracle's.
+#include "rmg/cli.c"
 
 /**
  * Which switch turns this file's logging on — see the bottom of core/log.c.
@@ -164,12 +167,20 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (rmg_host_is_editor()) {
     log_line("--- host is the map editor: the rmg oracle applies, nothing else does");
     load_rmg_config();
+    // BEFORE the oracle goes in, and it can turn the oracle on by itself: a
+    // batch launched from the command line exists to be measured, so `--rmg`
+    // asks for the instrument as well as the runs. The other way round — a
+    // batch that ran with no readings because a file was missing — is a wasted
+    // launch, and the launch is the expensive part.
+    if (rmg_cli_take_orders()) g_rmgWanted = 1;
     if (g_rmgWanted) log_line(install_rmg_oracle() ? "rmg oracle installed" : "rmg oracle NOT installed");
     // A second instrument under the same file, asked for by its own word: the
     // minimap is built after the run the oracle watches, so it needs its own
     // hooks and not a flag on the oracle's.
     if (g_rmgMinimap)
       log_line(install_minimap_probe() ? "minimap probe installed" : "minimap probe NOT installed");
+    if (g_rmgCliWanted)
+      log_line(install_rmg_cli() ? "rmg orders will run" : "rmg orders will NOT run");
     return TRUE;
   }
   // Before the config, because what this mirrors starts talking the moment the
