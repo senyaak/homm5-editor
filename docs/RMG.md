@@ -241,12 +241,11 @@ minimap.
 
 1. **An oracle on demand.** Every order but the three references has no map
    from the engine to be compared against, and that is what `S2-3P2Z7N2`
-   showing 15 of 20 means. So: look for COMMAND-LINE ARGUMENTS on
-   `H5_MapEditor_H5E.exe` — the string table and the `argv` parsing near the
-   entry point. If the editor can be told to generate and save from a command
-   line, a batch of oracles costs nothing and no detour is needed. Only if it
-   cannot: a detour that reads a LIST of orders from `bin/homm5-editor-rmg.txt`
-   and saves each map, so one launch produces many.
+   showing 15 of 20 means. The command line was the first place to look and it
+   has been read to the end: the editor takes no switch that generates
+   anything — but it carries a CONSOLE COMMAND that does, with parameters of
+   its own. "Ordering a generation from outside the dialog" below is what was
+   found, what it can be told, and what it still cannot.
 2. **What every template and params field is for.** `template.ts` reads about
    forty fields; which of them the engine CONSUMES, and how, is a different
    question. The rule for the sweep: a field that consumes nothing is either a
@@ -1222,6 +1221,77 @@ the same pattern down to `[esi+90h]`, only here the screen actually fills it,
 so a typed seed reaches `run seed` in the log and the map alike. Phase draw
 counts from an ordered editor run — the thing runs 3–5 could not give — land
 in the same `bin/homm5-editor-rmg.log`.
+
+### Ordering a generation from outside the dialog
+
+Every order but the three references is unverifiable, and the reason has
+always been the same: an order costs a person clicking through the generator
+screen. So the question was whether the editor can be TOLD to generate. It
+can — just not the way it was looked for.
+
+**The editor's own command line is one token wide, and it is not ours.**
+`H5_MapEditor_H5E.exe` is an MFC application: `WinMainCRTStartup` (`0xf46536`)
+hands `AfxWinMain` (MFC71 ordinal 1207) the command line, and
+`CEditorApp::InitInstance` — vtable `0x1180dfc` slot `+0x30`, the function at
+`0xde6d40` — reads `m_lpCmdLine` from `[this+0x48]` exactly ONCE, at
+`0xde6e2e`. What it does with it is the whole surface: strip surrounding
+quotes, and then
+
+- empty → start normally;
+- non-empty and another instance is running → forward it by `WM_COPYDATA`
+  (`0x96ee40`) and exit;
+- `-reg` (`0x4892e0` is `operator!=` against the literal at `0x1180eec`) →
+  nothing here; the string is consumed by the association registration at
+  `0xde5d60` instead;
+- anything else → `0xdede00`, which is either "open this document" or, when
+  the config value `map_editor_mode` is set, "open this `.xdb`".
+
+`GetCommandLineA` has a single caller in the whole image (`0x52d227`, inside
+`0x52d200`) and uses it only to derive the executable's own folder. So the
+absence is proved the way this document requires absences to be proved: not
+"no switch was found" but "the only reader of the command line was read, and
+both of its branches go elsewhere".
+
+**What exists instead is a console command.** `rmg`, aliased `generatemap`,
+registered at `0x73d2d0` (a static initialiser, so it is there from startup in
+BOTH executables) against the handler at `0x73ce20`. Its parameters are wide
+strings and its parser is `0x73c910`:
+
+| written | field | default | what it is |
+| --- | --- | --- | --- |
+| the first non-switch word | the template href | — | `#xpointer(/RMGTemplate)` is appended when absent; "Couldn't find template " if it does not resolve |
+| `-players <n>` | `props+0x20` | 2 | |
+| `-size <n>` | `props+0x28` | 2 | |
+| `-underground <n>` | `props+0x25` | 0 | stored as a bool |
+| `start` | `props+0x2C` | absent | play the map once it exists |
+
+The handler copies those into the settings struct the generator takes (built
+by `0x467e10`, no vtable, ~0xA8 bytes, size at `+0x10`, underground at
+`+0x11`, players at `+0x1C`) and calls `CRandomMapGenerator::GenerateMap`
+straight — the editor's vtable `0x117203c` slot `+0x4`, the function at
+`0xcf9930`, which is the same `[esi+0x90]`-then-`time()` seed region the
+oracle already detours. **There is no seed parameter**, and no save: the map
+is generated, named, printed to the console, and started if asked.
+
+**And console lines can be fed from a file.** `0xe345f0` is "execute this cfg
+as a script" — it prints `Executing ` and runs each line as a command — and
+`InitInstance` calls it three times before anything else:
+`..\profiles\startup.cfg` (which does not exist on disk, so it is free to
+create), `..\profiles\editor_a2.cfg`, `..\profiles\p2pdir.cfg`. The files in
+`profiles/` are exactly that, command scripts: `setvar map_editor_mode = 1`,
+`mainmenu`. One line executes through `0xe342b0`, whose `this` IS the
+`std::wstring` holding the line and which takes nothing else — the cleanest
+door in the image. 79 commands are registered through `0xe33010`; `rmg` and
+`generatemap` are two of them, and none of the other 77 saves a map.
+
+**So the shape of the oracle is settled, and its two gaps are named.** The
+engine will generate on command, with the template, the players, the size and
+the floor count all ordered — but the three cfg files run at the TOP of
+`InitInstance`, before the data storage exists, which is too early for a
+template to resolve; and the command neither takes a seed nor writes a `.h5m`.
+All three are ours to close from the extension that is already imported into
+the editor: `0xdede00` is the same command line arriving at the END of
+`InitInstance`, the seed hook is already installed, and a save is a call.
 
 **The data, on the other hand, is already ours** — plain XML under
 `data-unpacked/RMG/`, unpacked from `a2p1-data.pak`:
