@@ -3,6 +3,7 @@
 //   node tools/rmg-batch.ts --game <dir> --orders orders.txt
 //   node tools/rmg-batch.ts --game <dir> --order "RMG/Templates/S1P2Z2M1.xdb -seed 1 -size 1"
 //   node tools/rmg-batch.ts --game <dir> --orders orders.txt --keep somewhere/else
+//   node tools/rmg-batch.ts --game <dir> --orders orders.txt --timeout 120
 //
 // WHY A LOOP OUT HERE rather than a loop inside the extension, which is where
 // it used to be and was faster. A launch's SECOND generation does not repeat
@@ -39,6 +40,14 @@ const editor = join(bin, 'H5_MapEditor_H5E.exe');
 const ordersFile = join(bin, 'homm5-editor-rmg-orders.txt');
 const runs = join(bin, 'rmg-runs');
 const keep = resolve(flag('keep') ?? join(bin, 'rmg-batch'));
+// A LAUNCH GETS A CLOCK. The editor makes a Direct3D device before it reads
+// the console command, and anything that takes the display away from it —
+// another game going fullscreen, a driver reset — leaves it alive, not
+// responding, and never returning. Without a timeout the batch waits on that
+// forever; worse, the run after it reads the PREVIOUS launch's log and folder
+// and reports a comparison that never happened. Ten minutes is far past the
+// slowest honest order (a 256-tile map is about two).
+const timeout = Number(flag('timeout') ?? 600) * 1000;
 
 const orders: string[] = [];
 const listed = flag('orders');
@@ -66,11 +75,14 @@ let made = 0;
 for (const [i, order] of orders.entries()) {
   process.stdout.write(`  ${i + 1}. ${order} … `);
   rmSync(join(runs, '1'), { recursive: true, force: true });
+  // The kept slot goes with it: a launch that dies must not leave the PREVIOUS
+  // order's documents where the next reader looks for this one's.
+  rmSync(join(keep, String(i + 1)), { recursive: true, force: true });
   writeFileSync(ordersFile, `# written by tools/rmg-batch.ts — one launch, one order\n${order}\n`, 'latin1');
   // A LAUNCH IS ALLOWED TO DIE. An order can crash the editor — a bad `-poke`
   // will — and one dead launch must not take the rest of the list with it.
   try {
-    execFileSync(editor, ['--rmg'], { cwd: bin, stdio: 'ignore' });
+    execFileSync(editor, ['--rmg'], { cwd: bin, stdio: 'ignore', timeout, killSignal: 'SIGKILL' });
   } catch {
     console.log('the editor did not come back — read bin/homm5-editor-rmg.log');
     continue;
