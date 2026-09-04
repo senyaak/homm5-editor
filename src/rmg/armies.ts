@@ -149,8 +149,17 @@ export function setMonster(power: number, strengthLevel: number, tables: GuardTa
   const roll = rng.betweenFloat(0, 1);
 
   if (roll < fl(0.6)) {
-    // The army branch scales the power a second time by the same 0.9.
-    const budget = Math.trunc(fl(scaled * fl(0.9)));
+    // The army branch scales the power a second time by the same 0.9 — and
+    // truncates the product WHERE IT LANDS, exactly as the strength scaling
+    // above does. This line used to round to a float first, and the two
+    // differ on one value in a thousand: 17210 * 0.9f is 15488.99958…, which
+    // truncates to 15488, while the nearest float to it is 15489 exactly.
+    // `S6-11P2-8Z8K2XL` is where that mattered — one treasure-block guard of
+    // 11222 objects, and the whole rest of the map identical. Its budget
+    // landed on 15489, which is the MinPower of one army template to the
+    // unit, so the rounding decided whether that template was in the pool at
+    // all: the engine drew 33 of 106 where this drew 1 of 107.
+    const budget = Math.trunc(scaled * fl(0.9));
     const candidates = tables.templates.filter((t) => t.minPower <= budget && budget <= t.maxPower);
     if (!candidates.length) return { name: mintName(rng), stacks: [], mood: 2, branch: 'army' };
     const chosen = candidates[rng.below(candidates.length)]!;

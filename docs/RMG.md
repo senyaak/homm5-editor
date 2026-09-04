@@ -315,17 +315,22 @@ towns matched its players. What moved the other six was one routine — the
 garrison below. The cartographer and the zero possession marker moved six
 more; the table above is the state before those two.
 
-**The standing count is TWENTY of twenty-one.** Every template but
-`S6-11P2-8Z8K2XL` now reproduces the whole object layer; three of them —
-`S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` and the reference — are byte-identical through
-the terrain as well, and the rest differ only in the height plane, by anything
-from 4 bytes to a few thousand. The port refuses `S7-22P2-8Z15K2.4c` outright.
+**The standing count is TWENTY-ONE of twenty-one.** Every template the port
+accepts now reproduces the whole object layer, down to the two `caption-text`
+bytes that are known; three of them — `S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` and the
+reference — are byte-identical through the terrain as well, and the rest differ
+only in the height plane, by anything from 4 bytes to a few thousand. The port
+refuses `S7-22P2-8Z15K2.4c` outright, and that refusal is the whole of what is
+left of the sweep.
 
-**A debt the count hides.** `S3-5P2-8Z8K2M` differs by five bytes, and only two
-of them are the `caption-text` numbering: three object AMOUNTS are off by one
-or two — a monster's 16 against 18, a treasure's 29 against 27 and 12 against
-13, in a map of 2.9 MB. Nothing is drawn there, so it is arithmetic, and it is
-the smallest handle on that arithmetic anyone has had.
+**A debt the count hid, and where it went.** `S3-5P2-8Z8K2M` used to differ by
+five bytes, only two of them the `caption-text` numbering: three object AMOUNTS
+were off by one or two — a monster's 16 against 18, a treasure's 29 against 27
+and 12 against 13, in a map of 2.9 MB. Nothing was drawn there, so it was
+arithmetic, and it was the smallest handle on that arithmetic anyone had. It
+turned out to be the same single rounding as the guard below: `S3-5P2-8Z8K2M`
+and `S2-4P2Z7B2` both came down to two bytes with it, without either being
+looked at.
 
 #### A zone's PRESET is not always its race's
 
@@ -401,6 +406,69 @@ leaves the plateau at 8.92, a 3.19 drop over a five-tile core with a wide
 skirt, while every other plane of the same file agrees. So the heights carry
 two separate debts: a smoothing pass that drifts in the third decimal, and at
 least one feature the port does not carve at all.
+
+#### One guard of eleven thousand: where a float rounds and the engine does not
+
+`S6-11P2-8Z8K2XL` was the last template to disagree, and the disagreement was
+**one object**. Its map holds 11222 of them; a field-by-field comparison of the
+two object lists — kind, id, position, shared href, every amount — found a
+single row apart:
+
+```
+ours    AdvMapMonster item_-444688924 (183,231) Stronghold/Hag        10 10 20 34
+theirs  AdvMapMonster item_-444688924 (183,231) Necropolis/Lich_Master 5  5 12
+```
+
+Same tile, same rotation, same minted id — so every draw around it landed the
+same way, and the two sides were choosing from the SAME position in the stream.
+The trace says what they chose among:
+
+```
+#655526  tb 33 of 106  |  tb 1 of 107
+```
+
+A treasure-block guard, the army branch: `below(candidates)` over the army
+templates whose `[MinPower, MaxPower]` contains the scaled power. The engine
+had 106 of them and the port 107.
+
+**The budget is recoverable from the stacks**, without guessing. Theirs is
+`race_TOWN_NECROMANCY_tier5.3` (Lich_Master 1, Nosferatu 1, Poltergeist 2,
+weighted 2960): amounts 5/5/12 mean `k = 5` and a remainder of two
+Poltergeists, so its budget was in `[15462, 15793)`. Ours is
+`race_TOWN_STRONGHOLD_tier4.5` (weighted 1517) with `k = 10` and four extra
+Goblin Defilers — budget exactly **15489**. And 15489 is, to the unit, the
+`MinPower` of `race_TOWN_DUNGEON_tier5` — the 107th candidate, the one the
+engine did not have.
+
+**So the question was one unit of arithmetic**, and the chain is short:
+
+```
+value  = trunc(d * TreasureBlocksTotalValue / sum)   = 7649
+power  = trunc(value * 2.5f + 0.5f)                  = 19123
+scaled = trunc(power * 0.9f)                         = 17210
+budget = trunc(scaled * 0.9f)                        = 15489 or 15488
+```
+
+`17210 * 0.9f` is `15488.99958968…`, and the nearest float to that is 15489
+exactly — so a port that rounds the product to a float before truncating gets
+15489 and one candidate more. This one did, on that line alone: the line above
+it, the strength scaling, had been written the other way years earlier, with a
+comment explaining why (the reference run's Familiar guard is 23 strong, and
+`2000 * 0.9f` truncates to 1799 unrounded and 1800 rounded). The two lines now
+agree, and the map agrees with the engine.
+
+**What was ruled out first, and how.** The value could have been wrong instead
+— it comes from the block's distance to its town over the zone's sum of those
+distances. Biasing that sum by one for the zone did fix this guard and broke
+two others (`(211,188)` and `(225,189)`), and the arithmetic of THOSE two pins
+the sum at exactly the port's 1608: no integer distance and no sum near it can
+give both. So the value was right and the scaling was not.
+
+One honest tension is left. In the GAME executable this multiply is
+`mulss` + `cvttss2si`, which rounds — but every measured run here is the
+EDITOR's, and both of the readings that touch it (the Familiar guard in the
+reference and this guard in `S6-11P2-8Z8K2XL`) say the editor's build
+truncates the product where it lands. The port follows the measurement.
 
 #### The zone's tile LIST is not the zone's tiles
 
