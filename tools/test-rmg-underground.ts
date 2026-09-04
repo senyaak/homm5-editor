@@ -202,6 +202,7 @@ for (const tz of c.template.zones) {
   const oneInput = {
     size: c.size, grid: floor.grid, border: floor.border, occupancy: floor.occ, room: floor.room,
     points: fill.points, zoneIndex: tz.index, roads: zoneRoads,
+    tiles: c.zoneTileList(tz.index),
     smallBlockers: preset.oneTileSmallBlockers.map((h) => c.footprint(h)),
     smallNonblockers: preset.oneTileSmallNonblockers.map((h) => c.footprint(h)),
     bigObjects: preset.oneTileBigObjects.map((h) => c.footprint(h)),

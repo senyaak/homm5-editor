@@ -315,12 +315,11 @@ towns matched its players. What moved the other six was one routine — the
 garrison below. The cartographer and the zero possession marker moved six
 more; the table above is the state before those two.
 
-**The standing count is NINETEEN of twenty-one.** Every template but
-`S3-5P4Z12B4` and `S6-11P2-8Z8K2XL` now reproduces the whole object layer;
-three of them — `S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` and the reference — are
-byte-identical through the terrain as well, and the rest differ only in the
-height plane, by anything from 4 bytes to a few thousand. The port refuses
-`S7-22P2-8Z15K2.4c` outright.
+**The standing count is TWENTY of twenty-one.** Every template but
+`S6-11P2-8Z8K2XL` now reproduces the whole object layer; three of them —
+`S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` and the reference — are byte-identical through
+the terrain as well, and the rest differ only in the height plane, by anything
+from 4 bytes to a few thousand. The port refuses `S7-22P2-8Z15K2.4c` outright.
 
 **A debt the count hides.** `S3-5P2-8Z8K2M` differs by five bytes, and only two
 of them are the `caption-text` numbering: three object AMOUNTS are off by one
@@ -402,6 +401,56 @@ leaves the plateau at 8.92, a 3.19 drop over a five-tile core with a wide
 skirt, while every other plane of the same file agrees. So the heights carry
 two separate debts: a smoothing pass that drifts in the third decimal, and at
 least one feature the port does not carve at all.
+
+#### The zone's tile LIST is not the zone's tiles
+
+The pool a step draws from is `zone+0xCC`, and it is **built once**: `0xEB7790`
+walks the level grid and keeps every cell of the zone, its one caller is the
+tail of FillZones (`0xeaa609`, right after the sweep's grow and flip lists are
+painted back into the grid), and nothing rebuilds it afterwards. The port
+derived it from the grid instead, at the moment each step ran — which is the
+same list only until something dents the grid, and two later phases do:
+
+- **FillDistToTownsTable disowns** (`0xEC06E0`'s tail): every tile of a zone
+  its wavefront never reached is written **-2** in the grid. The list keeps it.
+- **the water carve takes the rim** — already modelled, because the island run
+  forced it; the carve edits the list in place, which is why `water.kept` was
+  the port's only `tiles` until now.
+
+So the engine draws from a pool that includes tiles the grid says belong to
+nobody, and a port that rebuilds the pool has a SHORTER one with no differing
+draw to say why. That is exactly how `S3-5P4Z12B4` diverged: 348 candidates
+against 346 at zone 1's first dwelling, both sides at threshold 16, and 15
+would have given 404 — so the threshold was never the question.
+
+**Read, not inferred.** The oracle's `points` dump now also prints the list:
+`zt <zoneId> <count>` and `ztt` with the tiles, fifty to a line (they are FLOAT
+pairs — `cvtdq2ps` at 0xeb7858). Against the port's own `zoneTiles` the answer
+was flat: nine zones identical to the tile, and zones 1, 3 and 6 exactly two
+tiles longer — six tiles in all, every one of them reading -2 in the port's
+grid, and all six inside one 3x3 pocket at (71..73, 80..82) that the towns'
+wavefront had walled off.
+
+**Which steps read the list, and which do not.** Every step that says "the
+zone's tiles" in this document means `+0xCC` unless it is one of the two below:
+
+| walks `+0xCC` | walks the GRID |
+| --- | --- |
+| dwellings, prisons, cartographers, the price lists, upgrade buildings, treasures and chests | the mines (`0xeb5cd0`: two counted loops over the grid dims, `[+0xC4]` compared to `zone+0xEC`, border `[+0xE4] > 1`) |
+| the lakes' seed scan (`0xebc2c9`), the preset mountains' first loop (`0xebcb18`), the big-statics sweep, the one-tile bucket scan and its border fence (`0xEBAA70`) | the lake blob's wavefront and the road relaxation, which are grid sweeps in both |
+
+The cheapest witness is the one-tile **fence**, because its difference is
+DRAWN: the pass spends a `below(4)` on every entry of the list before any test,
+so two extra tiles are two extra draws. That is what caught it — the engine at
+draw 186583 drawing one more quadrant than the port had.
+
+**And it moved the divergence four times in a row**, each fix uncovering the
+next place the same reading had been missed: 158277 (dwellings) → 165184 (the
+big-statics sweep) → 186583 (the one-tile fence) → 239928 (the preset
+mountains) → **none**. `S3-5P4Z12B4` now replays all 354661 draws of the
+engine's trace and writes a `map.xdb` that differs in the two `caption-text`
+bytes alone; 57 bytes of its height plane remain, which is the standing debt of
+sixteen other templates.
 
 ### Where each template's run first turns differently
 

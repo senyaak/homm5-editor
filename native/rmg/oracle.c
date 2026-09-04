@@ -831,6 +831,31 @@ static void rmg_dump_points(void) {
     rmg_log_pair("zh ", id, 0);
     rmg_log_ints("zhw ", (int *)zone, 0x40 / 4);
   }
+  // And the CANDIDATE LIST every first-loop step draws from — the zone's
+  // `+0xCC`, built once back in FillZones and never rebuilt. When a pool
+  // differs and no draw does, the cause is either this list or the room
+  // measured over it, and nothing in the trace separates the two: the room
+  // comes from the points dumped above, so the list has to be read as well.
+  //
+  //   zt <zoneId> <count>    the vector's length in tiles
+  //   ztt <ints...>          the tiles themselves, fifty to a line
+  for (id = 0; id < 32; id++) {
+    BYTE *zone = g_rmgZones[id];
+    int *begin, *end, count, k;
+    if (!zone || !rmg_readable(zone, 0x140)) continue;
+    if (*(int *)(zone + 0xEC) != id) continue;
+    begin = *(int **)(zone + 0xCC);
+    end = *(int **)(zone + 0xD0);
+    if (!begin || !end || end < begin) continue;
+    count = (int)(end - begin) / 2;
+    if (count < 0 || count > 65536) continue;
+    if (!rmg_readable(begin, (unsigned)(count * 8))) continue;
+    rmg_log_pair("zt ", id, count);
+    for (k = 0; k < count; k += 50) {
+      int n = count - k < 50 ? count - k : 50;
+      rmg_log_ints("ztt ", begin + k * 2, n * 2);
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

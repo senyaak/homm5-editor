@@ -28,7 +28,7 @@ import type { VertexHeights } from '../src/rmg/massif-carve.ts';
 import { MINE_TYPES, readMineShared } from '../src/rmg/mines.ts';
 import { CARTOGRAPHER_HREF } from '../src/rmg/cartographer.ts';
 import { PRISON_HREF } from '../src/rmg/prisons.ts';
-import { recomputeRoom, zoneTiles } from '../src/rmg/placement.ts';
+import { recomputeRoom } from '../src/rmg/placement.ts';
 import type { Footprint, Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
 import { SHIPYARD_HREF, shipTile } from '../src/rmg/shipyards.ts';
@@ -399,7 +399,7 @@ export function runFull(
       mapAngle: c.setup.angle,
       heightPlane: f === 0 ? heightPlane : undefined,
       subterranean, vertexHeights: vertexHeights[f]!,
-      water: water || undefined, tiles: c.water?.kept.get(tz.index),
+      water: water || undefined, tiles: c.water?.kept.get(tz.index) ?? c.zoneTileList(tz.index),
     }, c.rng);
     // A lit crystal's colour is the params' Colors[zoneIndex % count].
     const zoneColor = c.params.pointLightParams.colors.length
@@ -430,6 +430,7 @@ export function runFull(
     const oneInput = {
       size: c.size, grid: floor.grid, border: floor.border, occupancy: floor.occ, room: floor.room,
       points: fill.points, zoneIndex: tz.index, roads: zoneRoads,
+      tiles: c.water?.kept.get(tz.index) ?? c.zoneTileList(tz.index),
       smallBlockers: preset.oneTileSmallBlockers.map((h) => c.footprint(h)),
       smallNonblockers: preset.oneTileSmallNonblockers.map((h) => c.footprint(h)),
       bigObjects: preset.oneTileBigObjects.map((h) => c.footprint(h)),
@@ -441,7 +442,7 @@ export function runFull(
           pointLight: c.params.pointLightParams,
         }, c.rng)
       : water
-        ? placeWaterOneTileStatics({ ...oneInput, tiles: c.water!.kept.get(tz.index)! }, c.rng)
+        ? placeWaterOneTileStatics(oneInput, c.rng)
         : placeZoneOneTileStatics(oneInput, c.rng);
     statics.push(...one);
     for (const s of one) objects.push(staticRecord(s));
@@ -477,7 +478,7 @@ export function runFull(
     recomputeRoom(fl.room, c.size, fl.grid, tz.index, roads.get(tz.index)!, c.water?.kept.get(tz.index));
     const blocks = buildTreasureBlocks({
       size: c.size, occupancy: fl.occ, room: fl.room,
-      tiles: c.water?.kept.get(tz.index) ?? zoneTiles(c.size, fl.grid, tz.index),
+      tiles: c.water?.kept.get(tz.index) ?? c.zoneTileList(tz.index),
       town: hasTown ? [centre!.b, centre!.a] : [0, 0], hasTown,
       repel: guardSeats.get(tz.index)!,
       totalValue: tz.treasureBlocksTotalValue,
@@ -509,7 +510,7 @@ export function runFull(
       .filter((tz) => c.loaded.zones.find((z) => z.index === tz.index)!.floor === f)
       .map((tz) => ({
         index: tz.index,
-        tiles: c.water?.kept.get(tz.index) ?? zoneTiles(c.size, fl.grid, tz.index),
+        tiles: c.water?.kept.get(tz.index) ?? c.zoneTileList(tz.index),
         points: [...fills.get(tz.index)!.points, ...roads.get(tz.index)!],
         water: Boolean(c.water) && f === 0,
       })),

@@ -59,6 +59,16 @@ export interface OneTileStaticsInput {
   room: Int32Array[];
   /** The zone's `+0x68` points — read by the recompute only. */
   points: Tile[];
+  /**
+   * The zone's `+0xCC` — what this step WALKS, both in the bucket scan and
+   * in the fence, and not the same set as "the zone's tiles in the grid":
+   * the list is FillZones' and nothing rebuilds it, while the grid has since
+   * been dented (dist-to-towns disowns a zone's unreachable tiles with -2,
+   * the water carve takes the rim). The fence spends a below(4) on every
+   * entry, so the difference is DRAWN — which is how `S3-5P4Z12B4` was
+   * caught one quadrant short of the engine here.
+   */
+  tiles: Tile[];
   zoneIndex: number;
   /** The three road lists, for the 0x3C room mask. */
   roads: Tile[];
@@ -83,16 +93,13 @@ export function placeZoneOneTileStatics(input: OneTileStaticsInput, rng: DrawSou
   const near: Tile[] = [];
   const mid: Tile[] = [];
   const far: Tile[] = [];
-  for (let x = 0; x < size; x++) {
-    for (let y = 0; y < size; y++) {
-      if (grid[y]![x] !== zoneIndex) continue;
-      if (occupancy[y * size + x] !== 0) continue;
-      if (border[y]![x] === 0) continue;
-      const r = room[y]![x]!;
-      if (r > 4) far.push([x, y]);
-      else if (r >= 3) mid.push([x, y]);
-      else if (r === 2) near.push([x, y]);
-    }
+  for (const [x, y] of input.tiles) {
+    if (occupancy[y * size + x] !== 0) continue;
+    if (border[y]![x] === 0) continue;
+    const r = room[y]![x]!;
+    if (r > 4) far.push([x, y]);
+    else if (r >= 3) mid.push([x, y]);
+    else if (r === 2) near.push([x, y]);
   }
 
   const create = (list: Footprint[], at: Tile, q: number, fireDot: boolean, occ: number): void => {
@@ -104,18 +111,15 @@ export function placeZoneOneTileStatics(input: OneTileStaticsInput, rng: DrawSou
   };
 
   // Pass 1 — the border fence.
-  for (let x = 0; x < size; x++) {
-    for (let y = 0; y < size; y++) {
-      if (grid[y]![x] !== zoneIndex) continue;
-      const q = rng.below(4);
-      if (border[y]![x] !== 0) continue;
-      const occ = occupancy[y * size + x]!;
-      if (occ !== 0 && occ !== 1 && occ !== 8 && occ !== 0x10 && occ !== 0x20) continue;
-      const roll = rng.betweenFloat(0, 1);
-      if (roll < fl(0.4) && input.smallBlockers.length) create(input.smallBlockers, [x, y], q, true, 2);
-      else if (input.bigObjects.length) create(input.bigObjects, [x, y], q, false, 2);
-      else create(input.smallBlockers, [x, y], q, true, 2);
-    }
+  for (const [x, y] of input.tiles) {
+    const q = rng.below(4);
+    if (border[y]![x] !== 0) continue;
+    const occ = occupancy[y * size + x]!;
+    if (occ !== 0 && occ !== 1 && occ !== 8 && occ !== 0x10 && occ !== 0x20) continue;
+    const roll = rng.betweenFloat(0, 1);
+    if (roll < fl(0.4) && input.smallBlockers.length) create(input.smallBlockers, [x, y], q, true, 2);
+    else if (input.bigObjects.length) create(input.bigObjects, [x, y], q, false, 2);
+    else create(input.smallBlockers, [x, y], q, true, 2);
   }
 
   // Pass 2 — near, the three-stage cascade.
@@ -170,10 +174,7 @@ export function placeZoneOneTileStatics(input: OneTileStaticsInput, rng: DrawSou
 // - the three cascades are the base's, constants and strictness included
 //   (near 0.15/0.4/0.6, mid 0.3/0.5, far <= 0.5 with equality passing).
 
-export interface WaterOneTileStaticsInput extends OneTileStaticsInput {
-  /** The carve's rebuilt `+0xCC` — the grid no longer derives it. */
-  tiles: Tile[];
-}
+export type WaterOneTileStaticsInput = OneTileStaticsInput;
 
 /** The whole slot-+0x30 step for one water-bordered zone. */
 export function placeWaterOneTileStatics(input: WaterOneTileStaticsInput, rng: DrawSource): PlacedStatic[] {
@@ -288,18 +289,15 @@ export function placeSubterraOneTileStatics(
   const near: Tile[] = [];
   const mid: Tile[] = [];
   const far: Tile[] = [];
-  for (let x = 0; x < size; x++) {
-    for (let y = 0; y < size; y++) {
-      if (grid[y]![x] !== zoneIndex) continue;
-      if (occupancy[y * size + x] !== 0) continue;
-      if (border[y]![x] === 0) continue;
-      if (rock(x, y)) continue;
-      if (!inBounds(x, y)) continue;
-      const r = room[y]![x]!;
-      if (r > 4) far.push([x, y]);
-      else if (r >= 3) mid.push([x, y]);
-      else if (r === 2) near.push([x, y]);
-    }
+  for (const [x, y] of input.tiles) {
+    if (occupancy[y * size + x] !== 0) continue;
+    if (border[y]![x] === 0) continue;
+    if (rock(x, y)) continue;
+    if (!inBounds(x, y)) continue;
+    const r = room[y]![x]!;
+    if (r > 4) far.push([x, y]);
+    else if (r >= 3) mid.push([x, y]);
+    else if (r === 2) near.push([x, y]);
   }
 
   // A blocker or nonblocker whose path carries "Crystal" takes the point
@@ -322,21 +320,18 @@ export function placeSubterraOneTileStatics(
 
   // Pass 1 — the fence: rock and bounds before the bare below(4), the
   // survival roll after the border and occupancy tests.
-  for (let x = 0; x < size; x++) {
-    for (let y = 0; y < size; y++) {
-      if (grid[y]![x] !== zoneIndex) continue;
-      if (rock(x, y)) continue;
-      if (!inBounds(x, y)) continue;
-      const q = rng.below(4);
-      if (border[y]![x] !== 0) continue;
-      const occ = occupancy[y * size + x]!;
-      if (occ !== 0 && occ !== 1 && occ !== 8 && occ !== 0x10 && occ !== 0x20) continue;
-      if (rng.betweenFloat(0, 1) < fl(0.7)) continue;
-      const roll = rng.betweenFloat(0, 1);
-      if (roll < fl(0.4) && input.smallBlockers.length) create(input.smallBlockers, [x, y], q, true, 2);
-      else if (input.bigObjects.length) create(input.bigObjects, [x, y], q, false, 2);
-      else create(input.smallBlockers, [x, y], q, true, 2);
-    }
+  for (const [x, y] of input.tiles) {
+    if (rock(x, y)) continue;
+    if (!inBounds(x, y)) continue;
+    const q = rng.below(4);
+    if (border[y]![x] !== 0) continue;
+    const occ = occupancy[y * size + x]!;
+    if (occ !== 0 && occ !== 1 && occ !== 8 && occ !== 0x10 && occ !== 0x20) continue;
+    if (rng.betweenFloat(0, 1) < fl(0.7)) continue;
+    const roll = rng.betweenFloat(0, 1);
+    if (roll < fl(0.4) && input.smallBlockers.length) create(input.smallBlockers, [x, y], q, true, 2);
+    else if (input.bigObjects.length) create(input.bigObjects, [x, y], q, false, 2);
+    else create(input.smallBlockers, [x, y], q, true, 2);
   }
 
   // Pass 2 — near: survival, THEN the quadrant, then the base cascade.

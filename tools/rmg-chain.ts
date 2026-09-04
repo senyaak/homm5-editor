@@ -173,6 +173,13 @@ export interface Chain {
   room: Int32Array[];
   /** The zone's `+0x68` points: town stamp, passages, teleport stamps. */
   roomPoints(zoneIndex: number): Tile[];
+  /**
+   * The zone's `+0xCC` — its tiles as the tail of FillZones collected them,
+   * which is NOT what the grid says later: the dist-to-towns pass disowns a
+   * zone's unreachable tiles and the water carve takes its rim, and neither
+   * touches this list. Every first-loop step draws from it.
+   */
+  zoneTileList(zoneIndex: number): Tile[];
   /** The teleports' active tiles — the `zone+0xC0` entries they pushed. */
   teleportActives(zoneIndex: number): Tile[];
   /** The teleports' guard seats — part of the treasure blocks' repel list. */
@@ -232,6 +239,21 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   const filled = fillZones(size, size, placed.zones, made.twoFloors, rng,
     options.jitter ? { jitter: options.jitter } : undefined);
   phase('fillZones');
+  // THE ZONE'S `+0xCC`, TAKEN WHERE THE ENGINE TAKES IT. `0xEB7790` — whose
+  // one caller is FillZones' own tail at 0xeaa609, right after the grow and
+  // flip lists are painted back into the grid — walks the level grid once and
+  // keeps every cell of the zone. Nothing rebuilds it afterwards, and two
+  // later phases dent the grid under it: FillDistToTowns writes -2 over the
+  // tiles a zone cannot reach from its centre, and the water carve takes the
+  // rim. So a candidate list DERIVED from the grid at MainObjects time is
+  // short of exactly those tiles, and the pool a step draws from is smaller
+  // than the engine's with no draw differing to say why — which is how
+  // `S3-5P4Z12B4` diverged: 348 against 346, the two being a disowned pocket
+  // at (71..72, 82) that FillDistToTowns had walled off.
+  const zoneLists = new Map<number, Tile[]>();
+  for (const z of loaded.zones) {
+    zoneLists.set(z.index, zoneTiles(size, filled.floors[z.floor] ?? filled.floors[0]!, z.index));
+  }
   const distances = calcBorderTiles(size, size, filled.floors);
   const townResult = placeTowns({
     size, template, zones: loaded.zones, floors: filled.floors, distances,
@@ -255,7 +277,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     for (const z of floorIterationOrder(loaded.zones.filter((zz) => zz.floor === 0))) {
       const carved = carveWaterBorder({
         size, grid: filled.floors[0]!, border: distances[0]!, zoneIndex: z.index,
-        tiles: zoneTiles(size, filled.floors[0]!, z.index), depth: water.depth,
+        tiles: zoneLists.get(z.index)!, depth: water.depth,
       });
       water.kept.set(z.index, carved.kept);
       water.sea.set(z.index, carved.sea);
@@ -408,6 +430,9 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
         ...(shipyardRoomPoints.get(zoneIndex) ?? []),
       ];
     },
+    zoneTileList(zoneIndex: number): Tile[] {
+      return zoneLists.get(zoneIndex) ?? [];
+    },
     teleportActives(zoneIndex: number): Tile[] {
       return teleportActives.get(zoneIndex) ?? [];
     },
@@ -460,11 +485,13 @@ export class ZoneFill {
   /** The zone's own floor's grids — what every step reads and dents. */
   private readonly f: Chain['floors'][number];
   /**
-   * The zone's `+0xCC` when the water carve rebuilt it — the rim keeps list
-   * membership with grid -1, so the grid no longer derives the list and
-   * every list-fed step takes it from here. undefined on no-water runs.
+   * The zone's `+0xCC` — the list FillZones built and nothing rebuilds. The
+   * water carve is the one thing that EDITS it (the rim keeps membership with
+   * grid -1), so a water run takes the carve's answer and every other run the
+   * list as collected. Either way the steps read it rather than the grid,
+   * which by then has disowned tiles the engine is still drawing from.
    */
-  private readonly tiles?: Tile[];
+  private readonly tiles: Tile[];
 
   constructor(c: Chain, zoneIndex: number) {
     this.c = c;
@@ -477,7 +504,7 @@ export class ZoneFill {
     this.pricePreset = c.presets.get(loaded.terrainRace)!;
     this.floor = loaded.floor;
     this.f = c.floors[this.floor] ?? c.floors[0]!;
-    this.tiles = c.water?.kept.get(zoneIndex);
+    this.tiles = c.water?.kept.get(zoneIndex) ?? c.zoneTileList(zoneIndex);
   }
 
   private priced(list: PricedBuilding[]): PricedItem[] {

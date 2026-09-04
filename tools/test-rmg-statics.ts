@@ -109,6 +109,7 @@ for (const tz of c.template.zones) {
   const one = placeZoneOneTileStatics({
     size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room,
     points: fill.points, zoneIndex: tz.index, roads: zoneRoads,
+    tiles: c.zoneTileList(tz.index),
     smallBlockers: preset.oneTileSmallBlockers.map((h) => c.footprint(h)),
     smallNonblockers: preset.oneTileSmallNonblockers.map((h) => c.footprint(h)),
     bigObjects: preset.oneTileBigObjects.map((h) => c.footprint(h)),

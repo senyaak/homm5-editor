@@ -236,33 +236,34 @@ function growLakes(input: BigStaticsInput, rng: DrawSource): GrownLakes {
   // Mask 0x3E — 0x3C plus the zone's stamped-blocked ledger (+0x5C).
   recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads, ...input.blockedList]);
 
+  // The scan walks the zone's `+0xCC` (0xebc2c9 loads it and converts each
+  // float pair with `cvttss2si`), and its first test is the room — there is
+  // no zone test at all, so a tile the grid has since disowned is scanned
+  // like any other.
   const seeds: Tile[] = [];
-  for (let x = 0; x < size; x++) {
-    for (let y = 0; y < size; y++) {
-      if (grid[y]![x] !== zoneIndex) continue;
-      const r = room[y]![x]!;
-      if (r <= 5 || border[y]![x]! <= 5) continue;
-      let localMax = true;
-      for (const [dx, dy] of EIGHT) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
-        // Only a STRICTLY greater neighbour disqualifies (`jg` at
-        // 0xebc380) — a plateau is all maxima. Confirmed live by the
-        // underground run's zone 2 (ties-lose leaves 1 candidate of the
-        // measured 14).
-        if (room[ny]![nx]! > r) {
-          localMax = false;
-          break;
-        }
+  for (const [x, y] of input.tiles ?? zoneTiles(size, grid, zoneIndex)) {
+    const r = room[y]![x]!;
+    if (r <= 5 || border[y]![x]! <= 5) continue;
+    let localMax = true;
+    for (const [dx, dy] of EIGHT) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+      // Only a STRICTLY greater neighbour disqualifies (`jg` at
+      // 0xebc380) — a plateau is all maxima. Confirmed live by the
+      // underground run's zone 2 (ties-lose leaves 1 candidate of the
+      // measured 14).
+      if (room[ny]![nx]! > r) {
+        localMax = false;
+        break;
       }
-      if (!localMax) continue;
-      const roll = rng.betweenFloat(0, 1);
-      if (roll >= fl(0.4)) continue;
-      if (seeds.some((s) => dist(s, [x, y]) < fl(20))) continue;
-      seeds.push([x, y]);
-      input.bigPositions.push([x, y]);
     }
+    if (!localMax) continue;
+    const roll = rng.betweenFloat(0, 1);
+    if (roll >= fl(0.4)) continue;
+    if (seeds.some((s) => dist(s, [x, y]) < fl(20))) continue;
+    seeds.push([x, y]);
+    input.bigPositions.push([x, y]);
   }
 
   // The blob — drawless. Scratch 1000, seeds 0 + occupancy 2, chamfer
@@ -378,37 +379,37 @@ function placePresetMountains(input: BigStaticsInput, rng: DrawSource): PlacedSt
   // seeds, decorations and one-tilers never touch room.
   const done: Tile[] = [];
   const blockedCells: Tile[] = [];
-  for (let x = 0; x < size; x++) {
-    for (let y = 0; y < size; y++) {
-      if (grid[y]![x] !== zoneIndex) continue;
-      if (room[y]![x]! <= 4) continue;
-      if (done.some((d) => dist(d, [x, y]) < fl(4))) continue;
-      const entry = input.mountains[rng.below(input.mountains.length)]!;
-      const q = rng.below(4);
-      if (!staticFits(input, entry.blocked, [x, y], q)) continue;
-      const name = mintName(rng);
-      for (const off of entry.blocked) {
-        const [dx, dy] = rotate(q, off);
-        const bx = x + dx;
-        const by = y + dy;
-        // The engine writes rows[x][y] with NO bounds check, and the
-        // grid's rows live in one contiguous x-major buffer — an
-        // out-of-range y WRAPS into the neighbouring row (buf[x*size+y]),
-        // while an out-of-range x leaves the buffer and is dropped here.
-        const flat = bx * size + by;
-        if (bx < 0 || bx >= size || flat < 0 || flat >= size * size) continue;
-        const xw = Math.floor(flat / size);
-        const yw = flat - xw * size;
-        // DURING the pass the engine writes 0x100 — invisible to the
-        // byte-wide fit, so mountains overlap freely and only the 4.0
-        // rule separates them. This grid's byte reads the same 0.
-        occupancy[yw * size + xw] = 0;
-        blockedCells.push([xw, yw]);
-      }
-      done.push([x, y]);
-      placed.push({ type: entry.path, name, x, y, angle: q * (Math.PI / 2) });
-      raiseRelief(input, [x, y], q, entry.blocked);
+  // Two loops in the engine, and the first walks `+0xCC` (0xebcb18) keeping
+  // every entry whose room is above 4 — again with no zone test. The second
+  // is the one below: spacing, the two draws, the fit.
+  for (const [x, y] of input.tiles ?? zoneTiles(size, grid, zoneIndex)) {
+    if (room[y]![x]! <= 4) continue;
+    if (done.some((d) => dist(d, [x, y]) < fl(4))) continue;
+    const entry = input.mountains[rng.below(input.mountains.length)]!;
+    const q = rng.below(4);
+    if (!staticFits(input, entry.blocked, [x, y], q)) continue;
+    const name = mintName(rng);
+    for (const off of entry.blocked) {
+      const [dx, dy] = rotate(q, off);
+      const bx = x + dx;
+      const by = y + dy;
+      // The engine writes rows[x][y] with NO bounds check, and the
+      // grid's rows live in one contiguous x-major buffer — an
+      // out-of-range y WRAPS into the neighbouring row (buf[x*size+y]),
+      // while an out-of-range x leaves the buffer and is dropped here.
+      const flat = bx * size + by;
+      if (bx < 0 || bx >= size || flat < 0 || flat >= size * size) continue;
+      const xw = Math.floor(flat / size);
+      const yw = flat - xw * size;
+      // DURING the pass the engine writes 0x100 — invisible to the
+      // byte-wide fit, so mountains overlap freely and only the 4.0
+      // rule separates them. This grid's byte reads the same 0.
+      occupancy[yw * size + xw] = 0;
+      blockedCells.push([xw, yw]);
     }
+    done.push([x, y]);
+    placed.push({ type: entry.path, name, x, y, angle: q * (Math.PI / 2) });
+    raiseRelief(input, [x, y], q, entry.blocked);
   }
   // AFTER the candidate loop (`0xebd114..0xebd169`) every accumulated
   // blocked cell turns to 2 — the sweep behind this pass fails its fits
