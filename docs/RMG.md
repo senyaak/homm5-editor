@@ -347,6 +347,46 @@ exact, and it is not the zone count the sweep first suggested:
 | the seven | exactly 2, the same as the order's players | matches to the last draw |
 | the eleven | 3 or more | diverges in the towns pass |
 
+#### What the four draws are: a town nobody owns is GUARDED
+
+Read, not inferred. `PlaceTowns` itself draws nothing — every draw between
+"Rnd Counter(PlaceTowns)" and "at %g towns placed" is made inside
+`CGameZone::PlaceTown` (the editor's vt+0x20, `0xc04120`) — so the oracle now
+brackets that call, and `SetMonster` (`0xed2330` in the game, `0x792bc0` in the
+editor, found by its own complaint "no monster set at town, power: %d") with
+it. On `S1P2Z3K5.1` the brackets say:
+
+```
+pt  13779 1000     town 1, PLAYER_1   ─┐ 13 draws
+pto 13792 1                            ┘
+pt  13792 1000     town 2, PLAYER_2   ─┐  7 draws
+pto 13799 1                            ┘
+pt  13799 20000    town 3, PLAYER_NONE ┐ 11 draws
+sm  13805 20000      SetMonster        │  ── 4 of them, drawing 20, 3, 20, 3
+smo 13809 1                            │
+pto 13810 1                            ┘  and then the specialisation, of 20
+```
+
+So the port was not four draws short of a specialisation — it was missing a
+whole call, and its specialisation landed four draws early. The two agreed at
+draw 13806 by accident: the engine's `below(20)` there is `SetMonster`'s spread
+and the port's is the specialisation pick, and two different routines drawing
+the same limit produce the same number.
+
+**The condition is the owner, and it is in the code**: at `0xeb577f` the game
+reads `cmp dword ptr [edi+0F0h],0` and skips the guard when it is not zero —
+zone `playerNo` 0 means nobody, and only that town is guarded. The power is the
+caller's first argument, and the two values seen say what it is made of:
+`zone.townGuardStrenght × params.basicLeverGuardPower` — the template's zones
+carry 1, 1 and 20, the parameter is 1000, and the brackets show 1000, 1000 and
+20000. Both fields are already read by the port.
+
+**But this is NOT the `setMonster` the port has.** The ported one opens with a
+`betweenFloat` and can spend `10 + below(30)`; the town's guard spends
+`below(20)`, `below(candidates)`, twice, and no float at all. `0xed2330` is its
+own routine — the log string says "at town" — and porting it is what unblocks
+every template with a town nobody owns.
+
 **A town nobody owns costs the engine two draws the port does not spend.** On
 `S1-2P2-4Z4K1S` (4 towns, 2 players) the extra pair — `below(3)` then
 `below(20)` — appears after the specialisation draw of the THIRD and FOURTH

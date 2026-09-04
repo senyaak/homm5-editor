@@ -203,6 +203,35 @@ static int g_rmgStepEnds = 0;
 #define RMG_ED_BETWEEN_FLOAT_RVA 0x8fd330u
 /** The state's high dword — its address sits inside three of the four heads. */
 #define RMG_ED_STATE_HI_RVA 0xfd8f44u
+/**
+ * `SetMonster` — the guard-army builder, found by its own complaint
+ * ("no monster set at town, power: %d", pushed at 0x792bd8 in the editor and
+ * 0xed234d in the game, so the function heads sit 0x1d before each).
+ *
+ * WHY IT IS WORTH A LINE OF ITS OWN. Every draw the towns pass makes goes
+ * through `PlaceTown`, and the port's reading of that accounts for all of them
+ * — except four, on templates with a town nobody owns. Reading the values
+ * cannot say which routine spent them: `below(20)` is the specialisation pick
+ * AND the spread this function opens with, and two routines that draw the same
+ * limits are indistinguishable in a trace of limits. Bracketing one of them
+ * settles it, and the counter at entry and exit is the whole bracket.
+ *
+ * `ret 0Ch`, thiscall — three stack arguments, the first of which is the power.
+ */
+#define RMG_ED_SET_MONSTER_RVA 0x392bc0u
+/**
+ * `CGameZone::PlaceTown` — the editor's vt+0x20, found through RTTI rather
+ * than guessed. `ret 8`, thiscall: the towns pass hands it the guard power and
+ * the grail byte.
+ *
+ * The towns pass itself draws NOTHING — every draw between "Rnd
+ * Counter(PlaceTowns)" and "at %g towns placed" is made in here or below it —
+ * so bracketing this call says, for each town, exactly which draws were its
+ * own. That is the question a trace of values cannot answer: the four extra
+ * draws a template with an unowned town spends look like a specialisation pick
+ * and something of three, and both of those already exist in this function.
+ */
+#define RMG_ED_PLACE_TOWN_RVA 0x804120u
 
 typedef int (*RmgNextFn)(void);
 typedef unsigned long long (*RmgNext63Fn)(void);
@@ -212,6 +241,10 @@ typedef int(__fastcall *RmgBelowFn)(int n);
 // EIP 0x40C90FDB, the float's own bits. Arity and convention come from the
 // `ret`, never from what the signature plausibly looks like.
 typedef float(__stdcall *RmgBetweenFloatFn)(float a, float b);
+/** `ret 0Ch` with `this` in ecx — three stack arguments, power first. */
+typedef char(__fastcall *RmgSetMonsterFn)(void *self, void *edx, int power, int a2, int a3);
+/** `ret 8` with `this` in ecx — the guard power and the grail byte. */
+typedef char(__fastcall *RmgPlaceTownFn)(void *self, void *edx, int power, int grail);
 
 static int g_rmgTrace = 0;
 static int g_rmgRunActive = 0;
@@ -251,6 +284,8 @@ static RmgNextFn g_rmgNextOrig = NULL;
 static RmgNext63Fn g_rmgNext63Orig = NULL;
 static RmgBelowFn g_rmgBelowOrig = NULL;
 static RmgBetweenFloatFn g_rmgBetweenFloatOrig = NULL;
+static RmgSetMonsterFn g_rmgSetMonsterOrig = NULL;
+static RmgPlaceTownFn g_rmgPlaceTownOrig = NULL;
 
 /**
  * `CRandomMap::GetZone(out, index)` — 0xCEF810 in the editor, `ret 8`,
@@ -591,6 +626,24 @@ static int __fastcall rmg_below_trace(int n) {
     rmg_log_triple("tb ", *(int *)(base + g_rmgCounterFieldRva), v, n);
   }
   return v;
+}
+
+/** `sm <counter> <power>` on the way in, `smo <counter> <made>` on the way out. */
+static char __fastcall rmg_set_monster_trace(void *self, void *edx, int power, int a2, int a3) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  if (g_rmgRunActive) rmg_log_pair("sm ", *(int *)(base + g_rmgCounterFieldRva), power);
+  char made = g_rmgSetMonsterOrig(self, edx, power, a2, a3);
+  if (g_rmgRunActive) rmg_log_pair("smo ", *(int *)(base + g_rmgCounterFieldRva), made);
+  return made;
+}
+
+/** `pt <counter> <power>` on the way in, `pto <counter> <placed>` on the way out. */
+static char __fastcall rmg_place_town_trace(void *self, void *edx, int power, int grail) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  if (g_rmgRunActive) rmg_log_pair("pt ", *(int *)(base + g_rmgCounterFieldRva), power);
+  char placed = g_rmgPlaceTownOrig(self, edx, power, grail);
+  if (g_rmgRunActive) rmg_log_pair("pto ", *(int *)(base + g_rmgCounterFieldRva), placed);
+  return placed;
 }
 
 static void *__fastcall rmg_get_zone_trace(void *self, void *edx, void **out, int index) {
@@ -1098,6 +1151,16 @@ static int install_rmg_oracle(void) {
       static const BYTE getZoneHead[7] = { 0x8B, 0x44, 0x24, 0x08, 0x83, 0xEC, 0x08 };
       g_rmgGetZoneOrig = (RmgGetZoneFn)detour(RMG_ED_GET_ZONE_RVA, getZoneHead, 7,
                                               &rmg_get_zone_trace, "rmg trace GetZone");
+      // SetMonster's bracket: `sub esp,50h` then `mov eax,[esp+54h]` — seven
+      // relocation-free bytes, a whole number of instructions.
+      static const BYTE setMonsterHead[7] = { 0x83, 0xEC, 0x50, 0x8B, 0x44, 0x24, 0x54 };
+      g_rmgSetMonsterOrig = (RmgSetMonsterFn)detour(RMG_ED_SET_MONSTER_RVA, setMonsterHead, 7,
+                                                    &rmg_set_monster_trace, "rmg trace SetMonster");
+      // PlaceTown's bracket: `sub esp,0A8h` then `push ebx` — seven
+      // relocation-free bytes, a whole number of instructions.
+      static const BYTE placeTownHead[7] = { 0x81, 0xEC, 0xA8, 0x00, 0x00, 0x00, 0x53 };
+      g_rmgPlaceTownOrig = (RmgPlaceTownFn)detour(RMG_ED_PLACE_TOWN_RVA, placeTownHead, 7,
+                                                  &rmg_place_town_trace, "rmg trace PlaceTown");
       // The router's field, only when asked: its first two instructions are
       // also seven relocation-free bytes.
       if (g_rmgField) {
