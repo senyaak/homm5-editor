@@ -26,6 +26,7 @@ import {
 import { createVertexHeights } from '../src/rmg/massif-carve.ts';
 import type { VertexHeights } from '../src/rmg/massif-carve.ts';
 import { MINE_TYPES, readMineShared } from '../src/rmg/mines.ts';
+import { CARTOGRAPHER_HREF } from '../src/rmg/cartographer.ts';
 import { PRISON_HREF } from '../src/rmg/prisons.ts';
 import { recomputeRoom, zoneTiles } from '../src/rmg/placement.ts';
 import type { Footprint, Tile } from '../src/rmg/placement.ts';
@@ -310,6 +311,12 @@ export function runFull(
         { shared: pointered(PRISON_HREF, 'AdvMapPrisonShared') });
     }
     step(`zone ${zone} prisons`);
+
+    for (const g of fill.cartographers()) {
+      object('cartographer', g.name, g.x, g.y, g.q * HALF_PI, c.footprint(CARTOGRAPHER_HREF), floor,
+        { shared: pointered(CARTOGRAPHER_HREF, 'AdvMapCartographerShared') });
+    }
+    step(`zone ${zone} cartographer`);
 
     for (const s of fill.shrines()) {
       const href = `/MapObjects/${s.type}.(AdvMapShrineShared).xdb`;

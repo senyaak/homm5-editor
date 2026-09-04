@@ -24,6 +24,8 @@ import { MINE_TYPES, placeZoneAbandonedMines, placeZoneMines, readMineShared } f
 import type { MineFootprint, PlacedMine } from '../src/rmg/mines.ts';
 import { readParams } from '../src/rmg/params.ts';
 import { ensureRoom, filterByRoom, readFootprint, zoneTiles } from '../src/rmg/placement.ts';
+import { CARTOGRAPHER_HREF, placeZoneCartographers } from '../src/rmg/cartographer.ts';
+import type { PlacedCartographer } from '../src/rmg/cartographer.ts';
 import { PRISON_HREF, placeZonePrisons } from '../src/rmg/prisons.ts';
 import type { PlacedPrison } from '../src/rmg/prisons.ts';
 import type { Footprint, Tile } from '../src/rmg/placement.ts';
@@ -547,6 +549,16 @@ export class ZoneFill {
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
       count: this.zone.prisons, foot: c.footprint(PRISON_HREF),
+    }, c.rng);
+  }
+
+  /** `0xEBD4B0` — the prisons placer's twin, LandCartographer of them. */
+  cartographers(): PlacedCartographer[] {
+    const { c } = this;
+    return placeZoneCartographers({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      count: this.zone.landCartographer, foot: c.footprint(CARTOGRAPHER_HREF),
     }, c.rng);
   }
 

@@ -190,6 +190,14 @@ export function renderObject(o: EmitObject): string[] {
           '\t\t\t\t<PrisonedHero/>',
           '\t\t\t\t<RandomHero>true</RandomHero>',
         ];
+      case 'AdvMapCartographer':
+        // `Cost` is the one price that lives on the placed object rather than
+        // in its Shared, and 4000 is the type's own default — the generator
+        // never draws for it.
+        return [
+          ...CAPTURE_TRIGGER,
+          '\t\t\t\t<Cost>4000</Cost>',
+        ];
       case 'AdvMapAbanMine':
         return [
           '\t\t\t\t<AvailableResources>',
