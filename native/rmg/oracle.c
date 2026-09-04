@@ -274,6 +274,18 @@ static void rmg_log_ints(const char *prefix, const int *vals, int count);
 static void rmg_dump_pass(void);
 static void rmg_dump_slot38(void);
 /**
+ * `points` in the config: every zone's `+0x68` room-point list.
+ *
+ * The list is what the room grid is measured FROM — `0xEC28E0` writes each of
+ * the zone's cells the distance to its nearest point — so a port that has the
+ * wrong points has the wrong room, the wrong threshold and the wrong candidate
+ * pool, all without a single differing draw. That is exactly the shape of the
+ * `S1-2P2-8Z8K2S` divergence: identical draws for seven zones and then a pool
+ * of 511 against 447 with nothing in the trace to say why.
+ */
+static int g_rmgPoints = 0;
+static void rmg_dump_points(void);
+/**
  * Zone pointers, harvested from the ENGINE'S OWN GetZone calls as they pass
  * through the trace hook. Asking GetZone ourselves crashed the editor — its
  * not-found path dereferences null for an id nobody owns — so the dump only
@@ -498,6 +510,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "trace")) g_rmgTrace = 1;
     if (take_word(&q, stop, "grids")) g_rmgGrids = 1;
     if (take_word(&q, stop, "pass")) g_rmgPass = 1;
+    if (take_word(&q, stop, "points")) g_rmgPoints = 1;
     if (take_word(&q, stop, "field")) g_rmgField = 1;
     if (take_word(&q, stop, "minimap")) g_rmgMinimap = 1;
   }
@@ -770,6 +783,31 @@ static void rmg_log_ints(const char *prefix, const int *vals, int count) {
   rmg_log(line);
 }
 
+/**
+ * `rp <zoneId> <count>` and then the pairs — the zone's `+0x68` room points.
+ *
+ * A `std::vector` of two-int tiles: begin at `+0x68`, end at `+0x6C`. Read
+ * out of the zone objects the engine's own GetZone calls handed us, with the
+ * same id check the other dumps use as the guard against a layout change.
+ */
+static void rmg_dump_points(void) {
+  int id;
+  for (id = 0; id < 32; id++) {
+    BYTE *zone = g_rmgZones[id];
+    int *begin, *end, count;
+    if (!zone || !rmg_readable(zone, 0x140)) continue;
+    if (*(int *)(zone + 0xEC) != id) continue;
+    begin = *(int **)(zone + 0x68);
+    end = *(int **)(zone + 0x6C);
+    if (!begin || !end || end < begin) continue;
+    count = (int)(end - begin) / 2;
+    if (count < 0 || count > 4096) continue;
+    if (!rmg_readable(begin, (unsigned)(count * 8))) continue;
+    rmg_log_pair("rp ", id, count);
+    rmg_log_ints("rpt ", begin, count * 2);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The grids dump — the engine's own road lists and level grids, read out of
 // the live objects at the "roads created" boundary.
@@ -1004,6 +1042,10 @@ static char *__cdecl rmg_step_plain(const char *fmt, double secs) {
   // The one boundary where the road lists are complete and the statics have
   // not yet stamped over anything.
   if (g_rmgGrids && rmg_fmt_says(fmt, "roads created")) rmg_dump_grids();
+  // The room points, at the ONE boundary where they are the input MainObjects
+  // will read: the towns have stamped, the connections have dug and the
+  // teleports have grown, and nothing of MainObjects has run yet.
+  if (g_rmgPoints && rmg_fmt_says(fmt, "connections created")) rmg_dump_points();
   return g_rmgStepFmt ? ((StepPlainFn)g_rmgStepFmt)(fmt, secs) : NULL;
 }
 

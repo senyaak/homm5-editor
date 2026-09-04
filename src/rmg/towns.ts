@@ -296,7 +296,19 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
         }
       };
       mark(proto.blockedTiles, 2);
-      mark([...proto.activeTiles, proto.possessionMarker], 4);
+      // A possession marker of (0,0) is NO marker: the offset is the town's
+      // own tile, and the engine neither marks it 4 nor pushes it as a room
+      // point. Orc_Stronghold is the only shipped town with a zero offset,
+      // which is why this cost a template to find — `S1-2P2-8Z8K2S`'s zone 8
+      // is a Stronghold, and the engine's `+0x68` there holds four points
+      // where the port had five. Read off the engine's own list (the oracle's
+      // `points` dump); the instruction that refuses it has not been found,
+      // so this is measured rather than derived.
+      const marker = proto.possessionMarker;
+      const fours = marker[0] === 0 && marker[1] === 0
+        ? proto.activeTiles
+        : [...proto.activeTiles, marker];
+      mark(fours, 4);
 
       const specs = specializations.filter((s) => s.townType === proto.townType && s.randomTown === 'TOWN_RANDOM');
       objects.push({
