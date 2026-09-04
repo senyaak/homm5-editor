@@ -806,6 +806,26 @@ static void rmg_dump_points(void) {
     rmg_log_pair("rp ", id, count);
     rmg_log_ints("rpt ", begin, count * 2);
   }
+  // And which PRESET each zone is holding, with the length of the list
+  // PlaceTown decorates from. The preset is `zone+0x20`; its
+  // `OverTownCenterObjects` is the vector at `+0xE4`/`+0xE8`, eight bytes an
+  // entry (the reader pairs the name with `lea edx,[ebx+0E4h]` at 0xb99394).
+  // Two zones of the same race share one preset, so the POINTER identifies it
+  // without reading a name — and a zone pointing at a preset its race does not
+  // explain is the whole question.
+  for (id = 0; id < 32; id++) {
+    BYTE *zone = g_rmgZones[id];
+    BYTE *preset;
+    int *begin, *end;
+    if (!zone || !rmg_readable(zone, 0x140)) continue;
+    if (*(int *)(zone + 0xEC) != id) continue;
+    preset = *(BYTE **)(zone + 0x20);
+    if (!preset || !rmg_readable(preset, 0xF0)) continue;
+    begin = *(int **)(preset + 0xE4);
+    end = *(int **)(preset + 0xE8);
+    rmg_log_triple("zp ", id, (int)(DWORD)preset,
+                   (begin && end && end >= begin) ? (int)(end - begin) / 2 : -1);
+  }
 }
 
 // ---------------------------------------------------------------------------

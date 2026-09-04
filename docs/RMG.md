@@ -328,6 +328,43 @@ or two — a monster's 16 against 18, a treasure's 29 against 27 and 12 against
 13, in a map of 2.9 MB. Nothing is drawn there, so it is arithmetic, and it is
 the smallest handle on that arithmetic anyone has had.
 
+#### A zone's PRESET is not always its race's
+
+`S3-5P4Z12B4` diverges in the towns pass, and the draw that disagrees is the
+decoration over a town's entrance: the engine draws `below(3)` where the port,
+reading `OverTownCenterObjects` as empty for that race, draws nothing.
+
+The zone is 12, its race is Dungeon, and Dungeon's list in the preset table IS
+empty — in both paks. So the list the engine drew from is not Dungeon's. The
+oracle now says whose it is: alongside the room points, `zp <zone> <preset>
+<count>` prints the pointer at `zone+0x20` and the length of its `+0xE4`. Two
+zones of one race share one preset, so the pointers identify the rows without
+reading a name, and they turn out to sit 488 bytes apart in race order:
+
+```
+zp 1 387397552 3     zp 5  387395600 3     zp 9  387398040 -1
+zp 2 387396088 -1    zp 6  387395600 3     zp 10 387397552 3
+zp 3 387396088 -1    zp 7  387398040 -1    zp 11 387395600 3
+zp 4 387396088 -1    zp 8  387398528 3     zp 12 387395112 3
+```
+
+Eleven zones hold the preset of their own race. Zone 12 holds `387395112`,
+one step BELOW Preserve's — race 3, Haven. And the decoration the engine
+placed over that town is `LeafDownBig`, which is Haven's list at index 2,
+exactly the `2 of 3` it drew.
+
+Its town and its garrison are Dungeon's all the same: the town document is
+`Dungeon`, and the guard it got is an Assassin, a Dungeon tier-1 creature. So
+the zone carries the race for its TOWN separately from the preset it PAINTS
+and decorates from, and the port has only one of the two.
+
+Dungeon is the one race that is underground on a two-floor map and joins the
+surface list only when there is no underground — which is what this template
+is — so "a surface zone cannot paint with a subterranean preset" is the
+obvious guess. It is a guess: the instruction that writes `zone+0x20` has not
+been found. What is measured is the pointer, the list and the object it
+placed.
+
 **What the first pass thought the line was.** Before the towns pass was read,
 the four templates that matched were exactly the four whose towns equal the
 order's players, and the count of ZONES looked like the divider because it
