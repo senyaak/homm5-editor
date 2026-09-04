@@ -55,17 +55,6 @@ export const RACE_BY_NAME: Record<string, number> = {
 };
 
 /**
- * The race a TEMPLATE declares for a zone, before the dice touch it —
- * `RACE_RANDOM_TYPE` in every zone of every shipped template but one
- * (`S7-15P2-8Z9K2.4b`'s zone 9). Only the height plane's base field reads
- * it; everything else works from the race `loadTemplate` resolved.
- */
-export function settingRaceOf(template: RmgTemplate, zoneIndex: number): number | undefined {
-  const zone = template.zones.find((z) => z.index === zoneIndex);
-  return zone ? RACE_BY_NAME[zone.setting] : undefined;
-}
-
-/**
  * The engine's own sort (0xEAEDA0 / 0xEAEB30): a gap-halving strided merge
  * over a pointer array. gap starts at the largest power of two BELOW n; each
  * pass merges the chain at o, o+2g, … with the chain at o+g, o+3g, … into

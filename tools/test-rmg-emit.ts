@@ -22,7 +22,7 @@ import {
 } from '../src/rmg/terrain.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
-import { RACE, settingRaceOf } from '../src/rmg/load-template.ts';
+import { RACE } from '../src/rmg/load-template.ts';
 import type { ChainOptions } from './rmg-chain.ts';
 import { runFull } from './rmg-run.ts';
 import { dataDir } from './game-dir.ts';
@@ -206,9 +206,8 @@ for (const spec of RUNS) {
         }));
     }
     latePass(r.heightPlane, {
-      size: c.size, occupancy: c.occ, border: c.border, grid: c.grid,
-      settingRaceOf: (zi) => settingRaceOf(c.template, zi),
-      objects: r.objects,
+      size: c.size, occupancy: c.occ, border: c.border,
+        objects: r.objects,
     });
     const N = (c.size + 1) * (c.size + 1);
     const terrainVs = (label: string, ours: Buffer, refFile: string): void => {

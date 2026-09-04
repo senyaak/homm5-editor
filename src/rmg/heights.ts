@@ -40,7 +40,6 @@
 // nine f32-times-f32 products is exact in double, which is exactly why
 // the plateau survives the smoothing in the file.
 
-import { RACE } from './load-template.ts';
 import type { Offset } from './town-data.ts';
 import { rotate } from './towns.ts';
 
@@ -134,44 +133,54 @@ export interface HeightsInput {
   /** Floor 0 tile grids, the port's own layout (rows literal to the engine). */
   occupancy: Uint8Array;
   border: Int32Array[];
-  grid: Int32Array[];
-  /**
-   * Zone index -> the race the TEMPLATE declares for that zone (`Setting`),
-   * not the race the dice resolved. See `baseField` for why: measured, with
-   * the reading still open.
-   */
-  settingRaceOf(zoneIndex: number): number | undefined;
   /** Every placed object, in the map's slot (creation) order. */
   objects: readonly HeightObject[];
 }
 
 /**
  * `0xECF9A0` — the base field plus the road dents, one interleaved walk.
- * Per vertex the noise product runs in double over single quotients; for
- * a NECROMANCY/INFERNO zone the dist term is negated (they dig toward the
- * zone interior); everything else clamps to the 3.0 plateau. The value is
+ * Per vertex the noise product runs in double over single quotients, the
+ * dist term is added, and the sum clamps to the 3.0 plateau. The value is
  * ADDED to `mem[o][n]` while the road dent lands on the TRANSPOSED tile's
  * corners — copied literally, square-only consistent.
  *
- * WHICH RACE NEGATES — measured, not read. The engine looks the zone up
- * through the floor's index map (`0xE9FF00` on `floor+0xAC`, keyed by the
- * value in the zone grid) and compares that object's `+0x18` against 8 then
- * 7; the frame is resolved, so the `-1.0f` at `0xF4A9BC` really does land on
- * the dist term and nothing else. What is NOT settled is the class behind
- * `+0x18`: the lakes gate (`0xEBC260`) reads `+0x18` off the CGameZone it is
- * called on and finds the RESOLVED race there, but keying this negation on
- * the resolved race is measurably WRONG — over the twenty-one templates the
- * port accepts it costs 1,725 vertices, and `S1-2P2-8Z8K2S` goes from 221
- * differing vertices (worst 1.25) to EXACTLY ZERO once the dig stops firing
- * on a resolved-Inferno zone. So the dig never fires in any shipped
- * template, and the reading that explains a negation which exists yet never
- * happens is the TEMPLATE'S declared `Setting` — `RACE_RANDOM_TYPE` in every
- * zone of every shipped template but one. The one exception,
- * `S7-15P2-8Z9K2.4b`'s zone 9 (`RACE_INFERNO`), is not deep enough for the
- * clamp to bite, so it cannot tell this rule from "never negate" — both give
- * that map the same plane. Keyed on the Setting the mechanism survives for a
- * template that declares a deep Inferno zone; keyed on the resolved race it
- * is wrong on maps we can check.
+ * THE DIG IS NOT PORTED, AND THAT IS A MEASUREMENT. The engine has a branch
+ * this function does not: it looks the vertex's zone up through the floor's
+ * index map (`0xE9FF00` on `floor+0xAC`, keyed by the value in the zone grid)
+ * and, when that zone's `+0x18` is 8 or 7, NEGATES the dist term — Inferno
+ * and Necromancy dig toward their own interior instead of rising out of it.
+ * The frame is resolved with a tracker rather than by eye, so the `-1.0f` at
+ * `0xF4A9BC` really does land on the dist slot (`esp0-0x50`) and on nothing
+ * else. `+0x18` really is the resolved race: the map hands back the zone (one
+ * caller prints "no zone found with index %d", and `[zone+0x20]` is the
+ * preset the road painter takes its texture from — our road masks are
+ * byte-identical, so the lookup finds the right zone), and the lakes gate
+ * `0xEBC260` reads the same `+0x18` against exactly {3,4,7,8,9,10}, our
+ * `LAKE_RACES`.
+ *
+ * And yet negating on the resolved race is WRONG on the maps we can check.
+ * Over the twenty-one templates the port accepts it costs 2,345 differing
+ * vertices (9,138 against 6,793), and `S1-2P2-8Z8K2S` goes from 221 vertices
+ * (worst 1.25) to EXACTLY ZERO the moment the dig stops firing on its
+ * resolved-Inferno zone. Two crater plateaus vanish with it: they were the
+ * dig inside a crater disc moving the average the crater flattens to.
+ *
+ * WITHOUT the negation the term cannot be seen at all: `noise/0.15` spans
+ * ±6.67 and `dist/3` is non-negative, so `noise + dist/3 + 12` never falls
+ * under the 3.0 cap — this function returns a flat 3.0 at every vertex of
+ * every shipped template, checked. So whatever the late pass reads at
+ * `floor+0xE4` cannot be the border table this port computes, or the dig
+ * would bite; with our table it would drive the value to 1.45 on
+ * `S1-2P2-8Z8K2S`, -0.41 on `S1P2Z3K5.1`, -4.68 on `S7-15P2-8Z9K2.4b`.
+ * Naming that grid is what would let the branch be ported; keying it on the
+ * template's `Setting` was tried and is only a guess that happens to be
+ * inert. Until then the honest port is the one that leaves the term inert,
+ * because that is what every reference plane shows.
+ *
+ * NOTE WHY THIS SURVIVED SO LONG. On the reference `S1P2Z2M1` the dig would
+ * not have bitten either — its lowest value is 3.00 even with the resolved
+ * race, as on `S3-5P4Z12B4` and `S2-4P2Z7B2`. A plane that is bit-identical
+ * on the reference could never have caught this; it took the sweep.
  */
 export function baseField(h: HeightPlane, input: HeightsInput): void {
   const { size } = input;
@@ -181,11 +190,9 @@ export function baseField(h: HeightPlane, input: HeightsInput): void {
     for (let n = 0; n <= size; n++) {
       const ri = Math.min(n, size - 1);
       const ci = Math.min(o, size - 1);
-      const dist = input.border[ri]![ci]!;
-      const zoneIndex = input.grid[ri]![ci]!;
-      let dterm = dist / 3.0;
-      const race = zoneIndex >= 0 ? input.settingRaceOf(zoneIndex) : undefined;
-      if (race === RACE.NECROMANCY || race === RACE.INFERNO) dterm = -dterm;
+      // The engine negates this for an Inferno or Necromancy zone; see above
+      // for why that branch is deliberately absent and what would restore it.
+      const dterm = input.border[ri]![ci]! / 3.0;
       let p = Math.cos(n / 13.0);
       p = p * A;
       p = p * B;

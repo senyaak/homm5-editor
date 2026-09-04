@@ -18,7 +18,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { settingRaceOf } from '../src/rmg/load-template.ts';
 import { heightsToFile, latePass } from '../src/rmg/heights.ts';
 import { parseTerrain, readHeights } from '../src/terrain/terrain.ts';
 import type { ChainOptions } from './rmg-chain.ts';
@@ -56,8 +55,7 @@ for (const run of RUNS) {
   check(`the run ends on the traced ${run.endDraws}`, c.rng.draws === run.endDraws, `${c.rng.draws}`);
 
   latePass(r.heightPlane, {
-    size: c.size, occupancy: c.occ, border: c.border, grid: c.grid,
-    settingRaceOf: (zi) => settingRaceOf(c.template, zi),
+    size: c.size, occupancy: c.occ, border: c.border,
     objects: r.objects,
   });
   const ours = heightsToFile(r.heightPlane);

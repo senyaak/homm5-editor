@@ -601,25 +601,45 @@ which is the other, still-open debt showing through once this one stops masking
 it. And `S1-2P2-8Z8K2S` going to EXACTLY ZERO is not a coincidence a wrong rule
 produces.
 
-So in all twenty-one runs the negation never fires — including on the one zone
-of the one shipped template that pins a race (`S7-15P2-8Z9K2.4b`'s zone 9,
-`RACE_INFERNO`), whose own dist never reaches the clamp, so it cannot tell
-"Setting" from "never" either. The port keys the dig on the **template's
-`Setting`** rather than deleting the term: it is indistinguishable from "never"
-on everything we can measure, it keeps a mechanism the disassembly plainly
-contains, and it survives for a template that declares a deep Inferno zone.
+So in all twenty-one runs the negation never fires. Two crater plateaus vanish
+with it as a side effect: they were the dig INSIDE a crater disc moving the
+average the crater flattens to — which is what the earlier "the disc is right,
+the average is not" reading was pointing at.
 
-**The reading behind it is still open, and that is worth saying plainly.** The
-engine looks the zone up through the floor's index map (`0xE9FF00` on
-`floor+0xAC`, keyed by the zone grid's own value — the road and lake painters at
-`0xECE476` take their key from exactly the same grid, and they are correct) and
-tests that object's `+0x18` against 8 then 7. The stack frame is resolved with a
-tracker rather than by eye, and the `-1.0f` at `0xF4A9BC` does land on the dist
-slot (`esp0-0x50`) and on nothing else. But the LAKES gate (`0xEBC260`) reads
-`+0x18` off the CGameZone it is called on and finds the resolved race there —
-its six comparisons are exactly {3,4,7,8,9,10}, our `LAKE_RACES`. Two readings
-of the same offset, and the measurement picks the second one. What is not yet
-pinned is the class the floor's map hands back; that is where the answer is.
+**Keying it on the template's `Setting` was tried first, and the reading kills
+that idea.** The engine looks the zone up through the floor's index map
+(`0xE9FF00` on `floor+0xAC`, keyed by the zone grid's own value) and tests that
+object's `+0x18` against 8 then 7. Three separate things say the map hands back
+the ZONE and that `+0x18` is the RESOLVED race:
+
+- a sibling caller prints **"no zone found with index %d "** when the lookup
+  comes back empty;
+- `[zone+0x20]` is the preset the ROAD painter takes its texture from, and it
+  reaches it through this very lookup with a key from this very grid — our road
+  masks are byte-identical, so the lookup finds the right zone;
+- the lakes gate `0xEBC260` reads `+0x18` off the CGameZone it is called on and
+  compares it against exactly {3,4,7,8,9,10} — our `LAKE_RACES`.
+
+The frame is resolved with a tracker rather than by eye (`_tmp/frame.ts`), so
+the `-1.0f` at `0xF4A9BC` does land on the dist slot (`esp0-0x50`) and on
+nothing else. Everything about the branch reads clean; it simply does not
+happen.
+
+**So the term is left inert, and that is a statement about `dist`, not about the
+race.** Without the negation the term cannot be observed at all: `noise/0.15`
+spans ±6.67 and `dist/3` is non-negative, so `noise + dist/3 + 12` never falls
+under the 3.0 cap — the base field contributes a flat **3.0 at every vertex of
+every shipped template**, checked directly. Whatever the late pass reads at
+`floor+0xE4` therefore cannot be the border table this port computes, or the dig
+would bite: with our table it would drive the value to 1.45 on `S1-2P2-8Z8K2S`,
+-0.41 on `S1P2Z3K5.1`, -4.68 on `S7-15P2-8Z9K2.4b`. Naming that grid is what
+would let the branch be ported.
+
+**And this is why the reference could not have caught it.** On `S1P2Z2M1` the
+dig would not have bitten either — its lowest value is 3.00 even with the
+resolved race, as on `S3-5P4Z12B4` and `S2-4P2Z7B2`. A plane that is
+bit-identical on the reference says nothing here; it took the sweep over every
+template to see it at all.
 
 A note for whoever picks this up: `tools/diff-terrain.ts` compares the planes
 with a 1e-4 tolerance and will call a one-ulp plane "ok", while `rmg-diff-map`
@@ -4038,11 +4058,14 @@ a dwarven-underground reference exists.
 
 **Big statics** — three parts. The LAKES prologue (`0xEBC260`) gates on
 `zone+0x18` ∈ {HEAVEN, PRESERVE, NECROMANCY, INFERNO, DWARF,
-STRONGHOLD} and floor 0 — and the reference shows the gate CLOSED for
-its resolved-Inferno zone, so `+0x18` is read as the TEMPLATE'S Setting
-race (RACE_RANDOM_TYPE everywhere here), not the resolved one; its
-write site is unchased, and a fixed-race template is where lakes first
-run for real. Inside (held by reading alone): room recompute mask 0x3E
+STRONGHOLD} and floor 0. The reference showed the gate CLOSED for its
+resolved-Inferno zone, which once read as "`+0x18` must be the
+TEMPLATE'S Setting race" — that guess is **retired**: the gate was open
+and its seed scan simply had no candidates, the underground run's HEAVEN
+zone opened it for real, and the sweep grows lakes on resolved-Inferno
+zones whose masks come out byte-identical. `+0x18` is the RESOLVED race,
+and the height plane's dig (see "Which race digs") is where that reading
+was re-earned. Inside (held by reading alone): room recompute mask 0x3E
 (`+0x5C` has NO writer anywhere in the RMG range — effectively 0x3C);
 seed candidates = zone tiles with room > 5, border > 5, local maximum
 of room over 8 neighbours (ties PASS — only a strictly greater
