@@ -19,6 +19,7 @@ import { DISOWNED, fillDistToTowns, UNREACHED } from '../src/rmg/dist-to-towns.t
 import { fillZones } from '../src/rmg/fill-zones.ts';
 import { loadTemplate } from '../src/rmg/load-template.ts';
 import { mapSetup } from '../src/rmg/map-setup.ts';
+import { readCreatures } from '../src/rmg/creatures.ts';
 import { readParams } from '../src/rmg/params.ts';
 import { readPresets } from '../src/rmg/preset-table.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
@@ -96,6 +97,7 @@ if (!existsSync(join(dir, 'RMG'))) {
     size: 96, template, zones: loaded.zones, floors: filled.floors, distances,
     radii: new Map(placed.zones.map((z) => [z.index, z.r])),
     presets, towns, specializations: readTownSpecializations(dir),
+    creatures: readCreatures(dir), basicLeverGuardPower: params.basicLeverGuardPower,
   }, rng);
 
   const before = rng.draws;

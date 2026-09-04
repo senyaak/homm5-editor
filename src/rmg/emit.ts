@@ -50,7 +50,13 @@ export interface EmitObject {
   shared?: string;
   army?: { stacks: Array<{ creature: string; amount: number }>; mood: number };
   amount?: number | null;
-  town?: { playerId: number; hasTavern: boolean; specialization?: string };
+  town?: {
+    playerId: number;
+    hasTavern: boolean;
+    specialization?: string;
+    /** The garrison of a town nobody owns — see `town-guard.ts`. */
+    army?: Array<{ creature: string; amount: number }>;
+  };
   /** The `<pointLights>` items — underground towns and lit crystals. */
   lights?: Array<{ x: number; y: number; z: number; color: readonly [number, number, number]; radius: number }>;
   /** Monoliths: the pair's GroupID (a plain AdvMapBuilding field). */
@@ -284,7 +290,20 @@ export function renderObject(o: EmitObject): string[] {
           '\t\t\t\t\t<NameFileRef href=""/>',
           '\t\t\t\t\t<BiographyFileRef href=""/>',
           '\t\t\t\t</Editable>',
-          '\t\t\t\t<armySlots/>',
+          // A town nobody owns carries its garrison here; an owned one keeps
+          // the empty element the engine writes for it.
+          ...(o.town?.army?.length
+            ? [
+              '\t\t\t\t<armySlots>',
+              ...o.town.army.flatMap((slot) => [
+                '\t\t\t\t\t<Item>',
+                `\t\t\t\t\t\t<Creature>${slot.creature}</Creature>`,
+                `\t\t\t\t\t\t<Count>${slot.amount}</Count>`,
+                '\t\t\t\t\t</Item>',
+              ]),
+              '\t\t\t\t</armySlots>',
+            ]
+            : ['\t\t\t\t<armySlots/>']),
           '\t\t\t\t<spellIDs/>',
           '\t\t\t\t<CaptionFileRef href=""/>',
           '\t\t\t\t<GarrisonHero/>',

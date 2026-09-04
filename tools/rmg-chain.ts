@@ -235,6 +235,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     size, template, zones: loaded.zones, floors: filled.floors, distances,
     radii: new Map(placed.zones.map((z) => [z.index, z.r])),
     presets, towns, specializations: readTownSpecializations(dir),
+    creatures, basicLeverGuardPower: params.basicLeverGuardPower,
   }, rng);
   phase('towns');
   // The water border — the engine runs it between "towns placed" and the

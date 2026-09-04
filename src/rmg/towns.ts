@@ -47,6 +47,9 @@
 // marker at 3 — and holeTiles, despite being the largest list, is not
 // checked at all.
 
+import type { CreatureInfo } from './creatures.ts';
+import { setTownGuard } from './town-guard.ts';
+import type { TownGuardStack } from './town-guard.ts';
 import type { RmgRandom } from './random.ts';
 import type { RacePreset } from './preset-table.ts';
 import type { Offset, TownShared, TownSpecialization } from './town-data.ts';
@@ -93,6 +96,11 @@ export interface PlacedObject {
   specialization?: string;
   /** Towns only: a player's town also gets a tavern (the engine's rule). */
   hasTavern?: boolean;
+  /**
+   * Towns only: the garrison a town nobody owns is given — see
+   * `town-guard.ts`. Absent on a player's town, which is never guarded.
+   */
+  army?: TownGuardStack[];
   /**
    * An UNDERGROUND town's four point lights — the subterranean zone
    * subclasses wrap PlaceTown (vt+0x20 is 0xEC6250/0xEC84C0/0xECAAB0, not
@@ -142,6 +150,10 @@ export interface TownsInput {
   towns: Map<string, TownShared>;
   /** `RMG/TownRandomSpecGroup.xdb`, in file order. */
   specializations: TownSpecialization[];
+  /** The creature table, for the garrison an unowned town is given. */
+  creatures: readonly CreatureInfo[];
+  /** `BasicLeverGuardPower` — the zone's `TownGuardStrenght` multiplies it. */
+  basicLeverGuardPower: number;
 }
 
 const HALF_PI = Math.PI / 2;
@@ -181,6 +193,7 @@ function centroid(tiles: Array<[number, number]>): { a: number; b: number } {
 
 export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
   const { size, template, zones, floors, distances, radii, presets, towns, specializations } = input;
+  const { creatures, basicLeverGuardPower } = input;
   const objects: PlacedObject[] = [];
   const centres = new Map<number, { a: number; b: number }>();
   const occupancy = floors.map(() => new Uint8Array(size * size));
@@ -252,6 +265,13 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
 
       const rot = q * HALF_PI;
       const name = mintName(rng);
+      // The garrison, and it draws — between the name and the decoration,
+      // which is where PlaceTown asks for it (0xeb57e0). Only a town nobody
+      // owns: the engine's own test is `cmp dword ptr [edi+0F0h],0` one
+      // instruction earlier, and an owned town pays nothing here.
+      const army = zone.playerNo === 0
+        ? setTownGuard(item.townGuardStrenght * basicLeverGuardPower, zone.race, creatures, rng)
+        : [];
       // Reserve: blockedTiles mark 2, the active tiles and the marker 4 —
       // the engine's own two values, kept because later phases read them.
       const mark = (offs: readonly Offset[], value: number): void => {
@@ -288,6 +308,7 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
         shared: proto.path,
         playerId: zone.playerNo,
         hasTavern: zone.playerNo !== 0,
+        ...(army.length ? { army } : {}),
       });
       const town = objects[objects.length - 1]!;
       // The wave the next phase runs starts at the ENTRY, not at the town.

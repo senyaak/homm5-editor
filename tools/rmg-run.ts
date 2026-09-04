@@ -33,6 +33,7 @@ import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
 import { SHIPYARD_HREF, shipTile } from '../src/rmg/shipyards.ts';
 import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import type { PlacedStatic } from '../src/rmg/statics-big.ts';
+import type { TownGuardStack } from '../src/rmg/town-guard.ts';
 import {
   placeSubterraOneTileStatics, placeWaterOneTileStatics, placeZoneOneTileStatics,
 } from '../src/rmg/statics-one-tile.ts';
@@ -57,7 +58,7 @@ export interface RunObject extends HeightObject {
   /** Treasures: a custom Amount, or null for a stock pile. */
   amount?: number | null;
   /** Towns: the fields their body writes beyond the common head. */
-  town?: { playerId: number; hasTavern: boolean; specialization?: string };
+  town?: { playerId: number; hasTavern: boolean; specialization?: string; army?: TownGuardStack[] };
   /** Underground towns' four lights, and a lit crystal's one. */
   lights?: Array<{ x: number; y: number; z: number; color: readonly [number, number, number]; radius: number }>;
   /** Monoliths: the pair's GroupID. */
@@ -175,7 +176,7 @@ export function runFull(
         craterTown: docType === 'TOWN_INFERNO' || t.shared.includes('Inferno'),
         skipFlattenTown: docType === 'TOWN_ACADEMY' || t.shared.includes('Academy'),
         shared: pointered(t.shared, 'AdvMapTownShared'),
-        town: { playerId: t.playerId ?? 0, hasTavern: t.hasTavern ?? false, specialization: t.specialization },
+        town: { playerId: t.playerId ?? 0, hasTavern: t.hasTavern ?? false, specialization: t.specialization, army: t.army },
         lights,
       });
     } else {
