@@ -305,18 +305,21 @@ size back out of the map it is given.
 
 | the template | what the port reproduces |
 | --- | --- |
-| `S1P2Z2M1` | **everything.** 12 of 13 entries byte-identical, the 13th being the two `caption-text` bytes that are known |
-| `S0-1P2Z2K3.1T`, `.2T`, `S0-1P2Z2K3T` | **every object, every text, every terrain plane but one.** `map.xdb` differs by the same two known bytes; masks, ground flags, passability and the river plane are identical; only HEIGHTS differ |
-| the other seventeen with a zone count of three or more | `map.xdb` differs wholesale — the object layer diverges |
+| `S1P2Z2M1`, `S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` | **everything.** 12 of 13 entries byte-identical, the 13th being the two `caption-text` bytes that are known |
+| `S0-1P2Z2K3.1T`, `.2T`, `T`, `S1P2Z3K5.1`, `S1-2P2Z7V2`, `S2-4P2Z7B2`, `S3-4P2-4Z4K1M` | **every object, every text, every terrain plane but one.** `map.xdb` differs by the known `caption-text` bytes alone; masks, ground flags, passability and the river plane are identical; only HEIGHTS differ, by 4 bytes on `S1-2P2Z7V2` and by a few thousand on the rest |
+| the other eleven | `map.xdb` still differs wholesale — the object layer diverges |
 | `S7-22P2-8Z15K2.4c` | the port refuses it: fifteen zones, and the fourteenth would rehash the queue whose order has never been read |
 
-**The line falls exactly at the zone count.** All four two-zone templates
-reproduce the object layer; every template with three zones or more diverges,
-`S1P2Z3K5.1` — three zones, two connections, the smallest of them — included.
-Two zones is the case where the container's iteration order cannot be observed,
-because any order of two is the order the engine used. So the sweep did not
-find seventeen bugs; it found one place where a reading was never tested, and
-the reference template is the reason it went unnoticed for so long.
+**Ten of twenty-one, up from four**, and the four were every template whose
+towns matched its players. What moved the other six was one routine — the
+garrison below.
+
+**What the first pass thought the line was.** Before the towns pass was read,
+the four templates that matched were exactly the four whose towns equal the
+order's players, and the count of ZONES looked like the divider because it
+happens to correlate. It was not: the divider was a town nobody owns, and the
+reference template has none. Two of anything is the case where a rule cannot be
+observed, and the reference had been the only witness for a long time.
 
 **And the near miss is one plane.** For the three `S0-1P2Z2K3*` maps the only
 difference in the whole file set is the height plane: 404 vertices of 9409 on
