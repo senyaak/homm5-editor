@@ -312,7 +312,14 @@ size back out of the map it is given.
 
 **Ten of twenty-one, up from four**, and the four were every template whose
 towns matched its players. What moved the other six was one routine — the
-garrison below.
+garrison below. The cartographer and the zero possession marker moved six
+more; the table above is the state before those two.
+
+**A debt the count hides.** `S3-5P2-8Z8K2M` differs by five bytes, and only two
+of them are the `caption-text` numbering: three object AMOUNTS are off by one
+or two — a monster's 16 against 18, a treasure's 29 against 27 and 12 against
+13, in a map of 2.9 MB. Nothing is drawn there, so it is arithmetic, and it is
+the smallest handle on that arithmetic anyone has had.
 
 **What the first pass thought the line was.** Before the towns pass was read,
 the four templates that matched were exactly the four whose towns equal the
@@ -423,10 +430,43 @@ not: what the pair is drawing is a reading of the towns pass that has not been
 done. Until it is, every template with more towns than players is stopped at
 its first unowned town, and nothing downstream of that can be judged.
 
-**The three that are worse than they look.** `S1-3P2Z7V3`, `S2-3P2Z7N2` and
-`S3-5P2Z7N2.2` have a chain that matches completely — and still write a map
-that differs wholesale, so they carry a SECOND, independent bug, downstream of
-everything the chain does. `--full` names it for the first of them:
+#### The cartographer, and a possession marker that is not one
+
+Two more steps of the same sweep, each found the same way and each closing
+several templates.
+
+**`0xEBD4B0`, the cartographer**, between the prisons and the shrines: the
+prisons placer's twin — the same 0xEC1500 candidate helper, the same attempt
+loop, the same two draws minting the name — with the template zone's
+`LandCartographer` (+0x4C, the field right after Prisons) for a count and a
+fixed `AdvMapCartographerShared` for an object. Five of the twenty-two
+templates ask for one, in exactly one zone each, and the reference asks for
+none, which is why a whole step of MainObjects was missing without a single
+suite noticing. Its `Cost` of 4000 is the type's default and is not drawn.
+
+**A possession marker of (0,0) is no marker.** `S1-2P2-8Z8K2S` diverged with
+nothing in the trace to explain it: seven zones identical draw for draw, then
+zone 8 drew a tile from a pool of 447 where the engine drew from 511. A pool
+is not drawn, so the trace could only say that the two disagreed.
+
+What decides a pool is the room, and what decides the room is the zone's
+`+0x68` point list — the distances are measured FROM it, and it never costs a
+draw. So the oracle dumps it: `points` in the config writes `rp <zone>
+<count>` and the pairs at "connections created", the one boundary where the
+list is the input MainObjects will read. (They are floats, unlike the ints
+every other dump carries.)
+
+Seven zones matched point for point. Zone 8 held four points in the engine and
+five in the port, and the extra one was the town's possession marker — a
+Stronghold, the one shipped town whose marker offset is (0,0), which is the
+town's own tile. The engine neither marks it nor counts it. Measured, not
+derived: the engine's own list says so and the instruction that refuses it has
+not been found.
+
+**The three that were worse than they looked.** `S1-3P2Z7V3`, `S2-3P2Z7N2` and
+`S3-5P2Z7N2.2` had a chain that matched completely and still wrote a map that
+differed wholesale — a SECOND bug, downstream of everything the chain does.
+`--full` named it for the first of them, and it was the cartographer:
 
 ```
 FIRST DIVERGENCE at draw 33971, in the port's zone 5 resourceBuildings → treasuryBuildings
