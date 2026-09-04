@@ -531,6 +531,54 @@ while making slot 13 and slot 8 worse. So the read is not simply transposed
 either — something makes the same term reach for a different tile on some maps,
 and that is the next thing to find.
 
+##### Everything the late pass adds, read rather than assumed
+
+Since the debt is additive — a plane 5 units lower cannot come from a smoothing
+mask, because smoothing a flat field leaves it flat — the whole additive chain
+was read out of the binary. It is all faithful:
+
+- **The craters (`0xED0240`) are complete.** Two sub-passes and no third: an
+  INFERNO town (the shared's `+0xFC` == 8) walks the floor's `0xC8`/`0xCC`
+  extent, takes `sqrt((obj+0x44 - (o+1))² + (obj+0x48 - (n+1))² + (obj+0x4C)²)`,
+  keeps the point when `8.0f` (`0xF4BB30`) is strictly greater, and hands the
+  list to `0xEB2420` with `-1.0f`; the dwellings (`+0xEC` in {0x48..0x4B}, all
+  four compared one after another) do the same with **no** minus-one, radius
+  `2.5f` (`0xFAFE90`) and `-2.5f`. `0xEB2420` sums with `addss`, divides by the
+  point count, adds the delta and writes back, indexing `rows[second][first]` —
+  which is what `setToAverage` does.
+- **The border test (`0xEA90D0`) marks what the port marks.** Each of the four
+  orthogonal neighbours is bounds-checked first and an out-of-range one jumps to
+  the SAME "this is a border" target as a differing zone, so the map edge does
+  make a border tile; the reads are `grid[r±1][c]` and `grid[r][c±1]` against
+  the tile's own zone, with no off-by-one anywhere.
+- **The port's grid convention is the engine's.** Asked of the mines rather than
+  assumed: on `S3-4P2-4Z4K1M` every mine of the southern group reads `grid[y][x]
+  == 4` and `grid[x][y] == 1`, and zone 4's centroid under `[y][x]` is where
+  those mines are. So rows are y, the base field's `min(inner)` IS y, its
+  `min(outer)` IS x, and the value lands on the vertex's own tile.
+
+**What the debt actually looks like.** Landweber-inverting slot 13's late pass
+(80 iterations, residual rms 5.5e-4) recovers the delta that would have to be
+added BEFORE the pass. It is one smooth cone: centred on (123,45), about 19
+tiles across, 5.4 deep at the peak, with a slope near 1/3 — and it stops well
+inside zone 1 rather than at the zone's edge. Read back through `-dist/3`, the
+engine behaves as if `dist` there were 45 where our table says 28.
+
+45 is exactly the distance from (123,45) to the map's north edge, and 28 is the
+distance to the zone-2 boundary at y=73 that our table actually uses. But no
+border rule explains it: recomputing the table with the map edge excluded, with
+unassigned neighbours excluded, or both, fits WORSE than what we have (mean
+|diff| 11.7 against 9.5), the room grid fits far worse (35.0), and the plain
+distance to the map edge fits best of a bad lot (5.8, worst 24.8). The needed
+field is not a distance to any border set — it is our table plus a cone. That
+cone is the next thing to name.
+
+Ruled out along the way, so nobody retries them: a missing or extra relief cone
+(toggling every static within 20 tiles moves nothing), a lake (slot 5 has no
+lake tiles at all and carries the same shape; slot 13's lakes sit 20 tiles west
+of its bowl), and the preset-Mountains pass (its cones are unconditional and its
+objects are in the matching layer, so both sides raise them).
+
 A note for whoever picks this up: `tools/diff-terrain.ts` compares the planes
 with a 1e-4 tolerance and will call a one-ulp plane "ok", while `rmg-diff-map`
 counts bytes and will not. Both are right; use the byte count to find that
