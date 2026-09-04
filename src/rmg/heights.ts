@@ -135,8 +135,12 @@ export interface HeightsInput {
   occupancy: Uint8Array;
   border: Int32Array[];
   grid: Int32Array[];
-  /** Zone index -> resolved race (`zone+0x18`). */
-  raceOf(zoneIndex: number): number | undefined;
+  /**
+   * Zone index -> the race the TEMPLATE declares for that zone (`Setting`),
+   * not the race the dice resolved. See `baseField` for why: measured, with
+   * the reading still open.
+   */
+  settingRaceOf(zoneIndex: number): number | undefined;
   /** Every placed object, in the map's slot (creation) order. */
   objects: readonly HeightObject[];
 }
@@ -148,6 +152,26 @@ export interface HeightsInput {
  * zone interior); everything else clamps to the 3.0 plateau. The value is
  * ADDED to `mem[o][n]` while the road dent lands on the TRANSPOSED tile's
  * corners — copied literally, square-only consistent.
+ *
+ * WHICH RACE NEGATES — measured, not read. The engine looks the zone up
+ * through the floor's index map (`0xE9FF00` on `floor+0xAC`, keyed by the
+ * value in the zone grid) and compares that object's `+0x18` against 8 then
+ * 7; the frame is resolved, so the `-1.0f` at `0xF4A9BC` really does land on
+ * the dist term and nothing else. What is NOT settled is the class behind
+ * `+0x18`: the lakes gate (`0xEBC260`) reads `+0x18` off the CGameZone it is
+ * called on and finds the RESOLVED race there, but keying this negation on
+ * the resolved race is measurably WRONG — over the twenty-one templates the
+ * port accepts it costs 1,725 vertices, and `S1-2P2-8Z8K2S` goes from 221
+ * differing vertices (worst 1.25) to EXACTLY ZERO once the dig stops firing
+ * on a resolved-Inferno zone. So the dig never fires in any shipped
+ * template, and the reading that explains a negation which exists yet never
+ * happens is the TEMPLATE'S declared `Setting` — `RACE_RANDOM_TYPE` in every
+ * zone of every shipped template but one. The one exception,
+ * `S7-15P2-8Z9K2.4b`'s zone 9 (`RACE_INFERNO`), is not deep enough for the
+ * clamp to bite, so it cannot tell this rule from "never negate" — both give
+ * that map the same plane. Keyed on the Setting the mechanism survives for a
+ * template that declares a deep Inferno zone; keyed on the resolved race it
+ * is wrong on maps we can check.
  */
 export function baseField(h: HeightPlane, input: HeightsInput): void {
   const { size } = input;
@@ -160,7 +184,7 @@ export function baseField(h: HeightPlane, input: HeightsInput): void {
       const dist = input.border[ri]![ci]!;
       const zoneIndex = input.grid[ri]![ci]!;
       let dterm = dist / 3.0;
-      const race = zoneIndex >= 0 ? input.raceOf(zoneIndex) : undefined;
+      const race = zoneIndex >= 0 ? input.settingRaceOf(zoneIndex) : undefined;
       if (race === RACE.NECROMANCY || race === RACE.INFERNO) dterm = -dterm;
       let p = Math.cos(n / 13.0);
       p = p * A;

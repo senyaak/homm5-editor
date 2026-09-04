@@ -494,11 +494,12 @@ the smoothed image of one delta added before it).
 sweep's maps and reports the height plane's differing vertices as CLUSTERS,
 at a 1e-4 tolerance so the one-ulp noise stays out of the way.
 
-| | |
-| --- | --- |
-| **byte-clean planes** | 9 of 21 — slots 1, 4, 6, 7, 9, 11, 15, 16, 17 |
-| **noise only (< 0.07)** | 4 — slots 2, 8, 14, 18 |
-| **real debt** | 8 — slots 3 (0.56), 5 (1.25), 10 (3.04), 12 (0.58), 13 (5.25), 19 (1.39), 20 (0.99), 21 (6.05) |
+| | before the dig fix | after it |
+| --- | --- | --- |
+| **byte-clean planes** | 9 of 21 | **10 of 21** — slots 1, 4, 5, 6, 7, 9, 11, 15, 16, 17 |
+| **noise only (< 0.07)** | 4 | 4 — slots 2, 8, 14, 18 |
+| **real debt** | 8 | 7 — slots 3 (0.56), 10 (0.62), 12 (0.58), 13 (5.73), 19 (1.80), 20 (1.88), 21 (3.16) |
+| **differing vertices, all 21** | 9,138 | **6,793** |
 
 Every one of the eight is one or two contiguous clusters, never scatter. Two
 shapes, and the second is the whole remaining story:
@@ -578,6 +579,47 @@ Ruled out along the way, so nobody retries them: a missing or extra relief cone
 lake tiles at all and carries the same shape; slot 13's lakes sit 20 tiles west
 of its bowl), and the preset-Mountains pass (its cones are unconditional and its
 objects are in the matching layer, so both sides raise them).
+
+##### Which race digs: the resolved one is wrong
+
+The dig — the `-dist/3` a NECROMANCY or INFERNO zone gets instead of `+dist/3` —
+was keyed on the race the dice resolved. Measured against every template, that
+is wrong, and turning it off is a strict improvement in count on all 21 and
+exact on one:
+
+| | resolved race | never digs |
+| --- | --- | --- |
+| `S1-2P2-8Z8K2S` | 221 vertices, worst 1.25 | **0** |
+| `S0-1P2Z2K3T` | 583, worst 0.56 | 174 |
+| `S1P2Z3K5.1` | 735, worst 3.04 | 436, worst 0.62 |
+| `S7-15P2-8Z9K2.4b` | 1808, worst 6.05 | 1257, worst 3.16 |
+| `S0-1P2Z2K3.2T` | 404, worst 0.065 | 309, worst 0.004 |
+| all 21 | 9,138 vertices | 6,793 |
+
+Nothing gets worse in count; three maps (13, 19, 20) get a deeper worst vertex,
+which is the other, still-open debt showing through once this one stops masking
+it. And `S1-2P2-8Z8K2S` going to EXACTLY ZERO is not a coincidence a wrong rule
+produces.
+
+So in all twenty-one runs the negation never fires — including on the one zone
+of the one shipped template that pins a race (`S7-15P2-8Z9K2.4b`'s zone 9,
+`RACE_INFERNO`), whose own dist never reaches the clamp, so it cannot tell
+"Setting" from "never" either. The port keys the dig on the **template's
+`Setting`** rather than deleting the term: it is indistinguishable from "never"
+on everything we can measure, it keeps a mechanism the disassembly plainly
+contains, and it survives for a template that declares a deep Inferno zone.
+
+**The reading behind it is still open, and that is worth saying plainly.** The
+engine looks the zone up through the floor's index map (`0xE9FF00` on
+`floor+0xAC`, keyed by the zone grid's own value — the road and lake painters at
+`0xECE476` take their key from exactly the same grid, and they are correct) and
+tests that object's `+0x18` against 8 then 7. The stack frame is resolved with a
+tracker rather than by eye, and the `-1.0f` at `0xF4A9BC` does land on the dist
+slot (`esp0-0x50`) and on nothing else. But the LAKES gate (`0xEBC260`) reads
+`+0x18` off the CGameZone it is called on and finds the resolved race there —
+its six comparisons are exactly {3,4,7,8,9,10}, our `LAKE_RACES`. Two readings
+of the same offset, and the measurement picks the second one. What is not yet
+pinned is the class the floor's map hands back; that is where the answer is.
 
 A note for whoever picks this up: `tools/diff-terrain.ts` compares the planes
 with a 1e-4 tolerance and will call a one-ulp plane "ok", while `rmg-diff-map`

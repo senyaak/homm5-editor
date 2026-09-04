@@ -22,7 +22,7 @@ import { heightsToFile, latePass } from '../src/rmg/heights.ts';
 import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
 import { buildTerrainFile } from '../src/rmg/emit-terrain.ts';
 import { buildRmgTexts } from '../src/rmg/emit-texts.ts';
-import { RACE } from '../src/rmg/load-template.ts';
+import { RACE, settingRaceOf } from '../src/rmg/load-template.ts';
 import { drawMinimap } from '../src/rmg/minimap.ts';
 import { drawIconLayer, iconNameFor, loadMinimapIcons, type IconObject } from '../src/rmg/minimap-icons.ts';
 import { buildMinimapMask } from '../src/rmg/minimap-mask.ts';
@@ -186,7 +186,7 @@ export function buildMapFiles(
   const { layers, river } = replayTerrain(dataRoot, run);
   latePass(run.heightPlane, {
     size: c.size, occupancy: c.occ, border: c.border, grid: c.grid,
-    raceOf: (zi) => c.loaded.zones.find((z) => z.index === zi)?.race,
+    settingRaceOf: (zi) => settingRaceOf(c.template, zi),
     objects: run.objects,
   });
 
