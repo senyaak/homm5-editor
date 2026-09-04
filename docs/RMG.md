@@ -438,11 +438,55 @@ by looking at the smallest case and the largest.
   smoothing pass makes of a single local dent. Our side reads a flat 9.0 across
   the whole blob, so the engine dug something we never dug. What sits there is a
   4x4 `Lava/Mountains/Hellpikes_4x4_1` static at (34,80), whose footprint covers
-  the peak; the port's relief cone fires only for a static whose path carries
-  "Mountain" with more than 15 blocked tiles, and this one carries "Hellpikes".
-  Whether the engine's test is the path, the blocked count or the shared's own
-  family is the next thing to read — and the bowl at (43,76) on `.1T` (3.19
-  deep) is very likely the same rule.
+  the peak — and the bowl at (43,76) on `.1T` (3.19 deep) is very likely the
+  same rule.
+
+##### The relief cone is not the rule: what the engine selects, read and measured
+
+The static that raises a cone was worth reading rather than guessing, and the
+reading clears the cone of both bells. The sweep's accept path
+(`0xebc123..0xebc152`) gates `0xED1660` on two tests and nothing else:
+
+- **`0xEB3120`** — `find("Mountain")` over the string at `SAdvMapStaticShared`
+  `+0x20`, the shared's own resource path (the helper tests that container for
+  empty first; the dynamic_cast at `0xebbe4d` names the class). It is the same
+  shape as `0xEB3180`, the `"Crater"` test the big spacing rule already uses —
+  so the discriminator is the PATH, not a family field, not the visibility
+  type, not the model.
+- **the count** — `((end - begin) & ~7) > 0x78` over the `+0x54` vector, which
+  is `blockedTiles` (the vector the fit and the `1/(n+1)` roll read as well).
+  The elements are 8 bytes, so the gate is exactly **more than 15 blocked
+  tiles**.
+
+Both are what the port already writes, and the note above was wrong on both
+halves: `/MapObjects/Lava/Mountains/Hellpikes_4x4_1.…xdb` DOES carry "Mountain"
+(the folder is `Mountains`), and it fails on the count — the shared declares 13
+`blockedTiles`, not the 16 its 4x4 name suggests (its `holeTiles` hold 16). The
+engine skips it for the same reason the port does.
+
+The natural experiment says the same from the other side. This run also places
+23 `Sand/Sandmountains/*` statics whose PATH has no "Mountain" (that folder is
+lower-case) while their model href and their `ObjectTypeFileRef` both do, six of
+the seven types with n > 15. If the engine read either of those strings, every
+one of them would carry a cone. Not one vertex differs anywhere near them.
+
+**And the bells are not cones at all.** Measured rather than described: the
+whole plane holds exactly TWO clusters, and adding or removing any single cone
+for any static within 20 tiles flattens neither.
+
+- (36,80), peak **-0.565**, 174 vertices, sum -17.5 — the engine sits LOWER
+  there, which no cone can do; a smooth bowl with no plateau.
+- (25,39), peak +0.27, 409 vertices, sum +36 — a **disc of exactly +0.161**,
+  radius ~8, soft-edged. That is the INFERNO TOWN CRATER at (26,40) setting its
+  disc to one value: both sides flatten the same 193 vertices, and the engine's
+  average is 0.161 higher — about 31 units of height it holds inside the disc
+  and we do not. What sits inside is road dents and cone slopes, so what the
+  crater's own walk sees of those is the next thing to read. The bowl at (36,80)
+  is a separate debt.
+
+`_tmp/bell-*.ts` hold the probes: the cluster walk, the cone toggle, and a
+Landweber inversion of the late pass (the pass is affine, so `theirs - ours` is
+the smoothed image of one delta added before it).
 
 A note for whoever picks this up: `tools/diff-terrain.ts` compares the planes
 with a 1e-4 tolerance and will call a one-ulp plane "ok", while `rmg-diff-map`
