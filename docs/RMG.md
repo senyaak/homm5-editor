@@ -407,6 +407,48 @@ skirt, while every other plane of the same file agrees. So the heights carry
 two separate debts: a smoothing pass that drifts in the third decimal, and at
 least one feature the port does not carve at all.
 
+#### A second seed, because one seed is one path
+
+Twenty-two more launches at seed 987654321, `game/bin/rmg-seed2/`. **All
+twenty-one templates the port accepts reproduce the object layer again** — every
+`map.xdb` differs by the two `caption-text` bytes and nothing else — and two of
+them, `S1-2P2-4Z4K1S` and `S1-2P2-8Z8K2S`, come out byte-identical through the
+terrain as well. The twenty-second refuses in the port's own words
+(`HashQueue: a 14th zone would rehash`), which is the refusal working.
+
+This is what the first sweep could not say. A template that agrees once agrees
+on one path through the stream; the same template on another seed walks
+different zones, different races, different templates for its guards. The
+height plane moves with the seed as expected — 22888 bytes on
+`S6-11P2-8Z8K2.4a` against 4695 on the first seed, 1 byte on `S1-3P2-4Z5V` —
+and stays the only thing that moves.
+
+**The heights, measured rather than described.** With the object layer settled
+the plane is the only thing left, and it holds two different debts — told apart
+by looking at the smallest case and the largest.
+
+- **The smallest is rounding.** `S1-2P2Z7V2` differs in FOUR vertices, each by
+  exactly one ulp and each one ulp HIGH: `0x412e32d9` against `0x412e32d8` at
+  (82,62), and three more in a row at y=64. Nothing to carve there — a product
+  or a sum landing on the other side of the last mantissa bit, the same shape
+  of thing as the guard budget above.
+- **The largest is a feature.** `S0-1P2Z2K3T` differs in 736 vertices, and they
+  are not scattered: they are one bell centred on vertex (36,80), 0.565 deep at
+  the peak and fading to nothing by eight tiles out — the exact shape the
+  smoothing pass makes of a single local dent. Our side reads a flat 9.0 across
+  the whole blob, so the engine dug something we never dug. What sits there is a
+  4x4 `Lava/Mountains/Hellpikes_4x4_1` static at (34,80), whose footprint covers
+  the peak; the port's relief cone fires only for a static whose path carries
+  "Mountain" with more than 15 blocked tiles, and this one carries "Hellpikes".
+  Whether the engine's test is the path, the blocked count or the shared's own
+  family is the next thing to read — and the bowl at (43,76) on `.1T` (3.19
+  deep) is very likely the same rule.
+
+A note for whoever picks this up: `tools/diff-terrain.ts` compares the planes
+with a 1e-4 tolerance and will call a one-ulp plane "ok", while `rmg-diff-map`
+counts bytes and will not. Both are right; use the byte count to find that
+there is something, and the plane comparison to find out what.
+
 #### One guard of eleven thousand: where a float rounds and the engine does not
 
 `S6-11P2-8Z8K2XL` was the last template to disagree, and the disagreement was
