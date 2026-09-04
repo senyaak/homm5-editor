@@ -358,12 +358,34 @@ Its town and its garrison are Dungeon's all the same: the town document is
 the zone carries the race for its TOWN separately from the preset it PAINTS
 and decorates from, and the port has only one of the two.
 
-Dungeon is the one race that is underground on a two-floor map and joins the
-surface list only when there is no underground — which is what this template
-is — so "a surface zone cannot paint with a subterranean preset" is the
-obvious guess. It is a guess: the instruction that writes `zone+0x20` has not
-been found. What is measured is the pointer, the list and the object it
-placed.
+And the rule is in the code, at `0xeb4c70` — the zone's own setter, which
+fills BOTH pointers:
+
+```
+mov ecx,[esi+18h]              the zone's race
+call 0xBA18A0                  its preset row
+mov [esi+1Ch],eax              +0x1C = the race's own
+call 0xBA18A0
+cmp dword ptr [esi+18h],6      is the race DUNGEON?
+mov [esi+20h],eax              +0x20 = the same, by default
+jne done
+cmp dword ptr [esi+0F4h],0     is it on the SURFACE?
+jne done
+mov ecx,3                      then entry 3, HAVEN
+call 0xBA18A0
+mov [esi+20h],eax
+```
+
+The port already had that rule — `LoadedZone.terrainRace`, comment and all.
+What it did not have was the town pass READING it: `placeTowns` looked the
+preset up once, by the zone's own race, and used it for both the town
+prototype and the decoration. The prototype is right that way — zone 12
+builds a Dungeon town and a Dungeon creature guards it — and the decoration
+is not.
+
+The three subclass zones override the same slot wholesale: Subterra paints as
+Dungeon (`0xec4910`, `mov ecx,6`), and the Dwarven and SubInferno ones set
+their own constants at `0xec6ef6` and `0xec9170`.
 
 **What the first pass thought the line was.** Before the towns pass was read,
 the four templates that matched were exactly the four whose towns equal the

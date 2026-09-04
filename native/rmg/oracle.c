@@ -825,6 +825,11 @@ static void rmg_dump_points(void) {
     end = *(int **)(preset + 0xE8);
     rmg_log_triple("zp ", id, (int)(DWORD)preset,
                    (begin && end && end >= begin) ? (int)(end - begin) / 2 : -1);
+    // And the head of the zone itself, so a field can be IDENTIFIED against
+    // values already known per zone (its index, its floor, the template's
+    // TownGuardStrenght) instead of being guessed from one call site.
+    rmg_log_pair("zh ", id, 0);
+    rmg_log_ints("zhw ", (int *)zone, 0x40 / 4);
   }
 }
 

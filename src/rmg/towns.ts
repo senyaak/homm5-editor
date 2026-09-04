@@ -212,7 +212,15 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
       continue;
     }
 
+    // TWO presets, because the zone holds two. `+0x1C` is its own race's row
+    // and `+0x20` is the one it paints and decorates from — the same row for
+    // every zone except a Dungeon one on the surface, which borrows Haven's
+    // (0xeb4c86: `cmp [esi+18h],6`, then `cmp [esi+0F4h],0`, then entry 3).
+    // The TOWN comes from the first: `S3-5P4Z12B4`'s zone 12 builds a Dungeon
+    // town and is guarded by a Dungeon creature, while the decoration over its
+    // entrance is Haven's LeafDownBig.
     const preset = presets.get(zone.race);
+    const paintPreset = presets.get(zone.terrainRace);
     const proto = preset?.townProto ? towns.get(preset.townProto.replace(/#xpointer\(.*\)$/, '')) : undefined;
     if (!proto) continue; // no prototype, no town — the engine bails the same way
 
@@ -328,7 +336,7 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
 
       // The decoration over the entrance — skipped WHOLE, draws included,
       // when the race lists none.
-      const decorations = preset?.overTownCenterObjects ?? [];
+      const decorations = paintPreset?.overTownCenterObjects ?? [];
       if (decorations.length) {
         const dq = rng.below(4);
         const dpick = rng.below(decorations.length);
