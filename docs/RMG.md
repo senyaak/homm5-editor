@@ -488,6 +488,49 @@ for any static within 20 tiles flattens neither.
 Landweber inversion of the late pass (the pass is affine, so `theirs - ours` is
 the smoothed image of one delta added before it).
 
+##### The census: exactly what is left, template by template
+
+`_tmp/height-census.ts` walks all 21 accepted templates against the second
+sweep's maps and reports the height plane's differing vertices as CLUSTERS,
+at a 1e-4 tolerance so the one-ulp noise stays out of the way.
+
+| | |
+| --- | --- |
+| **byte-clean planes** | 9 of 21 — slots 1, 4, 6, 7, 9, 11, 15, 16, 17 |
+| **noise only (< 0.07)** | 4 — slots 2, 8, 14, 18 |
+| **real debt** | 8 — slots 3 (0.56), 5 (1.25), 10 (3.04), 12 (0.58), 13 (5.25), 19 (1.39), 20 (0.99), 21 (6.05) |
+
+Every one of the eight is one or two contiguous clusters, never scatter. Two
+shapes, and the second is the whole remaining story:
+
+1. **The crater plateaus** — a soft-edged disc offset by a constant, sitting on
+   an Inferno town. The disc is right (193 vertices on slot 3, and no radius,
+   centre or `>`/`>=` variant fits better); the AVERAGE it is set to differs,
+   so the debt is really shape 2 hiding inside the disc.
+2. **Basins the base field digs.** On slot 13 the engine's plane falls to 3.0
+   where ours holds 9.0 — a 30-tile bowl 5.25 deep. Reading `theirs` back
+   through the formula, the engine behaves as if `dist` there were 44 where our
+   border table says 28. On slot 5 the sign is the other way: WE dig to 7.0
+   where the engine holds a flat 9.0. Same term, both directions.
+
+**The base field itself is not the bug**, and that is now read rather than
+assumed. `0xECF9A0`, line by line: the dist comes from `floor+0xE4` at
+`[min(inner, W-1)][min(outer, H-1)]`, the zone from `floor+0xC4` at the SAME
+pair, the sign flips when the zone object's `+0x18` is 7 or 8 (`0xF4A9BC` is
+-1.0f), the divisors are 3, 10, 42, 13, 29, the noise is divided by the f64
+0.15000000596046448, 12.0 is added and `minsd` caps at 3.0, the value lands at
+`(outer, inner)` and the road dent (`occ & 0x18`, read `occ[outer][inner]`) hits
+the TRANSPOSED corners. Every constant read out of the binary matches the port.
+`CalcBorderTiles` writes `+0xE4` and `recomputeRoom` writes `+0xF4`, so the room
+grid does not overwrite the border table, and nothing else in the RMG range
+stores into `+0xE4`.
+
+Swapping the zone/dist read to the mirrored tile was tried against all four
+combinations: it takes slot 5 to ZERO and slot 10's worst from 3.04 to 0.63,
+while making slot 13 and slot 8 worse. So the read is not simply transposed
+either — something makes the same term reach for a different tile on some maps,
+and that is the next thing to find.
+
 A note for whoever picks this up: `tools/diff-terrain.ts` compares the planes
 with a 1e-4 tolerance and will call a one-ulp plane "ok", while `rmg-diff-map`
 counts bytes and will not. Both are right; use the byte count to find that
