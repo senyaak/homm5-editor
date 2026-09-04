@@ -327,11 +327,60 @@ skirt, while every other plane of the same file agrees. So the heights carry
 two separate debts: a smoothing pass that drifts in the third decimal, and at
 least one feature the port does not carve at all.
 
-**Next, and it is a reading rather than a run.** `tools/rmg-diff-draws.ts`
-names the first draw where the port and the engine disagree, and it is the
-tool that turns "the objects diverge" into a line number — but it hardcodes
-the reference order. Pointed at a three-zone template it would say where the
-zone loop first takes a different turn.
+### Where each template's run first turns differently
+
+`tools/rmg-diff-draws.ts` now takes the order out of a generated map
+(`--from <run>`), replays the chain or the whole run (`--full`), and prints
+**the limit each `below()` was called with** beside its value. That last part
+is what made the rest readable: "the engine drew 2 and the port drew 5" says
+only that they disagree, while `tb 2 of 3 | tb 5 of 30` says what each side
+was choosing among, and the phase counters say where it was standing.
+
+Eighteen of the twenty-two were traced this way, one launch each. **Seven have
+a chain that matches the engine draw for draw**, limits included:
+`S0-1P2Z2K3.1T`, `.2T`, `T`, `S1P2Z2M1`, `S1-3P2Z7V3`, `S2-3P2Z7N2`,
+`S3-5P2Z7N2.2`. The other eleven diverge inside the towns pass. The split is
+exact, and it is not the zone count the sweep first suggested:
+
+| | towns declared | chain |
+| --- | --- | --- |
+| the seven | exactly 2, the same as the order's players | matches to the last draw |
+| the eleven | 3 or more | diverges in the towns pass |
+
+**A town nobody owns costs the engine two draws the port does not spend.** On
+`S1-2P2-4Z4K1S` (4 towns, 2 players) the extra pair — `below(3)` then
+`below(20)` — appears after the specialisation draw of the THIRD and FOURTH
+towns and after neither of the first two, and those are exactly the two whose
+`playerNo` is 0. On `S1P2Z3K5.1` (3 towns, 1 of them unowned) the same pair
+appears twice rather than once, so the trigger is established and the COUNT is
+not: what the pair is drawing is a reading of the towns pass that has not been
+done. Until it is, every template with more towns than players is stopped at
+its first unowned town, and nothing downstream of that can be judged.
+
+**The three that are worse than they look.** `S1-3P2Z7V3`, `S2-3P2Z7N2` and
+`S3-5P2Z7N2.2` have a chain that matches completely — and still write a map
+that differs wholesale, so they carry a SECOND, independent bug, downstream of
+everything the chain does. `--full` names it for the first of them:
+
+```
+FIRST DIVERGENCE at draw 33971, in the port's zone 5 resourceBuildings → treasuryBuildings
+  engine: tb 243 of 258        a tile, straight away
+  port:   tb 0 of 7            an item picked from a list of seven
+```
+
+A priced-list step draws `below(count)` for the item, then tile and rotation
+per attempt, then two draws to mint the name — the port's zone 1 shows the
+shape and the engine agreed with it there. In zone 5 the port spends NOTHING
+between the mines and the treasury, while the engine places one more thing
+first: tile, rotation, a retry, a mint, and no item pick at all. So the port
+is skipping a step the engine runs, and the step it skips does not choose from
+a list.
+
+**The four biggest are untraced.** `S6-11P2-8Z8K2.4a`, `S6-11P2-8Z8K2XL`,
+`S7-15P2-8Z9K2.4b` and `S7-22P2-8Z15K2.4c` are 256-tile maps, and a traced run
+of one writes tens of megabytes and outlives a five-minute clock. They declare
+8, 8, 9 and 14 towns against two players, so the rule above PREDICTS the towns
+pass for all four — predicts, not measures.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no

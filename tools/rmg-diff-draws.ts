@@ -2,6 +2,7 @@
 //
 //   node tools/rmg-diff-draws.ts --game <dir>
 //   node tools/rmg-diff-draws.ts --game <dir> --from game/bin/rmg-batch/10
+//   node tools/rmg-diff-draws.ts --game <dir> --from <run> --full --context 20
 //
 // Reads the last run's `t*` lines out of bin/homm5-editor-rmg.log (written by
 // the oracle when the config says `trace`), replays the same seed through the
@@ -22,6 +23,7 @@
 //
 // The whole chain is replayed, not just FillZones — the engine's trace stops
 // at its own twelfth boundary and the tool says so when the port outlives it.
+// `--full` goes further still, through every phase the port has.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -29,6 +31,7 @@ import { join } from 'node:path';
 import { describeOrder, readOrder } from './rmg-order.ts';
 import { runChain } from './rmg-chain.ts';
 import type { ChainOptions } from './rmg-chain.ts';
+import { runFull } from './rmg-run.ts';
 import { dataDir, gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
@@ -108,8 +111,13 @@ options.jitter = (sweep, a, b) => jitterTiles.set(port.length, { sweep, a, b });
 const phases: Array<{ label: string; draws: number }> = [];
 options.onPhase = (label, draws) => phases.push({ label, draws });
 
-runChain(dataDir(), options);
-console.log(`port:   ${port.length} draws through the chain`);
+// `--full` carries on past the chain — MainObjects, the roads, the statics and
+// the treasure blocks. A template whose CHAIN is exact still writes a wrong
+// map, and the phase that spoils it can only be named by replaying it too.
+const full = args.includes('--full');
+if (full) runFull(dataDir(), options, (label, draws) => phases.push({ label, draws }));
+else runChain(dataDir(), options);
+console.log(`port:   ${port.length} draws through ${full ? 'the whole run' : 'the chain'}`);
 
 const describe = (i: number): string => {
   const context = jitterTiles.get(i);
