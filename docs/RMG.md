@@ -315,6 +315,13 @@ towns matched its players. What moved the other six was one routine — the
 garrison below. The cartographer and the zero possession marker moved six
 more; the table above is the state before those two.
 
+**The standing count is NINETEEN of twenty-one.** Every template but
+`S3-5P4Z12B4` and `S6-11P2-8Z8K2XL` now reproduces the whole object layer;
+three of them — `S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` and the reference — are
+byte-identical through the terrain as well, and the rest differ only in the
+height plane, by anything from 4 bytes to a few thousand. The port refuses
+`S7-22P2-8Z15K2.4c` outright.
+
 **A debt the count hides.** `S3-5P2-8Z8K2M` differs by five bytes, and only two
 of them are the `caption-text` numbering: three object AMOUNTS are off by one
 or two — a monster's 16 against 18, a treasure's 29 against 27 and 12 against
