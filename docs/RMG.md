@@ -384,8 +384,31 @@ carry 1, 1 and 20, the parameter is 1000, and the brackets show 1000, 1000 and
 **But this is NOT the `setMonster` the port has.** The ported one opens with a
 `betweenFloat` and can spend `10 + below(30)`; the town's guard spends
 `below(20)`, `below(candidates)`, twice, and no float at all. `0xed2330` is its
-own routine — the log string says "at town" — and porting it is what unblocks
-every template with a town nobody owns.
+own routine — the log string says "at town".
+
+**Ported, in `src/rmg/town-guard.ts`.** One stack per tier from 1 up, stopping
+at seven or when the power runs out:
+
+```
+spread = below(20)
+count  = ((spread + 20) * (9 - tier)) >> 1     -- a shift, so an odd product
+pool   = creatures of THIS tier and THIS race, in table order,   loses its half
+         minus ids 0, 89 and 114
+count  = min(count, power / creature.power)    -- and this is the last tier
+power -= creature.power * count
+```
+
+The race the pool filters on is the zone's own: the engine's switch at
+`0xeb5788` maps races 3..10 to town types 3..10, which is the identity — the
+two enums in `types.xml` are the same list, and the one place their NAMES
+differ is 9, `RACE_DWARF` against `TOWN_FORTRESS`.
+
+It is checked against the map, not just the draw count. `S1P2Z3K5.1`'s Academy
+town draws 13 and 15 of twenty: `(13+20)*8/2` is 132 Gremlin Saboteurs at 105
+each, `20000 - 105*132` is 6140, and `6140/180` is 34 Marble Gargoyles — which
+is that town's garrison in the engine's own file, slot for slot. The whole run
+now matches draw for draw, all 90 364 of them, and the map differs by the two
+`caption-text` bytes and the height plane.
 
 **A town nobody owns costs the engine two draws the port does not spend.** On
 `S1-2P2-4Z4K1S` (4 towns, 2 players) the extra pair — `below(3)` then
