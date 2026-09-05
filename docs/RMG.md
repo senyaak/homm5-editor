@@ -629,6 +629,38 @@ switching it on is wrong on both: `S1-2P2-8Z8K2S` goes from an exact plane to
 without. The negation does not happen, the bowl is some other mechanism, and
 the open question is about the branch itself rather than about its input.
 
+##### The first half of the plane is exact, so the whole debt is the late pass
+
+The plane a map file carries is a sum: the level constructor's fill plus the
+statics' relief cones, and then the late pass over the top. A difference in the
+sum says nothing about which half owns it — so the oracle grew a `heights`
+keyword that writes the plane at **"treasure blocks set"**, the last boundary
+before `0xECF760` runs and one no draw separates from "finished creating map".
+The plane is `level+0x18`, the float row array `0xEB1800` adds through, and each
+value is printed as the INT its bits are, so a match is bit equality rather than
+a tolerance. `tools/rmg-diff-heights.ts` reads it.
+
+| | the plane before the late pass |
+| --- | --- |
+| `S3-4P2-4Z4K1M` — the deepest bowl | **bit-identical**, 31,329 vertices |
+| `S1-2P2-8Z8K2S` — the map the dig flattened | **bit-identical**, 9,409 vertices |
+
+So the constructor fill is right, every relief cone is in the right place with
+the right rotation, and the ENTIRE remaining height debt — seven templates, up
+to 5.7 deep — is made inside the late pass, downstream of inputs that are all
+now confirmed against the engine: the border table, the zone grid, and the plane
+it starts from.
+
+**A method note, because the first reading of this dump was wrong and looked
+convincing.** Compared in the other orientation the two planes disagreed on
+1,764 vertices, and the deltas were 7.00, 5.00, 4.17, 3.00, 2.53 in matched
+plus/minus pairs — which is exactly `2·(3.5 − r)`, the cone profile, and reads
+irresistibly as relief cones placed one tile off. They were nothing of the kind:
+the plane's two conventions are transposed against each other throughout this
+port, and the dump indexes rows by the SECOND component. `rmg-diff-heights` now
+tries both and names the one that fits, which is the only reason the trap is
+cheap to fall into twice.
+
 **What the next round eliminated, so the search does not repeat it.**
 
 - **The writers are the ones already known — and the first sweep for them was

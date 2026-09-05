@@ -251,6 +251,28 @@ static int g_rmgRunActive = 0;
 /** `grids` in the config: dump the road lists and level grids at the roads boundary. */
 static int g_rmgGrids = 0;
 /**
+ * `heights` in the config: the FLOAT height plane, at the last boundary before
+ * the late pass runs.
+ *
+ * The plane is `level+0x18` — a row array of floats, `(dim+1)` rows of
+ * `(dim+1)`, which is what `0xEB1800` adds through (`mov eax,[edx+18h]`, then
+ * `rows[first][second] += delta`) and what `0xEB2420` averages over. At
+ * "treasure blocks set" it holds the level constructor's fill plus the statics'
+ * relief cones and NOTHING else: the late pass (`0xECF760`) has not run, and no
+ * draw separates that boundary from "finished creating map".
+ *
+ * WHY IT IS WORTH A LAUNCH. The port reproduces the object layer of every
+ * template and the terrain of all of them, and what is left is the height plane
+ * on seven maps. The final plane the map file carries is the sum of two halves —
+ * cones, then the late pass — and a difference in it says nothing about which
+ * half owns it. This dump cuts the sum in two.
+ *
+ * Needs `trace` as well, for the same reason `grids` does: the zone pointers it
+ * reaches the level through are harvested by the trace hook.
+ */
+static int g_rmgHeights = 0;
+static void rmg_dump_heights(void);
+/**
  * `pass` in the config: the PASSABILITY plane's zero count at every step
  * boundary. The plane is `level+0x68` (data) / `+0x6C` (rows) / `+0x70`,
  * `+0x74` (dims) — the same level object the grids dump already walks, filled
@@ -509,6 +531,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "seed") && read_int(&q, stop, &g_rmgSeed)) g_rmgForceSeed = 1;
     if (take_word(&q, stop, "trace")) g_rmgTrace = 1;
     if (take_word(&q, stop, "grids")) g_rmgGrids = 1;
+    if (take_word(&q, stop, "heights")) g_rmgHeights = 1;
     if (take_word(&q, stop, "pass")) g_rmgPass = 1;
     if (take_word(&q, stop, "points")) g_rmgPoints = 1;
     if (take_word(&q, stop, "field")) g_rmgField = 1;
@@ -771,7 +794,10 @@ static int rmg_fmt_says(const char *fmt, const char *what) {
 
 /** `<prefix> <ints...>` on one line — for the readings wider than a pair. */
 static void rmg_log_ints(const char *prefix, const int *vals, int count) {
-  char line[1400];
+  // Wide enough for a whole plane row: 257 floats printed as their BITS is
+  // about 2.6 KB, and the old 1400 would have truncated it in silence — as
+  // it would a 256-map grid row of 10000s.
+  char line[4096];
   int i = 0, n = 0, k;
   while (prefix[i] && i < 32) { line[i] = prefix[i]; i++; }
   for (k = 0; k < count && i < (int)sizeof(line) - 14; k++) {
@@ -963,6 +989,54 @@ static void rmg_dump_grids(void) {
 }
 
 /**
+ * `hp <floor> <row> <bits…>` — one line per row of the float height plane,
+ * each value printed as the INT its bits are, so nothing rounds on the way out.
+ *
+ * The level is reached the way every other dump reaches it, through a zone the
+ * engine itself resolved this run, and each floor is written once. The plane is
+ * one wider than the tile grid in both directions; a row that will not read is
+ * skipped rather than guessed at.
+ */
+static void rmg_dump_heights(void) {
+  int floorsDumped[4] = { 0, 0, 0, 0 };
+  int id;
+  for (id = 0; id < 32; id++) {
+    BYTE *zone = g_rmgZones[id];
+    BYTE *world, *levels, *level;
+    float **rows;
+    int floor, dimA, dimB, v, r;
+    if (!zone || !rmg_readable(zone, 0x140)) continue;
+    if (*(int *)(zone + 0xEC) != id) continue;
+    floor = *(int *)(zone + 0xF4);
+    if (floor < 0 || floor >= 4 || floorsDumped[floor]) continue;
+    world = *(BYTE **)(zone + 0x134);
+    if (!world || !rmg_readable(world, 0x40)) continue;
+    dimA = *(int *)(world + 0xC);
+    dimB = *(int *)(world + 0x10);
+    levels = *(BYTE **)(world + 0x34);
+    if (dimA <= 0 || dimA > 256 || dimB <= 0 || dimB > 256) continue;
+    if (!levels || !rmg_readable(levels + floor * 0x120, 0x120)) continue;
+    level = levels + floor * 0x120;
+    rows = *(float ***)(level + 0x18);
+    v = dimA + 1;
+    if (!rows || !rmg_readable(rows, (unsigned)v * 4)) continue;
+    floorsDumped[floor] = 1;
+    for (r = 0; r < v; r++) {
+      int vals[260];
+      int cols = dimB + 1;
+      int c;
+      if (cols > 258) cols = 258;
+      vals[0] = floor;
+      vals[1] = r;
+      if (!rows[r] || !rmg_readable(rows[r], (unsigned)cols * 4)) continue;
+      for (c = 0; c < cols; c++) vals[c + 2] = *(int *)&rows[r][c];
+      rmg_log_ints("hp ", vals, cols + 2);
+    }
+  }
+  rmg_log("heights dumped");
+}
+
+/**
  * `pass <floor> <zeros> <ones>` — the passability plane, counted.
  *
  * One line per floor whose level could be reached through a harvested zone.
@@ -1092,6 +1166,9 @@ static char *__cdecl rmg_step_plain(const char *fmt, double secs) {
   // The one boundary where the road lists are complete and the statics have
   // not yet stamped over anything.
   if (g_rmgGrids && rmg_fmt_says(fmt, "roads created")) rmg_dump_grids();
+  // The last boundary before `0xECF760` runs, and no draw separates the two:
+  // the plane here is the constructor fill plus the statics' cones alone.
+  if (g_rmgHeights && rmg_fmt_says(fmt, "treasure blocks set")) rmg_dump_heights();
   // The room points, at the ONE boundary where they are the input MainObjects
   // will read: the towns have stamped, the connections have dug and the
   // teleports have grown, and nothing of MainObjects has run yet.
