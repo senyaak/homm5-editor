@@ -170,19 +170,18 @@ export interface HeightsInput {
  * under the 3.0 cap — this function returns a flat 3.0 at every vertex of
  * every shipped template, checked.
  *
- * THE BRANCH IS NOT DEAD; THE GRID IT SCALES IS WRONG. `S3-4P2-4Z4K1M` keeps
- * the largest bowl left in the sweep — the engine falls to 2.1 where we hold
- * 9.0 — and it is the dig: a cone of slope ≈ 1/3, peaking exactly on our
- * border table's own peak, inside the map's only INFERNO zone, while the same
- * table's second peak in an ACADEMY zone on the same map agrees to the last
- * bit. But firing the branch off OUR table is wrong in both directions: it
- * digs where `S1-2P2-8Z8K2S` is flat (the engine's value would have to be <= 7
- * where ours reaches 13) and not enough on `S3-4P2-4Z4K1M` (inverting the late
- * pass asks for ~46 where ours gives 36-39). Nothing tried reproduces that —
- * the map edge as a border or not, unassigned neighbours or not, the mirrored
- * tile, the room grid (0-11 across the whole bowl). So the port leaves the
- * term inert until the grid behind `floor+0xE4` is named, because with the
- * table we have, running the branch is measurably worse than not running it.
+ * AND THE TABLE IS NOT THE CULPRIT — that is measured, not reasoned. The
+ * oracle's `grids` dump was taken from the engine for both of the maps that
+ * disagree (`tools/rmg-diff-grids.ts`), and `floor+0xE4` comes back IDENTICAL
+ * to what `border-tiles.ts` computes: 30,976 of 30,976 cells on
+ * `S3-4P2-4Z4K1M`, 9,216 of 9,216 on `S1-2P2-8Z8K2S`, the zone grid with it.
+ * So the dist this branch would scale is exactly ours, the branch's output is
+ * exactly what the port produces with it switched on, and switching it on is
+ * wrong on both maps: `S1-2P2-8Z8K2S` goes from an exact plane to 221 differing
+ * vertices, and `S3-4P2-4Z4K1M` stays 5.25 out either way. The negation does
+ * not happen. WHY it does not, with `+0x18` reading the resolved race and the
+ * lookup finding the right zone, is the open question — and it is now a
+ * question about the branch, not about its input.
  *
  * NOTE WHY THIS SURVIVED SO LONG. On the reference `S1P2Z2M1` the dig would
  * not have bitten either — its lowest value is 3.00 even with the resolved

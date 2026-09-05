@@ -605,26 +605,29 @@ Two crater plateaus vanish with it as a side effect: they were the dig INSIDE a
 crater disc moving the average the crater flattens to — which is what the
 earlier "the disc is right, the average is not" reading was pointing at.
 
-**But "the negation never fires" would be the wrong lesson, and the biggest
-remaining bowl says so.** On `S3-4P2-4Z4K1M` the engine's plane falls to 2.1
-where ours holds 9.0, and three things line that bowl up with the dig rather
-than with anything else: its profile is a cone of slope ≈ 1/3, which is what
-`dist/3` makes; its peak sits exactly on our border table's own peak (36–39,
-around x 132, y 36–42); and it is inside zone 1, the map's only INFERNO zone.
-The control is on the same map — the border table has a second peak just as
-high at rows 108–150, in zones whose race is ACADEMY, and the plane there agrees
-to the last bit.
+**Is the biggest remaining bowl the dig?** `S3-4P2-4Z4K1M` looked like it: the
+engine falls to 2.1 where we hold 9.0, the profile is a cone of slope ≈ 1/3
+(which is what `dist/3` makes), its peak sits on our border table's own peak,
+and it is inside the map's only INFERNO zone — with a control on the same map,
+a second table peak just as high in ACADEMY zones where the plane agrees to the
+last bit. **It is not the dig, and the engine settled it.**
 
-So the dig is real and it does bite. What is wrong is the grid it scales.
-Firing it with OUR border table is wrong in BOTH directions: on
-`S1-2P2-8Z8K2S` it digs where the engine is flat (the engine's value would have
-to be ≤ 7 where ours reaches 13), and on `S3-4P2-4Z4K1M` it digs too little
-(inverting the late pass asks for ≈ 46 where ours gives 36–39). No border rule
-tried reproduces that — the map edge counted or not, unassigned neighbours
-counted or not, the mirrored tile, the room grid (which is 0–11 across the whole
-bowl, nowhere near). Until the grid behind `floor+0xE4` is named, running the
-branch off our table is measurably worse than leaving it out, which is why the
-port leaves it out — not because the branch is dead.
+The oracle's `grids` dump was taken for both maps that disagree
+(`tools/rmg-diff-grids.ts`, one editor launch each, `trace` AND `grids` in
+`<game>/bin/homm5-editor-rmg.txt` — `grids` alone dumps nothing, because the
+zone pointers it walks are harvested by the trace hook):
+
+| | `bd` — distance to border | `zg` — zone ids |
+| --- | --- | --- |
+| `S3-4P2-4Z4K1M` | **identical**, 30,976 of 30,976 cells | identical |
+| `S1-2P2-8Z8K2S` | **identical**, 9,216 of 9,216 cells | identical |
+
+So the grid the branch would scale is exactly the one this port computes, the
+branch's output is exactly what the port makes with it switched on, and
+switching it on is wrong on both: `S1-2P2-8Z8K2S` goes from an exact plane to
+221 differing vertices, `S3-4P2-4Z4K1M` stays 5.25 out with the dig and 5.73
+without. The negation does not happen, the bowl is some other mechanism, and
+the open question is about the branch itself rather than about its input.
 
 **What the next round eliminated, so the search does not repeat it.**
 
@@ -679,15 +682,13 @@ computes. The reader was checked both ways before being handed over — against 
 dump minted from the port (identical, orientation detected) and against the same
 dump with two cells bumped by 7 (caught, located, and the +7 named).
 
-**And one caution against the dig story, kept because it is not settled.**
-Inverting the late pass on `S3-4P2-4Z4K1M` asks for a field peaking at ≈46 on
-(119,41). No distance-to-border field can do that there: a distance of 46 needs
-its zero set 46 tiles away in every direction, and zone 1's own boundary is only
-32–39 away to the south. So either the inversion overstates the peak — it is the
-minimum-norm solution, which spreads a source rather than sharpening it — or the
-bowl is not the dig at all and the cone-of-slope-⅓ shape is a coincidence of the
-zone's own geometry. The Inferno-versus-Academy control still stands; the
-arithmetic does not close.
+**The last untested link is now tested, and it was not the culprit.** The port
+assumed the all-`-1` fill the map-created step leaves, and with it computes a
+table the engine agrees with cell for cell on both problem maps (above). So
+`CalcBorderTiles`, its two guards, the passage dents and the fill are all
+settled, and every input the base field reads is confirmed against the engine.
+What remains unexplained is narrow and precise: a branch that reads the right
+zone, tests the right field, negates the right slot — and does not happen.
 
 **Keying it on the template's `Setting` was tried first, and the reading kills
 that idea.** The engine looks the zone up through the floor's index map
