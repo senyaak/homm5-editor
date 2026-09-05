@@ -276,11 +276,20 @@ static void rmg_dump_heights(void);
  * `stages` in the config: the same plane, after EVERY stage of the late pass.
  *
  * `heights` cuts the plane in two and says the first half is exact, which puts
- * the whole remaining debt inside `0xECF760`. This cuts the second half into
- * its eight steps by patching the eight call SITES in that orchestrator, each
+ * the whole remaining debt inside the late pass. This cuts the second half into
+ * its NINE steps by patching the nine call SITES in that orchestrator, each
  * hook forwarding to the real stage and then writing the plane out with the
- * step number. Arity comes from each callee's own `ret`: the four stage
+ * step number. Arity comes from each callee's own `ret`: the five stage
  * functions end `ret`, the smoother ends `ret 4`.
+ *
+ * THE ADDRESSES ARE THE EDITOR'S. The first cut of this used the game's, and
+ * all eight refused: the two builds do not share this layout. The editor's pass
+ * is `0x796E00`, reached from `0xCEFC20` — the un-inlined tail that sits
+ * between "treasure blocks set" and "finished creating map" — and it runs the
+ * same stages in the same order as the game's `0xECF760`, differing in codegen
+ * alone: where the game inlines four calls to the height add, the editor wraps
+ * them in `0x7944E0`. That helper is the ninth step this dump has and the
+ * game's site list did not.
  *
  * Needs `trace` as well, like every dump here.
  */
@@ -291,7 +300,9 @@ static void rmg_dump_plane(const char *prefix, int tag);
 typedef void(__fastcall *RmgStageFn)(void *self, void *edx);
 /** `ret 4` — `this` in ecx and the kernel flag on the stack. */
 typedef void(__fastcall *RmgSmoothFn)(void *self, void *edx, int flag);
+static RmgStageFn g_rmgLatePassOrig = NULL;
 static RmgStageFn g_rmgBaseFieldOrig = NULL;
+static RmgStageFn g_rmgDentsOrig = NULL;
 static RmgStageFn g_rmgCraterOrig = NULL;
 static RmgStageFn g_rmgFlattenOrig = NULL;
 static RmgStageFn g_rmgLakeFlattenOrig = NULL;
@@ -1076,33 +1087,102 @@ static void rmg_dump_plane(const char *prefix, int tag) {
 static void rmg_dump_heights(void) { rmg_dump_plane("hp ", -1); }
 
 /**
- * The eight stages of `0xECF760`, each hook forwarding first and writing the
+ * One of the level's INT grids, at whatever moment the caller is standing in.
+ *
+ * `grids` writes all four at "roads created", which is where the roads are
+ * complete — but the base field reads the distance-to-border table MUCH later,
+ * and nothing said the table is still the one that was dumped. This is how to
+ * ask at the reading's own moment: `be` is `level+0xE4`, the dist table, and
+ * `ze` is `level+0xC4`, the zone ids the dig gate is keyed on.
+ */
+static void rmg_dump_int_grid(const char *prefix, unsigned off) {
+  int floorsDumped[4] = { 0, 0, 0, 0 };
+  int id;
+  for (id = 0; id < 32; id++) {
+    BYTE *zone = g_rmgZones[id];
+    BYTE *world, *levels, *level;
+    int **rows;
+    int floor, dimA, dimB, r;
+    if (!zone || !rmg_readable(zone, 0x140)) continue;
+    if (*(int *)(zone + 0xEC) != id) continue;
+    floor = *(int *)(zone + 0xF4);
+    if (floor < 0 || floor >= 4 || floorsDumped[floor]) continue;
+    world = *(BYTE **)(zone + 0x134);
+    if (!world || !rmg_readable(world, 0x40)) continue;
+    dimA = *(int *)(world + 0xC);
+    dimB = *(int *)(world + 0x10);
+    levels = *(BYTE **)(world + 0x34);
+    if (dimA <= 0 || dimA > 256 || dimB <= 0 || dimB > 256) continue;
+    if (!levels || !rmg_readable(levels + floor * 0x120, 0x120)) continue;
+    level = levels + floor * 0x120;
+    rows = *(int ***)(level + off);
+    if (!rows || !rmg_readable(rows, (unsigned)dimA * 4)) continue;
+    floorsDumped[floor] = 1;
+    for (r = 0; r < dimA; r++) {
+      int vals[258];
+      int c;
+      vals[0] = floor;
+      vals[1] = r;
+      if (!rows[r] || !rmg_readable(rows[r], (unsigned)dimB * 4)) continue;
+      for (c = 0; c < dimB; c++) vals[c + 2] = rows[r][c];
+      rmg_log_ints(prefix, vals, dimB + 2);
+    }
+  }
+}
+
+/**
+ * The nine stages of the late pass, each hook forwarding first and writing the
  * plane after. The site addresses are the calls inside the orchestrator, so a
  * stage that runs more than once is told apart by its own counter rather than
  * by a second patch of the same callee.
+ *
+ * The numbers ARE the running order, so a dump reads straight down:
+ *
+ *   0 base field   1 dents      2 craters       3 flatten 1   4 smooth 1
+ *   5 smooth 2     6 flatten 2  7 lake flatten  8 smooth 3
  */
+/**
+ * Stage 9 is the odd one out: the plane ON ENTRY to the pass, dumped BEFORE
+ * anything of it runs. `heights` already writes the plane at "treasure blocks
+ * set", but three things sit between that boundary and this call — the level
+ * walk in `0xCEFC20` that calls `[vt+0x38]` per hash-map entry, the road
+ * painter, and whatever those two touch. Without this dump a difference at
+ * stage 0 cannot be told from a difference made before stage 0 ran.
+ */
+static void __fastcall rmg_late_pass_hook(void *self, void *edx) {
+  rmg_dump_plane("hs ", 9);
+  // The two grids the base field reads, at the moment it reads them.
+  rmg_dump_int_grid("be ", 0xE4u);
+  rmg_dump_int_grid("ze ", 0xC4u);
+  rmg_log("late pass entry dumped");
+  if (g_rmgLatePassOrig) g_rmgLatePassOrig(self, edx);
+}
 static void __fastcall rmg_base_field_hook(void *self, void *edx) {
   if (g_rmgBaseFieldOrig) g_rmgBaseFieldOrig(self, edx);
   g_rmgFlattenNo = 0;
   g_rmgSmoothNo = 0;
   rmg_dump_plane("hs ", 0);
 }
+static void __fastcall rmg_dents_hook(void *self, void *edx) {
+  if (g_rmgDentsOrig) g_rmgDentsOrig(self, edx);
+  rmg_dump_plane("hs ", 1);
+}
 static void __fastcall rmg_crater_hook(void *self, void *edx) {
   if (g_rmgCraterOrig) g_rmgCraterOrig(self, edx);
-  rmg_dump_plane("hs ", 1);
+  rmg_dump_plane("hs ", 2);
 }
 static void __fastcall rmg_flatten_hook(void *self, void *edx) {
   if (g_rmgFlattenOrig) g_rmgFlattenOrig(self, edx);
-  rmg_dump_plane("hs ", g_rmgFlattenNo++ ? 5 : 2);
+  rmg_dump_plane("hs ", g_rmgFlattenNo++ ? 6 : 3);
 }
 static void __fastcall rmg_smooth_hook(void *self, void *edx, int flag) {
   if (g_rmgSmoothOrig) g_rmgSmoothOrig(self, edx, flag);
-  rmg_dump_plane("hs ", g_rmgSmoothNo == 0 ? 3 : g_rmgSmoothNo == 1 ? 4 : 7);
+  rmg_dump_plane("hs ", g_rmgSmoothNo == 0 ? 4 : g_rmgSmoothNo == 1 ? 5 : 8);
   g_rmgSmoothNo++;
 }
 static void __fastcall rmg_lake_flatten_hook(void *self, void *edx) {
   if (g_rmgLakeFlattenOrig) g_rmgLakeFlattenOrig(self, edx);
-  rmg_dump_plane("hs ", 6);
+  rmg_dump_plane("hs ", 7);
 }
 
 /**
@@ -1410,24 +1490,30 @@ static int install_rmg_oracle(void) {
       rmg_log(g_rmgNextOrig && g_rmgNext63Orig && g_rmgBelowOrig && g_rmgBetweenFloatOrig && g_rmgGetZoneOrig
                   ? "draw trace on - every draw and every GetZone will be written"
                   : "draw trace INCOMPLETE - see the refusals above");
-      // The late pass, stage by stage. Each of these is a CALL SITE inside
-      // `0xECF760`, verified against the callee it is meant to reach, so a
-      // stage that runs twice keeps its own site and its own number.
+      // The late pass, stage by stage. Each of these is a CALL SITE inside the
+      // EDITOR's orchestrator `0x796E00` (RVA 0x396E00), verified against the
+      // callee it is meant to reach, so a stage that runs twice keeps its own
+      // site and its own number. See the `stages` comment for why these are not
+      // the game's addresses and what the ninth stage is.
       if (g_rmgStages) {
         int ok = 1;
-        g_rmgBaseFieldOrig = (RmgStageFn)(base + 0xACF9A0u);
-        g_rmgCraterOrig = (RmgStageFn)(base + 0xAD0240u);
-        g_rmgFlattenOrig = (RmgStageFn)(base + 0xAD06D0u);
-        g_rmgLakeFlattenOrig = (RmgStageFn)(base + 0xACFE40u);
-        g_rmgSmoothOrig = (RmgSmoothFn)(base + 0xAB2580u);
-        ok &= patch_call(0xACF773u, 0xACF9A0u, &rmg_base_field_hook, "late pass base field");
-        ok &= patch_call(0xACF926u, 0xAD0240u, &rmg_crater_hook, "late pass craters");
-        ok &= patch_call(0xACF92Du, 0xAD06D0u, &rmg_flatten_hook, "late pass flatten 1");
-        ok &= patch_call(0xACF93Cu, 0xAB2580u, &rmg_smooth_hook, "late pass smooth 1");
-        ok &= patch_call(0xACF96Du, 0xAB2580u, &rmg_smooth_hook, "late pass smooth 2");
-        ok &= patch_call(0xACF974u, 0xAD06D0u, &rmg_flatten_hook, "late pass flatten 2");
-        ok &= patch_call(0xACF97Bu, 0xACFE40u, &rmg_lake_flatten_hook, "late pass lake flatten");
-        ok &= patch_call(0xACF98Au, 0xAB2580u, &rmg_smooth_hook, "late pass smooth 3");
+        g_rmgLatePassOrig = (RmgStageFn)(base + 0x396E00u);
+        g_rmgBaseFieldOrig = (RmgStageFn)(base + 0x394F10u);
+        g_rmgDentsOrig = (RmgStageFn)(base + 0x3944E0u);
+        g_rmgCraterOrig = (RmgStageFn)(base + 0x3966B0u);
+        g_rmgFlattenOrig = (RmgStageFn)(base + 0x396A90u);
+        g_rmgLakeFlattenOrig = (RmgStageFn)(base + 0x394BA0u);
+        g_rmgSmoothOrig = (RmgSmoothFn)(base + 0x4744F0u);
+        ok &= patch_call(0x8EFD00u, 0x396E00u, &rmg_late_pass_hook, "late pass entry");
+        ok &= patch_call(0x396E06u, 0x394F10u, &rmg_base_field_hook, "late pass base field");
+        ok &= patch_call(0x396E76u, 0x3944E0u, &rmg_dents_hook, "late pass dents");
+        ok &= patch_call(0x396E7Du, 0x3966B0u, &rmg_crater_hook, "late pass craters");
+        ok &= patch_call(0x396E84u, 0x396A90u, &rmg_flatten_hook, "late pass flatten 1");
+        ok &= patch_call(0x396E93u, 0x4744F0u, &rmg_smooth_hook, "late pass smooth 1");
+        ok &= patch_call(0x396EC3u, 0x4744F0u, &rmg_smooth_hook, "late pass smooth 2");
+        ok &= patch_call(0x396ECAu, 0x396A90u, &rmg_flatten_hook, "late pass flatten 2");
+        ok &= patch_call(0x396ED1u, 0x394BA0u, &rmg_lake_flatten_hook, "late pass lake flatten");
+        ok &= patch_call(0x396EE0u, 0x4744F0u, &rmg_smooth_hook, "late pass smooth 3");
         rmg_log(ok ? "late pass stage dumps armed" : "late pass stage dumps INCOMPLETE");
       }
     }
