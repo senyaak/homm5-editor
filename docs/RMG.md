@@ -601,10 +601,30 @@ which is the other, still-open debt showing through once this one stops masking
 it. And `S1-2P2-8Z8K2S` going to EXACTLY ZERO is not a coincidence a wrong rule
 produces.
 
-So in all twenty-one runs the negation never fires. Two crater plateaus vanish
-with it as a side effect: they were the dig INSIDE a crater disc moving the
-average the crater flattens to — which is what the earlier "the disc is right,
-the average is not" reading was pointing at.
+Two crater plateaus vanish with it as a side effect: they were the dig INSIDE a
+crater disc moving the average the crater flattens to — which is what the
+earlier "the disc is right, the average is not" reading was pointing at.
+
+**But "the negation never fires" would be the wrong lesson, and the biggest
+remaining bowl says so.** On `S3-4P2-4Z4K1M` the engine's plane falls to 2.1
+where ours holds 9.0, and three things line that bowl up with the dig rather
+than with anything else: its profile is a cone of slope ≈ 1/3, which is what
+`dist/3` makes; its peak sits exactly on our border table's own peak (36–39,
+around x 132, y 36–42); and it is inside zone 1, the map's only INFERNO zone.
+The control is on the same map — the border table has a second peak just as
+high at rows 108–150, in zones whose race is ACADEMY, and the plane there agrees
+to the last bit.
+
+So the dig is real and it does bite. What is wrong is the grid it scales.
+Firing it with OUR border table is wrong in BOTH directions: on
+`S1-2P2-8Z8K2S` it digs where the engine is flat (the engine's value would have
+to be ≤ 7 where ours reaches 13), and on `S3-4P2-4Z4K1M` it digs too little
+(inverting the late pass asks for ≈ 46 where ours gives 36–39). No border rule
+tried reproduces that — the map edge counted or not, unassigned neighbours
+counted or not, the mirrored tile, the room grid (which is 0–11 across the whole
+bowl, nowhere near). Until the grid behind `floor+0xE4` is named, running the
+branch off our table is measurably worse than leaving it out, which is why the
+port leaves it out — not because the branch is dead.
 
 **Keying it on the template's `Setting` was tried first, and the reading kills
 that idea.** The engine looks the zone up through the floor's index map

@@ -168,14 +168,21 @@ export interface HeightsInput {
  * WITHOUT the negation the term cannot be seen at all: `noise/0.15` spans
  * ±6.67 and `dist/3` is non-negative, so `noise + dist/3 + 12` never falls
  * under the 3.0 cap — this function returns a flat 3.0 at every vertex of
- * every shipped template, checked. So whatever the late pass reads at
- * `floor+0xE4` cannot be the border table this port computes, or the dig
- * would bite; with our table it would drive the value to 1.45 on
- * `S1-2P2-8Z8K2S`, -0.41 on `S1P2Z3K5.1`, -4.68 on `S7-15P2-8Z9K2.4b`.
- * Naming that grid is what would let the branch be ported; keying it on the
- * template's `Setting` was tried and is only a guess that happens to be
- * inert. Until then the honest port is the one that leaves the term inert,
- * because that is what every reference plane shows.
+ * every shipped template, checked.
+ *
+ * THE BRANCH IS NOT DEAD; THE GRID IT SCALES IS WRONG. `S3-4P2-4Z4K1M` keeps
+ * the largest bowl left in the sweep — the engine falls to 2.1 where we hold
+ * 9.0 — and it is the dig: a cone of slope ≈ 1/3, peaking exactly on our
+ * border table's own peak, inside the map's only INFERNO zone, while the same
+ * table's second peak in an ACADEMY zone on the same map agrees to the last
+ * bit. But firing the branch off OUR table is wrong in both directions: it
+ * digs where `S1-2P2-8Z8K2S` is flat (the engine's value would have to be <= 7
+ * where ours reaches 13) and not enough on `S3-4P2-4Z4K1M` (inverting the late
+ * pass asks for ~46 where ours gives 36-39). Nothing tried reproduces that —
+ * the map edge as a border or not, unassigned neighbours or not, the mirrored
+ * tile, the room grid (0-11 across the whole bowl). So the port leaves the
+ * term inert until the grid behind `floor+0xE4` is named, because with the
+ * table we have, running the branch is measurably worse than not running it.
  *
  * NOTE WHY THIS SURVIVED SO LONG. On the reference `S1P2Z2M1` the dig would
  * not have bitten either — its lowest value is 3.00 even with the resolved
