@@ -626,6 +626,40 @@ bowl, nowhere near). Until the grid behind `floor+0xE4` is named, running the
 branch off our table is measurably worse than leaving it out, which is why the
 port leaves it out — not because the branch is dead.
 
+**What the next round eliminated, so the search does not repeat it.**
+
+- **Nothing overwrites the table.** All 65 sites in the RMG range that load a
+  `floor+0xE4` row array were decoded and their next sixteen instructions
+  checked for a store through the pointer. Every one only reads. The two that
+  look like writers are not: `0xEC43A8` copies a struct's `+0xE4…+0xF8` fields
+  wholesale, and the lakes' `0xEBC726` reads `+0xD4`, `+0xF4` AND `+0xE4` as
+  three gate conditions and then stores its wave value into the lakes object's
+  own `+0xA8` array. So the grid the late pass reads is the one
+  `CalcBorderTiles` left.
+- **`CalcBorderTiles` has two guards, and the port already has both.** A cell
+  whose value is 0 is skipped outright (`0xEA9390`) — that is how the border
+  tiles the first sub-pass zeroed keep their 0 — and the computed minimum is
+  stored ONLY when the cell still reads `-1` (`0xEA9443`), so a cell holding
+  anything else is walked and thrown away. `border-tiles.ts` writes both.
+- **It is not stale state between maps.** `rmg-batch` already launches the
+  editor once per order, and for exactly this reason: a second generation in
+  one process does not repeat what the first would have made alone.
+
+So every link in the chain is now read and matches, and the ONLY thing left
+untested is what the grid holds when `CalcBorderTiles` starts. The port assumes
+the all-`-1` fill the map-created step is documented to leave. Confirming that
+needs the engine itself — a dump of `floor+0xE4` before and after the pass.
+
+**And one caution against the dig story, kept because it is not settled.**
+Inverting the late pass on `S3-4P2-4Z4K1M` asks for a field peaking at ≈46 on
+(119,41). No distance-to-border field can do that there: a distance of 46 needs
+its zero set 46 tiles away in every direction, and zone 1's own boundary is only
+32–39 away to the south. So either the inversion overstates the peak — it is the
+minimum-norm solution, which spreads a source rather than sharpening it — or the
+bowl is not the dig at all and the cone-of-slope-⅓ shape is a coincidence of the
+zone's own geometry. The Inferno-versus-Academy control still stands; the
+arithmetic does not close.
+
 **Keying it on the template's `Setting` was tried first, and the reading kills
 that idea.** The engine looks the zone up through the floor's index map
 (`0xE9FF00` on `floor+0xAC`, keyed by the zone grid's own value) and tests that
