@@ -19,7 +19,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { readArtifacts, rmgArtifactPool } from '../src/rmg/artifacts.ts';
-import type { HeightObject, HeightPlane } from '../src/rmg/heights.ts';
+import type { HeightObject, HeightPlane, HeightsInput } from '../src/rmg/heights.ts';
 import {
   CRATER_DWELLING_TYPES, SKIP_FLATTEN_DWELLING_TYPES, makeHeightPlane,
 } from '../src/rmg/heights.ts';
@@ -518,4 +518,23 @@ export function runFull(
   step('run');
 
   return { c, objects, heightPlane, vertexHeights, roads, mineActives, guardSeats, fills, statics, lakes, passability };
+}
+
+/**
+ * What the late pass needs, gathered from a finished run.
+ *
+ * The base field's dig gate reads the zone grid and the race that zone
+ * resolved to, so every caller of `latePass` needs the same four things —
+ * this is the one place that assembles them.
+ */
+export function heightsInput(run: FullRun): HeightsInput {
+  const byIndex = new Map(run.c.loaded.zones.map((z) => [z.index, z.race]));
+  return {
+    size: run.c.size,
+    occupancy: run.c.occ,
+    border: run.c.border,
+    grid: run.c.grid,
+    raceOf: (zoneIndex) => byIndex.get(zoneIndex),
+    objects: run.objects,
+  };
 }

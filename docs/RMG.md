@@ -59,11 +59,17 @@ the masks — Dead_Land's theft from Lava — falls in line. **All seven
 layers of the reference `GroundTerrain.bin` are now byte-identical, with
 no forgiveness clause left.**
 
-**The HEIGHT PLANE closes the float half of ALL THREE references**
-(`0xECF760` → `heights.ts`, `test-rmg-heights`, replaying through the
-shared full-run driver `tools/rmg-run.ts`): every vertex of the surface,
-island and underground floor-0 planes — 24,147 across the three files —
-bit for bit. The plane starts at the level constructor's
+**The HEIGHT PLANE closes the float half of ALL THREE references — and
+of every template the port accepts** (`0xECF760` → `heights.ts`,
+`test-rmg-heights`, replaying through the shared full-run driver
+`tools/rmg-run.ts`): every vertex of the surface, island and underground
+floor-0 planes — 24,147 across the three files — bit for bit, and
+**21 of 21 templates of the sweep with zero differing vertices**. The
+last debt was two errors in the base field that were only visible
+together — the noise's two indices swapped and the Inferno/Necromancy
+dig switched off on a measurement the swap had corrupted; the story is
+under "The bowl, closed" below, and the instrument that found it
+(`stages`, the pass cut into nine dumped steps) is worth reusing. The plane starts at the level constructor's
 6.0 (`0xEB2B60`), the statics add the mountain relief cones, and the
 late pass lays a sin/cos base field capped at +3.0 over it — the 9.0
 plateau is those two numbers — then dents roads and lakes, melts craters
@@ -494,43 +500,52 @@ the smoothed image of one delta added before it).
 sweep's maps and reports the height plane's differing vertices as CLUSTERS,
 at a 1e-4 tolerance so the one-ulp noise stays out of the way.
 
-| | before the dig fix | after it |
-| --- | --- | --- |
-| **byte-clean planes** | 9 of 21 | **10 of 21** — slots 1, 4, 5, 6, 7, 9, 11, 15, 16, 17 |
-| **noise only (< 0.07)** | 4 | 4 — slots 2, 8, 14, 18 |
-| **real debt** | 8 | 7 — slots 3 (0.56), 10 (0.62), 12 (0.58), 13 (5.73), 19 (1.80), 20 (1.88), 21 (3.16) |
-| **differing vertices, all 21** | 9,138 | **6,793** |
+| | the dig on the resolved race | the dig switched off | the base field read right |
+| --- | --- | --- | --- |
+| **byte-clean planes** | 9 of 21 | 10 of 21 | **21 of 21** |
+| **noise only (< 0.07)** | 4 | 4 | 0 |
+| **real debt** | 8 | 7, worst 5.73 | **0** |
+| **differing vertices, all 21** | 9,138 | 6,793 | **0** |
 
-Every one of the eight is one or two contiguous clusters, never scatter. Two
-shapes, and the second is the whole remaining story:
+The third column is where this ended. The first two are kept because the shapes
+they name are what the search followed, and because a census that improves in
+count is not, by itself, a census that has found the bug.
+
+Every one of the eight was one or two contiguous clusters, never scatter. Two
+shapes, and the second was the whole remaining story:
 
 1. **The crater plateaus** — a soft-edged disc offset by a constant, sitting on
    an Inferno town. The disc is right (193 vertices on slot 3, and no radius,
-   centre or `>`/`>=` variant fits better); the AVERAGE it is set to differs,
-   so the debt is really shape 2 hiding inside the disc.
+   centre or `>`/`>=` variant fits better); the AVERAGE it is set to differed,
+   so the debt was really shape 2 hiding inside the disc. It was.
 2. **Basins the base field digs.** On slot 13 the engine's plane falls to 3.0
-   where ours holds 9.0 — a 30-tile bowl 5.25 deep. Reading `theirs` back
-   through the formula, the engine behaves as if `dist` there were 44 where our
-   border table says 28. On slot 5 the sign is the other way: WE dig to 7.0
-   where the engine holds a flat 9.0. Same term, both directions.
+   where ours held 9.0 — a 30-tile bowl 5.25 deep. On slot 5 the sign was the
+   other way: WE dug to 7.0 where the engine holds a flat 9.0. Same term, both
+   directions — which is what a swapped pair of indices inside the dig looks
+   like, and what it turned out to be.
 
-**The base field itself is not the bug**, and that is now read rather than
-assumed. `0xECF9A0`, line by line: the dist comes from `floor+0xE4` at
-`[min(inner, W-1)][min(outer, H-1)]`, the zone from `floor+0xC4` at the SAME
-pair, the sign flips when the zone object's `+0x18` is 7 or 8 (`0xF4A9BC` is
--1.0f), the divisors are 3, 10, 42, 13, 29, the noise is divided by the f64
-0.15000000596046448, 12.0 is added and `minsd` caps at 3.0, the value lands at
-`(outer, inner)` and the road dent (`occ & 0x18`, read `occ[outer][inner]`) hits
-the TRANSPOSED corners. Every constant read out of the binary matches the port.
+**The base field WAS the bug**, and the reading that said otherwise was a
+reading of the wrong build. `0xECF9A0` in the game, line by line: the dist comes
+from `floor+0xE4` at `[min(inner, W-1)][min(outer, H-1)]`, the zone from
+`floor+0xC4` at the SAME pair, the sign flips when the zone object's `+0x18` is
+7 or 8 (`0xF4A9BC` is -1.0f), the divisors are 3, 10, 42, 13, 29, the noise is
+divided by the f64 0.15000000596046448, 12.0 is added and `minsd` caps at 3.0,
+the value lands at `(outer, inner)` and the road dent (`occ & 0x18`, read
+`occ[outer][inner]`) hits the TRANSPOSED corners. All of that is right, and none
+of it says WHICH index feeds which sine once the plane's own transpose is in
+play — which is the half that was wrong. The editor's `0x794F10` is the same
+function with x87 codegen: reciprocal multiplies where the game divides, and an
+f32 round on every intermediate the game keeps in a register. The port follows
+the editor, because the reference maps are the editor's.
 `CalcBorderTiles` writes `+0xE4` and `recomputeRoom` writes `+0xF4`, so the room
 grid does not overwrite the border table, and nothing else in the RMG range
 stores into `+0xE4`.
 
-Swapping the zone/dist read to the mirrored tile was tried against all four
-combinations: it takes slot 5 to ZERO and slot 10's worst from 3.04 to 0.63,
-while making slot 13 and slot 8 worse. So the read is not simply transposed
-either — something makes the same term reach for a different tile on some maps,
-and that is the next thing to find.
+Swapping the zone/dist READ to the mirrored tile was tried against all four
+combinations: it took slot 5 to ZERO and slot 10's worst from 3.04 to 0.63,
+while making slots 13 and 8 worse — near enough to be tempting and wrong in
+detail, because the transpose that mattered is in the NOISE, not in the two grid
+reads. Those were right all along.
 
 ##### Everything the late pass adds, read rather than assumed
 
@@ -558,158 +573,131 @@ was read out of the binary. It is all faithful:
   those mines are. So rows are y, the base field's `min(inner)` IS y, its
   `min(outer)` IS x, and the value lands on the vertex's own tile.
 
-**What the debt actually looks like.** Landweber-inverting slot 13's late pass
+**What the debt actually looked like.** Landweber-inverting slot 13's late pass
 (80 iterations, residual rms 5.5e-4) recovers the delta that would have to be
-added BEFORE the pass. It is one smooth cone: centred on (123,45), about 19
-tiles across, 5.4 deep at the peak, with a slope near 1/3 — and it stops well
-inside zone 1 rather than at the zone's edge. Read back through `-dist/3`, the
-engine behaves as if `dist` there were 45 where our table says 28.
-
-45 is exactly the distance from (123,45) to the map's north edge, and 28 is the
-distance to the zone-2 boundary at y=73 that our table actually uses. But no
-border rule explains it: recomputing the table with the map edge excluded, with
-unassigned neighbours excluded, or both, fits WORSE than what we have (mean
-|diff| 11.7 against 9.5), the room grid fits far worse (35.0), and the plain
-distance to the map edge fits best of a bad lot (5.8, worst 24.8). The needed
-field is not a distance to any border set — it is our table plus a cone. That
-cone is the next thing to name.
+added BEFORE the pass. It came back as one smooth cone: centred on (123,45),
+about 19 tiles across, 5.4 deep, slope near 1/3 — and read back through
+`-dist/3` it said the engine behaved as if `dist` there were 45 where our table
+said 28. The inversion was right about the SHAPE and misleading about the cause:
+the shape is what `dist/3` makes, and the reason our table did not produce it
+was not the table.
 
 Ruled out along the way, so nobody retries them: a missing or extra relief cone
 (toggling every static within 20 tiles moves nothing), a lake (slot 5 has no
-lake tiles at all and carries the same shape; slot 13's lakes sit 20 tiles west
+lake tiles at all and carried the same shape; slot 13's lakes sit 20 tiles west
 of its bowl), and the preset-Mountains pass (its cones are unconditional and its
 objects are in the matching layer, so both sides raise them).
 
-##### Which race digs: the resolved one is wrong
+##### The bowl, closed: two errors that were only visible together
 
-The dig — the `-dist/3` a NECROMANCY or INFERNO zone gets instead of `+dist/3` —
-was keyed on the race the dice resolved. Measured against every template, that
-is wrong, and turning it off is a strict improvement in count on all 21 and
-exact on one:
+**The plane is now bit-identical on every template.** Twenty-one of twenty-one,
+zero differing vertices, worst 0.0000 — the census that read 6,793 vertices
+across seven maps, the deepest bowl 5.73 units out, now reads nothing at all.
+Two mistakes made it, and neither could be seen while the other stood.
 
-| | resolved race | never digs |
+**One: the noise's two indices were swapped.** The base field multiplies four
+trigonometric terms — `sin(·/10)` and `sin(·/42)` hoisted out of the engine's
+OUTER loop, `cos(·/13)` and `sin(·/29)` computed in the inner one. The engine's
+outer index is this port's SECOND, because the plane's two conventions are
+transposed against each other: the engine writes `rows[outer][inner]`, the
+oracle's dump indexes rows by that same first component, and the dump's rows
+line up with our second index. The port had it the other way round.
+
+**Two: the dig was switched off.** The `-dist/3` a NECROMANCY or INFERNO zone
+gets instead of `+dist/3` had been removed on a measurement — over the 21
+templates it cost 2,345 differing vertices — and that measurement was real. It
+was taken with the noise swapped, which is the only reason it came out that way:
+the swap is INVISIBLE while every vertex clamps to the 3.0 plateau, and the dig
+is the only thing that can lift a vertex off that plateau. Switch the dig on
+with the noise wrong and the wrongness appears; switch it off and the plane goes
+flat and hides both. Each error was the other's alibi.
+
+**Three, smaller, and needed for bit equality.** The engine multiplies by
+RECIPROCALS held as f32 (`1/42`, `1/10`, `1/29`, `1/13`, `1/3`, `1/0.15`, read
+straight out of the editor's `.data`) rather than dividing; it rounds the two
+hoisted sines and the dist term to f32 before use; and it stores the capped
+value into an f32 slot before passing it to the add, so the value rounds TWICE.
+With divisions and one rounding the plane is 91 vertices out by an ulp; with the
+reciprocals and both roundings it is exact.
+
+##### How the pass was cut open: the editor's own stages
+
+The bisection that found this needed the engine's plane after each step, and
+that needed the EDITOR's addresses. `stages` in the oracle first patched the
+game's, and all eight refused with "that call does not go where we think" — the
+two builds do not share this layout. The editor's boundary table locates the
+pass: between "treasure blocks set" (`0x8FA477`) and "finished creating map"
+(`0x8FA500`) sits `0xCEFC20`, which walks each level's chained table at `+0xA8`
+calling a virtual `[vt+0x38]` per entry — that is the PASSABILITY pass, the
+editor's counterpart of the game's `0xEAC185`, already ported as
+`markPassability` — then calls the road painter (`0x7951F0`), and then
+**`0x796E00` — the late pass**.
+
+It is the same pass, stage for stage. Fingerprinted against the game's
+(`tools/reverse/match.ts fingerprint`) and read side by side:
+
+| the game | the editor | |
 | --- | --- | --- |
-| `S1-2P2-8Z8K2S` | 221 vertices, worst 1.25 | **0** |
-| `S0-1P2Z2K3T` | 583, worst 0.56 | 174 |
-| `S1P2Z3K5.1` | 735, worst 3.04 | 436, worst 0.62 |
-| `S7-15P2-8Z9K2.4b` | 1808, worst 6.05 | 1257, worst 3.16 |
-| `S0-1P2Z2K3.2T` | 404, worst 0.065 | 309, worst 0.004 |
-| all 21 | 9,138 vertices | 6,793 |
+| `0xECF760` | `0x796E00` | the orchestrator |
+| `0xECF9A0` | `0x794F10` | base field + road dents |
+| four inlined `0xEB1800` | `0x7944E0` | the four lake dents |
+| `0xED0240` | `0x7966B0` | craters (79%) |
+| `0xED06D0` | `0x796A90` | flatten, called twice (79%) |
+| `0xECFE40` | `0x794BA0` | lake flatten (79%) |
+| `0xEB2580` | `0x8744F0` | the smoother, called three times |
+| `0xEB1800` | `0x873F90` | one add into the plane |
 
-Nothing gets worse in count; three maps (13, 19, 20) get a deeper worst vertex,
-which is the other, still-open debt showing through once this one stops masking
-it. And `S1-2P2-8Z8K2S` going to EXACTLY ZERO is not a coincidence a wrong rule
-produces.
+The ONE structural difference is codegen: where the game inlines four calls to
+the height add, the editor keeps them in a helper. So "the editor is not the
+game" was true about the layout and false about the behaviour — a lead worth
+following that explained nothing, and the seven templates were one bug in the
+port after all.
 
-Two crater plateaus vanish with it as a side effect: they were the dig INSIDE a
-crater disc moving the average the crater flattens to — which is what the
-earlier "the disc is right, the average is not" reading was pointing at.
+`tools/rmg-diff-stages.ts` reads the dump and names the FIRST stage that
+diverges, after which every later step merely carries the error forward:
 
-**Is the biggest remaining bowl the dig?** `S3-4P2-4Z4K1M` looked like it: the
-engine falls to 2.1 where we hold 9.0, the profile is a cone of slope ≈ 1/3
-(which is what `dist/3` makes), its peak sits on our border table's own peak,
-and it is inside the map's only INFERNO zone — with a control on the same map,
-a second table peak just as high in ACADEMY zones where the plane agrees to the
-last bit. **It is not the dig, and the engine settled it.**
+```bash
+# 1. `trace` and `stages` on their own lines in <game>/bin/homm5-editor-rmg.txt
+# 2. one order per launch
+node tools/rmg-batch.ts --game <dir> --order "RMG/Templates/S3-4P2-4Z4K1M.xdb -seed 1785351845 -size 1 -resource 1 -exp 1 -pokeb 148 0"
+# 3. read what the launch left in <game>/bin/homm5-editor-rmg.log
+node tools/rmg-diff-stages.ts --template S3-4P2-4Z4K1M --size 176
+```
 
-The oracle's `grids` dump was taken for both maps that disagree
-(`tools/rmg-diff-grids.ts`, one editor launch each, `trace` AND `grids` in
-`<game>/bin/homm5-editor-rmg.txt` — `grids` alone dumps nothing, because the
-zone pointers it walks are harvested by the trace hook):
+The dump numbers the steps in running order — 0 base field, 1 dents, 2 craters,
+3 flatten 1, 4 smooth 1, 5 smooth 2, 6 flatten 2, 7 lake flatten, 8 smooth 3 —
+plus **9, the plane on ENTRY**, written before anything of the pass runs. Stage
+9 is what makes the first stage's verdict trustworthy: `heights` writes the
+plane at "treasure blocks set", but `0xCEFC20`'s hash-map walk and the road
+painter sit between that boundary and the pass, so without an entry dump a
+difference AT stage 0 cannot be told from one made BEFORE it. Measured, those
+two touch the plane not at all: entry against "treasure blocks set" is 0
+vertices, and entry against the port's own pre-pass plane is 0 as well.
 
-| | `bd` — distance to border | `zg` — zone ids |
-| --- | --- | --- |
-| `S3-4P2-4Z4K1M` | **identical**, 30,976 of 30,976 cells | identical |
-| `S1-2P2-8Z8K2S` | **identical**, 9,216 of 9,216 cells | identical |
+##### What the inputs turned out to be, and what was eliminated on the way
 
-So the grid the branch would scale is exactly the one this port computes, the
-branch's output is exactly what the port makes with it switched on, and
-switching it on is wrong on both: `S1-2P2-8Z8K2S` goes from an exact plane to
-221 differing vertices, `S3-4P2-4Z4K1M` stays 5.25 out with the dig and 5.73
-without. The negation does not happen, the bowl is some other mechanism, and
-the open question is about the branch itself rather than about its input.
+All of this was read or measured while the bowl was still open. None of it was
+the cause; all of it is now settled, and the search should not repeat it.
 
-##### The first half of the plane is exact, so the whole debt is the late pass
-
-The plane a map file carries is a sum: the level constructor's fill plus the
-statics' relief cones, and then the late pass over the top. A difference in the
-sum says nothing about which half owns it — so the oracle grew a `heights`
-keyword that writes the plane at **"treasure blocks set"**, the last boundary
-before `0xECF760` runs and one no draw separates from "finished creating map".
-The plane is `level+0x18`, the float row array `0xEB1800` adds through, and each
-value is printed as the INT its bits are, so a match is bit equality rather than
-a tolerance. `tools/rmg-diff-heights.ts` reads it.
-
-| | the plane before the late pass |
-| --- | --- |
-| `S3-4P2-4Z4K1M` — the deepest bowl | **bit-identical**, 31,329 vertices |
-| `S1-2P2-8Z8K2S` — the map the dig flattened | **bit-identical**, 9,409 vertices |
-
-So the constructor fill is right, every relief cone is in the right place with
-the right rotation, and the ENTIRE remaining height debt — seven templates, up
-to 5.7 deep — is made inside the late pass, downstream of inputs that are all
-now confirmed against the engine: the border table, the zone grid, and the plane
-it starts from.
-
-**A method note, because the first reading of this dump was wrong and looked
-convincing.** Compared in the other orientation the two planes disagreed on
-1,764 vertices, and the deltas were 7.00, 5.00, 4.17, 3.00, 2.53 in matched
-plus/minus pairs — which is exactly `2·(3.5 − r)`, the cone profile, and reads
-irresistibly as relief cones placed one tile off. They were nothing of the kind:
-the plane's two conventions are transposed against each other throughout this
-port, and the dump indexes rows by the SECOND component. `rmg-diff-heights` now
-tries both and names the one that fits, which is the only reason the trap is
-cheap to fall into twice.
-
-##### Inside the late pass: no stage is spurious, and the editor is not the game
-
-With the inputs proven, the debt is something the late pass does. Two things were
-tried, and both are worth writing down.
-
-**From the port's side, nothing we run is wrong to run.** Replaying the pass with
-each stage left out — base field, lake dents, craters, both flattens, all three
-smooths, the mask refill — makes the final plane WORSE every time (the best
-omission leaves 2,548 differing vertices against the full pass's 1,870, and the
-worst vertex stays at 5.73 through all of them). So the bowl is not a stage we
-perform wrongly; it is something the engine performs and we do not.
-
-**From the engine's side, the hooks would not go in — and that is the lead.**
-`stages` in the oracle patches the eight call sites inside the orchestrator, and
-all eight refused with "that call does not go where we think". The addresses are
-right: they are the GAME's. But the reference runs are the EDITOR's, and the two
-builds do not share this layout — `0xECF760` in the editor is not the late pass,
-`0xEB1800` is not the height add, and `0xEB2580` is not the smoother. The
-editor's own boundary table locates the pass exactly: between "treasure blocks
-set" (`0x8FA477`) and "finished creating map" (`0x8FA500`) sits one call,
-`0xCEFC20` — and that function does not look like `0xECF760` at all. It walks a
-hash map at `+0xA8` and calls a VIRTUAL, `[vt+0x38]`, per entry.
-
-That matters beyond the hooks. Everything this document says about the late pass
-was read out of `H5_Game_H5E.exe`, and every reference plane it is measured
-against was made by `H5_MapEditor_H5E.exe`. The two agreeing on the arithmetic
-(x87 against SSE) was already known and ported; the two agreeing on the STAGES
-was assumed. The next reading is the editor's `[vt+0x38]`, and the question it
-answers is whether the editor's late pass is the same pass at all.
-
-**What the next round eliminated, so the search does not repeat it.**
-
-- **The writers are the ones already known — and the first sweep for them was
-  a bad instrument.** All 65 sites in the RMG range that load a `floor+0xE4`
-  row array were decoded and the code after each checked for a store through
-  the pointer. The first pass of this reported "nobody writes", which was the
-  scanner's fault, not the engine's: its pattern matched `mov [` and the
-  engine writes `mov dword ptr [`. Corrected, it finds exactly the writers
-  "The four grids a level carries" already lists — `0xEBA613`, `0xEBA66B`,
-  `0xEC1F4E`, `0xEC1FD4` planting **1** on a passage mouth, and `0xECB855`
-  planting **-1** in the water-bordered override — and nothing else.
-  `0xEC43A8` copies a struct's `+0xE4…+0xF8` fields wholesale, and the lakes'
-  `0xEBC726` reads `+0xD4`, `+0xF4` AND `+0xE4` as three gate conditions
-  before storing its wave value into the lakes object's own `+0xA8`. So the
-  table the late pass reads is `CalcBorderTiles`' work plus the passage dents,
-  which `connections.ts` ports.
-  A dent cannot be the bowl either way: a cell set to 1 gives `-1/3`, which
-  leaves the value at the 3.0 cap — dented cells are the ones that CANNOT dig.
-  One divergence does fall out of the re-read, unrelated to the heights: the
+- **The border table and the zone grid are the engine's own, at the moment the
+  base field reads them.** `grids` dumps them at "roads created"
+  (`tools/rmg-diff-grids.ts`), and the late-pass entry hook dumps them again as
+  `be` and `ze` — identical both times, 30,976 of 30,976 cells on
+  `S3-4P2-4Z4K1M`, 9,216 of 9,216 on `S1-2P2-8Z8K2S`. So the table is not
+  recomputed between the two boundaries, and it is ours.
+- **The plane going into the pass is exact.** `heights` writes it at "treasure
+  blocks set", each value as the INT its bits are: bit-identical on both problem
+  maps, 31,329 and 9,409 vertices. The constructor fill and every relief cone
+  are right.
+- **The writers of `floor+0xE4` are the ones already listed — and the first
+  sweep for them was a bad instrument.** All 65 sites in the RMG range that load
+  a `floor+0xE4` row array were decoded and the code after each checked for a
+  store through the pointer. The first pass reported "nobody writes", which was
+  the scanner's fault: its pattern matched `mov [` and the engine writes
+  `mov dword ptr [`. Corrected, it finds exactly `0xEBA613`, `0xEBA66B`,
+  `0xEC1F4E`, `0xEC1FD4` planting **1** on a passage mouth and `0xECB855`
+  planting **-1** in the water-bordered override, and nothing else.
+  One divergence fell out of that re-read, unrelated to the heights: the
   neighbour-side dent `0xEBA66B` writes with **no bounds test**, and the level's
   rows are one flat buffer, so on a mouth at the map edge the engine's write
   wraps into the adjacent row while `openMouth` bounds-checks and skips.
@@ -718,79 +706,41 @@ answers is whether the editor's late pass is the same pass at all.
   tiles the first sub-pass zeroed keep their 0 — and the computed minimum is
   stored ONLY when the cell still reads `-1` (`0xEA9443`), so a cell holding
   anything else is walked and thrown away. `border-tiles.ts` writes both.
-- **It is not stale state between maps.** `rmg-batch` already launches the
-  editor once per order, and for exactly this reason: a second generation in
-  one process does not repeat what the first would have made alone.
+- **It is not stale state between maps.** `rmg-batch` launches the editor once
+  per order for exactly this reason: a second generation in one process does not
+  repeat what the first would have made alone.
+- **No stage of the port is spurious.** Replaying the pass with each stage left
+  out — base field, lake dents, craters, both flattens, all three smooths, the
+  mask refill — made the final plane worse every time. That was right, and it
+  pointed the search at what a stage computes rather than at which stages run.
+- **`+0x18` is the resolved race, and the branch reads the right zone.** A
+  sibling caller prints "no zone found with index %d" when the lookup comes back
+  empty; `[zone+0x20]` is the preset the road painter takes its texture from,
+  reached through this very lookup with a key from this very grid, and our road
+  masks are byte-identical; and the lakes gate `0xEBC260` reads the same `+0x18`
+  against exactly {3,4,7,8,9,10}, our `LAKE_RACES`. Keying the dig on the
+  template's declared `Setting` instead was tried, and this is what killed it.
 
-So every link in the chain is now read and matches, and the ONLY thing left
-untested is the TABLE ITSELF — which is a thing one can simply look at, because
-the oracle's `grids` dump already writes all four of a level's grids at the
-roads boundary, `bd` among them. `tools/rmg-diff-grids.ts` reads that dump for
-any ordered map and diffs `bd` and `zg` against the chain replayed to the same
-point, naming which orientation fits and how the differences are distributed:
+##### Two orientation traps, both of which produced convincing lies
 
-```bash
-# 1. put `grids` on its own line in <game>/bin/homm5-editor-rmg.txt
-# 2. order ONE map per launch
-node tools/rmg-batch.ts --game <dir> --order "RMG/Templates/S3-4P2-4Z4K1M.xdb -seed 1785351845 -size 3"
-# 3. read the dump the launch left in <game>/bin/homm5-editor-rmg.log
-node tools/rmg-diff-grids.ts --template S3-4P2-4Z4K1M --size 176
-```
+Both cost an afternoon, and both are now defended against in the tools.
 
-`S3-4P2-4Z4K1M` (the deepest bowl) and `S1-2P2-8Z8K2S` (the map the dig turned
-flat) are the two worth ordering: they disagree with the port in OPPOSITE
-directions, so one dump each settles whether the table is what the port
-computes. The reader was checked both ways before being handed over — against a
-dump minted from the port (identical, orientation detected) and against the same
-dump with two cells bumped by 7 (caught, located, and the +7 named).
+**The heights dump read the wrong way round.** Compared in the other orientation
+the pre-pass planes disagreed on 1,764 vertices, and the deltas were 7.00, 5.00,
+4.17, 3.00, 2.53 in matched plus/minus pairs — exactly `2·(3.5 − r)`, the cone
+profile, reading irresistibly as relief cones placed one tile off. They were
+nothing of the kind. `rmg-diff-heights` and `rmg-diff-stages` now try both and
+name the one that fits.
 
-**The last untested link is now tested, and it was not the culprit.** The port
-assumed the all-`-1` fill the map-created step leaves, and with it computes a
-table the engine agrees with cell for cell on both problem maps (above). So
-`CalcBorderTiles`, its two guards, the passage dents and the fill are all
-settled, and every input the base field reads is confirmed against the engine.
-What remains unexplained is narrow and precise: a branch that reads the right
-zone, tests the right field, negates the right slot — and does not happen.
+**The grids dump read the wrong way round** gave 19,508 of 30,976 cells
+differing in a PERFECTLY symmetric plus/minus histogram — which is the signature
+of a transpose, and the reason to suspect one before believing the numbers.
+`rmg-diff-grids` tries both orientations too.
 
-**Keying it on the template's `Setting` was tried first, and the reading kills
-that idea.** The engine looks the zone up through the floor's index map
-(`0xE9FF00` on `floor+0xAC`, keyed by the zone grid's own value) and tests that
-object's `+0x18` against 8 then 7. Three separate things say the map hands back
-the ZONE and that `+0x18` is the RESOLVED race:
-
-- a sibling caller prints **"no zone found with index %d "** when the lookup
-  comes back empty;
-- `[zone+0x20]` is the preset the ROAD painter takes its texture from, and it
-  reaches it through this very lookup with a key from this very grid — our road
-  masks are byte-identical, so the lookup finds the right zone;
-- the lakes gate `0xEBC260` reads `+0x18` off the CGameZone it is called on and
-  compares it against exactly {3,4,7,8,9,10} — our `LAKE_RACES`.
-
-The frame is resolved with a tracker rather than by eye (`_tmp/frame.ts`), so
-the `-1.0f` at `0xF4A9BC` does land on the dist slot (`esp0-0x50`) and on
-nothing else. Everything about the branch reads clean; it simply does not
-happen.
-
-**So the term is left inert, and that is a statement about `dist`, not about the
-race.** Without the negation the term cannot be observed at all: `noise/0.15`
-spans ±6.67 and `dist/3` is non-negative, so `noise + dist/3 + 12` never falls
-under the 3.0 cap — the base field contributes a flat **3.0 at every vertex of
-every shipped template**, checked directly. Whatever the late pass reads at
-`floor+0xE4` therefore cannot be the border table this port computes, or the dig
-would bite: with our table it would drive the value to 1.45 on `S1-2P2-8Z8K2S`,
--0.41 on `S1P2Z3K5.1`, -4.68 on `S7-15P2-8Z9K2.4b`. Naming that grid is what
-would let the branch be ported.
-
-**And this is why the reference could not have caught it.** On `S1P2Z2M1` the
-dig would not have bitten either — its lowest value is 3.00 even with the
-resolved race, as on `S3-5P4Z12B4` and `S2-4P2Z7B2`. A plane that is
-bit-identical on the reference says nothing here; it took the sweep over every
-template to see it at all.
-
-A note for whoever picks this up: `tools/diff-terrain.ts` compares the planes
+A note for whoever picks up the plane again: `tools/diff-terrain.ts` compares
 with a 1e-4 tolerance and will call a one-ulp plane "ok", while `rmg-diff-map`
-counts bytes and will not. Both are right; use the byte count to find that
-there is something, and the plane comparison to find out what.
+counts bytes and will not. Both are right; use the byte count to find that there
+is something, and the plane comparison to find out what.
 
 #### One guard of eleven thousand: where a float rounds and the engine does not
 

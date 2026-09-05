@@ -40,6 +40,7 @@
 // nine f32-times-f32 products is exact in double, which is exactly why
 // the plateau survives the smoothing in the file.
 
+import { RACE } from './load-template.ts';
 import type { Offset } from './town-data.ts';
 import { rotate } from './towns.ts';
 
@@ -133,81 +134,76 @@ export interface HeightsInput {
   /** Floor 0 tile grids, the port's own layout (rows literal to the engine). */
   occupancy: Uint8Array;
   border: Int32Array[];
+  /** The zone ids, indexed like `border`. */
+  grid: Int32Array[];
+  /** Zone index -> the race the run resolved for it; the dig gate reads this. */
+  raceOf(zoneIndex: number): number | undefined;
   /** Every placed object, in the map's slot (creation) order. */
   objects: readonly HeightObject[];
 }
 
 /**
- * `0xECF9A0` — the base field plus the road dents, one interleaved walk.
- * Per vertex the noise product runs in double over single quotients, the
- * dist term is added, and the sum clamps to the 3.0 plateau. The value is
- * ADDED to `mem[o][n]` while the road dent lands on the TRANSPOSED tile's
- * corners — copied literally, square-only consistent.
+ * `0xECF9A0` in the game, `0x794F10` in the editor — the base field plus the
+ * road dents, one interleaved walk. Per vertex a product of four sines and a
+ * cosine is scaled, the dist term is added, and the sum clamps to the 3.0
+ * plateau. The value is ADDED to `mem[o][n]` while the road dent lands on the
+ * TRANSPOSED tile's corners — copied literally, square-only consistent.
  *
- * THE DIG IS NOT PORTED, AND THAT IS A MEASUREMENT. The engine has a branch
- * this function does not: it looks the vertex's zone up through the floor's
- * index map (`0xE9FF00` on `floor+0xAC`, keyed by the value in the zone grid)
- * and, when that zone's `+0x18` is 8 or 7, NEGATES the dist term — Inferno
- * and Necromancy dig toward their own interior instead of rising out of it.
- * The frame is resolved with a tracker rather than by eye, so the `-1.0f` at
- * `0xF4A9BC` really does land on the dist slot (`esp0-0x50`) and on nothing
- * else. `+0x18` really is the resolved race: the map hands back the zone (one
- * caller prints "no zone found with index %d", and `[zone+0x20]` is the
- * preset the road painter takes its texture from — our road masks are
- * byte-identical, so the lookup finds the right zone), and the lakes gate
- * `0xEBC260` reads the same `+0x18` against exactly {3,4,7,8,9,10}, our
- * `LAKE_RACES`.
+ * WHICH INDEX FEEDS WHICH SINE. The engine's OUTER loop is this port's SECOND
+ * index, because the plane's two conventions are transposed against each other
+ * (see the file header): the engine writes `rows[outer][inner]`, the dump
+ * indexes rows by that same first component, and the dump's rows line up with
+ * our second index. So `sin(·/10)` and `sin(·/42)`, hoisted out of the engine's
+ * outer loop, belong to `n`, and `cos(·/13)` and `sin(·/29)` to `o`. Reading it
+ * the other way costs nothing while the plateau caps every vertex, which is why
+ * it stood: the moment the dig makes a value visible, it is wrong by metres.
  *
- * And yet negating on the resolved race is WRONG on the maps we can check.
- * Over the twenty-one templates the port accepts it costs 2,345 differing
- * vertices (9,138 against 6,793), and `S1-2P2-8Z8K2S` goes from 221 vertices
- * (worst 1.25) to EXACTLY ZERO the moment the dig stops firing on its
- * resolved-Inferno zone. Two crater plateaus vanish with it: they were the
- * dig inside a crater disc moving the average the crater flattens to.
+ * THE DIG. When the vertex's zone is Inferno or Necromancy the dist term is
+ * NEGATED — those two dig toward their own interior instead of rising out of
+ * it. The engine looks the zone up through the floor's index map (`0xE9FF00` on
+ * `floor+0xAC`, keyed by the value in the zone grid) and compares that object's
+ * `+0x18`, the RESOLVED race, against 8 then 7. It is the only thing that can
+ * take a vertex under the plateau: `noise/0.15` spans ±6.67 and `dist/3` is
+ * non-negative, so without the negation `noise + dist/3 + 12` never falls under
+ * 3.0 and this function returns a flat 3.0 everywhere.
  *
- * WITHOUT the negation the term cannot be seen at all: `noise/0.15` spans
- * ±6.67 and `dist/3` is non-negative, so `noise + dist/3 + 12` never falls
- * under the 3.0 cap — this function returns a flat 3.0 at every vertex of
- * every shipped template, checked.
+ * It was OUT of this port for one commit, on a measurement that was real and a
+ * conclusion that was not: switching it on made twenty-one templates worse. It
+ * did, while the noise's two indices were swapped — the two errors were only
+ * visible together, since the swap is invisible under the cap and the dig is
+ * what lifts the cap. With both fixed the engine's own base field comes back
+ * BIT-IDENTICAL on `S3-4P2-4Z4K1M`, all 31,329 vertices, the map whose bowl
+ * this was (`tools/rmg-diff-stages.ts`).
  *
- * AND THE TABLE IS NOT THE CULPRIT — that is measured, not reasoned. The
- * oracle's `grids` dump was taken from the engine for both of the maps that
- * disagree (`tools/rmg-diff-grids.ts`), and `floor+0xE4` comes back IDENTICAL
- * to what `border-tiles.ts` computes: 30,976 of 30,976 cells on
- * `S3-4P2-4Z4K1M`, 9,216 of 9,216 on `S1-2P2-8Z8K2S`, the zone grid with it.
- * So the dist this branch would scale is exactly ours, the branch's output is
- * exactly what the port produces with it switched on, and switching it on is
- * wrong on both maps: `S1-2P2-8Z8K2S` goes from an exact plane to 221 differing
- * vertices, and `S3-4P2-4Z4K1M` stays 5.25 out either way. The negation does
- * not happen. WHY it does not, with `+0x18` reading the resolved race and the
- * lookup finding the right zone, is the open question — and it is now a
- * question about the branch, not about its input.
- *
- * NOTE WHY THIS SURVIVED SO LONG. On the reference `S1P2Z2M1` the dig would
- * not have bitten either — its lowest value is 3.00 even with the resolved
- * race, as on `S3-5P4Z12B4` and `S2-4P2Z7B2`. A plane that is bit-identical
- * on the reference could never have caught this; it took the sweep.
+ * PRECISION. The engine multiplies by RECIPROCALS held as f32 (`1/42`, `1/10`,
+ * `1/29`, `1/13`, `1/3` and `1/0.15` — read out of the editor's own .data), and
+ * rounds the two hoisted sines and the dist term to f32 before using them. In
+ * that order and with those roundings the double arithmetic here reproduces the
+ * x87 result exactly; dividing instead of multiplying does not.
  */
 export function baseField(h: HeightPlane, input: HeightsInput): void {
   const { size } = input;
-  for (let o = 0; o <= size; o++) {
-    const A = Math.sin(o / 10.0);
-    const B = Math.sin(o / 42.0);
-    for (let n = 0; n <= size; n++) {
+  const R42 = fl(1 / 42), R10 = fl(1 / 10), R29 = fl(1 / 29), R13 = fl(1 / 13);
+  const R3 = fl(1 / 3), SCALE = fl(1 / 0.15);
+  // The engine's outer loop; `n` is this port's second index.
+  for (let n = 0; n <= size; n++) {
+    const A = fl(Math.sin(n * R10));
+    const B = fl(Math.sin(n * R42));
+    for (let o = 0; o <= size; o++) {
       const ri = Math.min(n, size - 1);
       const ci = Math.min(o, size - 1);
-      // The engine negates this for an Inferno or Necromancy zone; see above
-      // for why that branch is deliberately absent and what would restore it.
-      const dterm = input.border[ri]![ci]! / 3.0;
-      let p = Math.cos(n / 13.0);
+      let dterm = fl(input.border[ri]![ci]! * R3);
+      const race = input.raceOf(input.grid[ri]![ci]!);
+      if (race === RACE.INFERNO || race === RACE.NECROMANCY) dterm = fl(-dterm);
+      let p = Math.sin(o * R29) * Math.cos(o * R13);
       p = p * A;
       p = p * B;
-      p = p * Math.sin(n / 29.0);
-      let val = p / 0.15000000596046448; // the f32 0.15 promoted
+      let val = p * SCALE;
       val = val + dterm;
       val = val + 12.0;
-      val = Math.min(val, 3.0);
-      heightAdd(h, o, n, val);
+      // The engine stores the capped value to a f32 slot and passes THAT to
+      // the add, so the value rounds twice: once here, once into the plane.
+      heightAdd(h, o, n, fl(Math.min(val, 3.0)));
       if (o < size && n < size && (input.occupancy[o * size + n]! & 0x18) !== 0) {
         heightAdd(h, n, o, -1.0);
         heightAdd(h, n + 1, o, -1.0);
@@ -540,23 +536,42 @@ export function lakeFlatten(h: HeightPlane, occupancy: Uint8Array, size: number)
 }
 
 /**
- * The orchestrator `0xECF760` — the whole late pass over floor 0. The
- * plane arrives carrying the constructor fill plus the statics' relief
- * cones; it leaves as the file's height plane (modulo the transpose).
+ * The orchestrator `0xECF760` in the game, `0x796E00` in the editor — the
+ * whole late pass over floor 0. The plane arrives carrying the constructor
+ * fill plus the statics' relief cones; it leaves as the file's height plane
+ * (modulo the transpose).
+ *
+ * `onStage` is what `tools/rmg-diff-stages.ts` reads: the oracle's `stages`
+ * dump writes the engine's plane after each of these nine steps, and the
+ * numbers here ARE that dump's, so the two line up step for step.
  */
-export function latePass(h: HeightPlane, input: HeightsInput): void {
+export function latePass(
+  h: HeightPlane,
+  input: HeightsInput,
+  onStage?: (stage: number, h: HeightPlane) => void,
+): void {
   const { size } = input;
+  const at = (stage: number): void => onStage?.(stage, h);
   baseField(h, input);
+  at(0);
   const mask = new Uint8Array(size * size).fill(1);
   lakeDents(h, mask, input.occupancy, size);
+  at(1);
   craterPass(h, input);
+  at(2);
   flattenPass(h, mask, input);
+  at(3);
   smooth(h, mask, size, true);
+  at(4);
   mask.fill(1);
   smooth(h, mask, size, true);
+  at(5);
   flattenPass(h, mask, input); // re-zeroes the mask for the last smooth
+  at(6);
   lakeFlatten(h, input.occupancy, size);
+  at(7);
   smooth(h, mask, size, false);
+  at(8);
 }
 
 /** The file holds the plane transposed against the engine's memory. */

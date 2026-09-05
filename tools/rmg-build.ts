@@ -32,6 +32,7 @@ import {
   type TerrainLayer,
 } from '../src/rmg/terrain.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
+import { heightsInput } from './rmg-run.ts';
 import type { FullRun } from './rmg-run.ts';
 
 /** The order a map was generated from, plus the two values nobody generates. */
@@ -184,10 +185,7 @@ export function buildMapFiles(
   const c = run.c;
   const twoLevel = c.floors.length > 1;
   const { layers, river } = replayTerrain(dataRoot, run);
-  latePass(run.heightPlane, {
-    size: c.size, occupancy: c.occ, border: c.border,
-    objects: run.objects,
-  });
+  latePass(run.heightPlane, heightsInput(run));
 
   const sizeIndex = MAP_SIZES.indexOf(c.size as (typeof MAP_SIZES)[number]);
   const races = Array.from({ length: order.players }, (_, i) =>

@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import { heightsToFile, latePass } from '../src/rmg/heights.ts';
 import { parseTerrain, readHeights } from '../src/terrain/terrain.ts';
 import type { ChainOptions } from './rmg-chain.ts';
-import { runFull } from './rmg-run.ts';
+import { heightsInput, runFull } from './rmg-run.ts';
 import { dataDir } from './game-dir.ts';
 import {
   REFERENCE_TERRAIN, REFERENCE_UG_TERRAIN, REFERENCE_WATER_TERRAIN,
@@ -54,10 +54,7 @@ for (const run of RUNS) {
   const c = r.c;
   check(`the run ends on the traced ${run.endDraws}`, c.rng.draws === run.endDraws, `${c.rng.draws}`);
 
-  latePass(r.heightPlane, {
-    size: c.size, occupancy: c.occ, border: c.border,
-    objects: r.objects,
-  });
+  latePass(r.heightPlane, heightsInput(r));
   const ours = heightsToFile(r.heightPlane);
 
   if (!existsSync(run.terrain)) {

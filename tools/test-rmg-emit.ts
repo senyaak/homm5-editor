@@ -24,7 +24,7 @@ import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import type { ChainOptions } from './rmg-chain.ts';
-import { runFull } from './rmg-run.ts';
+import { heightsInput, runFull } from './rmg-run.ts';
 import { dataDir } from './game-dir.ts';
 import { REFERENCE_MAP, REFERENCE_SEED, REFERENCE_UG_MAP, REFERENCE_WATER_MAP } from './rmg-reference.ts';
 
@@ -205,10 +205,7 @@ for (const spec of RUNS) {
           };
         }));
     }
-    latePass(r.heightPlane, {
-      size: c.size, occupancy: c.occ, border: c.border,
-        objects: r.objects,
-    });
+    latePass(r.heightPlane, heightsInput(r));
     const N = (c.size + 1) * (c.size + 1);
     const terrainVs = (label: string, ours: Buffer, refFile: string): void => {
       const refRaw = readFileSync(refFile);
