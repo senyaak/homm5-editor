@@ -628,14 +628,26 @@ port leaves it out — not because the branch is dead.
 
 **What the next round eliminated, so the search does not repeat it.**
 
-- **Nothing overwrites the table.** All 65 sites in the RMG range that load a
-  `floor+0xE4` row array were decoded and their next sixteen instructions
-  checked for a store through the pointer. Every one only reads. The two that
-  look like writers are not: `0xEC43A8` copies a struct's `+0xE4…+0xF8` fields
-  wholesale, and the lakes' `0xEBC726` reads `+0xD4`, `+0xF4` AND `+0xE4` as
-  three gate conditions and then stores its wave value into the lakes object's
-  own `+0xA8` array. So the grid the late pass reads is the one
-  `CalcBorderTiles` left.
+- **The writers are the ones already known — and the first sweep for them was
+  a bad instrument.** All 65 sites in the RMG range that load a `floor+0xE4`
+  row array were decoded and the code after each checked for a store through
+  the pointer. The first pass of this reported "nobody writes", which was the
+  scanner's fault, not the engine's: its pattern matched `mov [` and the
+  engine writes `mov dword ptr [`. Corrected, it finds exactly the writers
+  "The four grids a level carries" already lists — `0xEBA613`, `0xEBA66B`,
+  `0xEC1F4E`, `0xEC1FD4` planting **1** on a passage mouth, and `0xECB855`
+  planting **-1** in the water-bordered override — and nothing else.
+  `0xEC43A8` copies a struct's `+0xE4…+0xF8` fields wholesale, and the lakes'
+  `0xEBC726` reads `+0xD4`, `+0xF4` AND `+0xE4` as three gate conditions
+  before storing its wave value into the lakes object's own `+0xA8`. So the
+  table the late pass reads is `CalcBorderTiles`' work plus the passage dents,
+  which `connections.ts` ports.
+  A dent cannot be the bowl either way: a cell set to 1 gives `-1/3`, which
+  leaves the value at the 3.0 cap — dented cells are the ones that CANNOT dig.
+  One divergence does fall out of the re-read, unrelated to the heights: the
+  neighbour-side dent `0xEBA66B` writes with **no bounds test**, and the level's
+  rows are one flat buffer, so on a mouth at the map edge the engine's write
+  wraps into the adjacent row while `openMouth` bounds-checks and skips.
 - **`CalcBorderTiles` has two guards, and the port already has both.** A cell
   whose value is 0 is skipped outright (`0xEA9390`) — that is how the border
   tiles the first sub-pass zeroed keep their 0 — and the computed minimum is
@@ -646,9 +658,26 @@ port leaves it out — not because the branch is dead.
   one process does not repeat what the first would have made alone.
 
 So every link in the chain is now read and matches, and the ONLY thing left
-untested is what the grid holds when `CalcBorderTiles` starts. The port assumes
-the all-`-1` fill the map-created step is documented to leave. Confirming that
-needs the engine itself — a dump of `floor+0xE4` before and after the pass.
+untested is the TABLE ITSELF — which is a thing one can simply look at, because
+the oracle's `grids` dump already writes all four of a level's grids at the
+roads boundary, `bd` among them. `tools/rmg-diff-grids.ts` reads that dump for
+any ordered map and diffs `bd` and `zg` against the chain replayed to the same
+point, naming which orientation fits and how the differences are distributed:
+
+```bash
+# 1. put `grids` on its own line in <game>/bin/homm5-editor-rmg.txt
+# 2. order ONE map per launch
+node tools/rmg-batch.ts --game <dir> --order "RMG/Templates/S3-4P2-4Z4K1M.xdb -seed 1785351845 -size 3"
+# 3. read the dump the launch left in <game>/bin/homm5-editor-rmg.log
+node tools/rmg-diff-grids.ts --template S3-4P2-4Z4K1M --size 176
+```
+
+`S3-4P2-4Z4K1M` (the deepest bowl) and `S1-2P2-8Z8K2S` (the map the dig turned
+flat) are the two worth ordering: they disagree with the port in OPPOSITE
+directions, so one dump each settles whether the table is what the port
+computes. The reader was checked both ways before being handed over — against a
+dump minted from the port (identical, orientation detected) and against the same
+dump with two cells bumped by 7 (caught, located, and the +7 named).
 
 **And one caution against the dig story, kept because it is not settled.**
 Inverting the late pass on `S3-4P2-4Z4K1M` asks for a field peaking at ≈46 on
