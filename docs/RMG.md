@@ -661,6 +661,36 @@ port, and the dump indexes rows by the SECOND component. `rmg-diff-heights` now
 tries both and names the one that fits, which is the only reason the trap is
 cheap to fall into twice.
 
+##### Inside the late pass: no stage is spurious, and the editor is not the game
+
+With the inputs proven, the debt is something the late pass does. Two things were
+tried, and both are worth writing down.
+
+**From the port's side, nothing we run is wrong to run.** Replaying the pass with
+each stage left out — base field, lake dents, craters, both flattens, all three
+smooths, the mask refill — makes the final plane WORSE every time (the best
+omission leaves 2,548 differing vertices against the full pass's 1,870, and the
+worst vertex stays at 5.73 through all of them). So the bowl is not a stage we
+perform wrongly; it is something the engine performs and we do not.
+
+**From the engine's side, the hooks would not go in — and that is the lead.**
+`stages` in the oracle patches the eight call sites inside the orchestrator, and
+all eight refused with "that call does not go where we think". The addresses are
+right: they are the GAME's. But the reference runs are the EDITOR's, and the two
+builds do not share this layout — `0xECF760` in the editor is not the late pass,
+`0xEB1800` is not the height add, and `0xEB2580` is not the smoother. The
+editor's own boundary table locates the pass exactly: between "treasure blocks
+set" (`0x8FA477`) and "finished creating map" (`0x8FA500`) sits one call,
+`0xCEFC20` — and that function does not look like `0xECF760` at all. It walks a
+hash map at `+0xA8` and calls a VIRTUAL, `[vt+0x38]`, per entry.
+
+That matters beyond the hooks. Everything this document says about the late pass
+was read out of `H5_Game_H5E.exe`, and every reference plane it is measured
+against was made by `H5_MapEditor_H5E.exe`. The two agreeing on the arithmetic
+(x87 against SSE) was already known and ported; the two agreeing on the STAGES
+was assumed. The next reading is the editor's `[vt+0x38]`, and the question it
+answers is whether the editor's late pass is the same pass at all.
+
 **What the next round eliminated, so the search does not repeat it.**
 
 - **The writers are the ones already known — and the first sweep for them was

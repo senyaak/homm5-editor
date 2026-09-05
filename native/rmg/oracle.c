@@ -273,6 +273,33 @@ static int g_rmgGrids = 0;
 static int g_rmgHeights = 0;
 static void rmg_dump_heights(void);
 /**
+ * `stages` in the config: the same plane, after EVERY stage of the late pass.
+ *
+ * `heights` cuts the plane in two and says the first half is exact, which puts
+ * the whole remaining debt inside `0xECF760`. This cuts the second half into
+ * its eight steps by patching the eight call SITES in that orchestrator, each
+ * hook forwarding to the real stage and then writing the plane out with the
+ * step number. Arity comes from each callee's own `ret`: the four stage
+ * functions end `ret`, the smoother ends `ret 4`.
+ *
+ * Needs `trace` as well, like every dump here.
+ */
+static int g_rmgStages = 0;
+static void rmg_dump_plane(const char *prefix, int tag);
+
+/** `ret` — `this` in ecx and nothing on the stack. */
+typedef void(__fastcall *RmgStageFn)(void *self, void *edx);
+/** `ret 4` — `this` in ecx and the kernel flag on the stack. */
+typedef void(__fastcall *RmgSmoothFn)(void *self, void *edx, int flag);
+static RmgStageFn g_rmgBaseFieldOrig = NULL;
+static RmgStageFn g_rmgCraterOrig = NULL;
+static RmgStageFn g_rmgFlattenOrig = NULL;
+static RmgStageFn g_rmgLakeFlattenOrig = NULL;
+static RmgSmoothFn g_rmgSmoothOrig = NULL;
+/** Which time round: the flatten runs twice and the smoother three times. */
+static int g_rmgFlattenNo = 0;
+static int g_rmgSmoothNo = 0;
+/**
  * `pass` in the config: the PASSABILITY plane's zero count at every step
  * boundary. The plane is `level+0x68` (data) / `+0x6C` (rows) / `+0x70`,
  * `+0x74` (dims) — the same level object the grids dump already walks, filled
@@ -532,6 +559,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "trace")) g_rmgTrace = 1;
     if (take_word(&q, stop, "grids")) g_rmgGrids = 1;
     if (take_word(&q, stop, "heights")) g_rmgHeights = 1;
+    if (take_word(&q, stop, "stages")) g_rmgStages = 1;
     if (take_word(&q, stop, "pass")) g_rmgPass = 1;
     if (take_word(&q, stop, "points")) g_rmgPoints = 1;
     if (take_word(&q, stop, "field")) g_rmgField = 1;
@@ -997,7 +1025,7 @@ static void rmg_dump_grids(void) {
  * one wider than the tile grid in both directions; a row that will not read is
  * skipped rather than guessed at.
  */
-static void rmg_dump_heights(void) {
+static void rmg_dump_plane(const char *prefix, int tag) {
   int floorsDumped[4] = { 0, 0, 0, 0 };
   int id;
   for (id = 0; id < 32; id++) {
@@ -1022,7 +1050,7 @@ static void rmg_dump_heights(void) {
     if (!rows || !rmg_readable(rows, (unsigned)v * 4)) continue;
     floorsDumped[floor] = 1;
     for (r = 0; r < v; r++) {
-      int vals[260];
+      int vals[264];
       int cols = dimB + 1;
       int c;
       if (cols > 258) cols = 258;
@@ -1030,10 +1058,51 @@ static void rmg_dump_heights(void) {
       vals[1] = r;
       if (!rows[r] || !rmg_readable(rows[r], (unsigned)cols * 4)) continue;
       for (c = 0; c < cols; c++) vals[c + 2] = *(int *)&rows[r][c];
-      rmg_log_ints("hp ", vals, cols + 2);
+      // `<prefix> [stage] <floor> <row> <bits…>` — the tag column only when a
+      // stage asked for it, so the boundary dump keeps its old shape.
+      if (tag >= 0) {
+        int k;
+        for (k = cols + 1; k >= 0; k--) vals[k + 1] = vals[k];
+        vals[0] = tag;
+        rmg_log_ints(prefix, vals, cols + 3);
+      } else {
+        rmg_log_ints(prefix, vals, cols + 2);
+      }
     }
   }
-  rmg_log("heights dumped");
+  rmg_log(tag >= 0 ? "stage dumped" : "heights dumped");
+}
+
+static void rmg_dump_heights(void) { rmg_dump_plane("hp ", -1); }
+
+/**
+ * The eight stages of `0xECF760`, each hook forwarding first and writing the
+ * plane after. The site addresses are the calls inside the orchestrator, so a
+ * stage that runs more than once is told apart by its own counter rather than
+ * by a second patch of the same callee.
+ */
+static void __fastcall rmg_base_field_hook(void *self, void *edx) {
+  if (g_rmgBaseFieldOrig) g_rmgBaseFieldOrig(self, edx);
+  g_rmgFlattenNo = 0;
+  g_rmgSmoothNo = 0;
+  rmg_dump_plane("hs ", 0);
+}
+static void __fastcall rmg_crater_hook(void *self, void *edx) {
+  if (g_rmgCraterOrig) g_rmgCraterOrig(self, edx);
+  rmg_dump_plane("hs ", 1);
+}
+static void __fastcall rmg_flatten_hook(void *self, void *edx) {
+  if (g_rmgFlattenOrig) g_rmgFlattenOrig(self, edx);
+  rmg_dump_plane("hs ", g_rmgFlattenNo++ ? 5 : 2);
+}
+static void __fastcall rmg_smooth_hook(void *self, void *edx, int flag) {
+  if (g_rmgSmoothOrig) g_rmgSmoothOrig(self, edx, flag);
+  rmg_dump_plane("hs ", g_rmgSmoothNo == 0 ? 3 : g_rmgSmoothNo == 1 ? 4 : 7);
+  g_rmgSmoothNo++;
+}
+static void __fastcall rmg_lake_flatten_hook(void *self, void *edx) {
+  if (g_rmgLakeFlattenOrig) g_rmgLakeFlattenOrig(self, edx);
+  rmg_dump_plane("hs ", 6);
 }
 
 /**
@@ -1341,6 +1410,26 @@ static int install_rmg_oracle(void) {
       rmg_log(g_rmgNextOrig && g_rmgNext63Orig && g_rmgBelowOrig && g_rmgBetweenFloatOrig && g_rmgGetZoneOrig
                   ? "draw trace on - every draw and every GetZone will be written"
                   : "draw trace INCOMPLETE - see the refusals above");
+      // The late pass, stage by stage. Each of these is a CALL SITE inside
+      // `0xECF760`, verified against the callee it is meant to reach, so a
+      // stage that runs twice keeps its own site and its own number.
+      if (g_rmgStages) {
+        int ok = 1;
+        g_rmgBaseFieldOrig = (RmgStageFn)(base + 0xACF9A0u);
+        g_rmgCraterOrig = (RmgStageFn)(base + 0xAD0240u);
+        g_rmgFlattenOrig = (RmgStageFn)(base + 0xAD06D0u);
+        g_rmgLakeFlattenOrig = (RmgStageFn)(base + 0xACFE40u);
+        g_rmgSmoothOrig = (RmgSmoothFn)(base + 0xAB2580u);
+        ok &= patch_call(0xACF773u, 0xACF9A0u, &rmg_base_field_hook, "late pass base field");
+        ok &= patch_call(0xACF926u, 0xAD0240u, &rmg_crater_hook, "late pass craters");
+        ok &= patch_call(0xACF92Du, 0xAD06D0u, &rmg_flatten_hook, "late pass flatten 1");
+        ok &= patch_call(0xACF93Cu, 0xAB2580u, &rmg_smooth_hook, "late pass smooth 1");
+        ok &= patch_call(0xACF96Du, 0xAB2580u, &rmg_smooth_hook, "late pass smooth 2");
+        ok &= patch_call(0xACF974u, 0xAD06D0u, &rmg_flatten_hook, "late pass flatten 2");
+        ok &= patch_call(0xACF97Bu, 0xACFE40u, &rmg_lake_flatten_hook, "late pass lake flatten");
+        ok &= patch_call(0xACF98Au, 0xAB2580u, &rmg_smooth_hook, "late pass smooth 3");
+        rmg_log(ok ? "late pass stage dumps armed" : "late pass stage dumps INCOMPLETE");
+      }
     }
   }
 
