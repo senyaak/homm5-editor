@@ -1914,6 +1914,54 @@ Proven: every address, offset and arithmetic step above is read out of
 `bin/H5_Game_H5E.exe`, and the four points above are measured off the
 reference file.
 
+### The three subterranean classes are three different zones
+
+A template with FOUR underground zones on a LAVA floor was the first order to
+tell them apart, and it turned three readings inside out. All three are read out
+of the executable, not fitted.
+
+**The massif carve is not every subterranean class's.** `0xED11D0` has exactly
+three references in the image and all three are the tail jumps of the three
+`+0x40` slots; the only code that CALLS `+0x40` is `0xEC4A85` and `0xEC7075` —
+the `+0x34` of Subterra and of Dwarven. SubInferno's `+0x34` (`0xEC92D0`) goes
+straight to `recomputeRoom(0x3C, 0)`, so `0xEC92B0` is a slot nobody dials and a
+lava underground is never carved. The class is one coin for the whole map, so
+this is global. The port carved on "is this zone subterranean", raised 121
+lattice cells where the engine raised none, and one of the tiles it wrongly
+blocked is what made the big-statics sweep skip a `Mountains_8x12` and take
+everything after it differently.
+
+**Big statics DO take the point light — in SubInferno only.** `0xEC92D0` and
+Subterra's `0xEC4A70` are the same code but for four instructions at `0xEC97B4`
+(`lea ecx,[esp+48h]; mov eax,[edi]; push ecx; call [eax+3Ch]`), which Subterra
+does not have and Dwarven has no sweep to put them in. So `0xEC97BD` is the one
+call to `+0x3C` from a big-statics step anywhere in the image.
+
+**Each class tests its own names.** The predicate behind `+0x3C` is a
+case-sensitive substring of the SHARED resource's path, and there is one per
+class: `0xEB2EF0` "Crystal" (Subterra), `0xEB2FB0` then `0xEB3010` "Fakel" or
+"FireColumn" (Dwarven), `0xEB3070` "Crater" or "Lavacrack" or "Hellpikes"
+(SubInferno). The engine's own map agrees exactly — 25 lit paths against 27
+unlit, no resource on both sides.
+
+**The light's COLOUR is the zone's preset's, not the params'.** The two draws
+take their spans from `SRMGParameters.PointLightParams` (zMin 2, zMax 7, radius
+20..25 — every RACE preset says zMin 3 zMax 3, and the maps show z = 2 +
+below(5)), but the colour is drawless and comes from
+`[[zone+0x20]+0x1D4]` — the RACE PRESET's own `PointLightParams.Colors`, indexed
+`zoneIndex % count`. Only three races have one: SPECIAL five lava colours,
+DUNGEON nine and NO_TYPE four — which is exactly the three an underground floor
+is ever painted as. The global list in `/RMG/Params/Default.xdb` is thirteen
+entries, DUNGEON's nine followed by NO_TYPE's four, so reading a Dungeon
+underground's colour out of it agrees BY ACCIDENT and a lava one's not at all.
+
+**And a connection guard keeps its floor.** It was emitted with the default 0
+because every guarded passage until now was on the surface. The map file records
+a floor per object, and two of this map's passages are underground.
+
+With those, that order is **18 of 18 byte-identical** and so is every other map
+in the corpus, the two-level dialog SAVEs at 20 of 20 among them.
+
 ### Two traps in the oracle itself
 
 Both cost a wrong diagnosis before they were named, and neither is about the

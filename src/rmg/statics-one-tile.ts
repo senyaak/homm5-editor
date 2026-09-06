@@ -266,6 +266,14 @@ export interface SubterraOneTileStaticsInput extends OneTileStaticsInput {
   vertexHeights: VertexHeights;
   /** `SRMGParameters.PointLightParams` — spans for the two light draws. */
   pointLight: { zMin: number; zMax: number; lightRadiusMin: number; lightRadiusMax: number };
+  /**
+   * The substrings this zone's class tests before hanging a light — see
+   * `LIGHT_NAMES`. Each subterranean class has its own `+0x3C` and its own
+   * predicate: `0xEB2EF0` "Crystal", `0xEB2FB0` then `0xEB3010` "Fakel" or
+   * "FireColumn", `0xEB3070` "Crater" or "Lavacrack" or "Hellpikes". The test
+   * is a case-sensitive substring of the SHARED resource's path.
+   */
+  lightNames: readonly string[];
 }
 
 /** The whole slot-+0x30 step for one subterranean-class zone. */
@@ -307,7 +315,7 @@ export function placeSubterraOneTileStatics(
     const entry = list[rng.below(list.length)]!;
     const angle = lit && entry.path.includes('FireDot') ? input.mapAngle : q * (Math.PI / 2);
     const item: PlacedStatic = { type: entry.path, name: mintName(rng), x: at[0], y: at[1], angle };
-    if (lit && entry.path.includes('Crystal')) {
+    if (lit && input.lightNames.some((sub) => entry.path.includes(sub))) {
       const p = input.pointLight;
       item.light = {
         z: p.zMin + rng.below(p.zMax - p.zMin),

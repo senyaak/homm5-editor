@@ -24,7 +24,7 @@ import { createVertexHeights } from '../src/rmg/massif-carve.ts';
 import { recomputeRoom } from '../src/rmg/placement.ts';
 import type { Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
-import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
+import { LIGHT_NAMES, placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import { placeZoneOneTileStatics, placeSubterraOneTileStatics } from '../src/rmg/statics-one-tile.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { RACE_BY_NAME } from '../src/rmg/load-template.ts';
@@ -193,6 +193,11 @@ for (const tz of c.template.zones) {
     overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => h ? c.footprint(h) : null),
     mapAngle: c.setup.angle,
     subterranean, vertexHeights: vertexHeights[f]!,
+    pointLight: c.params.pointLightParams,
+    lightNames: LIGHT_NAMES[loadedZone.kind] ?? [],
+    zoneClass: subterranean
+      ? (loadedZone.kind as 'subterra' | 'subInferno' | 'dwarven')
+      : undefined,
   }, c.rng);
   for (const p of big.placed) named.push(p);
   staticsCount += big.placed.length;
@@ -212,6 +217,7 @@ for (const tz of c.template.zones) {
     ? placeSubterraOneTileStatics({
         ...oneInput, vertexHeights: vertexHeights[f]!,
         pointLight: c.params.pointLightParams,
+        lightNames: LIGHT_NAMES[loadedZone.kind] ?? [],
       }, c.rng)
     : placeZoneOneTileStatics(oneInput, c.rng);
   for (const p of one) named.push(p);

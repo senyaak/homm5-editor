@@ -107,6 +107,20 @@ export interface RacePreset {
   oneTileSmallNonblockers: string[];
   /** `OneTileBigObjects` (`+0xA8`) — its larger-model one-tilers. */
   oneTileBigObjects: string[];
+  /**
+   * `PointLightParams.Colors` — the ZONE'S OWN colour table for the
+   * subterranean point light, one entry taken by `zoneIndex % count`.
+   *
+   * Not the global params': `/RMG/Params/Default.xdb` carries a thirteen-entry
+   * list which is Dungeon's nine followed by NO_TYPE's four, and reading a
+   * lava zone's colour out of it lands on a Dungeon green. Each race's own
+   * list is here, and most races have none — only SPECIAL (five lava
+   * colours), NO_TYPE (four) and DUNGEON (nine) are filled, which is exactly
+   * the three an underground floor can be painted as. The SPANS the two
+   * draws use are still the global params': every race here says zMin 3
+   * zMax 3, and the maps show z = 2 + below(5).
+   */
+  pointLightColors: Array<{ x: number; y: number; z: number }>;
 }
 
 /** One `Building / Value / GuardStrenght` record of a preset's price lists. */
@@ -198,6 +212,17 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
       oneTileSmallBlockers: obj ? hrefs(find(obj, 'OneTileSmallBlockers')) : [],
       oneTileSmallNonblockers: obj ? hrefs(find(obj, 'OneTileSmallNonblockers')) : [],
       oneTileBigObjects: obj ? hrefs(find(obj, 'OneTileBigObjects')) : [],
+      pointLightColors: (() => {
+        const pl = obj ? find(obj, 'PointLightParams') : null;
+        const list = pl ? find(pl, 'Colors') : null;
+        return list
+          ? findAll(list, 'Item').map((i) => ({
+              x: Number(childText(i, 'x')) || 0,
+              y: Number(childText(i, 'y')) || 0,
+              z: Number(childText(i, 'z')) || 0,
+            }))
+          : [];
+      })(),
     });
   }
   return out;

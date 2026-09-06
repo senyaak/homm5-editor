@@ -406,9 +406,11 @@ export function runFull(
       subterranean, vertexHeights: vertexHeights[f]!,
       water: water || undefined, tiles: c.water?.kept.get(tz.index) ?? c.zoneTileList(tz.index),
     }, c.rng);
-    // A lit crystal's colour is the params' Colors[zoneIndex % count].
-    const zoneColor = c.params.pointLightParams.colors.length
-      ? c.params.pointLightParams.colors[tz.index % c.params.pointLightParams.colors.length]!
+    // The light's colour is the ZONE'S OWN preset's Colors[zoneIndex % count]
+    // — see `RacePreset.pointLightColors`. Reading it from the global params
+    // agrees for a Dungeon underground by accident and for a lava one not at all.
+    const zoneColor = preset.pointLightColors.length
+      ? preset.pointLightColors[tz.index % preset.pointLightColors.length]!
       : { x: 1, y: 1, z: 1 };
     const staticRecord = (s: PlacedStatic): RunObject => ({
       kind: 'static', name: s.name, x: s.x, y: s.y, z: 0, rot: s.angle,
@@ -445,6 +447,7 @@ export function runFull(
       ? placeSubterraOneTileStatics({
           ...oneInput, vertexHeights: vertexHeights[f]!,
           pointLight: c.params.pointLightParams,
+          lightNames: LIGHT_NAMES[lz.kind] ?? [],
         }, c.rng)
       : water
         ? placeWaterOneTileStatics(oneInput, c.rng)
