@@ -88,6 +88,24 @@ const fl = Math.fround;
 /** Preset indices whose surface zones grow lakes (`0xEBC260`'s gate). */
 const LAKE_RACES = new Set([3, 4, 7, 8, 9, 10]);
 
+/**
+ * The resource names each subterranean class hangs a POINT LIGHT on — the
+ * substrings its `vt+0x3C` (`0xEC6280`) tests before spending the light's two
+ * draws. Every static that passes gets one, big or one-tile.
+ *
+ * The lava list is FITTED, not read: on a `S2-3P2Z7N2` underground the engine's
+ * own map carries 198 lights, and the split by resource name is clean with no
+ * type on both sides — 25 paths lit, all of them `Crater*`, `Lavacrack*` or
+ * `Hellpikes_*`, against 27 unlit (`FireDot*`, `StickOfDeath_*`, `LavaStone_*`,
+ * `Cross_01`, `Mountains_*`, `Mountain10x7`). With it the whole run matches the
+ * engine's trace draw for draw, 245,577 of 245,577.
+ */
+export const LIGHT_NAMES: Readonly<Record<string, readonly string[]>> = {
+  subterra: ['Crystal'],
+  subInferno: ['Crater', 'Lavacrack', 'Hellpikes'],
+  dwarven: ['Fakel', 'FireColumn'],
+};
+
 export interface PlacedStatic {
   /** The shared document's href path — the map file's identity. */
   type: string;
@@ -138,6 +156,22 @@ export interface BigStaticsInput {
   bigPositions: Tile[];
   /** The preset's BigStatics, resolved, in file order. */
   bigStatics: Footprint[];
+  /**
+   * `SRMGParameters.PointLightParams` — the spans the point light's two draws
+   * come out of. Only a subterranean zone ever reads it.
+   */
+  pointLight?: { zMin: number; zMax: number; lightRadiusMin: number; lightRadiusMax: number };
+  /**
+   * Which resource paths this zone's class hangs a point light on — the
+   * substrings its `vt+0x3C` tests. Absent means none.
+   */
+  lightNames?: readonly string[];
+  /**
+   * The zone's CLASS, which `subterranean` alone cannot say: the three
+   * subterranean classes do not share a `+0x34`. Only Subterra and Dwarven
+   * carve; only Subterra and SubInferno run the sweep below at all.
+   */
+  zoneClass?: 'subterra' | 'subInferno' | 'dwarven';
   /** The preset's Mountains, resolved, in file order. */
   mountains: Footprint[];
   /** The preset's OverLakeCenterObjects, resolved. */
@@ -436,7 +470,20 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
     // neither is materialised here. The carve is called by EVERY
     // subterranean zone and no-ops after the first (its conversion pass
     // turns the clean patches to blocked).
-    carveMassif(size, occupancy, input.vertexHeights!);
+    // THE CARVE IS NOT EVERY SUBTERRANEAN CLASS'S. `0xED11D0` has exactly three
+    // references in the executable and all three are the tail jumps of the three
+    // `+0x40` slots; the only code that CALLS `+0x40` is `0xEC4A85` and
+    // `0xEC7075` — the `+0x34` of Subterra and of Dwarven. SubInferno's `+0x34`
+    // (`0xEC92D0`) goes straight to `recomputeRoom(0x3C, 0)`, so its `+0x40`
+    // (`0xEC92B0`) is a slot nobody dials and a lava underground is never carved.
+    // The class is one coin for the whole map, so this is a global yes or no.
+    //
+    // Read after a map whose four underground zones are SubInferno came out with
+    // 121 lattice cells raised against the engine's none, and its
+    // `UndergroundTerrain.bin` carrying only the initial frame.
+    if (input.zoneClass === 'subterra' || input.zoneClass === 'dwarven') {
+      carveMassif(size, occupancy, input.vertexHeights!);
+    }
   } else if (input.floor !== 1) {
     if (LAKE_RACES.has(input.settingRace) && input.floor === 0) {
       const lakes = growLakes(input, rng);
@@ -487,6 +534,20 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
       if (roll >= fl(1 / (n + 1))) continue;
 
       const name = mintName(rng);
+      // `vt+0x3C` — the subterranean point light, and a BIG static takes it too.
+      // The note here used to say big objects never do; that was read off a map
+      // whose underground class hangs its light on names no big entry of its
+      // preset carries. A lava underground hangs it on Craters, Lavacracks and
+      // Hellpikes, and three of those are among the largest entries in the list.
+      let light: PlacedStatic['light'];
+      if (input.subterranean && input.pointLight
+        && (input.lightNames ?? []).some((sub) => entry.path.includes(sub))) {
+        const pl = input.pointLight;
+        light = {
+          z: pl.zMin + rng.below(pl.zMax - pl.zMin),
+          radius: pl.lightRadiusMin + rng.below(pl.lightRadiusMax - pl.lightRadiusMin),
+        };
+      }
       if (big) input.bigPositions.push(cand);
       // The standard stamp — statics carry no actives and a (0,0) marker,
       // so in practice only the blocked pass writes.
@@ -506,7 +567,10 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
         occupancy[by * size + bx] = 4;
         input.points.push([bx, by]);
       }
-      placed.push({ type: entry.path, name, x: cand[0], y: cand[1], angle: q * (Math.PI / 2) });
+      placed.push({
+        type: entry.path, name, x: cand[0], y: cand[1], angle: q * (Math.PI / 2),
+        ...(light ? { light } : {}),
+      });
       // The subterranean sweep (`0xEC4A70`) has no relief cone and no
       // "Mountain" test on its accept path.
       if (!input.subterranean && entry.path.includes('Mountain') && n > 15) raiseRelief(input, cand, q, entry.blocked);

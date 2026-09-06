@@ -74,6 +74,13 @@ export interface PassageGuard {
   stacks: Array<{ creature: string; amount: number }>;
   /** 2 HOSTILE, 3 WILD — the engine's own enum values. */
   mood: number;
+  /**
+   * The floor the passage is on. Both zones of a connection are on it — the
+   * sweep is per floor — and the map file records it per object, which is the
+   * only reason it has to travel: a two-level map's underground connections
+   * were being written as floor 0.
+   */
+  floor: number;
   between: [number, number];
 }
 
@@ -200,6 +207,7 @@ export function zoneConnections(input: ConnectionsInput, rng: RmgRandom): Connec
             y: ta,
             stacks: guard.stacks,
             mood: guard.mood,
+            floor: f,
             between: [zone.index, neighbour],
           });
         }

@@ -32,7 +32,7 @@ import { recomputeRoom } from '../src/rmg/placement.ts';
 import type { Footprint, Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
 import { SHIPYARD_HREF, shipTile } from '../src/rmg/shipyards.ts';
-import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
+import { LIGHT_NAMES, placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import type { PlacedStatic } from '../src/rmg/statics-big.ts';
 import type { TownGuardStack } from '../src/rmg/town-guard.ts';
 import {
@@ -207,7 +207,7 @@ export function runFull(
   }
 
   // The connection guards.
-  for (const g of c.conn.guards) guardPoint(g, g.x, g.y);
+  for (const g of c.conn.guards) guardPoint(g, g.x, g.y, g.floor);
 
   // The second sweep's objects — teleport halves (each with its guard) and
   // the shipyards, zone by zone in the sweep's own order.
@@ -395,6 +395,9 @@ export function runFull(
       settingRace: lz.race,
       roads: zoneRoads, bigPositions: [], blockedList: fill.blocked,
       bigStatics: preset.bigStatics.map((h) => c.footprint(h)),
+      pointLight: c.params.pointLightParams,
+      lightNames: LIGHT_NAMES[lz.kind],
+      zoneClass: subterranean ? (lz.kind as 'subterra' | 'subInferno' | 'dwarven') : undefined,
       mountains: preset.mountains.map((h) => c.footprint(h)),
       overLakeCenterObjects: preset.overLakeCenterObjects.map((h) => c.footprint(h)),
       overLakeOneTileRandomObjects: preset.overLakeOneTileRandomObjects.map((h) => h ? c.footprint(h) : null),
