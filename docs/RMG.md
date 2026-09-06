@@ -2448,14 +2448,30 @@ border table and zone grid come back identical to the engine's; with 3 or 5
 instead, 17,473 of its 18,496 border cells differ. `MAP_SIZES` moved to
 `src/rmg/create-map.ts`, where the table it mirrors lives.
 
-**What is open is the connections block on anything bigger than 96 tiles.**
-`S2-3P2Z7N2` at 136 agrees draw for draw to 66233 and then the engine spends a
-`below(38)` the port does not: it comes right after a `below(143)` placement
-and its two name draws, and the port goes straight on to its next seat instead.
-The engine's block costs 197 draws against the port's 146. Both grids are
-identical going in, so it is a placement the port does not make rather than a
-pool it measures differently — the reading starts at what a 143-pool placement
-is followed by.
+**What is open, and it is now named: THE ENGINE PLACES TWO SHIPYARDS PER WATER
+ZONE and this port places one.** `S2-3P2Z7N2` at 136 has seven zones and the
+engine's map carries **14 shipyards against the port's 7**.
+
+How it was cornered, since the draw trace alone could not say it. The two runs
+agree draw for draw to 66233 and part at 66234, where the engine spends a
+`below(38)` and the port a `below(139)` — the same placement (zone 2's first
+teleport seat) measured over different pools. The pool is the zone's ring after
+`filterByRoom`, whose threshold is `2·max/3`, so a bigger engine pool-threshold
+means a bigger `max`, which means FEWER room points; and no threshold over the
+port's own ring of 513 yields 38 at all, so the ring or the points had to
+differ. The oracle's `points` dump settled it: **every zone has exactly one
+more room point in the engine than in the port** — 6/6/8/8/4/4/6 against
+5/5/7/7/3/3/5. One per zone, and every zone gets exactly one shipyard here.
+
+Two readings were tried and are recorded because they are wrong: pushing a
+`(0,0)` PossessionMarkerTile into the room points for every stamp (it breaks
+the dry sweep — dry `S2-3P2Z7N2` falls from 13 of 13 to 11), and doing it for
+the shipyard alone (the water map gets further away, not closer). The count
+comes from a second SHIPYARD, not from a second point of one.
+
+So the next reading is the water-bordered zone's second sweep — why its
+shipyard tail runs twice — and `AdvMapShipyard 14 against 7` is the number to
+close.
 
 (The oracle grew `blocks` for the treasure-block question above: the same four
 grids as `grids`, dumped at "additional objects set" instead of "roads
