@@ -108,7 +108,7 @@ export interface ChainOptions {
    * counted against each other when the jitter counts alone say only THAT a
    * sweep differs.
    */
-  candidate?: (sweep: number, a: number, b: number, own: number, best: number) => void;
+  candidate?: (sweep: number, a: number, b: number, own: number, best: number, count: number) => void;
   /** Each sweep's areas, the numbers the next sweep's ratio divides. */
   areas?: (sweep: number, areas: ReadonlyMap<number, number>) => void;
   /**

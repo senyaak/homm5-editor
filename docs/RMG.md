@@ -383,6 +383,50 @@ vertices one ULP out — 218 such vertices over the first sweep, 274 over the
 second, none more than one ulp. The port refuses `S7-22P2-8Z15K2.4c` outright,
 and that refusal plus the ulp layer is the whole of what is left of the sweep.
 
+##### The fifteen-zone template: what is measured, and what is not
+
+`S7-22P2-8Z15K2.4c` is the one template the port refuses, and the refusal now
+says what it knows rather than what it guessed. The old one — "a 14th zone would
+rehash, order unverified" — was guarding nothing: each tile is queued at most
+once per sweep, so the order the grow and flip queues are applied in cannot
+change the grid. The new one is a statement about evidence: **no run with more
+than thirteen zones on a floor has ever been reconciled**, thirteen being where
+the container rehashes and therefore where the evidence stops. `fillZones` takes
+a `runUnreconciled` flag so the probes can read past it; nothing that writes a
+map sets it.
+
+**Measured, with the oracle's `areas` keyword** (`CollectOwnTiles` — the game's
+`0xEB7790`, the editor's `0xBFBF50`, found by fingerprint and by the chain of
+fields it walks: `+0xF4`, `+0x134`, `+0x34`, `+0xC8`/`+0xCC`, `+0xC4`, `+0xEC`).
+It logs `zc <zone> <tiles>` per zone per sweep and needs no trace, the zone
+being `this`:
+
+- the zone areas agree with the port's on all fifteen zones for **33 sweeps**;
+- the jitter draws per sweep agree for those same 33, and sweep 34 spends 394
+  against the port's 380;
+- the candidate count for sweep 34 is 1796 on both sides;
+- after sweep 34 the areas differ by exactly one tile in two places: the
+  engine's zone 2 holds 4270 where the port has 4269, and its zone 15 holds
+  1823 where the port has 1824. One tile goes to zone 2 in the engine and to
+  zone 15 here;
+- the comparison is STRICT on both sides — relaxing the port's to `>=` makes it
+  draw on a tie in sweep 2 where the engine does not.
+
+**Not established, and worth saying so.** Attributing each `tf` in the trace to
+a particular candidate is not reliable: scoring the port's own rule against the
+engine's draws that way disagrees on 3,899 of 11,682 candidates over the sweeps
+that DO reproduce, and the first disagreement it names is a tie the port and the
+engine plainly resolve the same way. Attributing the draw to the following
+candidate instead is worse (6,198). So the earlier reading of this — "fourteen
+verdicts differ, all of them zones 2 against 6" — rests on that attribution and
+is not evidence. What the trace supports is the per-sweep totals; what the
+`areas` dump supports is the one-tile difference above.
+
+The next reading is where a `tf` sits relative to its candidate's two `gz`
+lines — the GetZone detour fires before the ratio, the draw after it, but a
+sweep also calls GetZone from places that never draw, and until that is read the
+per-candidate view is guesswork.
+
 ##### The relief cone: the two builds round it in opposite places
 
 The last of the height debt was 492 vertices over the two sweeps, every one of

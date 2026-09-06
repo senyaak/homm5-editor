@@ -131,7 +131,7 @@ export interface FillZonesSpy {
    * engine calls GetZone(own) and GetZone(best), BEFORE the ratio verdict.
    * The oracle's `gz` lines are this callback's engine-side twin.
    */
-  candidate?(sweep: number, a: number, b: number, own: number, best: number): void;
+  candidate?(sweep: number, a: number, b: number, own: number, best: number, count: number): void;
   /**
    * The areas as the sweep leaves them — the engine's own `CollectOwnTiles`
    * (`0xEB7790`, called per zone from the sweep's tail) rebuilds the zone's
@@ -292,7 +292,7 @@ export function fillZones(
             // The engine looks both zones up BEFORE checking the neighbour
             // threshold (GetZone×2 at 0xeaa2ca, the checks at 0xeaa347) — the
             // spy sits where the engine's own trace hook does.
-            if (best) spy?.candidate?.(counter, a, b, own, best.key);
+            if (best) spy?.candidate?.(counter, a, b, own, best.key, best.count);
             if (!best || best.count <= 2) continue;
             const zOwn = byIndex.get(own);
             const zOther = byIndex.get(best.key);
