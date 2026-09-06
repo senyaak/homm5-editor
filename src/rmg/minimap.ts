@@ -19,7 +19,7 @@
 //         colour = 0xFF<<24 | trunc(rec.minimapColor.x * 255) << 16
 //                           | trunc(rec.minimapColor.y * 255) << 8
 //                           | trunc(rec.minimapColor.z * 255)
-//   if mask(tx, ty):                      R, G, B >>= 1
+//   if mask(tx, ty) and not spared(tx, ty):  R, G, B >>= 1
 //
 // The multiplier is the float 255.0 at `0xF4A1E8` and the convert `0x949FF0`
 // is `cvttss2si` — truncation, which is why Water.xdb's 0.00784314 comes out
@@ -39,19 +39,26 @@
 // THE DARKENING MASK is the passability plane, the tiles the map's objects
 // occupy and the tiles big water covers — see [`minimap-mask.ts`](minimap-mask.ts).
 //
-// THERE IS NO WATER EXEMPTION. The pass was ported with a second condition —
-// `and not 0x9EC3C0(tx, ty)`, the shipyard's water test — on the reading that a
-// water tile is never darkened. The reference cannot test it: its river plane
-// is empty on all 9,216 tiles, so the term is a constant false there and any
-// value of it keeps the file byte-identical. Two maps that DO test it say the
-// term never fires. A lava lake puts 38 masked tiles over the river's 0x8C
-// threshold and the engine halves every one; a `-water 2` sea puts 26 more, and
-// with the exemption in place the port left both bright. Dropped, both maps come
-// out byte-identical, and the reference is untouched either way. What that
-// leaves open is WHY: either the pass does not consult that predicate at all, or
-// the engine's river half-grid is not the port's at minimap time. Nothing the
-// port writes depends on which — `shipyards.ts` keeps the river reading it was
-// measured with, on maps where shipyards are placed.
+// THE WATER EXEMPTION, and what it actually spares. The pass was ported with a
+// second condition — `and not 0x9EC3C0(tx, ty)`, the shipyard's water test,
+// which on a generated surface is the river half-grid's centre cell above 0x8C.
+// The reference cannot test it: its river plane is empty on all 9,216 tiles, so
+// the term is a constant false there and any value of it keeps the file
+// byte-identical. Maps that DO test it show the term as written is wrong in one
+// direction and right in the other, and the difference is BIG WATER:
+//
+//   - a lava LAKE and a `-water 2` sea are `TT_BIG_WATER`, their river cells are
+//     over the threshold, and the engine halves every one of those tiles;
+//   - a `TT_SMALL_WATER` lake has river cells over the threshold too, and the
+//     engine halves NONE of them.
+//
+// So what is spared is a wet tile that big water does not cover. Four maps agree
+// on that rule and on no other tried against them — the two above, the reference
+// where it cannot fire, and a two-level map whose surface lake is small water.
+// It is FITTED to those four, not read out of `0x9EC3C0`: what the executable
+// most likely says is that the layer arm the disassembly notes inside that
+// predicate returns "not water" rather than "water", which nobody checked
+// because the flags were thought to make it unreachable.
 
 import type { EngineSine } from '../exe/sine-table.ts';
 import { lanczos3, resampleFiltered, type Bitmap } from './resample.ts';
@@ -140,6 +147,21 @@ export interface MinimapFloor {
   dim: number;
   /** Is this tile darkened? The mask of [`minimap-mask.ts`](minimap-mask.ts). */
   masked: (tx: number, ty: number) => boolean;
+  /**
+   * A masked tile the halving spares: wet by the river half-grid and NOT under
+   * big water. See the note above — no map without water needs to pass it.
+   */
+  spared?: (tx: number, ty: number) => boolean;
+  /**
+   * The floor's ground flags, `(side + 1)^2` on the vertex grid.
+   *
+   * A SURFACE floor's are the constructor's uniform 16 and the arm that reads
+   * them is dead, which is why the pass ran without them for so long. An
+   * UNDERGROUND floor's are the massif carve's byte grid — 32 for solid rock,
+   * 26 and 21 for the two ramp steps down, 16 for open cave floor — and a tile
+   * over 0x15 is left BLACK, which is most of an underground map.
+   */
+  flags?: Uint8Array;
 }
 
 /** `0xDD0660` — the N x N terrain layer, BGRA, one pixel per playable tile. */
@@ -151,16 +173,18 @@ export function drawTerrainLayer(floor: MinimapFloor): Bitmap {
     const ty = border + (n - 1 - y);
     for (let x = 0; x < n; x++) {
       const tx = border + x;
-      const doc = tileDocument(layers, dim, tx, ty);
       const at = (y * n + x) * 4;
       let b = 0, g = 0, r = 0;
+      // The pass's FIRST arm, and the only one a black pixel comes from.
+      const rock = (floor.flags?.[ty * dim + tx] ?? 16) > 0x15;
+      const doc = rock ? null : tileDocument(layers, dim, tx, ty);
       if (doc) {
         const [cr, cg, cb] = doc.minimapColor;
         r = Math.trunc(Math.fround(Math.fround(cr) * 255));
         g = Math.trunc(Math.fround(Math.fround(cg) * 255));
         b = Math.trunc(Math.fround(Math.fround(cb) * 255));
       }
-      if (floor.masked(tx, ty)) {
+      if (floor.masked(tx, ty) && !(floor.spared?.(tx, ty) ?? false)) {
         b >>= 1; g >>= 1; r >>= 1;
       }
       data[at] = b;

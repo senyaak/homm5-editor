@@ -31,7 +31,12 @@
 // texture, and an ordinary `-water 2` sea — put 8 and 26 tiles outside the
 // plane-and-objects mask, and the engine's own mask dump has every one of them.
 //
-// So three arms speak: the plane, the objects, and big water.
+// So FOUR arms speak, and which of them can fire is a fact about the floor:
+// the plane and the objects everywhere, big water wherever a template paints a
+// lake or a sea, and the ground-flag corners on an UNDERGROUND floor, where the
+// flags are the massif carve's bytes rather than the constructor's uniform 16.
+// The border ring and `TT_NONE` stay named and unported: no map here reaches
+// either, and the ring was scored at every width from 0 to 16 and fits at none.
 
 import { rotateOffsets } from './heights.ts';
 import type { TerrainLayer } from './terrain.ts';
@@ -63,27 +68,59 @@ export interface MaskInput {
    * A floor that has none (the reference template is one) needs no list.
    */
   layers?: readonly TerrainLayer[];
+  /**
+   * The floor's ground flags on the vertex grid, `(side + 1)^2`.
+   *
+   * Uniform 16 on a surface floor, so the arm that reads them is dead there and
+   * the field can be left out. Underground they are the massif carve's bytes.
+   */
+  flags?: Uint8Array;
+}
+
+/**
+ * `0x9EBAE0` — does BIG WATER cover this tile?
+ *
+ * It walks the tile's texture layers, keeps the ones whose `Type` is 0x0B
+ * (`TT_BIG_WATER`) and tests that layer's mask at the tile's FOUR CORNER
+ * vertices. `0x9EC570` reaches it and answers kind 2, which sets the mask bit;
+ * the halving's own exemption reads it too (see `minimap.ts`). Whether the test
+ * is "painted at all" or "painted past a threshold" no map here can separate:
+ * on all of them, every corner such a layer touches it touches at 0x80 or more.
+ */
+export function bigWaterCovers(
+  layers: readonly TerrainLayer[], dim: number, tx: number, ty: number,
+): boolean {
+  for (const l of layers) {
+    if (l.type !== 'TT_BIG_WATER') continue;
+    if (l.mask[ty * dim + tx]! > 0 || l.mask[ty * dim + tx + 1]! > 0
+      || l.mask[(ty + 1) * dim + tx]! > 0 || l.mask[(ty + 1) * dim + tx + 1]! > 0) return true;
+  }
+  return false;
+}
+
+/** `0x9EB9E0` — are the tile's four ground-flag corner vertices all equal? */
+function cornersAgree(flags: Uint8Array, dim: number, tx: number, ty: number): boolean {
+  const a = flags[ty * dim + tx]!;
+  return flags[ty * dim + tx + 1] === a && flags[(ty + 1) * dim + tx] === a
+    && flags[(ty + 1) * dim + tx + 1] === a;
 }
 
 /** The darkening mask: one byte a tile, `[y * side + x]`, 1 = darkened. */
 export function buildMinimapMask(input: MaskInput): Uint8Array {
   const { side, plane, dim, objects } = input;
   const mask = new Uint8Array(side * side);
-  // `0x9EBAE0` — does big water cover this tile? It walks the tile's texture
-  // layers, keeps the ones whose `Type` is 0x0B (`TT_BIG_WATER`) and tests that
-  // layer's mask at the tile's FOUR CORNER vertices. `0x9EC570` reaches it and
-  // answers kind 2, which sets the bit. Whether the test is "painted at all" or
-  // "painted past a threshold" the two maps cannot separate: on both, every
-  // corner the layer touches at all it touches at 0x80 or more.
-  const bigWater = (input.layers ?? []).filter((l) => l.type === 'TT_BIG_WATER');
+  const layers = input.layers ?? [];
+  const flags = input.flags;
   for (let y = 0; y < side; y++) {
     for (let x = 0; x < side; x++) {
       // `0x9EBCB0`: the plane reads 0 -> kind 3 -> the bit is set.
       if (plane[y * dim + x] === 0) mask[y * side + x] = 1;
-      else if (bigWater.some((l) => l.mask[y * dim + x]! > 0 || l.mask[y * dim + x + 1]! > 0
-        || l.mask[(y + 1) * dim + x]! > 0 || l.mask[(y + 1) * dim + x + 1]! > 0)) {
-        mask[y * side + x] = 1;
-      }
+      else if (bigWaterCovers(layers, dim, x, y)) mask[y * side + x] = 1;
+      // `0x9EB9E0` — do the tile's four ground-flag corners DIFFER? Kind 3
+      // again. Uniform 16 makes it dead on a surface floor; underground the
+      // carve's bytes change at every rock edge and ramp, and the arm draws the
+      // shading around every cave wall.
+      else if (flags && !cornersAgree(flags, dim, x, y)) mask[y * side + x] = 1;
     }
   }
   for (const obj of objects) {

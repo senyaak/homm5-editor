@@ -15,6 +15,12 @@
 // building cannot. On the reference run that is exactly the engine's list —
 // 2 towns, 18 mines and the 2 dwellings, and none of the 39 buildings.
 //
+// The SECOND list was named here and not ported, on the reasoning that the
+// reference's list was complete. It is complete for a ONE-LEVEL map: the
+// subterranean gates are what a second level adds, and a two-level order puts
+// two of them on the surface and two below. Left out, they cost two icon-sized
+// holes per floor — which is what they cost, until a two-level map was diffed.
+//
 // The NAME is `sprintf`ed and looked up by string in the `SWindowRelated`
 // resource `UI/AdventureScreen-FPP-2/MinimapTextures.(WindowRelatedTextures)
 // .xdb`: `Town_%d` when the shared answers `[vtbl+0x3C]`, else `Mine_%d` when
@@ -76,7 +82,26 @@ export function iconNameFor(shared: string, owner: number, buildingType = ''): s
   if (shared.includes('AdvMapDwellingShared')) {
     return UNFLAGGABLE_DWELLINGS.has(buildingType) ? null : `Object_${owner}`;
   }
+  // The SECOND list, and the RMG fills it the moment a map has two levels: a
+  // `SAdvMapBuildingShared` whose `Type` is 0x27, `BUILDING_SUBTERRA_GATE`.
+  // Both halves of a pair carry it — `Subterranean_Gate_In` and `_Out` are two
+  // documents with the one type — and the icon has no owner in its name.
+  if (buildingType === 'BUILDING_SUBTERRA_GATE') return 'UnderworldExitEnter';
+  // The third list is `Type` 0x63 and 0x64, the two campaign citadels drawn as
+  // `Town_1`. No template places one, so the port names it and stops there.
   return null;
+}
+
+/**
+ * Which of the drawer's THREE loops an icon belongs to — the order they land in.
+ *
+ * `0xDD00E0` collects into three lists and the drawer drains them one after
+ * another, so a gate is stamped over a mine that shares its pixels and never
+ * under it. Within a list the collection order is the world's, which is the
+ * order the port's run holds.
+ */
+export function iconList(name: string): number {
+  return name === 'UnderworldExitEnter' ? 1 : 0;
 }
 
 /**

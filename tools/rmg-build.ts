@@ -25,8 +25,10 @@ import { buildRmgTexts } from '../src/rmg/emit-texts.ts';
 import { MAP_SIZES } from '../src/rmg/create-map.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import { drawMinimap } from '../src/rmg/minimap.ts';
-import { drawIconLayer, iconNameFor, loadMinimapIcons, type IconObject } from '../src/rmg/minimap-icons.ts';
-import { buildMinimapMask } from '../src/rmg/minimap-mask.ts';
+import {
+  drawIconLayer, iconList, iconNameFor, loadMinimapIcons, type IconObject,
+} from '../src/rmg/minimap-icons.ts';
+import { bigWaterCovers, buildMinimapMask } from '../src/rmg/minimap-mask.ts';
 import { readTileInfo } from '../src/rmg/preset-table.ts';
 import {
   fillTerrain, makeRiverPlane, paintLakes, paintRoads, paintSeaCorners, paintWaterMarks, stampZoneLakeRiver,
@@ -137,12 +139,18 @@ export function replayTerrain(dataRoot: string, run: FullRun): {
 /** One floor's minimap, both files. */
 function minimapFiles(
   dataRoot: string, run: FullRun, floor: number, layers: readonly TerrainLayer[],
-  sine: EngineSine, icons: ReturnType<typeof loadMinimapIcons>,
+  river: { w: number; data: Uint8Array }, sine: EngineSine, icons: ReturnType<typeof loadMinimapIcons>,
 ): MapFile[] {
   const c = run.c;
   const side = c.size, border = 1, dim = c.size + 1;
+  // The ground flags: the constructor's uniform 16 on the surface, the massif
+  // carve's byte grid below. The pass leaves a tile over 0x15 black, and the
+  // mask's corner arm reads the same plane.
+  const flags = floor === 0
+    ? new Uint8Array(dim * dim).fill(16)
+    : run.vertexHeights[floor]!.bytes;
   const mask = buildMinimapMask({
-    side, plane: run.passability[floor]!, dim, layers,
+    side, plane: run.passability[floor]!, dim, layers, flags,
     objects: run.objects.filter((o) => o.floor === floor).map((o) => ({
       x: o.x, y: o.y, rot: o.rot, floor: o.floor,
       blocked: o.blocked.length || !o.shared ? o.blocked : c.footprint(o.shared).blocked,
@@ -158,8 +166,26 @@ function minimapFiles(
     const foot = c.footprint(o.shared);
     iconObjects.push({ x: o.x, y: o.y, rot: o.rot, blocked: foot.blocked, active: foot.active, name });
   }
+  // The drawer drains its three lists one after another, so the gates go over
+  // the flaggable ones wherever they share a pixel. `sort` is stable, which
+  // keeps each list in the world order the run holds.
+  iconObjects.sort((a, b) => iconList(a.name) - iconList(b.name));
+  // A masked tile the halving spares: wet by the river half-grid and not under
+  // big water. See the note in `minimap.ts` — the rule is fitted to four maps.
+  //
+  // THE RIVER PLANE IS THE SURFACE'S. The generator stamps one, from floor 0's
+  // lakes and its sea, and an underground floor has none — its terrain carries
+  // its own, empty. Handing the surface's plane to the floor below spares
+  // thirteen cave tiles that happen to sit under the surface lake, which is
+  // what it did until a two-level map was diffed.
+  const spared = floor > 0 ? undefined : (tx: number, ty: number): boolean => {
+    const cx = tx < 0 ? 0 : tx > side - 1 ? side - 1 : tx;
+    const cy = ty < 0 ? 0 : ty > side - 1 ? side - 1 : ty;
+    return river.data[(2 * cy + 1) * river.w + (2 * cx + 1)]! > 0x8c
+      && !bigWaterCovers(layers, dim, tx, ty);
+  };
   const image = drawMinimap(
-    { side, border, layers, dim, masked: (tx, ty) => mask[ty * side + tx] === 1 },
+    { side, border, layers, dim, masked: (tx, ty) => mask[ty * side + tx] === 1, spared, flags },
     drawIconLayer(iconObjects, icons, side, border), sine);
   // The port keeps the engine's byte order; writeDDS takes RGBA and stores BGRA.
   const rgba = new Uint8Array(image.data.length);
@@ -271,7 +297,7 @@ export function buildMapFiles(
     const sine = readEngineSine(exePath);
     const icons = loadMinimapIcons(dataRoot);
     for (let f = 0; f < c.floors.length; f++) {
-      files.push(...minimapFiles(dataRoot, run, f, layers[f]!, sine, icons));
+      files.push(...minimapFiles(dataRoot, run, f, layers[f]!, river, sine, icons));
     }
   }
   return files;
