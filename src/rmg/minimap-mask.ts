@@ -20,14 +20,21 @@
 // move. By the time the minimap is drawn the mask therefore holds the
 // objects that are standing, which for a generated map is all of them.
 //
-// The other arms `0xA4F6D0` feeds are all inactive on RMG output and are
-// named rather than ported: the border ring, `terrain[+0x6C] == 0` (that one
-// IS live — it is the passability plane below), all four ground-flag corners
-// zero, big water over the tile, the river half-grid, and a `TT_NONE` tile.
-// A generated floor's flags are a uniform 16 everywhere, so only the plane
-// and the objects speak.
+// The other arms `0xA4F6D0` feeds are the border ring, `terrain[+0x6C] == 0`
+// (that one IS live — it is the passability plane below), all four ground-flag
+// corners zero, BIG WATER over the tile, the river half-grid, and a `TT_NONE`
+// tile. A generated floor's flags are a uniform 16 everywhere, so the flag
+// arms cannot fire — but the big-water one can, and does: it was called
+// inactive because the reference template paints no water layer at all, which
+// is a fact about one template and not about the arm. Two maps that do have
+// one — a lava LAKE, which the generator paints as `TT_BIG_WATER` with a lava
+// texture, and an ordinary `-water 2` sea — put 8 and 26 tiles outside the
+// plane-and-objects mask, and the engine's own mask dump has every one of them.
+//
+// So three arms speak: the plane, the objects, and big water.
 
 import { rotateOffsets } from './heights.ts';
+import type { TerrainLayer } from './terrain.ts';
 import type { Offset } from './town-data.ts';
 
 /** One object as the mask reads it: where it stands and what it blocks. */
@@ -51,16 +58,32 @@ export interface MaskInput {
   dim: number;
   /** Every object standing on this floor. */
   objects: readonly MaskObject[];
+  /**
+   * The floor's texture layers — only the `TT_BIG_WATER` ones are read.
+   * A floor that has none (the reference template is one) needs no list.
+   */
+  layers?: readonly TerrainLayer[];
 }
 
 /** The darkening mask: one byte a tile, `[y * side + x]`, 1 = darkened. */
 export function buildMinimapMask(input: MaskInput): Uint8Array {
   const { side, plane, dim, objects } = input;
   const mask = new Uint8Array(side * side);
+  // `0x9EBAE0` — does big water cover this tile? It walks the tile's texture
+  // layers, keeps the ones whose `Type` is 0x0B (`TT_BIG_WATER`) and tests that
+  // layer's mask at the tile's FOUR CORNER vertices. `0x9EC570` reaches it and
+  // answers kind 2, which sets the bit. Whether the test is "painted at all" or
+  // "painted past a threshold" the two maps cannot separate: on both, every
+  // corner the layer touches at all it touches at 0x80 or more.
+  const bigWater = (input.layers ?? []).filter((l) => l.type === 'TT_BIG_WATER');
   for (let y = 0; y < side; y++) {
     for (let x = 0; x < side; x++) {
       // `0x9EBCB0`: the plane reads 0 -> kind 3 -> the bit is set.
       if (plane[y * dim + x] === 0) mask[y * side + x] = 1;
+      else if (bigWater.some((l) => l.mask[y * dim + x]! > 0 || l.mask[y * dim + x + 1]! > 0
+        || l.mask[(y + 1) * dim + x]! > 0 || l.mask[(y + 1) * dim + x + 1]! > 0)) {
+        mask[y * side + x] = 1;
+      }
     }
   }
   for (const obj of objects) {

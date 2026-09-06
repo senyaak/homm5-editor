@@ -302,14 +302,30 @@ twenty-two templates.
    belonged to the save path; the monster level is the fifth item below. **The
    whole reference `.h5m` is now byte-identical, all 17 entries.**
 
-   One thing the minimap work turned up is NOT a debt of the port and is worth
-   writing down: **the console command's minimap is not the picture a dialog
-   SAVE writes.** Ordering the reference twice, once each way, gives two files
-   that differ in about 1,270 pixels — five clusters, each roughly an icon,
-   all in one corner of the map. The port reproduces the SAVE's, which is what
-   every reference is. Why the command's differs is unread, and it is why the
-   sweep orders `-pokeb 148 0`: with the minimap off the question does not
-   arise, and with it on `rmg-diff-map` will report that one entry.
+   This entry used to carry a second claim, and the claim was WRONG. It said
+   the console command's minimap is not the picture a dialog SAVE writes —
+   about 1,270 pixels apart, five clusters each roughly an icon, all in one
+   corner — and left the reason unread. The reference has now been ordered
+   through the console with the minimap ON, and its `minimap_floor_01.dds` is
+   **byte-identical to the SAVE's**, md5 and all: the two paths draw the same
+   picture. The 1,270 pixels were the PORT's, on a template the reference
+   never tested, and they were two things:
+
+   - **the mask's big-water arm, which the port did not have.** `0x9EBAE0`
+     asks whether a `TT_BIG_WATER` layer covers the tile, tested at its four
+     corner vertices, and `0x9EC570` turns that into a set bit. It was written
+     down as inactive because the reference paints no water layer — a fact
+     about one template, not about the arm.
+   - **a water exemption the port had and the engine does not use.** The pass
+     was ported as `mask(tx, ty) and not 0x9EC3C0(tx, ty)`. The reference
+     cannot test that term (its river plane is empty on all 9,216 tiles), and
+     the two maps that can say it never fires.
+
+   With the arm added and the exemption dropped, three engine-generated maps
+   come out byte-identical including the minimap — the reference, a lava-lake
+   template and a `-water 2` sea (see "The minimap's water arms"). `-pokeb 148
+   0` is no longer needed to keep a sweep clean; it stays a way to make one
+   cheaper.
 
 4. **Water, as a second dimension — DONE.** `-water 2` orders it, both seeds
    are swept, and **all 88 orders across the four sweeps** (two dry, two water)
@@ -1779,7 +1795,8 @@ blits and the resampler's arguments. One run:
 - **the halving rule is exact.** "Darkened exactly when the mask bit is
   set" holds for 8836 tiles of 8836. Tile for tile, not sampled through a
   resample. (The water exemption is not exercised here — this template
-  has none.)
+  has none, and there turned out to be no exemption to exercise: see
+  "The minimap's water arms".)
 - **the resample is the engine's own statement**: `dst 256 256, src 94 94,
   filter 6` for the terrain layer and `256 256, 256 256, filter 6` for the
   icon layer, which is the equal-size early exit taken as a copy.
@@ -1813,7 +1830,13 @@ list and then contradicted it:
   winning layer's `Type` or 9 (`TT_NONE`) when the point is out of bounds
   or no layer wins at all.
 
-On the run's map every one of those is inactive. The seven painted layers
+On the run's map every one of those is inactive — **on the run's map**, which
+is the whole of what the paragraph below establishes, and it was later read as
+though it were a statement about the arms themselves. It is not: the big-water
+one wakes up on the first template that paints a water layer. See "The
+minimap's water arms".
+
+The seven painted layers
 are Sand-Dunes, Sand_Cracked, Dead_Land, Lava, DarkGround, SandRoad and
 LavaRoad — no `TT_BIG_WATER` among them; the flags are uniformly 16, so
 neither the all-zero corners nor `0x9EB9E0` nor `0x9EBAC0` can fire; no
@@ -1890,6 +1913,65 @@ the darkening.
 Proven: every address, offset and arithmetic step above is read out of
 `bin/H5_Game_H5E.exe`, and the four points above are measured off the
 reference file.
+
+### The minimap's water arms
+
+Everything above was measured on the reference, and the reference is a dry
+inland template: no water layer, an empty river plane. Two statements were
+carried over from it as though they were about the drawer rather than about
+that one map, and both were wrong.
+
+**The claim that started it.** The same seed ordered through the console and
+saved from the dialog appeared to give two different pictures — about 1,270
+pixels, five icon-sized clusters in one corner — and the difference was
+filed as "the console path draws something else", with the icons as the
+suspect. It was neither. Ordering the REFERENCE through the console with the
+minimap on gives a `minimap_floor_01.dds` byte-identical to the SAVE's, so
+the two paths draw the same picture; and the icons were never in it, because
+the probe's `mm icon` / `mm blit at` lines and the port's list agree on all
+32 names, in order, to the pixel. The 1,270 pixels were the port's, on a
+lava-lake template the reference does not resemble, and they decompose
+exactly: **38 tiles the port refused to darken and 8 it did not know to
+darken.**
+
+**The 8: `0x9EBAE0` is a live arm.** It walks the tile's texture layers,
+keeps the ones whose `Type` is 0x0B (`TT_BIG_WATER`) and tests that layer's
+mask at the tile's FOUR CORNER vertices; `0x9EC570` answers kind 2 on it and
+the bit is set. The reference paints no water layer, so the arm was written
+down as inactive — a fact about one template. A lava LAKE is painted as
+`TT_BIG_WATER` with a lava texture over it (its `MinimapColor` is the orange
+`(1, 0.286, 0.110)`, which is why the differing pixels were all one colour),
+and so is an ordinary sea. Added to the port, the mask matches the probe's
+own dump at **9,216 tiles of 9,216, none either way** — the same standard the
+plane-and-objects mask was held to. What the two maps cannot separate is
+whether the corner test is "painted at all" or "painted past a threshold":
+every corner either layer touches, it touches at 0x80 or more.
+
+**The 38: there is no water exemption.** The pass was ported as
+`mask(tx, ty) and not 0x9EC3C0(tx, ty)` — the shipyard's water test, which
+on a generated surface collapses to the river half-grid's centre cell above
+0x8C. On the reference the river plane is empty on all 9,216 tiles, so that
+term is a constant false and the file is byte-identical with it or without
+it. Two maps put tiles under it — 38 on the lava lake, 26 on the sea — and
+the engine halves every one of them. Dropped, both maps come out
+byte-identical; kept, they do not. What stays open is WHY: either the pass
+does not consult that predicate, or the engine's river half-grid is not the
+port's at minimap time. Nothing the port writes turns on the answer, and
+`shipyards.ts` keeps the river reading it was measured with.
+
+**Checked, with the fix off as well as on.**
+
+| order (all `-seed 1785351845 -size 1 -resource 1 -exp 1`) | arm off, exemption on | arm on, exemption off |
+| --- | --- | --- |
+| `S1P2Z2M1` (the reference, dry) | 0 bytes | 0 bytes |
+| `S1P2Z3K5.1` (a lava lake) | 3,184 bytes | **0 bytes** |
+| `S0-1P2Z2K3.1T -water 2` (a sea) | 2,638 bytes | **0 bytes** |
+
+Each half alone leaves the map red — the arm without the drop lands at 2,015
+and 1,571 bytes, the drop without the arm at 1,851 and 1,516 — so neither is
+an alibi for the other. `rmg-diff-map` now reports **15 of 15** on all three,
+minimap included, and `tools/test-rmg-minimap.ts` says in its own output that
+it is blind to this arm, because the reference is.
 
 **The icons are the game's own art, copied pixel for pixel.** `0xDD00E0`
 first collects the objects worth an icon, and the drawer then runs a loop
@@ -2459,11 +2541,11 @@ built.
 
 **With them said, the batch reproduces the reference exactly.** The same order
 with `-resource 1 -exp 1` lands on **92438**, the reference's own count, and
-`rmg-diff-map` puts the port's map against the engine's at **13 of 15 entries
-byte-identical** — `GroundTerrain.bin` among them — with the minimap and one
-numbering difference left. (The minimap's own ten bytes are closed; what the
-CLI-ordered run's minimap still differs by is a different question, and the
-plan's third item has it.) The numbering is the port's:
+`rmg-diff-map` puts the port's map against the engine's at **15 of 15 entries
+byte-identical**, `GroundTerrain.bin` and the minimap among them. It read 13 of
+15 when this was written, the two being the minimap and a numbering difference;
+the minimap's is closed in "The minimap's water arms" and the numbering is
+taken from the map under test. The numbering was the port's:
 the engine's CLI-ordered run emits two caption texts and calls the objectives'
 `caption-text-0/1`, while the port, fitted to a dialog-ordered reference that
 emitted two more before them, calls the same two `caption-text-2/3`. The

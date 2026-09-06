@@ -19,7 +19,7 @@
 //         colour = 0xFF<<24 | trunc(rec.minimapColor.x * 255) << 16
 //                           | trunc(rec.minimapColor.y * 255) << 8
 //                           | trunc(rec.minimapColor.z * 255)
-//   if mask(tx, ty) and not water(tx, ty):  R, G, B >>= 1
+//   if mask(tx, ty):                      R, G, B >>= 1
 //
 // The multiplier is the float 255.0 at `0xF4A1E8` and the convert `0x949FF0`
 // is `cvttss2si` — truncation, which is why Water.xdb's 0.00784314 comes out
@@ -36,8 +36,22 @@
 // `0x9ED7D0`, a bilinear sample of the layer's byte mask at the tile CENTRE
 // with each byte widened `b >= 0x80 ? 0xFF : b * 2`.
 //
-// THE DARKENING MASK is the passability plane plus the tiles the map's
-// objects occupy — see [`minimap-mask.ts`](minimap-mask.ts).
+// THE DARKENING MASK is the passability plane, the tiles the map's objects
+// occupy and the tiles big water covers — see [`minimap-mask.ts`](minimap-mask.ts).
+//
+// THERE IS NO WATER EXEMPTION. The pass was ported with a second condition —
+// `and not 0x9EC3C0(tx, ty)`, the shipyard's water test — on the reading that a
+// water tile is never darkened. The reference cannot test it: its river plane
+// is empty on all 9,216 tiles, so the term is a constant false there and any
+// value of it keeps the file byte-identical. Two maps that DO test it say the
+// term never fires. A lava lake puts 38 masked tiles over the river's 0x8C
+// threshold and the engine halves every one; a `-water 2` sea puts 26 more, and
+// with the exemption in place the port left both bright. Dropped, both maps come
+// out byte-identical, and the reference is untouched either way. What that
+// leaves open is WHY: either the pass does not consult that predicate at all, or
+// the engine's river half-grid is not the port's at minimap time. Nothing the
+// port writes depends on which — `shipyards.ts` keeps the river reading it was
+// measured with, on maps where shipyards are placed.
 
 import type { EngineSine } from '../exe/sine-table.ts';
 import { lanczos3, resampleFiltered, type Bitmap } from './resample.ts';
@@ -126,8 +140,6 @@ export interface MinimapFloor {
   dim: number;
   /** Is this tile darkened? The mask of [`minimap-mask.ts`](minimap-mask.ts). */
   masked: (tx: number, ty: number) => boolean;
-  /** `0x9EC3C0`, the shipyard's water test — a water tile is never darkened. */
-  water?: (tx: number, ty: number) => boolean;
 }
 
 /** `0xDD0660` — the N x N terrain layer, BGRA, one pixel per playable tile. */
@@ -148,7 +160,7 @@ export function drawTerrainLayer(floor: MinimapFloor): Bitmap {
         g = Math.trunc(Math.fround(Math.fround(cg) * 255));
         b = Math.trunc(Math.fround(Math.fround(cb) * 255));
       }
-      if (floor.masked(tx, ty) && !(floor.water?.(tx, ty) ?? false)) {
+      if (floor.masked(tx, ty)) {
         b >>= 1; g >>= 1; r >>= 1;
       }
       data[at] = b;

@@ -137,12 +137,12 @@ export function replayTerrain(dataRoot: string, run: FullRun): {
 /** One floor's minimap, both files. */
 function minimapFiles(
   dataRoot: string, run: FullRun, floor: number, layers: readonly TerrainLayer[],
-  river: { w: number; data: Uint8Array }, sine: EngineSine, icons: ReturnType<typeof loadMinimapIcons>,
+  sine: EngineSine, icons: ReturnType<typeof loadMinimapIcons>,
 ): MapFile[] {
   const c = run.c;
   const side = c.size, border = 1, dim = c.size + 1;
   const mask = buildMinimapMask({
-    side, plane: run.passability[floor]!, dim,
+    side, plane: run.passability[floor]!, dim, layers,
     objects: run.objects.filter((o) => o.floor === floor).map((o) => ({
       x: o.x, y: o.y, rot: o.rot, floor: o.floor,
       blocked: o.blocked.length || !o.shared ? o.blocked : c.footprint(o.shared).blocked,
@@ -158,14 +158,8 @@ function minimapFiles(
     const foot = c.footprint(o.shared);
     iconObjects.push({ x: o.x, y: o.y, rot: o.rot, blocked: foot.blocked, active: foot.active, name });
   }
-  // `0x9EC3C0`, the shipyard's water test — a water tile is never darkened.
-  const water = (tx: number, ty: number): boolean => {
-    const cx = tx < 0 ? 0 : tx > side - 1 ? side - 1 : tx;
-    const cy = ty < 0 ? 0 : ty > side - 1 ? side - 1 : ty;
-    return river.data[(2 * cy + 1) * river.w + (2 * cx + 1)]! > 0x8c;
-  };
   const image = drawMinimap(
-    { side, border, layers, dim, masked: (tx, ty) => mask[ty * side + tx] === 1, water },
+    { side, border, layers, dim, masked: (tx, ty) => mask[ty * side + tx] === 1 },
     drawIconLayer(iconObjects, icons, side, border), sine);
   // The port keeps the engine's byte order; writeDDS takes RGBA and stores BGRA.
   const rgba = new Uint8Array(image.data.length);
@@ -277,7 +271,7 @@ export function buildMapFiles(
     const sine = readEngineSine(exePath);
     const icons = loadMinimapIcons(dataRoot);
     for (let f = 0; f < c.floors.length; f++) {
-      files.push(...minimapFiles(dataRoot, run, f, layers[f]!, river, sine, icons));
+      files.push(...minimapFiles(dataRoot, run, f, layers[f]!, sine, icons));
     }
   }
   return files;

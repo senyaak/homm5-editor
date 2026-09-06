@@ -68,12 +68,22 @@ for (let f = 0; f < c.floors.length; f++) {
 // The mask: the passability plane's zeros plus every object's blocked
 // footprint, the statics' read off their shared documents.
 const mask = buildMinimapMask({
-  side, plane: r.passability[0]!, dim,
+  side, plane: r.passability[0]!, dim, layers: floors[0]!,
   objects: r.objects.filter((o) => o.floor === 0).map((o) => ({
     x: o.x, y: o.y, rot: o.rot, floor: o.floor,
     blocked: o.blocked.length || !o.shared ? o.blocked : c.footprint(o.shared).blocked,
   })),
 });
+// WHAT THIS SUITE CANNOT SEE, said out loud so the green is not read as more
+// than it is. The mask's third arm is big water over the tile, and this
+// template paints no water layer at all — so the arm is inert here and a
+// suite that only runs the reference would stay green with it deleted. It is
+// checked by `rmg-diff-map` against an engine-generated map that HAS one:
+// `RMG/Templates/S0-1P2Z2K3.1T.xdb -seed 1785351845 -size 1 -resource 1
+// -exp 1 -water 2` for a sea, and `S1P2Z3K5.1` on the same seed for a lava
+// lake, which is `TT_BIG_WATER` with a lava texture over it.
+check('this template exercises no water arm, so the suite is blind to it — see the note above',
+  floors[0]!.every((l) => l.type !== 'TT_BIG_WATER'));
 
 const iconObjects: IconObject[] = [];
 for (const o of r.objects) {
