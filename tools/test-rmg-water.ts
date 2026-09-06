@@ -310,7 +310,7 @@ check('the island run closes on the traced 65421 — the WHOLE run', c.rng.draws
 console.log('\nthe terrain, land then water then roads');
 
 const transitive = c.params.defaultTransitiveTile ? readTileInfo(dir, c.params.defaultTransitiveTile) : null;
-const layers = fillTerrain(c.size, c.size, c.loaded.zones, [c.water!.gridBeforeCarve], c.presets, transitive)[0]!;
+const layers = fillTerrain(c.size, c.size, c.loaded.zones, [c.gridAtFillTerrain[0]!], c.presets, transitive)[0]!;
 const deepWaterBottom = c.params.deepWaterBottom ? readTileInfo(dir, c.params.deepWaterBottom) : null;
 const deepWaterTile = c.params.deepWaterTile ? readTileInfo(dir, c.params.deepWaterTile) : null;
 for (const [zi, zoneMarks] of c.water!.marks) {

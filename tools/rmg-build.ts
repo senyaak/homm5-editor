@@ -98,9 +98,12 @@ export function replayTerrain(dataRoot: string, run: FullRun): {
 } {
   const c = run.c;
   const transitive = c.params.defaultTransitiveTile ? readTileInfo(dataRoot, c.params.defaultTransitiveTile) : null;
+  // ALWAYS the FillTerrain-time grid, water or not: the later one has the
+  // dist-to-towns pass's -2 over a zone's unreachable tiles, and a vertex whose
+  // zone does not resolve is skipped rather than painted.
   const layers = c.water
-    ? [fillTerrain(c.size, c.size, c.loaded.zones, [c.water.gridBeforeCarve], c.presets, transitive)[0]!]
-    : fillTerrain(c.size, c.size, c.loaded.zones, c.floors.map((f) => f.grid), c.presets, transitive);
+    ? [fillTerrain(c.size, c.size, c.loaded.zones, [c.gridAtFillTerrain[0]!], c.presets, transitive)[0]!]
+    : fillTerrain(c.size, c.size, c.loaded.zones, c.gridAtFillTerrain, c.presets, transitive);
   if (c.water) {
     const deepWaterBottom = c.params.deepWaterBottom ? readTileInfo(dataRoot, c.params.deepWaterBottom) : null;
     const deepWaterTile = c.params.deepWaterTile ? readTileInfo(dataRoot, c.params.deepWaterTile) : null;

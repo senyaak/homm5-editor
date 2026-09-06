@@ -141,12 +141,6 @@ export interface Chain {
     /** The carve's terrain 200-marks per zone, in carve order — for paintWaterMarks. */
     marks: Map<number, WaterMark[]>;
     /**
-     * Floor 0's zone grid BEFORE the carve — FillTerrain runs earlier than
-     * the water border (0xEABA33 vs 0xEABB1D), so its vertex walk must see
-     * the un-carved zones; the carved grid only serves the road painter.
-     */
-    gridBeforeCarve: Int32Array[];
-    /**
      * The river plane, stamped and blurred per zone inside the carve
      * (0xECF080 reads the border AS ADJUSTED at that moment — the
      * connections dent it later, so the plane can't be replayed after
@@ -158,6 +152,13 @@ export interface Chain {
   conn: ConnectionsResult;
   /** The teleport pass's objects, per zone — empty on the surface run. */
   teleports: Map<number, PlacedTeleport[]>;
+  /**
+   * Per floor, the zone grid AS FILLTERRAIN SAW IT — before the dist-to-towns
+   * pass disowned anything and before the water carve took the rim. The terrain
+   * paints replay after the chain, so this is the grid they must read; see
+   * where it is taken.
+   */
+  gridAtFillTerrain: Int32Array[][];
   /** Per floor: the zone grid, border table, occupancy and room grid. */
   floors: Array<{ grid: Int32Array[]; border: Int32Array[]; occ: Uint8Array; room: Int32Array[] }>;
   /** Floor 0's zone grid, border table and occupancy. */
@@ -255,6 +256,16 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     zoneLists.set(z.index, zoneTiles(size, filled.floors[z.floor] ?? filled.floors[0]!, z.index));
   }
   const distances = calcBorderTiles(size, size, filled.floors);
+  // FILLTERRAIN RUNS HERE, between CalcBorderTiles and PlaceTowns, so its
+  // vertex walk sees the grid as it stands at this moment. Two later passes
+  // dent it - FillDistToTowns writes -2 over a zone's unreachable tiles, the
+  // water carve takes the rim - and the paints replay long after the chain has
+  // finished, so the grid they read has to be kept rather than re-read. Feeding
+  // them the LATER grid paints nothing over a disowned pocket, because the
+  // vertex walk skips a cell whose zone no longer resolves: on `S3-5P4Z12B4`
+  // that cost 31 bytes of `GroundTerrain.bin` at (70..74, 79..83), and on
+  // `S1-3P2Z7V3` 10 more.
+  const gridAtFillTerrain = filled.floors.map((f) => f.map((row) => Int32Array.from(row)));
   const townResult = placeTowns({
     size, template, zones: loaded.zones, floors: filled.floors, distances,
     radii: new Map(placed.zones.map((z) => [z.index, z.r])),
@@ -271,7 +282,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     water = {
       depth: waterDepth(8), kept: new Map(), sea: new Map(), waterLedger: new Map(),
       repel: new Map(), treasures: new Map(), shipyards: new Map(),
-      marks: new Map(), gridBeforeCarve: filled.floors[0]!.map((row) => Int32Array.from(row)),
+      marks: new Map(),
       river: makeRiverPlane(size), drawsAfter: 0,
     };
     for (const z of floorIterationOrder(loaded.zones.filter((zz) => zz.floor === 0))) {
@@ -418,7 +429,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
 
   return {
     dir, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
-    teleports, floors, grid, border, occ, room,
+    teleports, floors, grid, border, occ, room, gridAtFillTerrain,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, the
       // teleports' stamps, then the shipyard's. The room computations are

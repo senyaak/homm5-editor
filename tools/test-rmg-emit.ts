@@ -179,7 +179,7 @@ for (const spec of RUNS) {
     // not model; the RMG itself serializes all-ones (docs/RMG.md).
     const transitive = c.params.defaultTransitiveTile ? readTileInfo(dir, c.params.defaultTransitiveTile) : null;
     const floorsLayers = c.water
-      ? [fillTerrain(c.size, c.size, c.loaded.zones, [c.water.gridBeforeCarve], c.presets, transitive)[0]!]
+      ? [fillTerrain(c.size, c.size, c.loaded.zones, [c.gridAtFillTerrain[0]!], c.presets, transitive)[0]!]
       : fillTerrain(c.size, c.size, c.loaded.zones, c.floors.map((f) => f.grid), c.presets, transitive);
     if (c.water) {
       const deepWaterBottom = c.params.deepWaterBottom ? readTileInfo(dir, c.params.deepWaterBottom) : null;

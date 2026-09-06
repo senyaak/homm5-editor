@@ -64,8 +64,9 @@ of every template the port accepts** (`0xECF760` → `heights.ts`,
 `test-rmg-heights`, replaying through the shared full-run driver
 `tools/rmg-run.ts`): every vertex of the surface, island and underground
 floor-0 planes — 24,147 across the three files — bit for bit, and
-**21 of 21 templates of the sweep, on BOTH seeds, BIT-identical** — not
-merely inside a tolerance. The
+**21 of 21 templates of the sweep, on BOTH seeds, BYTE-identical** — every
+entry of every map, not merely the planes and not merely inside a tolerance.
+The
 last debt was two errors in the base field that were only visible
 together — the noise's two indices swapped and the Inferno/Necromancy
 dig switched off on a measurement the swap had corrupted; the story is
@@ -322,24 +323,49 @@ what moved is the record of how it moved. What it says now is under it.
 | the other eleven | `map.xdb` still differed wholesale — the object layer diverged |
 | `S7-22P2-8Z15K2.4c` | the port refuses it: fifteen zones, and the fourteenth would rehash the queue whose order has never been read |
 
-**Where it stands now, measured over BOTH sweeps' 44 maps** (`rmg-diff-map` on
-each):
+**Where it stands now: EVERY map the port accepts is byte-identical, on both
+seeds.** `rmg-diff-map` over both sweeps' 44 orders reports 13 of 13 entries
+identical on 42 of them, and the two it does not report on are the same
+template twice — `S7-22P2-8Z15K2.4c`, which the port refuses (fifteen zones).
+`map.xdb`, `map-tag.xdb`, all eleven texts, both minimap documents and
+`GroundTerrain.bin`: every byte.
 
-- **`map.xdb` is byte-identical on all 44**, entry set included. The last two
-  bytes went with the caption numbering below.
-- **39 of the 44 maps are byte-identical in EVERY entry.** The one-ulp layer
-  that used to sit under this — 28 of the 44, 492 vertices — was one rounding
-  in the relief cone; see "The relief cone: the two builds round it in opposite
-  places". (`rmg-diff-map` exempts one byte of a terrain file, the `0x0e`
-  record's uninitialised payload, which flips between two identical runs of the
-  engine itself.)
-- **What is left is TWO maps, and it is not arithmetic.** `S3-5P4Z12B4` at the
-  first seed (slots 1 and 16 are the same map ordered twice) differs by 31
-  bytes and `S1-3P2Z7V3` at the second by 10, both only in `GroundTerrain.bin`
-  and both the same shape: a blob of a few tiles where the engine paints
-  **Necropolis `DarkGround`** and the port paints a **Haven** tile — `Sand_Stone`
-  on the one, `Grass` on the other. Every other plane of both maps, heights
-  included, is identical.
+(`rmg-diff-map` exempts exactly one byte of a terrain file — the `0x0e`
+record's uninitialised payload, which flips between two identical runs of the
+engine itself.)
+
+Three findings closed the last of it, and each is written up below: the caption
+numbering belongs to the save path rather than to the generator; the relief cone
+is rounded in a different place by each of the two builds; and the terrain
+paints have to read the zone grid AS FILLTERRAIN SAW IT, not as it stands when
+the chain ends.
+
+##### The paints read the grid at the wrong MOMENT
+
+The last two maps to disagree — `S3-5P4Z12B4` at the first seed (31 bytes) and
+`S1-3P2Z7V3` at the second (10) — differed only in `GroundTerrain.bin`, and only
+in a blob of a few tiles where the engine paints a tile and the port paints
+nothing (which then reads as the neighbouring layer keeping its own paint).
+
+Nothing was wrong with the grid: the oracle's `grids` dump for the second of
+them comes back identical, 9,216 of 9,216 cells, the `-2`s included. What was
+wrong was WHEN. FillTerrain runs between `CalcBorderTiles` and `PlaceTowns`, and
+two later passes dent the grid under it — `FillDistToTowns` writes **-2** over
+the tiles a zone cannot reach from its centre, and the water carve takes the rim.
+The paints replay long after the chain has finished, and they were being handed
+the grid as it ENDS. A vertex whose zone no longer resolves is skipped by the
+walk rather than painted, so a disowned pocket comes out blank.
+
+The chain now keeps `gridAtFillTerrain`, a per-floor snapshot taken where
+FillTerrain runs, and every caller of `fillTerrain` reads it. It replaces
+`water.gridBeforeCarve`, which was the same idea reached for one floor and only
+on a water order — two doors to one fact, and the narrower one was the default.
+
+**This pocket had already been paid for once.** The comment on the zone tile
+list names it: `S3-5P4Z12B4` diverged 348 against 346 over "a disowned pocket at
+(71..72, 82) that FillDistToTowns had walled off", and the fix there was to take
+the zone's `+0xCC` where the engine takes it. The terrain consumer was the same
+bug in the same place, found from the other end a month later.
 - Everything else — masks, ground flags, passability, the river plane, the
   minimap documents, all eleven texts, `map-tag.xdb` — is byte-identical
   everywhere.
