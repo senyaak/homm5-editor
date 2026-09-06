@@ -275,7 +275,7 @@ let blockGuards = 0;
 for (const tz of c.template.zones) {
   const centre = c.townResult.centres.get(tz.index);
   const hasTown = Boolean(tz.town && centre);
-  recomputeRoom(c.room, c.size, c.grid, tz.index, roads.get(tz.index)!, c.water!.kept.get(tz.index));
+  recomputeRoom(c.room, c.size, c.grid, tz.index, roads.get(tz.index)!);
   const blocks = buildTreasureBlocks({
     size: c.size, occupancy: c.occ, room: c.room,
     tiles: c.water!.kept.get(tz.index)!,

@@ -103,10 +103,13 @@ export interface FullRun {
 export function runFull(
   dir: string,
   options: ChainOptions = {},
-  onStep?: (label: string, draws: number) => void,
+  // The chain comes with the label so a probe can read a grid AT a boundary:
+  // occupancy and the room are written all through the run, and "what did the
+  // treasure blocks see" is a question about one moment, not about the end.
+  onStep?: (label: string, draws: number, chain: Chain) => void,
 ): FullRun {
   const c = runChain(dir, options);
-  const step = (label: string): void => onStep?.(label, c.rng.draws);
+  const step = (label: string): void => onStep?.(label, c.rng.draws, c);
   step('chain');
 
   const objects: RunObject[] = [];
@@ -475,7 +478,7 @@ export function runFull(
     const fl = c.floors[lz.floor]!;
     const centre = c.townResult.centres.get(tz.index);
     const hasTown = Boolean(tz.town && centre);
-    recomputeRoom(fl.room, c.size, fl.grid, tz.index, roads.get(tz.index)!, c.water?.kept.get(tz.index));
+    recomputeRoom(fl.room, c.size, fl.grid, tz.index, roads.get(tz.index)!);
     const blocks = buildTreasureBlocks({
       size: c.size, occupancy: fl.occ, room: fl.room,
       tiles: c.water?.kept.get(tz.index) ?? c.zoneTileList(tz.index),

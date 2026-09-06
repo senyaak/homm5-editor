@@ -11,7 +11,7 @@ import type { GuardTables } from '../src/rmg/armies.ts';
 import { calcBorderTiles } from '../src/rmg/border-tiles.ts';
 import { zoneConnections } from '../src/rmg/connections.ts';
 import type { ConnectionsResult } from '../src/rmg/connections.ts';
-import { createMap } from '../src/rmg/create-map.ts';
+import { createMap, MAP_SIZES } from '../src/rmg/create-map.ts';
 import { readCreatures } from '../src/rmg/creatures.ts';
 import { fillDistToTowns } from '../src/rmg/dist-to-towns.ts';
 import { placeZoneDwellings } from '../src/rmg/dwellings.ts';
@@ -291,7 +291,13 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   let water: Chain['water'] = null;
   if (setup.water !== 0) {
     water = {
-      depth: waterDepth(8), kept: new Map(), sea: new Map(), waterLedger: new Map(),
+      // THE DEPTH IS THE SIZE'S. It used to be `waterDepth(8)` — out of the
+      // table's range, so it fell through to the 3 that a 96-tile map wants
+      // anyway, and every larger island order carved the wrong ring. With the
+      // index said, a 136-tile order's border table comes back identical to
+      // the engine's; with 3 or 5 instead, 17473 of its 18496 cells differ.
+      depth: waterDepth(MAP_SIZES.indexOf(size as (typeof MAP_SIZES)[number])),
+      kept: new Map(), sea: new Map(), waterLedger: new Map(),
       repel: new Map(), treasures: new Map(), shipyards: new Map(),
       marks: new Map(),
       river: makeRiverPlane(size), drawsAfter: 0,

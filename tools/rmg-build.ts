@@ -22,6 +22,7 @@ import { heightsToFile, latePass } from '../src/rmg/heights.ts';
 import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
 import { buildTerrainFile } from '../src/rmg/emit-terrain.ts';
 import { buildRmgTexts } from '../src/rmg/emit-texts.ts';
+import { MAP_SIZES } from '../src/rmg/create-map.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import { drawMinimap } from '../src/rmg/minimap.ts';
 import { drawIconLayer, iconNameFor, loadMinimapIcons, type IconObject } from '../src/rmg/minimap-icons.ts';
@@ -72,8 +73,8 @@ const TOWN_BY_RACE: Record<number, string> = {
   [RACE.DUNGEON]: 'TOWN_DUNGEON', [RACE.NECROMANCY]: 'TOWN_NECROMANCY', [RACE.INFERNO]: 'TOWN_INFERNO',
   [RACE.DWARF]: 'TOWN_FORTRESS', [RACE.STRONGHOLD]: 'TOWN_STRONGHOLD',
 };
-/** The tile counts the dialog's sizes mean, in the enum's own order. */
-export const MAP_SIZES = [72, 96, 136, 176, 216, 256, 320] as const;
+// The engine's own table, kept where the engine keeps it.
+export { MAP_SIZES };
 const MAP_SIZE_NAMES = [
   'MAP_SIZE_TINY', 'MAP_SIZE_SMALL', 'MAP_SIZE_MEDIUM', 'MAP_SIZE_LARGE',
   'MAP_SIZE_EXTRALARGE', 'MAP_SIZE_HUGE', 'MAP_SIZE_IMPOSSIBLE',

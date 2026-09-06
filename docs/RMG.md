@@ -2409,15 +2409,11 @@ water reference was given.
 ##### The water sweep, first run
 
 Twenty-two orders, the same seed and templates as the dry sweep with `-water 2`
-on each, kept in `bin/rmg-water/`. **Three come out byte-identical** — the
-two-zone `S0-1P2Z2K3.1T`/`.2T` and `S1P2Z2M1` — six are 12 of 13 and the rest
-11 of 13. Where they differ is `map.xdb` (and `GroundTerrain.bin` on some), and
-the differences are IDENTITIES rather than counts: `S0-1P2Z2K3T` places 1079
-objects against the engine's 1079, class for class, and picks different
-artifacts and monsters inside them. That is a draw stream that parts, not a
-structure that does.
+on each, kept in `bin/rmg-water/`. It began at three byte-identical maps and
+**stands at ten**, and the line it stops on is a size: every 96-tile order
+reproduces, every larger one does not.
 
-**One finding so far, and it was hiding behind a convention.** The zone grid at
+**Three findings so far.** The first was hiding behind a convention: the zone grid at
 the roads boundary had 586 cells where the engine says **−2** and the port said
 −1 — the sea tiles the carve leaves ON the zone's `+0xCC` list (adjusted border
 exactly 0) while taking them OUT of the grid. `FillDistToTown` walks the LIST,
@@ -2428,18 +2424,44 @@ a carve happens — which is the "zone's tile LIST is not the zone's tiles" rule
 again, in a place that had never been tested by a carve.
 
 `fillDistToTowns` now takes the list from the caller, and the caller hands it
-the post-carve one. Both grids match after that (`bd` and `zg` identical on the
-island order), and the dry sweep is untouched — the list and the derivation
-agree there by construction, order included.
+the post-carve one, transposed into the grid's own convention. Both grids match
+after that, and the dry sweep is untouched — the list and the derivation agree
+there by construction, order included.
 
-**The one still open** is three tiles. Zone 1's treasure-block growth spends
-one `below(8)` per seed that passes the occupancy, room and town-distance
-gates: the engine spends 1119 of them and the port 1122, and everything before
-draw 63334 agrees. The tile LIST is identical (3987 and 4021 entries, engine
-dump against port, entry for entry), so it is one of the three gates on three
-tiles — and the reading that names which needs the occupancy or the room AT
-THAT MOMENT, which is one boundary later than `grids` dumps them
-("additional objects set", not "roads created").
+**The second was a patch fitted to the island reference, and the three tiles
+above are what named it.** `recomputeRoom` used to give a rim tile — one the
+carve took out of the grid but left on the zone's list — its real distance
+instead of the zoneless 1000, on the reading that the walk is list-driven. It
+is not: `0xEC28E0` reads the ZONE GRID cell by cell (`+0xC4`, `test eax,eax;
+jns`), writes 1000 wherever it is negative, and never touches a list. Those
+three tiles were rim tiles at −2 reading room 1, and they were the three extra
+`below(8)`. With the walk as the engine walks it, `S0-1P2Z2K3T` lands on the
+engine's own **64933 draws** and is byte-identical, and the island reference
+that the patch was fitted to still passes without it.
+
+**The third was a placeholder that a 96-tile map could not see.** The carve's
+sea depth is chosen by the map's SIZE INDEX out of `[2, 3, 4, 5, 7, 8, 10]`,
+and the chain asked for `waterDepth(8)` — out of range, so it fell through to
+the fallback 3, which is what index 1 (96 tiles) wants anyway. Every larger
+island order carved the wrong ring. With the index said, a 136-tile order's
+border table and zone grid come back identical to the engine's; with 3 or 5
+instead, 17,473 of its 18,496 border cells differ. `MAP_SIZES` moved to
+`src/rmg/create-map.ts`, where the table it mirrors lives.
+
+**What is open is the connections block on anything bigger than 96 tiles.**
+`S2-3P2Z7N2` at 136 agrees draw for draw to 66233 and then the engine spends a
+`below(38)` the port does not: it comes right after a `below(143)` placement
+and its two name draws, and the port goes straight on to its next seat instead.
+The engine's block costs 197 draws against the port's 146. Both grids are
+identical going in, so it is a placement the port does not make rather than a
+pool it measures differently — the reading starts at what a 143-pool placement
+is followed by.
+
+(The oracle grew `blocks` for the treasure-block question above: the same four
+grids as `grids`, dumped at "additional objects set" instead of "roads
+created", which is the last boundary before the blocks read the occupancy. It
+is what showed the occupancy and the room were already right, and left the room
+recompute as the only suspect.)
 
 **Four things this cost, each of them a measurement rather than a guess, and
 each of them a trap the next person would fall into.**

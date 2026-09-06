@@ -43,6 +43,12 @@
 // 96×96, index 1.
 
 import type { RmgRandom } from './random.ts';
+
+/**
+ * The engine's size table at `0xff291c` — tile counts in the enum's order, and
+ * the INDEX is what the request carries and what the water depth is chosen by.
+ */
+export const MAP_SIZES = [72, 96, 136, 176, 216, 256, 320] as const;
 import type { RmgTemplate } from './template.ts';
 
 export interface MapRequest {

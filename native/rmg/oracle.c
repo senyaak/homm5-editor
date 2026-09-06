@@ -313,6 +313,22 @@ static int g_rmgStages = 0;
  * `trace`: the zone arrives as `this`.
  */
 static int g_rmgAreas = 0;
+/**
+ * `blocks` in the config: the same four level grids as `grids`, dumped one
+ * boundary LATER — at "additional objects set", the last thing said before the
+ * treasure blocks phase runs.
+ *
+ * WHY A SECOND MOMENT rather than a second dump. Occupancy is written by every
+ * placement, so the roads boundary shows it long before the blocks read it, and
+ * a block's seed gate is exactly an occupancy question: the engine spends one
+ * `below(8)` per tile that passes it, and on an island order it spends three
+ * fewer than this port. The zone tile lists are identical entry for entry, so
+ * the disagreement is in what the two sides think those tiles ARE.
+ *
+ * Same dump, same lines (`zg/oc/bd/rm`), and only one of the two keywords
+ * should be on at a time — the reader takes the last dump in the log.
+ */
+static int g_rmgBlocks = 0;
 static void rmg_dump_plane(const char *prefix, int tag);
 
 /** `ret` — `this` in ecx and nothing on the stack. */
@@ -590,6 +606,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "seed") && read_int(&q, stop, &g_rmgSeed)) g_rmgForceSeed = 1;
     if (take_word(&q, stop, "trace")) g_rmgTrace = 1;
     if (take_word(&q, stop, "grids")) g_rmgGrids = 1;
+    if (take_word(&q, stop, "blocks")) g_rmgBlocks = 1;
     if (take_word(&q, stop, "heights")) g_rmgHeights = 1;
     if (take_word(&q, stop, "stages")) g_rmgStages = 1;
     if (take_word(&q, stop, "areas")) g_rmgAreas = 1;
@@ -1350,6 +1367,9 @@ static char *__cdecl rmg_step_plain(const char *fmt, double secs) {
   // The one boundary where the road lists are complete and the statics have
   // not yet stamped over anything.
   if (g_rmgGrids && rmg_fmt_says(fmt, "roads created")) rmg_dump_grids();
+  // The occupancy the treasure blocks will read: every placement has stamped
+  // and nothing of the blocks has run.
+  if (g_rmgBlocks && rmg_fmt_says(fmt, "additional objects set")) rmg_dump_grids();
   // The last boundary before `0xECF760` runs, and no draw separates the two:
   // the plane here is the constructor fill plus the statics' cones alone.
   if (g_rmgHeights && rmg_fmt_says(fmt, "treasure blocks set")) rmg_dump_heights();

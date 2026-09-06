@@ -59,7 +59,7 @@ export function markPassability(
   const v = size + 1;
   const plane = new Uint8Array(v * v).fill(1);
   for (const zone of zones) {
-    recomputeRoom(room, size, grid, zone.index, zone.points, zone.tiles);
+    recomputeRoom(room, size, grid, zone.index, zone.points);
     for (const [x, y] of zone.tiles) {
       if (room[y]?.[x] === undefined || border[y]?.[x] === undefined) continue;
       const open = zone.water
