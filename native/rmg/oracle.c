@@ -294,10 +294,31 @@ static void rmg_dump_heights(void);
  * Needs `trace` as well, like every dump here.
  */
 static int g_rmgStages = 0;
+/**
+ * `areas` in the config: every zone's tile count, each time the engine counts.
+ *
+ * `CollectOwnTiles` (`0xEB7790` in the game, `0xBFBF50` in the editor) rebuilds
+ * a zone's `+0xCC` list from the grid, and FillZones calls it for every zone at
+ * the tail of every sweep. The NEXT sweep's jitter divides those lengths -
+ * `(+0xD0 - +0xCC) / 8` - against the zones' template Sizes, and that quotient
+ * decides whether a tile is repainted.
+ *
+ * It is the one input the draw trace cannot show. The `gz` pairs name the two
+ * zones a candidate weighs, so a port can check WHICH zones are compared, but
+ * not the numbers the comparison runs on. On `S7-22P2-8Z15K2.4c` that is
+ * exactly what parts: 1796 candidates identical, fourteen verdicts different,
+ * one zone pair, and two areas the port makes exactly equal.
+ *
+ * One line per call, `zc <zone> <tiles>`, so a sweep is a run of them. Needs no
+ * `trace`: the zone arrives as `this`.
+ */
+static int g_rmgAreas = 0;
 static void rmg_dump_plane(const char *prefix, int tag);
 
 /** `ret` — `this` in ecx and nothing on the stack. */
 typedef void(__fastcall *RmgStageFn)(void *self, void *edx);
+typedef void(__fastcall *RmgCollectFn)(void *self, void *edx);
+static RmgCollectFn g_rmgCollectOrig = NULL;
 /** `ret 4` — `this` in ecx and the kernel flag on the stack. */
 typedef void(__fastcall *RmgSmoothFn)(void *self, void *edx, int flag);
 static RmgStageFn g_rmgLatePassOrig = NULL;
@@ -571,6 +592,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "grids")) g_rmgGrids = 1;
     if (take_word(&q, stop, "heights")) g_rmgHeights = 1;
     if (take_word(&q, stop, "stages")) g_rmgStages = 1;
+    if (take_word(&q, stop, "areas")) g_rmgAreas = 1;
     if (take_word(&q, stop, "pass")) g_rmgPass = 1;
     if (take_word(&q, stop, "points")) g_rmgPoints = 1;
     if (take_word(&q, stop, "field")) g_rmgField = 1;
@@ -1149,6 +1171,19 @@ static void rmg_dump_int_grid(const char *prefix, unsigned off) {
  * painter, and whatever those two touch. Without this dump a difference at
  * stage 0 cannot be told from a difference made before stage 0 ran.
  */
+/** CollectOwnTiles, and the length it just built. */
+static void __fastcall rmg_collect_hook(void *self, void *edx) {
+  if (g_rmgCollectOrig) g_rmgCollectOrig(self, edx);
+  {
+    BYTE *zone = (BYTE *)self;
+    if (zone && rmg_readable(zone, 0x140)) {
+      int begin = *(int *)(zone + 0xCC);
+      int end = *(int *)(zone + 0xD0);
+      rmg_log_pair("zc ", *(int *)(zone + 0xEC), begin ? (end - begin) / 8 : 0);
+    }
+  }
+}
+
 static void __fastcall rmg_late_pass_hook(void *self, void *edx) {
   rmg_dump_plane("hs ", 9);
   // The two grids the base field reads, at the moment it reads them.
@@ -1429,6 +1464,16 @@ static int install_rmg_oracle(void) {
     if (patch_call(RMG_ED_SWEEP_CALL_RVA, RMG_ED_SWEEP_TARGET_RVA, &rmg_sweep_hook, "rmg sweeps")) {
       g_rmgSweepFmt = (SweepFmtFn)((BYTE *)GetModuleHandleW(NULL) + RMG_ED_SWEEP_TARGET_RVA);
       rmg_log("FillZones sweeps will be read");
+    }
+    // The areas, when asked: `CollectOwnTiles` itself, since its call site sits
+    // in a FillZones tail this build does not lay out the way the game's does.
+    // Its head is `push ebp; mov ebp,esp; and esp,-8` — six relocation-free
+    // bytes, a whole number of instructions.
+    if (g_rmgAreas) {
+      static const BYTE collectHead[6] = { 0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8 };
+      g_rmgCollectOrig = (RmgCollectFn)detour(0x7FBF50u, collectHead, 6,
+                                              &rmg_collect_hook, "rmg zone areas");
+      rmg_log(g_rmgCollectOrig ? "zone areas will be read" : "zone areas did NOT take");
     }
     // The step boundaries — the same formatter, reached from thirty-four more
     // places. Each site is patched on its own and each refusal names itself:

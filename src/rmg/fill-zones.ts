@@ -155,6 +155,13 @@ export function fillZones(
   twoFloors: boolean,
   rng: RmgRandom,
   spy?: FillZonesSpy,
+  /**
+   * Run a case the refusal below covers anyway. FOR READING THE DIVERGENCE, and
+   * for nothing else: what comes out is not the engine's map, which is exactly
+   * why the refusal exists. `rmg-diff-draws` and the probes under `_tmp` set it
+   * so the disagreement can be measured; no path that WRITES a map does.
+   */
+  runUnreconciled = false,
 ): FilledZones {
   const floorCount = twoFloors ? 2 : 1;
   // The engine checks the jitter's 6-tile margin against the dimensions
@@ -191,6 +198,32 @@ export function fillZones(
           if (z.r > d) { grid[a]![b] = z.index; break; }
         }
       }
+    }
+  }
+
+  // A FLOOR OF MORE THAN THIRTEEN ZONES IS UNRECONCILED TERRITORY, and the
+  // refusal is a statement about evidence rather than about mechanism.
+  //
+  // Exactly one shipped template reaches it, `S7-22P2-8Z15K2.4c` with fifteen
+  // zones on one floor, and it does not reproduce: 33 sweeps match the engine
+  // draw for draw and the 34th spends 394 jitter draws against this port's 380.
+  // The candidates are identical - all 1796, own and best - so the grids agree
+  // everywhere a candidate can see; the fourteen tiles that differ all hang on
+  // zones 2 and 6, both Size 10, whose areas come out of sweep 33 EXACTLY equal
+  // here (4269 apiece) and unequal in the engine. Where that tile hides is
+  // known - the grow branch and the six-tile edge band emit no GetZone pair, so
+  // the candidate stream cannot see them - but which tile it is has not been
+  // read yet.
+  //
+  // The threshold is thirteen because that is where the container rehashes and
+  // therefore where every reconciled run stops: it is the edge of the evidence,
+  // not a claim that the rehash is the cause. The port refuses rather than hand
+  // back a map that is not the engine's - a wrong map is worse than none.
+  for (const zones of byFloor) {
+    if (zones.length > 13 && !runUnreconciled) {
+      throw new Error(`fillZones: ${zones.length} zones on one floor — no run past thirteen`
+        + ' has ever been reconciled, and the one shipped template that reaches it diverges'
+        + ' in sweep 34 over areas this port cannot check against the engine');
     }
   }
 
