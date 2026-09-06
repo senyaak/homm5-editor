@@ -89,9 +89,9 @@ for (const file of ours) {
   console.log(`        ${file.name}: ${differing} bytes differ, first at ${firstAt}`
     + ` (ours ${file.data.length}b, theirs ${want.length}b)`);
 }
-// The minimap's ten channel bytes are named in test-rmg-minimap; here they
-// make their file one of the ones that differ, and saying so is the point.
-check('every entry is byte-identical, bar the minimap\'s named ten', bad <= 1, `${bad} entries differ`);
+// No allowance any more: the minimap's ten channel bytes were the one entry
+// this used to let through, and they went with the editor's FPU (`x87.ts`).
+check('every entry is byte-identical', bad === 0, `${bad} entries differ`);
 
 // OTHER SEEDS, which have no oracle at all. The reference is one order, and
 // every phase is checked against it; nothing says the ported code will not

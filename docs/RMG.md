@@ -241,10 +241,10 @@ checked by sabotage: 4 bytes move for the 150, 198 for the bed ladder,
 surface file and nowhere else.
 
 **The port is complete as a generator.** `npm run rmg-pack` orders a map and
-writes the `.h5m`, and against the reference the archive's 17 entries come out
-15 byte-identical with the other two apart by the two amounts named below —
-one uninitialised engine byte in the terrain file, ten channel bytes in the
-minimap.
+writes the `.h5m`, and against the reference **all 17 entries of the archive
+are byte-identical** — the one uninitialised engine byte in the terrain file's
+0x0e record is the only thing exempted, and it flips between two runs of the
+ENGINE.
 
 **Two things were decided next, and both are done.**
 
@@ -295,10 +295,21 @@ twenty-two templates.
    trap that put two wrong numbers in the `-size` table, and it costs another
    twenty-two launches to avoid.
 
-3. **Then the debts, in the order the sweep prices them** — the minimap's ten
-   channel bytes is the one that is left. (The `caption-text` counter was the
-   second and is closed: it belongs to the save path. The monster level was the
-   third — see the fifth item.)
+3. **The debts are paid.** The minimap's ten channel bytes were the last one,
+   and they were the editor's FPU: it runs at single precision, rounding toward
+   zero, and the port now does that arithmetic where the minimap needs it (see
+   "The editor's FPU is not at the defaults"). The `caption-text` counter
+   belonged to the save path; the monster level is the fifth item below. **The
+   whole reference `.h5m` is now byte-identical, all 17 entries.**
+
+   One thing the minimap work turned up is NOT a debt of the port and is worth
+   writing down: **the console command's minimap is not the picture a dialog
+   SAVE writes.** Ordering the reference twice, once each way, gives two files
+   that differ in about 1,270 pixels — five clusters, each roughly an icon,
+   all in one corner of the map. The port reproduces the SAVE's, which is what
+   every reference is. Why the command's differs is unread, and it is why the
+   sweep orders `-pokeb 148 0`: with the minimap off the question does not
+   arise, and with it on `rmg-diff-map` will report that one entry.
 
 4. **Water, as a second dimension — DONE.** `-water 2` orders it, both seeds
    are swept, and **all 88 orders across the four sweeps** (two dry, two water)
@@ -2072,26 +2083,69 @@ Two things the same run settled about the ICONS:
 **THE WHOLE FILE, THEN** (`test-rmg-minimap`): 262,272 bytes against the
 reference's, the **header byte-identical** — the engine declares its single
 mip in the flags and the caps as well as the count, so `writeDDS` learned to
-say so when asked — and **10 channel bytes of 262,144 different**, each a
-single channel by one.
+say so when asked — and, since the FPU below, **every channel byte of the
+262,144 as well**. `test-rmg-pack` says the same of the whole archive: 17
+entries of 17, no allowance left in either suite.
 
-Those ten are named rather than forgiven, and the naming is most of the work:
-three horizontal intermediates come out 4e-5 above a `.5` boundary where the
-engine has them below, and the vertical pass spreads each over its column —
-flipping the one intermediate byte at (126, row 2) reproduces that whole
-column, 0 rows differing. What it is NOT: the filter (the editor's `0x7911C0`
-and the game's `0x975800` were both read, they differ only in `x * (1/3)`
-against `x / 3` and in x87 against float32, and neither variant moves a
-byte); the sine (both builds carry the SAME 513-entry table and the same
-scale, byte for byte, and the true `sin` is worse over the picture as a whole
-— 6,299 bytes against 5,801); the sine's argument (over all 6,144 of them,
-rounding the product once through 80 bits and twice through a double give the
-same float — checked by two-product, 0 disagreements); or the accumulation
-(the engine keeps four 80-bit accumulators in the x87 stack, and the disputed
-sum is 200.50003562139992 under exact compensated summation, the same to the
-last bit as ours). So the difference is smaller than any arithmetic this port
-can name, and the next step is to emulate the x87 filter exactly rather than
-to guess again.
+#### The editor's FPU is not at the defaults, and that was the last ten bytes
+
+Ten channel bytes of the minimap held out for weeks, each a single channel by
+one: three horizontal intermediates came out 4e-5 above a `.5` boundary where
+the engine had them below, and the vertical pass spread each over its column.
+Everything named as a suspect was checked and cleared — the filter's shape,
+the sine table (both builds carry the same 513 entries byte for byte), the
+sine's argument, the summation (the disputed sum is 200.50003562139992 under
+exact compensated summation, the same to the last bit as the port's). The
+conclusion each time was that the difference was smaller than any arithmetic
+the port could name. It was, and that was the clue.
+
+**The editor runs with an x87 control word of `0x0C7F`.** Bits 8-9 are the
+precision and bits 10-11 the rounding, so that word is **precision SINGLE
+(24-bit) and rounding TOWARD ZERO** — not the compiler's `0x027F`, which is
+double and to-nearest. Every `fmul`, `fadd`, `fsub` and `fdiv` in the editor
+therefore lands on a **float**, and always the float **nearer zero**. A
+Direct3D device is the usual reason a Windows process is not at the defaults,
+and the editor makes one before it reads its command line.
+
+It was not deduced. `native/rmg/minimap-probe.c` hooks three things and logs
+them for one minimap build:
+
+| hook | what it logs | the port against it |
+| --- | --- | --- |
+| the table sine, editor `0xED3A80` | argument and answer, bit for bit | **6208 of 6208** exact under this arithmetic; **8** under doubles |
+| the Lanczos filter, editor `0x7911C0` | argument and answer | **3072 of 3072** exact; **0** under doubles |
+| the resampler, editor `0x791330` | `fnstcw` — the control word itself | `0x0C7F` |
+
+The first two are the measurement and the third is the reason. `src/exe/x87.ts`
+is the arithmetic: every operation computes its EXACT result (Dekker's
+splitting for the product, a remainder test for the quotient) and truncates
+that to 24 bits, because truncating a double that has already been rounded to
+53 is not the same answer — with an argument like `x * (1/3)`, where a third
+of a dyadic x is often exactly a 24-bit number, it is wrong about a quarter of
+the time.
+
+Two more things came out of reading the resampler in that light, both of which
+the port had as divisions:
+
+- the centre is `(i + 0.5) * (1/scale) - 0.5`, with the reciprocal computed
+  ONCE at `0x791680` and multiplied per output;
+- the downscaling branch multiplies by `1/fscale` twice per tap (`0x791595`,
+  `0x7915a9`, `0x7915b8`) rather than dividing by `fscale`.
+
+**What the picture is actually sensitive to**, by turning each piece off and
+counting (a measurement, not a guess): the accumulator's truncation is worth
+**4 bytes**, the sine's **1**, and the product's truncation and the reciprocal
+are worth **none** on this map — they stay because they are what the
+instructions do, and the next map is not this one.
+
+**And the generator's own arithmetic is deliberately left in doubles.** The
+same FPU state was in force for the road wave, the height plane and every
+float the generator computes — but what those hand on is an integer or a tile
+index, 136 reference maps agree with them as they are, and a rewrite there is
+a change nothing has asked for. `engineSin` keeps the double version for them
+and `engineSin24` is the minimap's. That is a real inconsistency, named here
+rather than papered over: if a generator value is ever found sitting on a
+boundary, this is the first thing to try.
 
 Still unread: where `this[+0x14]`'s flat colour comes from on the RMG path
 (`0xEA30D0` copies it from its owner's `+0xA0`). It costs the `.h5m`
@@ -2395,8 +2449,10 @@ built.
 **With them said, the batch reproduces the reference exactly.** The same order
 with `-resource 1 -exp 1` lands on **92438**, the reference's own count, and
 `rmg-diff-map` puts the port's map against the engine's at **13 of 15 entries
-byte-identical** — `GroundTerrain.bin` among them — with the minimap's ten
-channel bytes and one numbering difference left. The numbering is the port's:
+byte-identical** — `GroundTerrain.bin` among them — with the minimap and one
+numbering difference left. (The minimap's own ten bytes are closed; what the
+CLI-ordered run's minimap still differs by is a different question, and the
+plan's third item has it.) The numbering is the port's:
 the engine's CLI-ordered run emits two caption texts and calls the objectives'
 `caption-text-0/1`, while the port, fitted to a dialog-ordered reference that
 emitted two more before them, calls the same two `caption-text-2/3`. The
@@ -2705,11 +2761,11 @@ The two values the generator does not make come in as arguments — the GUID
 (`CoCreateGuid`) and the map's name (typed into the dialog).
 
 **Checked entry by entry** (`test-rmg-pack`): ordered with the reference's own
-GUID and name, **15 of the 17 entries are byte-identical, and the other two
-differ by exactly the two amounts this document already names** — the one
-uninitialised byte in `GroundTerrain.bin`'s 0x0e record, and the minimap's ten
-channel bytes. That holds through the archive as well as before it: packing
-the map and reading the entries back out gives the same two.
+GUID and name, **all 17 entries are byte-identical**, the one uninitialised
+byte in `GroundTerrain.bin`'s 0x0e record excepted — and that one is the
+engine's own, differing between two runs of it. That holds through the archive
+as well as before it: packing the map and reading the entries back out gives
+the same seventeen.
 
 The archive's own bytes are not the engine's and are not aimed at, for the two
 reasons above: one DOS stamp per run, and a deflate stream zlib -9 cannot
@@ -2725,8 +2781,8 @@ editor, save it, point this at it.
 
 What it says about the maps to hand:
 
-- three separately saved maps of the REFERENCE order come out **16 of 17**,
-  the odd one the minimap's named ten bytes;
+- three separately saved maps of the REFERENCE order come out **17 of 17**
+  (they were 16 until the minimap's last ten bytes closed);
 - a fourth of the same order comes out 14 of 17, and the two extra are
   `caption-text-0/1.txt`: that map carries a localised default string where
   the others carry the map's name. Something about how it was saved, not

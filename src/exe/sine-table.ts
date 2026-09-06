@@ -20,6 +20,7 @@
 // recomputed table would not give the engine's bytes back.
 
 import { PEFile } from './pe.ts';
+import { add24, mul24, sub24 } from './x87.ts';
 
 /** Where the table and its scale live in `H5_Game_H5E.exe`. */
 export const SINE_TABLE_VA = 0xfa2898;
@@ -49,13 +50,15 @@ export function readEngineSine(exePath: string): EngineSine {
  *
  * Both builds carry the same table and the same scale, byte for byte, and
  * differ only in how they compute with them: the game's `0x9573B0` is SSE and
- * rounds every step back to a float, the editor's is x87 and keeps 80 bits
- * from the multiply to the final add. The port speaks the EDITOR's, as it
- * does for the road wave and the height plane, because the references are
- * the editor's output — and here it is worth ten bytes of the reference
- * minimap: the float-rounded weights move a resampled channel that sat
- * 3e-5 from its rounding boundary. Doubles are not 80 bits either, but they
- * are nearer to it than floats by nine orders of magnitude.
+ * rounds every step back to a float, the editor's is x87.
+ *
+ * THIS IS THE APPROXIMATE ONE, and it is honest to say so: it does the
+ * editor's steps in doubles, which is not what the editor's FPU does — see
+ * `engineSin24` below and `../exe/x87.ts`. It stays because the road wave and
+ * the height plane read it and 136 reference maps agree with them as they
+ * are; what a wave or a plane hands on is an integer, and the last bit of the
+ * sine does not reach it. The minimap is the one caller where it did reach,
+ * and that one moved.
  */
 export function engineSin(sine: EngineSine, x: number): number {
   const t = Math.fround(x) * sine.scale;
@@ -63,4 +66,29 @@ export function engineSin(sine: EngineSine, x: number): number {
   const idx = i & 0x1ff;
   const a = sine.table[idx]!;
   return a + (sine.table[idx + 1]! - a) * (t - i);
+}
+
+/**
+ * The same lookup, in the arithmetic the EDITOR'S FPU actually does it in.
+ *
+ * The control word the editor runs with is `0x0C7F` — precision SINGLE and
+ * rounding TOWARD ZERO — read out of the process itself by
+ * `native/rmg/minimap-probe.c` rather than assumed, so every `fmul`, `fsub`
+ * and `fadd` above lands on a float and always the float nearer zero. Held to
+ * the engine's own answers: the probe logs this function's argument and result
+ * for a whole minimap build, and **6208 of 6208 come out of this exactly**,
+ * where the version above gets eight.
+ *
+ * The version above is what the rest of the port uses, and deliberately: the
+ * generator's own arithmetic reaches the map as integers and tile indices, 136
+ * reference maps say it agrees, and a rewrite there is a change nothing has
+ * asked for. This one is for the minimap, where the last bit is the whole
+ * question.
+ */
+export function engineSin24(sine: EngineSine, x: number): number {
+  const t = mul24(Math.fround(x), sine.scale);
+  const i = Math.trunc(sub24(t, 0.5));
+  const idx = i & 0x1ff;
+  const a = sine.table[idx]!;
+  return add24(mul24(sub24(sine.table[idx + 1]!, a), sub24(t, i)), a);
 }

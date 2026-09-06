@@ -58,6 +58,20 @@ static const BYTE MM_ED_BLIT_HEAD[] = { 0x83, 0xec, 0x1c, 0x89, 0x0c, 0x24 };
 /** The resampler — game 0x9743A0, `ret 4`. Its arguments name the filter. */
 #define MM_ED_RESAMPLE_RVA 0x391330u
 static const BYTE MM_ED_RESAMPLE_HEAD[] = { 0x55, 0x8b, 0xec, 0x83, 0xe4, 0xf8 };
+/** The Lanczos filter — game 0x975800, `ret 8`: one double in, one in st(0) out. */
+#define MM_ED_FILTER_RVA 0x3911c0u
+static const BYTE MM_ED_FILTER_HEAD[] = { 0xdd, 0x44, 0x24, 0x04, 0x83, 0xec, 0x08 };
+/**
+ * The table sine the filter's two sinc terms call — game 0x9573B0, `ret 4`.
+ *
+ * FIVE bytes and not seven: `push ecx` and `fld dword [esp+8]` are 1 and 4,
+ * and what follows is a six-byte `fmul dword [1191CB8h]`. Seven matched the
+ * image and split that multiply down the middle — the trampoline ran two bytes
+ * of it and jumped into the rest, and the editor died with a stack dump rather
+ * than with anything that named the cause.
+ */
+#define MM_ED_SIN_RVA 0xad3a80u
+static const BYTE MM_ED_SIN_HEAD[] = { 0x51, 0xd9, 0x44, 0x24, 0x08 };
 /** The terrain pass — game 0xDD0660, `ret 0Ch`. Its arguments are the reading. */
 #define MM_ED_TERRAIN_RVA 0x4b4fc0u
 static const BYTE MM_ED_TERRAIN_HEAD[] = { 0x83, 0xec, 0x18, 0x57, 0x8b, 0xf9 };
@@ -97,6 +111,10 @@ typedef void(__fastcall *MmWriteFn)(void *self, void *images, void *names, void 
 typedef void(__fastcall *MmBlitFn)(void *image, void *edx, int x, int y, void *icon);
 /** `(dst, src, filter)` — the two are `{buf, rows, w, h}` sixteen-byte images. */
 typedef void(__fastcall *MmResampleFn)(void *dst, void *src, int filter);
+/** `double(double)` — its `ret 8` says stdcall, and the resampler calls it by pointer. */
+typedef double(__stdcall *MmFilterFn)(double x);
+/** `double(float)` — a float32 argument, the answer in st(0); its `ret 4` says so. */
+typedef double(__stdcall *MmSinFn)(float x);
 /** `(mask, -, x, y)` — thiscall with two floats; `edx` is the filler again. */
 typedef int(__fastcall *MmCoverFn)(void *plane, void *edx, float x, float y);
 
@@ -108,6 +126,8 @@ static MmWriteFn g_mmWriteOrig = NULL;
 static MmBlitFn g_mmBlitOrig = NULL;
 static MmResampleFn g_mmResampleOrig = NULL;
 static MmCoverFn g_mmCoverOrig = NULL;
+static MmFilterFn g_mmFilterOrig = NULL;
+static MmSinFn g_mmSinOrig = NULL;
 
 /** Are we inside the RMG's own minimap build? Nothing logs outside it. */
 static int g_mmInside = 0;
@@ -127,14 +147,16 @@ static int g_mmSeaTrue = 0;
  */
 static void mm_log_row(const char *tag, int y, const BYTE *row, int bytes) {
   static const char digits[] = "0123456789abcdef";
-  char line[16 + 2 * 512 + 1];
+  // A 256-wide RGBA row is 1024 bytes, and a row that is silently halved is a
+  // picture that looks compared and is not.
+  char line[16 + 2 * 1024 + 1];
   int i = 0, n = 0, k;
   while (tag[i] && i < 8) { line[i] = tag[i]; i++; }
   line[i++] = ' ';
   num_to_dec(y, line + i, &n);
   i += n;
   line[i++] = ' ';
-  for (k = 0; k < bytes && k < 512; k++) {
+  for (k = 0; k < bytes && k < 1024; k++) {
     line[i++] = digits[(row[k] >> 4) & 0xf];
     line[i++] = digits[row[k] & 0xf];
   }
@@ -271,17 +293,19 @@ static void mm_dump_layers(const void *terrain) {
  * colour rule and the halving can be checked tile for tile against what the
  * port computes. The image is `{+0x18 buffer, +0x1C rows, +0x20 w, +0x24 h}`.
  */
-static void mm_dump_image(const char *tag, const void *image) {
+static void mm_dump_image_at(const char *tag, const void *image, unsigned bufOff, unsigned rowsOff,
+                             unsigned wOff, unsigned hOff) {
   const BYTE *im = (const BYTE *)image;
   const BYTE *const *rows;
   int w, h, y;
-  if (!image || !rmg_readable(image, 0x28)) {
+  (void)bufOff; // the rows are the buffer, one pointer a line
+  if (!image || !rmg_readable(image, hOff + 4)) {
     log_text(tag, " unreadable");
     return;
   }
-  rows = *(const BYTE *const *const *)(im + 0x1c);
-  w = *(const int *)(im + 0x20);
-  h = *(const int *)(im + 0x24);
+  rows = *(const BYTE *const *const *)(im + rowsOff);
+  w = *(const int *)(im + wOff);
+  h = *(const int *)(im + hOff);
   log_num(tag, w);
   log_num(tag, h);
   if (w <= 0 || w > 256 || h <= 0 || h > 256 || !rows || !rmg_readable(rows, (unsigned)h * 4)) {
@@ -292,6 +316,11 @@ static void mm_dump_image(const char *tag, const void *image) {
     if (!rows[y] || !rmg_readable(rows[y], (unsigned)w * 4)) continue;
     mm_log_row(tag, y, rows[y], w * 4);
   }
+}
+
+/** The drawer's own image object, whose four fields sit 0x18 further in. */
+static void mm_dump_image(const char *tag, const void *image) {
+  mm_dump_image_at(tag, image, 0x18, 0x1c, 0x20, 0x24);
 }
 
 /** As `mm_log_row`, under the mask's own tag. */
@@ -387,6 +416,21 @@ static void __fastcall mm_blit_hook(void *image, void *edx, int x, int y, void *
 }
 
 /**
+ * The x87 control word, as the editor has it when it resamples.
+ *
+ * Two fields decide what every float instruction in this path does, and
+ * neither is necessarily the compiler's default: bits 8-9 are the PRECISION
+ * (00 single, 10 double, 11 extended) and bits 10-11 the ROUNDING (00 nearest,
+ * 11 toward zero). The port assumed the defaults; the engine's own sine says
+ * otherwise, and this is the field itself rather than an inference from it.
+ */
+static void mm_log_control_word(void) {
+  unsigned short cw = 0;
+  __asm__ __volatile__("fnstcw %0" : "=m"(cw));
+  log_hex("mm x87 control word ", cw);
+}
+
+/**
  * Every resample the step runs: the two sides and the filter number.
  *
  * The filter is the whole reason this hook is here — docs/RMG.md takes mode 6
@@ -403,8 +447,70 @@ static void __fastcall mm_resample_hook(void *dst, void *src, int filter) {
     vals[3] = (src && rmg_readable(src, 0x10)) ? s[3] : -1;
     vals[4] = filter;
     mm_log_ints("mm resample dst/src/filter ", vals, 5);
+    mm_log_control_word();
+    // THE PICTURE GOING IN. Ten channel bytes of the reference minimap were
+    // unexplained for weeks, and the two suspects — the picture the resampler
+    // is handed and the weights it resamples with — cannot be told apart from
+    // the far side. This is the first of them: the port draws the same 98x98
+    // and can be held to it pixel for pixel.
+    mm_dump_image_at("mmrs", src, 0x00, 0x04, 0x08, 0x0c);
   }
   g_mmResampleOrig(dst, src, filter);
+  // And the picture coming out, for the same reason from the other end: with
+  // the input pinned, a differing output IS the resampler's arithmetic.
+  if (g_mmInside) mm_dump_image_at("mmrd", dst, 0x00, 0x04, 0x08, 0x0c);
+}
+
+/**
+ * The sine itself, argument and answer, bit for bit.
+ *
+ * The filter is two of these over a division, so a filter that disagrees is
+ * either the sine or the arithmetic around it, and nothing but the sine's own
+ * numbers tells the two apart. The argument is a float — the caller stores it
+ * with `fstp dword` — and the answer comes back in st(0).
+ *
+ * This is what settled the minimap: 6208 of 6208 answers of one build are the
+ * port's `engineSin24` exactly, and eight are its double version.
+ */
+static double __stdcall mm_sin_hook(float x) {
+  double r = g_mmSinOrig(x);
+  if (g_mmInside) {
+    union { double d; int i[2]; } b;
+    union { float f; int i; } a;
+    int vals[3];
+    a.f = x;
+    b.d = r;
+    vals[0] = a.i;
+    vals[1] = b.i[0];
+    vals[2] = b.i[1];
+    mm_log_ints("mms ", vals, 3);
+  }
+  return r;
+}
+
+/**
+ * The Lanczos filter, argument and result, bit for bit.
+ *
+ * `0x7911c0` is `__stdcall double(double)` — its `ret 8` says so — and it is
+ * reached through the pointer the resampler was handed, so a detour on the
+ * function catches it either way. It is called once per tap of the two
+ * contribution tables, a few thousand lines for a 98x98 into 256x256, and the
+ * port reproduces all 3072 of them.
+ */
+static double __stdcall mm_filter_hook(double x) {
+  double r = g_mmFilterOrig(x);
+  if (g_mmInside) {
+    union { double d; int i[2]; } a, b;
+    int vals[4];
+    a.d = x;
+    b.d = r;
+    vals[0] = a.i[0];
+    vals[1] = a.i[1];
+    vals[2] = b.i[0];
+    vals[3] = b.i[1];
+    mm_log_ints("mmw ", vals, 4);
+  }
+  return r;
 }
 
 /**
@@ -496,11 +602,16 @@ static int install_minimap_probe(void) {
                                           "minimap resample");
   g_mmCoverOrig = (MmCoverFn)detour(MM_ED_COVER_RVA, MM_ED_COVER_HEAD, sizeof(MM_ED_COVER_HEAD),
                                     &mm_cover_hook, "minimap layer coverage");
+  g_mmFilterOrig = (MmFilterFn)detour(MM_ED_FILTER_RVA, MM_ED_FILTER_HEAD,
+                                      sizeof(MM_ED_FILTER_HEAD), &mm_filter_hook,
+                                      "minimap resample filter");
+  g_mmSinOrig = (MmSinFn)detour(MM_ED_SIN_RVA, MM_ED_SIN_HEAD, sizeof(MM_ED_SIN_HEAD),
+                                &mm_sin_hook, "minimap resample sine");
   // LAST, because it is the window: until it is in, every hook above is inert,
   // and a half-installed probe that still opens its window would write a log
   // that looks complete and is not.
   g_mmWriteOrig = (MmWriteFn)detour(MM_ED_WRITE_RVA, MM_ED_WRITE_HEAD, sizeof(MM_ED_WRITE_HEAD),
                                     &mm_write_hook, "minimap write");
   return g_mmTerrainOrig && g_mmSeaOrig && g_mmIconOrig && g_mmDrawOrig && g_mmBlitOrig
-      && g_mmResampleOrig && g_mmCoverOrig && g_mmWriteOrig;
+      && g_mmResampleOrig && g_mmCoverOrig && g_mmFilterOrig && g_mmSinOrig && g_mmWriteOrig;
 }

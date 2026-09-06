@@ -123,19 +123,14 @@ for (let i = 128; i < Math.min(ours.length, ref.length); i++) {
   const p = (i - 128) >> 2;
   off.push({ x: p % 256, y: (p / 256) | 0, ch: 'bgra'[(i - 128) & 3]!, ours: ours[i]!, ref: ref[i]! });
 }
-// NAMED, not forgiven. Ten channel bytes of 262,144 sit on the far side of a
-// rounding boundary the engine's resample lands on the near side of: three
-// horizontal intermediates come out 4e-5 above `.5` where the engine has them
-// below, and the vertical pass spreads each over its column. The weights
-// themselves are proven identical — the sine's float argument rounds the same
-// through 80 bits as through a double on all 6,144 of them, and the sum is
-// the same to the last bit under exact summation — so what differs is smaller
-// than any arithmetic this port can name. docs/RMG.md keeps the measurement.
-const KNOWN = 10;
-check(`at most ${KNOWN} channel bytes differ`, off.length <= KNOWN, `${off.length} differ`);
-check('and every one of them is a single channel by one',
-  off.every((d) => Math.abs(d.ours - d.ref) === 1),
-  off.filter((d) => Math.abs(d.ours - d.ref) !== 1).map((d) => `(${d.x},${d.y})${d.ch}`).join(' '));
+// THE WHOLE PICTURE, and no allowance. Ten channel bytes used to be exempt
+// here — three resampled channels that sat within 4e-5 of a rounding boundary
+// and came out the wrong side of it — and the cause was not the filter, the
+// sine or the summation, all of which had been checked. It was the FPU: the
+// editor runs at `0x0C7F`, precision SINGLE and rounding TOWARD ZERO, so its
+// every multiply and add lands on a float and always the float nearer zero.
+// `src/exe/x87.ts` does that arithmetic and the ten went with it.
+check('every channel byte is the engine\'s', off.length === 0, `${off.length} differ`);
 if (off.length) {
   console.log(`        ${off.map((d) => `(${d.x},${d.y})${d.ch} ${d.ours}/${d.ref}`).join('  ')}`);
 }
