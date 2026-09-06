@@ -303,8 +303,8 @@ twenty-two templates.
    are now what is left of the whole plan.
 
 4. **Water, as a second dimension — DONE.** `-water 2` orders it, both seeds
-   are swept, and 87 of the 88 orders across the four sweeps (two dry, two
-   water) are byte-identical.
+   are swept, and **all 88 orders across the four sweeps** (two dry, two water)
+   are byte-identical.
    It also reached a zone's `CanBeWater`, the last unsettled field of the
    format: read by nothing, and changes nothing when it is turned on.
 
