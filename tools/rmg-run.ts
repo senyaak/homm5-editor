@@ -219,8 +219,7 @@ export function runFull(
         // A teleport's guard records the teleport's own rotation (8/8 fit).
         if (t.guard) guardPoint(t.guard, t.guard.x, t.guard.y, f, t.q * HALF_PI);
       }
-      const ship = c.water?.shipyards.get(z.index);
-      if (ship) {
+      for (const ship of c.water?.shipyards.get(z.index) ?? []) {
         // The facing quarter 0 is the engine's full 2*pi in the file.
         object('shipyard', ship.name, ship.x, ship.y,
           ship.q === 0 ? 2 * Math.PI : ship.q * HALF_PI, c.footprint(SHIPYARD_HREF), f,

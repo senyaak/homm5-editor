@@ -146,7 +146,8 @@ export interface Chain {
     repel: Map<number, Tile[]>;
     treasures: Map<number, PlacedWaterTreasure[]>;
     /** One per water zone with the Shipyard bit, from the connections sweep. */
-    shipyards: Map<number, PlacedShipyard>;
+    /** Per zone, in the order they were placed — a big map gets two. */
+    shipyards: Map<number, PlacedShipyard[]>;
     /** The carve's terrain 200-marks per zone, in carve order — for paintWaterMarks. */
     marks: Map<number, WaterMark[]>;
     /**
@@ -419,12 +420,22 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
             // roomPoints() so the mines' room downstream sees the shipyard.
             const stamped: Tile[] = [...points, ...grew];
             const before = stamped.length;
+            // TWO SHIPYARDS ON A BIG MAP. `0xECC0A0` opens with
+            // `cmp [level+0xC],64h; setg cl; inc ecx` and loops its whole body
+            // that many times (`0xECCAE0` against the same slot), so the count
+            // is 1 + (dim > 100): one at 72 or 96 tiles, two from 136 up. The
+            // second pass builds its pool afresh and sees the first
+            // shipyard's stamp, and every water order past 96 tiles was short
+            // by exactly one shipyard a zone until this was read.
+            const attempts = size > 100 ? 2 : 1;
+            const framed: Tile[] = [];
+            for (let attempt = 0; attempt < attempts; attempt++) {
             const ship = placeShipyard({
               size, grid: floors[f]!.grid, border: floors[f]!.border,
               occupancy: floors[f]!.occ, room: floors[f]!.room,
               points: stamped, blocked: blockedList(z.index),
               connectionPoints: actives, guardSeats: seats,
-              zoneIndex: z.index, floor: f, tiles: water.kept.get(z.index)!,
+              zoneIndex: z.index, floor: f, tiles: water.kept.get(z.index)!, framed,
               depth: water.depth,
               town: templateZone.town ? { x: centre.b, y: centre.a } : null,
               foot: chainFootprint(SHIPYARD_HREF),
@@ -432,9 +443,12 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
               monsterStrength: setup.monsterStrength, tables,
             }, rng);
             if (ship) {
-              water.shipyards.set(z.index, ship);
-              if (stamped.length > before) shipyardRoomPoints.set(z.index, stamped.slice(before));
+              const list = water.shipyards.get(z.index) ?? [];
+              list.push(ship);
+              water.shipyards.set(z.index, list);
             }
+            }
+            if (stamped.length > before) shipyardRoomPoints.set(z.index, stamped.slice(before));
           }
         }
 

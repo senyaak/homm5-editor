@@ -91,7 +91,7 @@ if (!hasWaterReference()) {
   let shipAstray = 0;
   let guardAstray = 0;
   let guards = 0;
-  for (const s of c.water!.shipyards.values()) {
+  for (const list of c.water!.shipyards.values()) for (const s of list) {
     if (!standsInMap(s.name, s.x, s.y)) shipAstray++;
     if (s.guard?.guard) {
       guards++;
@@ -384,6 +384,29 @@ if (hasWaterReference()) {
   }
   check(`every object stands where its minted name stands (${named.length} checked)`,
     astray === 0, `${astray} astray`);
+}
+
+console.log('\na water order bigger than 96 tiles, where the shipyard doubles');
+
+// THE ONE CASE THAT SEES THE SECOND SHIPYARD. `0xECC0A0` runs its body
+// 1 + (dim > 100) times, so 72 and 96 tiles get one shipyard and 136 up get
+// two - and the second pass draws from the candidate vector the first one
+// left behind, because the vector is zeroed at the function head and the loop
+// starts after it. Neither is visible on any 96-tile order, which is why the
+// whole water sweep past that size was wrong while the reference passed.
+//
+// The three numbers are the ENGINE'S, off `-water 2` orders of this template:
+// 14 shipyards on seven zones, and a run that ends on 128471 draws.
+if (existsSync(dataDir())) {
+  const big = runChain(dataDir(), {
+    template: 'S2-3P2Z7N2', size: 136, players: 2, seed: 1785351845,
+    monsterStrength: 1, water: 2,
+  });
+  const ships = [...(big.water?.shipyards.values() ?? [])];
+  const total = ships.reduce((n, list) => n + list.length, 0);
+  check('seven zones carry fourteen shipyards', total === 14, `${total} on ${ships.length} zones`);
+  check('two to a zone', ships.every((list) => list.length === 2),
+    ships.map((l) => l.length).join(' '));
 }
 
 console.log(failures ? `\n${failures} failed` : '\nall good');

@@ -77,6 +77,11 @@ export interface ShipyardInput {
   guardSeats: Tile[];
   zoneIndex: number;
   floor: number;
+  /**
+   * MUTATED and CARRIED between the zone's attempts: the candidate vector the
+   * engine builds once per call of the placer and never clears — see the body.
+   */
+  framed: Tile[];
   /** The rebuilt `+0xCC` — the carve's kept list, rim included. */
   tiles: Tile[];
   /** The carve's depth (zone+0x160). */
@@ -105,12 +110,20 @@ const fl = Math.fround;
 export function placeShipyard(input: ShipyardInput, rng: DrawSource): PlacedShipyard | null {
   const { size, grid, border, occupancy, zoneIndex, depth, tiles } = input;
 
+  // THE CANDIDATE VECTOR IS THE CALLER'S, and that is the whole reason it is a
+  // parameter. `0xECC0A0` zeroes it at the function HEAD (0xECC0A9) and loops
+  // its body from 0xECC0F0, so a zone that gets two shipyards scans its tiles
+  // twice into the SAME vector: the second pass's pool is the first pass's
+  // entries plus its own, duplicates and all. Measured, not inferred - zone 2
+  // of `S2-3P2Z7N2` draws from 12 then 100 where a fresh vector would give 12
+  // then 50, and zone 1 from 43 then 38 against 43 then 19.
+  const framed = input.framed;
   const margin = depth + 3;
-  const framed = tiles.filter(([x, y]) => {
+  for (const [x, y] of tiles) {
     const b = border[y]![x]!;
-    if (b < 2 || b > 3) return false;
-    return x > margin && y > margin && x < size - margin && y < size - margin;
-  });
+    if (b < 2 || b > 3) continue;
+    if (x > margin && y > margin && x < size - margin && y < size - margin) framed.push([x, y]);
+  }
 
   const room = ensureRoom(input.room, size, grid, zoneIndex, input.points);
   // The maximum over the framed list, with 0xEC2EB0's own gates — a border-2

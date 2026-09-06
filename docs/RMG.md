@@ -2410,10 +2410,10 @@ water reference was given.
 
 Twenty-two orders, the same seed and templates as the dry sweep with `-water 2`
 on each, kept in `bin/rmg-water/`. It began at three byte-identical maps and
-**stands at ten**, and the line it stops on is a size: every 96-tile order
-reproduces, every larger one does not.
+**closed at twenty-two** — every water order the sweep gives, byte for byte,
+`map.xdb`, `GroundTerrain.bin`, the texts and the minimap documents alike.
 
-**Three findings so far.** The first was hiding behind a convention: the zone grid at
+**Five findings.** The first was hiding behind a convention: the zone grid at
 the roads boundary had 586 cells where the engine says **−2** and the port said
 −1 — the sea tiles the carve leaves ON the zone's `+0xCC` list (adjusted border
 exactly 0) while taking them OUT of the grid. `FillDistToTown` walks the LIST,
@@ -2448,30 +2448,52 @@ border table and zone grid come back identical to the engine's; with 3 or 5
 instead, 17,473 of its 18,496 border cells differ. `MAP_SIZES` moved to
 `src/rmg/create-map.ts`, where the table it mirrors lives.
 
-**What is open, and it is now named: THE ENGINE PLACES TWO SHIPYARDS PER WATER
-ZONE and this port places one.** `S2-3P2Z7N2` at 136 has seven zones and the
-engine's map carries **14 shipyards against the port's 7**.
+##### Two shipyards on a big map, out of one uncleared vector
 
-How it was cornered, since the draw trace alone could not say it. The two runs
-agree draw for draw to 66233 and part at 66234, where the engine spends a
-`below(38)` and the port a `below(139)` — the same placement (zone 2's first
-teleport seat) measured over different pools. The pool is the zone's ring after
-`filterByRoom`, whose threshold is `2·max/3`, so a bigger engine pool-threshold
-means a bigger `max`, which means FEWER room points; and no threshold over the
-port's own ring of 513 yields 38 at all, so the ring or the points had to
-differ. The oracle's `points` dump settled it: **every zone has exactly one
-more room point in the engine than in the port** — 6/6/8/8/4/4/6 against
-5/5/7/7/3/3/5. One per zone, and every zone gets exactly one shipyard here.
+**A water-bordered zone gets `1 + (dim > 100)` shipyards**, and the second one
+draws from a candidate list the first one left behind. Those two facts, read
+out of `0xECC0A0`, close every water order past 96 tiles.
 
-Two readings were tried and are recorded because they are wrong: pushing a
-`(0,0)` PossessionMarkerTile into the room points for every stamp (it breaks
-the dry sweep — dry `S2-3P2Z7N2` falls from 13 of 13 to 11), and doing it for
-the shipyard alone (the water map gets further away, not closer). The count
-comes from a second SHIPYARD, not from a second point of one.
+How it was cornered, since the draw trace alone could not say it. The runs
+agreed draw for draw to 66233 and parted at 66234 on the same placement —
+zone 2's first teleport seat — measured over pools of 38 and 139. That pool is
+the zone's ring after `filterByRoom`, whose threshold is `2·max/3`: a smaller
+engine pool means a bigger `max`, which means FEWER room points, and no
+threshold over the port's own ring of 513 yields 38 at all. The oracle's
+`points` dump settled it — **every zone had exactly one more room point in the
+engine** (6/6/8/8/4/4/6 against 5/5/7/7/3/3/5), one per zone, and every zone
+gets exactly one shipyard. `diff-objects` then said it outright:
+**AdvMapShipyard 14 against 7** on a seven-zone map.
 
-So the next reading is the water-bordered zone's second sweep — why its
-shipyard tail runs twice — and `AdvMapShipyard 14 against 7` is the number to
-close.
+Two readings of "one more point" were tried and are recorded because they are
+wrong: pushing a `(0,0)` PossessionMarkerTile into the room points for every
+stamp (it breaks the dry sweep — dry `S2-3P2Z7N2` falls from 13 of 13 to 11),
+and doing it for the shipyard alone (no change once the real cause was in; the
+marker sits on the active's own tile and moves no distance). The count comes
+from a second SHIPYARD.
+
+**The count, read.** `0xECC0A0` opens with
+
+```
+0xecc0d5  cmp dword ptr [eax+0Ch],64h   ; the level's dim against 100
+0xecc0e1  setg cl
+0xecc0e4  inc ecx                       ; 1 + (dim > 100)
+0xecc0e5  mov [esp+7Ch],ecx
+```
+
+and its whole body — from `0xECC0F0` — is a loop against that slot
+(`0xECCAE0`). So 72 and 96 tiles get one shipyard and 136 up get two. The
+water-bordered zone's `vt+0x2C` (`0xECCB30`) is ten instructions and calls the
+placer once, so the doubling is inside the placer and nowhere else.
+
+**And the second pass is not a fresh one.** The candidate vector is zeroed at
+the function HEAD (`0xECC0A9`), OUTSIDE the loop, so the second pass scans the
+zone's tiles into the vector the first pass already filled: its pool is the
+first pass's entries plus its own, duplicates and all. The port carries the
+list between attempts for exactly that reason, and the numbers are the check —
+zone 1 draws from 43 then 38 where a fresh vector gives 43 then 19, zone 2 from
+12 then 100 against 12 then 50. With both in, `S2-3P2Z7N2` lands on the
+engine's own **128471 draws** and is byte-identical.
 
 (The oracle grew `blocks` for the treasure-block question above: the same four
 grids as `grids`, dumped at "additional objects set" instead of "roads
