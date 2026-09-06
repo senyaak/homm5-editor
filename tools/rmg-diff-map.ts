@@ -51,13 +51,21 @@ const { seed, guid, mapName, template, size, players, water, monster, undergroun
 
 console.log(`${archive}`);
 console.log(`  ordered: ${describeOrder(order)}`);
-// The chain always orders MEDIUM: mapSetup takes a fixed monsterStrength of 1.
-// Saying so beats a silent mismatch buried in an object's army.
-if (monster !== 'MONSTER_LEVEL_MEDIUM') {
-  console.log(`  NOTE: the port only orders MONSTER_LEVEL_MEDIUM — this map's ${monster} is not replayed`);
+// The monster level the map was ordered with is the level the chain replays.
+// It reaches `mapSetup` as a fixed value, so it costs the same discarded draw
+// MEDIUM did, and from there it multiplies every guard's power.
+const MONSTER_LEVELS = [
+  'MONSTER_LEVEL_WEAK', 'MONSTER_LEVEL_MEDIUM', 'MONSTER_LEVEL_STRONG',
+  'MONSTER_LEVEL_VERY_STRONG', 'MONSTER_LEVEL_IMPOSSIBLE',
+];
+const monsterStrength = MONSTER_LEVELS.indexOf(monster);
+if (monsterStrength < 0) {
+  console.error(`  unknown MonsterLevel ${monster} — it is not one of the five the enum lists`);
+  process.exit(2);
 }
 
-const run = runFull(dir, { seed, template, size, underground, water: water || undefined });
+const run = runFull(dir,
+  { seed, template, size, underground, water: water || undefined, monsterStrength });
 console.log(`  replayed: ${run.c.rng.draws} draws, ${run.objects.length} objects`);
 // WHICH CAPTION NUMBERING TO EXPECT is not the generator's to say: the console
 // command numbers the scenario captions from 0, the editor's SAVE from 2 with

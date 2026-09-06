@@ -13,6 +13,23 @@
 // `TownGuardStrenght` times `BasicLeverGuardPower`, which on the shipped
 // templates is 1 or 20 against a parameter of 1000.
 //
+// AND THE MONSTER LEVEL SCALES IT — but not with the five-entry switch the
+// guard setter has. This routine tests the level TWICE and knows only two
+// values (the editor's 0x792c4f, straight after the `power < 100` refusal):
+//
+//   level == 0 -> trunc(power * 0.7f)      cmp eax,ebx / jne
+//   level == 2 -> trunc(power * 1.5f)      cmp eax,2   / jne
+//   anything else -> the power unchanged
+//
+// So MEDIUM, VERY_STRONG and IMPOSSIBLE all leave it alone, and a town guard
+// is the one place on the map where IMPOSSIBLE is no worse than MEDIUM. The
+// four ordered levels of `S1P2Z3K5.1` say the same thing from the other side:
+// the Marble Gargoyle stack is 0, 34, 89, 34, 34 as the level runs 0 to 4,
+// and 0.7 and 1.5 are the only pair of numbers that gives that.
+//
+// The refusal below 100 is measured on the RAW power — the engine's `cmp
+// eax,64h` is above the scaling, not below it.
+//
 // WHAT IT BUILDS. One stack per tier from 1 up, stopping at 7 or when the
 // power runs out:
 //
@@ -42,6 +59,16 @@ export interface TownGuardStack {
   amount: number;
 }
 
+/**
+ * The town setter's own monster-level scaling — two cases and no table, the
+ * `x87` product truncated where it lands.
+ */
+export function scaleTownGuardPower(power: number, strengthLevel: number): number {
+  if (strengthLevel === 0) return Math.trunc(power * Math.fround(0.7));
+  if (strengthLevel === 2) return Math.trunc(power * Math.fround(1.5));
+  return power;
+}
+
 /** Only what this needs from the RNG, so a test can hand it a script. */
 export interface DrawSource {
   below(limit: number): number;
@@ -54,13 +81,14 @@ export interface DrawSource {
  */
 export function setTownGuard(
   power: number,
+  strengthLevel: number,
   race: number,
   creatures: readonly CreatureInfo[],
   rng: DrawSource,
 ): TownGuardStack[] {
   if (power < MIN_TOWN_GUARD_POWER) return []; // no draws on this path
   const stacks: TownGuardStack[] = [];
-  let left = power;
+  let left = scaleTownGuardPower(power, strengthLevel);
   for (let tier = 1; tier <= MAX_TOWN_GUARD_TIER; tier++) {
     const spread = rng.below(20);
     // `(9 - tier)` and then a shift, so an odd product loses its half — the

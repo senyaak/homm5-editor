@@ -98,6 +98,7 @@ if (!existsSync(join(dir, 'RMG'))) {
     radii: new Map(placed.zones.map((z) => [z.index, z.r])),
     presets, towns, specializations: readTownSpecializations(dir),
     creatures: readCreatures(dir), basicLeverGuardPower: params.basicLeverGuardPower,
+    monsterStrength: setup.monsterStrength,
   }, rng);
 
   const before = rng.draws;

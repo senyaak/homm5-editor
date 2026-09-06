@@ -154,6 +154,8 @@ export interface TownsInput {
   creatures: readonly CreatureInfo[];
   /** `BasicLeverGuardPower` — the zone's `TownGuardStrenght` multiplies it. */
   basicLeverGuardPower: number;
+  /** The map's monster level, 0..4 — the garrison scales by its own two cases. */
+  monsterStrength: number;
 }
 
 const HALF_PI = Math.PI / 2;
@@ -193,7 +195,7 @@ function centroid(tiles: Array<[number, number]>): { a: number; b: number } {
 
 export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
   const { size, template, zones, floors, distances, radii, presets, towns, specializations } = input;
-  const { creatures, basicLeverGuardPower } = input;
+  const { creatures, basicLeverGuardPower, monsterStrength } = input;
   const objects: PlacedObject[] = [];
   const centres = new Map<number, { a: number; b: number }>();
   const occupancy = floors.map(() => new Uint8Array(size * size));
@@ -278,7 +280,8 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
       // owns: the engine's own test is `cmp dword ptr [edi+0F0h],0` one
       // instruction earlier, and an owned town pays nothing here.
       const army = zone.playerNo === 0
-        ? setTownGuard(item.townGuardStrenght * basicLeverGuardPower, zone.race, creatures, rng)
+        ? setTownGuard(item.townGuardStrenght * basicLeverGuardPower, monsterStrength,
+          zone.race, creatures, rng)
         : [];
       // Reserve: blockedTiles mark 2, the active tiles and the marker 4 —
       // the engine's own two values, kept because later phases read them.

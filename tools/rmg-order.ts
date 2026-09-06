@@ -40,7 +40,7 @@ export interface MapOrder {
   /** WaterAmount as 0/1/2. */
   water: number;
   waterName: string;
-  /** MonsterLevel as the map spells it — the port only replays MEDIUM. */
+  /** MonsterLevel as the map spells it; `rmg-diff-map` replays the level it names. */
   monster: string;
   underground: boolean;
   /** The order's Minimap tick: an order made with it off writes no minimap. */

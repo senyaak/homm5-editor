@@ -78,6 +78,7 @@ const townResult = placeTowns({
   radii: new Map(placed.zones.map((z) => [z.index, z.r])),
   presets, towns, specializations: readTownSpecializations(dir),
   creatures, basicLeverGuardPower: params.basicLeverGuardPower,
+  monsterStrength: setup.monsterStrength,
 }, rng);
 fillDistToTowns(96, filled.floors, loaded.zones, townResult.centres);
 

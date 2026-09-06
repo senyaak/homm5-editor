@@ -286,11 +286,9 @@ twenty-two templates.
 
    Each order reads `RMG/Templates/<name>.xdb -seed 1785351845 -size 1
    -resource 1 -exp 1 -pokeb 148 0`, the last of which is the minimap tick.
-   ONE difference is known in advance and is not a finding: if a monster level
-   other than MEDIUM is ever ordered, the port's setup does not replay it. (The
-   `caption-text` numbering used to be the second such exemption; it is now
-   understood and reproduced - see "The caption numbering belongs to the save
-   path" below.)
+   No difference is exempt any more: the `caption-text` numbering was one and
+   belongs to the save path (below), the monster level was the other and is
+   now replayed from the order the map carries.
 
 2. **A second seed over every template that passed.** One seed is one path: a
    template that agrees once is not a template that agrees. This is the same
@@ -298,15 +296,28 @@ twenty-two templates.
    twenty-two launches to avoid.
 
 3. **Then the debts, in the order the sweep prices them** — the minimap's ten
-   channel bytes and monster levels other than MEDIUM. (The `caption-text`
-   counter was the third and is closed: it belongs to the save path.) These two
-   are now what is left of the whole plan.
+   channel bytes is the one that is left. (The `caption-text` counter was the
+   second and is closed: it belongs to the save path. The monster level was the
+   third — see the fifth item.)
 
 4. **Water, as a second dimension — DONE.** `-water 2` orders it, both seeds
    are swept, and **all 88 orders across the four sweeps** (two dry, two water)
    are byte-identical.
    It also reached a zone's `CanBeWater`, the last unsettled field of the
    format: read by nothing, and changes nothing when it is turned on.
+
+5. **The monster level, as a third dimension — DONE.** `-monsters` orders it
+   and `rmg-diff-map` now replays the level the map itself records, so the
+   sweep is a comparison rather than a known exemption. `S1P2Z3K5.1` at all
+   five levels, then every template at WEAK and at IMPOSSIBLE: **48 more maps,
+   all byte-identical**, and the four earlier sweeps recounted against the same
+   code — **136 of 136**.
+   It cost three findings, and two of them are about `SetMonster` rather than
+   about the level: the town garrison has a scaling table of its own (two
+   values, not five), the guard setter's army branch **falls through to the
+   single stack** instead of returning an empty army, and there are three
+   refusals at a hundred rather than one. All three are invisible at MEDIUM,
+   which is the only level the reference maps had.
 
 ### The sweep, run
 
@@ -1170,6 +1181,46 @@ The race the pool filters on is the zone's own: the engine's switch at
 `0xeb5788` maps races 3..10 to town types 3..10, which is the identity — the
 two enums in `types.xml` are the same list, and the one place their NAMES
 differ is 9, `RACE_DWARF` against `TOWN_FORTRESS`.
+
+**And the monster level scales this power with a table of its own** — two
+values where the guard setter has five. Straight after the `cmp eax,64h`
+refusal, at the editor's `0x792c4f`:
+
+```
+mov eax,[esi+34h]     the map's monster level, the setter's own field
+cmp eax,ebx           ebx is 0
+jne  ...              level 0  -> fmul 0.7f, truncated toward zero
+cmp eax,2
+jne  ...              level 2  -> fmul 1.5f, truncated toward zero
+                      anything else -> the power, unchanged
+```
+
+So MEDIUM, VERY_STRONG and IMPOSSIBLE all leave a town's garrison exactly as
+`TownGuardStrenght × BasicLeverGuardPower` made it, and a town guard is the one
+place on the map where IMPOSSIBLE is no worse than MEDIUM. `S1P2Z3K5.1`
+ordered at all five levels says it from the other side: the Marble Gargoyle
+stack is **0, 34, 89, 34, 34** as the level runs 0 to 4 and NOTHING else in the
+map moves, and 0.7 and 1.5 are the only pair of numbers that gives that series
+(`trunc(20000·0.7f)` is 13999, which leaves 139 after the Saboteurs and buys no
+Gargoyle at 180; `trunc(20000·1.5f)` is 30000, which leaves 16140 and buys 89).
+
+The level is written once, at `0x793de0`, and read in exactly two places in the
+whole class — here and in the guard setter's five-way switch. That is the
+search done rather than the absence assumed.
+
+**The other table, the guard setter's**, is a real switch — `cmp eax,4 / ja` and
+a jump table at `0x793a84`, one arm per level, each `fild` the power, `fmul`
+one constant and `fistp` it back with the control word set to truncate:
+
+| level | 0 WEAK | 1 MEDIUM | 2 STRONG | 3 VERY_STRONG | 4 IMPOSSIBLE | above |
+| --- | --- | --- | --- | --- | --- | --- |
+| × | 0.4f | 0.9f | 1.7f | 4.0f | 12.0f | unchanged |
+
+`STRENGTH_MULTIPLIER` in `armies.ts` had these five numbers already, but only
+`0.9f` had ever been measured — every reference map is MEDIUM. They are now
+read out of the editor's own jump table, in the order the table indexes them,
+and the four ordered levels of `S1P2Z3K5.1` leave every guard on the map
+untouched, which is the same statement from the data.
 
 It is checked against the map, not just the draw count. `S1P2Z3K5.1`'s Academy
 town draws 13 and 15 of twenty: `(13+20)*8/2` is 132 Gremlin Saboteurs at 105
@@ -2746,11 +2797,11 @@ saying so:
 | underground | ordered (`--underground`) |
 | water | ordered (`--water`, 0/1/2) |
 | players | ordered (`--players`) — a DRAWN value, and it feeds zone loading |
-| monster level | ordered (`--monsters`) — it scales every connection guard |
+| monster level | ordered (`--monsters`) — it scales every guard, by one table in the guard setter and another in the town setter |
 | water | **not orderable from the command** — the setting is not in the record the command fills; see below |
 | **map size** | **not orderable.** The dialog's size reaches `createMap` in the TEMPLATE's own units and the conversion is `vt+0x18`, unread. The chain orders the references' 8; `--size` lays out the grid only, and `rmg-pack` refuses a size the references never used unless `--unchecked` says to do it anyway |
 | **ResourceMultiplier, ExpMultiplier** | **ordered** (`-resource`, `-exp`) — and they are not cosmetic: see below |
-| monster level | **ordered** (`-monsters`) — the PORT still only models MEDIUM, so `rmg-diff-map` says so and the difference is now measurable rather than untestable |
+| monster level | **ordered** (`-monsters`) — and replayed: `rmg-diff-map` takes the level out of the map's own `sRMGProps` and hands it to the chain, so a map ordered at any of the five is compared at that one |
 | RandomTowns, Grail, StartHero | not ordered — `map.xdb` carries the references' fixed values |
 
 And the settings that ARE ordered are ordered, not checked: only the three
@@ -4094,6 +4145,46 @@ Which gives the cost exactly: **1** for the loop's prologue, **2 per attempt**
 at a tile, **2** for the mine's name, **4 or 5** for the guard, **1** per pile
 rolled and **2** more for each that lands. Zone 1: 1 + 14 + 12 + 24 + 10 + 14
 = 75, and the boundary says 75.
+
+#### The guard's two branches are not alternatives
+
+"Four or five" is the MEDIUM count, and a monster level other than MEDIUM shows
+why it was only ever half the story. The army branch is an **attempt**: every
+one of its failure exits jumps to `0x7939fe`, which falls straight into
+`0x793a22` — the very instruction the `r >= 0.6` roll jumps to. So a guard the
+template list cannot serve is not an empty guard; it is a **single stack**,
+drawn there and then, and only the single stack's own failure ends with nothing
+placed at all.
+
+There are three refusals at a hundred, not one, and each looks at its own
+number:
+
+| where | against | on failure |
+| --- | --- | --- |
+| `0x793747`, the entry | the RAW power | return, no draws |
+| `0x79326d`, the army builder | `trunc(scaled · 0.9)` | fall through to the single stack |
+| `0x7929c7`, the single stack | `scaled` | return, nothing placed |
+
+At MEDIUM the three cannot be driven far enough apart to disagree — which is
+exactly why every one of the 88 maps of the earlier sweeps passed with the port
+believing there was one gate on the raw power. At WEAK they disagree at once,
+and eight of the twenty-two templates depend on it.
+
+Two more things the same code says, and both were wrong in the port:
+
+- **A refusal mints no name.** The two `below(65535)` draws belong to the
+  object, and the failure exits never reach the creator. The port used to spend
+  them on every path, on the strength of a sentence in this file that said they
+  are spent "whether or not anything can be found to place".
+- **An army whose FIRST stack is empty or zero is a refusal too**
+  (`0x7939ad`..`0x7939bc` reads the vector's size and its first pair before it
+  will build anything), and it falls through like the rest.
+
+The single stack's rescan also has **no round limit** — `cmp eax,28h / jl`
+sends it back for as long as fewer than ten creatures have turned up, and the
+tolerance grows by 1.2 each pass until they do. The port had capped it at 16
+rounds, which is a cap that nothing measured had ever reached; it now loops as
+the engine does, and throws if it ever fails to converge.
 
 Two things the data settles that the code only suggested. Every pile that
 landed rolled 0.1886, 0.7641, 0.3076, 0.5571, 0.1160, 0.4472 or 0.2214, and

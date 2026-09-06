@@ -234,5 +234,44 @@ if (!hasReference()) {
     matched === mineGuards.length, `${matched} of ${mineGuards.length}`);
 }
 
+// The three refusals at a hundred, and the fall-through between them. Nothing
+// here is invented: the tables are the shipped ones, the powers are what a
+// monster level does to a guard the templates already serve at MEDIUM, and the
+// draw COUNTS are the point — a refusal that mints a name spends two draws it
+// has no object for.
+console.log('\nthe three gates at a hundred');
+{
+  /** Counts what it hands out, so a refusal's cost can be asserted. */
+  const counted = (rolls: number[], picks: number[]) => {
+    let f = 0;
+    let b = 0;
+    const src: DrawSource & { spent(): number } = {
+      betweenFloat: () => rolls[f++] ?? 0,
+      below: () => picks[b++] ?? 0,
+      spent: () => f + b,
+    };
+    return src;
+  };
+
+  // Raw 200 passes the entry gate; WEAK scales it to 80, so the army builder
+  // (72) and the single stack (80) both refuse. One draw spent, the roll.
+  const low = counted([0.1], []);
+  const nothing = setMonster(200, 0, tables, low);
+  check('WEAK: a guard of 200 is refused after the roll alone',
+    nothing === null && low.spent() === 1, `${nothing ? 'placed' : 'none'}, ${low.spent()} draw(s)`);
+
+  // The same power at MEDIUM: 180 raw, 162 of budget — under the smallest
+  // template's MinPower, so the army branch declines and the SINGLE STACK
+  // serves it. It must come out WILD, with one stack, and cost the roll plus
+  // the desired count, the creature pick and the two of the name.
+  const fell = counted([0.1], [0, 0, 0, 0]);
+  const single = setMonster(200, 1, tables, fell);
+  check('the army branch declining falls through to a single stack',
+    single !== null && single.branch === 'single' && single.mood === 3 && single.stacks.length === 1,
+    single ? `${single.branch}, ${single.stacks.length} stack(s)` : 'nothing placed');
+  check('and it costs the roll, the desired count, the pick and the name',
+    fell.spent() === 5, `${fell.spent()} draws`);
+}
+
 console.log(failures ? `\n${failures} failed` : '\nall good');
 process.exit(failures ? 1 : 0);

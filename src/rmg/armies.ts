@@ -14,7 +14,18 @@
 //
 // Then two more draws mint the object's name — `item_<signed int32>` from
 // two below(65535) — so a guard costs four or five draws depending on the
-// branch. Both are spent whether or not anything can be found to place.
+// branch.
+//
+// THE TWO BRANCHES ARE NOT ALTERNATIVES. The army branch's every failure
+// jumps to the instruction the `r >= 0.6` roll jumps to, so a guard the
+// templates cannot serve is served as a single stack instead — and only the
+// single stack's own failure ends with nothing placed. Both refuse again at
+// a hundred, each against its own number: the army against `trunc(scaled *
+// 0.9)`, the single stack against `scaled`, where the gate at the top saw the
+// RAW power. Nothing but a monster level other than MEDIUM can drive a wedge
+// between the three, which is why this went unread until the levels were swept.
+// A refusal mints no name: the two draws belong to the object, and there is
+// no object.
 //
 // THE ARMY BRANCH. The template list is one file, named by a hardcoded path,
 // and the candidates are the templates whose [MinPower, MaxPower] contains
@@ -148,45 +159,85 @@ export function setMonster(power: number, strengthLevel: number, tables: GuardTa
   const scaled = Math.trunc(power * (STRENGTH_MULTIPLIER[strengthLevel] ?? 1));
   const roll = rng.betweenFloat(0, 1);
 
-  if (roll < fl(0.6)) {
-    // The army branch scales the power a second time by the same 0.9 — and
-    // truncates the product WHERE IT LANDS, exactly as the strength scaling
-    // above does. This line used to round to a float first, and the two
-    // differ on one value in a thousand: 17210 * 0.9f is 15488.99958…, which
-    // truncates to 15488, while the nearest float to it is 15489 exactly.
-    // `S6-11P2-8Z8K2XL` is where that mattered — one treasure-block guard of
-    // 11222 objects, and the whole rest of the map identical. Its budget
-    // landed on 15489, which is the MinPower of one army template to the
-    // unit, so the rounding decided whether that template was in the pool at
-    // all: the engine drew 33 of 106 where this drew 1 of 107.
-    const budget = Math.trunc(scaled * fl(0.9));
-    const candidates = tables.templates.filter((t) => t.minPower <= budget && budget <= t.maxPower);
-    if (!candidates.length) return { name: mintName(rng), stacks: [], mood: 2, branch: 'army' };
-    const chosen = candidates[rng.below(candidates.length)]!;
+  // THE ARMY BRANCH IS AN ATTEMPT, NOT A DESTINATION. Its `je` on failure
+  // lands on the very instruction the `r >= 0.6` roll jumps to (`0x7939fe`
+  // falls into `0x793a22`), so a guard the template list cannot serve is not
+  // an empty guard — it is a SINGLE STACK, drawn there and then. Every
+  // reference map is MEDIUM and no MEDIUM guard ever failed the branch, so the
+  // port used to return an empty army here and nothing ever caught it; WEAK is
+  // where it fires, and where an empty army reached the emitter and threw.
+  const army = roll < fl(0.6) ? armyFromTemplate(scaled, tables, rng) : null;
+  if (army) return { name: mintName(rng), stacks: army, mood: 2, branch: 'army' };
+  return singleStack(scaled, tables, rng);
+}
 
-    let weighted = 0;
-    for (const s of chosen.stacks) weighted += s.coef * (tables.powerByName.get(s.creature) ?? 0);
-    const stacks: GuardStack[] = [];
-    if (weighted > 0) {
-      const k = Math.trunc(budget / weighted);
-      let remainder = budget - k * weighted;
-      for (const s of chosen.stacks) stacks.push({ creature: s.creature, amount: s.coef * k });
-      const last = stacks[stacks.length - 1];
-      const lastPower = last ? tables.powerByName.get(last.creature) ?? 0 : 0;
-      if (last && lastPower > 0) {
-        last.amount += Math.trunc(remainder / lastPower);
-        remainder %= lastPower;
-      }
+/**
+ * `0x793260` — the army from a template, or null when it declines. Every
+ * decline falls through to the single stack, and only a decline that DREW
+ * (the pool was not empty) costs anything.
+ */
+function armyFromTemplate(scaled: number, tables: GuardTables, rng: DrawSource): GuardStack[] | null {
+  // The army branch scales the power a second time by the same 0.9 — and
+  // truncates the product WHERE IT LANDS, exactly as the strength scaling
+  // above does. This line used to round to a float first, and the two
+  // differ on one value in a thousand: 17210 * 0.9f is 15488.99958…, which
+  // truncates to 15488, while the nearest float to it is 15489 exactly.
+  // `S6-11P2-8Z8K2XL` is where that mattered — one treasure-block guard of
+  // 11222 objects, and the whole rest of the map identical. Its budget
+  // landed on 15489, which is the MinPower of one army template to the
+  // unit, so the rounding decided whether that template was in the pool at
+  // all: the engine drew 33 of 106 where this drew 1 of 107.
+  const budget = Math.trunc(scaled * fl(0.9));
+  // Its OWN `cmp ebx,64h`, on the budget rather than on the raw power: a
+  // guard the level has scaled under a hundred declines before it looks at
+  // a single template, and spends nothing doing it.
+  if (budget < MIN_GUARD_POWER) return null;
+  const candidates = tables.templates.filter((t) => t.minPower <= budget && budget <= t.maxPower);
+  if (!candidates.length) return null; // `xor al,al` at 0x79344e, no draw
+  const chosen = candidates[rng.below(candidates.length)]!;
+
+  let weighted = 0;
+  for (const s of chosen.stacks) weighted += s.coef * (tables.powerByName.get(s.creature) ?? 0);
+  const stacks: GuardStack[] = [];
+  if (weighted > 0) {
+    const k = Math.trunc(budget / weighted);
+    let remainder = budget - k * weighted;
+    for (const s of chosen.stacks) stacks.push({ creature: s.creature, amount: s.coef * k });
+    const last = stacks[stacks.length - 1];
+    const lastPower = last ? tables.powerByName.get(last.creature) ?? 0 : 0;
+    if (last && lastPower > 0) {
+      last.amount += Math.trunc(remainder / lastPower);
+      remainder %= lastPower;
     }
-    return { name: mintName(rng), stacks, mood: 2, branch: 'army' };
   }
+  // The caller reads the FIRST stack before it will build anything: a list
+  // that came out empty, or whose first entry has no creature or no count,
+  // is a decline like any other (`0x7939ad`..`0x7939bc`).
+  const first = stacks[0];
+  if (!first || !first.creature || !first.amount) return null;
+  return stacks;
+}
+
+/**
+ * `0x7929c0` — one stack of one creature, and the end of the road: when this
+ * declines the engine places nothing at all and mints no name.
+ */
+function singleStack(scaled: number, tables: GuardTables, rng: DrawSource): Guard | null {
+  // The same hundred, now against the SCALED power — the outer gate saw the
+  // raw one, so WEAK is where the two disagree.
+  if (scaled < MIN_GUARD_POWER) return null;
 
   const desired = 10 + rng.below(30);
   const candidates: CreatureInfo[] = [];
   let tolerance = fl(1.1);
   // The engine rescans without clearing, so a creature that qualifies at a
-  // tighter tolerance is listed again at a looser one.
-  for (let round = 0; round < 16 && candidates.length < 10; round++) {
+  // tighter tolerance is listed again at a looser one — and it has NO round
+  // limit: `cmp eax,28h / jl` sends it back for as long as fewer than ten have
+  // turned up. The tolerance grows by 1.2 each time, so the range widens
+  // without bound and the loop ends; the cap here only stops a runaway from
+  // hanging a tool, and it throws rather than pretending it is the engine.
+  for (let round = 0; candidates.length < 10; round++) {
+    if (round >= 64) throw new Error(`the guard scan is not converging at power ${scaled}`);
     for (const creature of tables.creatures) {
       if (UNPLACEABLE_CREATURES.has(creature.id) || creature.power <= 0) continue;
       const ratio = fl(scaled / creature.power);
@@ -194,7 +245,7 @@ export function setMonster(power: number, strengthLevel: number, tables: GuardTa
     }
     if (candidates.length < 10) tolerance = fl(tolerance * fl(1.2));
   }
-  if (!candidates.length) return { name: mintName(rng), stacks: [], mood: 3, branch: 'single' };
+  if (!candidates.length) return null; // `xor al,al` at 0x792b52, no draw
   const creature = candidates[rng.below(candidates.length)]!;
   const amount = Math.trunc(fl(scaled) / fl(creature.power));
   return { name: mintName(rng), stacks: [{ creature: creature.name, amount }], mood: 3, branch: 'single' };
