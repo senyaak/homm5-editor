@@ -1973,6 +1973,60 @@ an alibi for the other. `rmg-diff-map` now reports **15 of 15** on all three,
 minimap included, and `tools/test-rmg-minimap.ts` says in its own output that
 it is blind to this arm, because the reference is.
 
+### An underground minimap, and the arms only a cave floor wakes
+
+Everything above was measured on SURFACE floors, whose ground flags are the
+constructor's uniform 16 forever. A two-level order is the first map where that
+plane carries anything else — the massif carve's bytes, 32 for solid rock, 26
+and 21 for the two ramp steps down, 16 for open cave floor — and three readings
+that had been true of every map so far stopped being true.
+
+**The terrain pass has a first arm, and it is most of the picture.** A tile
+whose ground flag is over `0x15` is left BLACK, before any document is looked
+up. Ported, an underground floor goes from 82,368 differing bytes to 29,344 —
+which is to say the black is most of a cave map and the port had been drawing
+terrain through the rock.
+
+**The mask has a fourth arm**, `0x9EB9E0`: do the tile's four ground-flag corner
+vertices DIFFER. It feeds kind 3 and sets the bit, and what it draws is the
+shading along every cave wall and ramp. 29,344 bytes down to 2,228.
+
+With it the port's mask is the engine's own `mmk` dump EXACTLY on both floors of
+a 72x72 two-level order — 5,184 tiles of 5,184, none either way — which is the
+same standard the surface mask was held to and the reason the last 2,228 bytes
+could be blamed on something else with confidence.
+
+**The river half-grid belongs to the SURFACE.** Those last 2,228 bytes were
+thirteen cave tiles the halving spared. The generator stamps one river plane,
+from floor 0's lakes and its sea; an underground floor has none, and the
+thirteen tiles were exactly the ones sitting under the surface lake. The port
+was handing floor 0's plane to floor 1.
+
+**And the icon collector's second list is what a second level adds.** The
+subterranean gates — `BUILDING_SUBTERRA_GATE`, two per floor — were named in the
+notes and not ported, on the reasoning that the reference's icon list was
+complete. It is complete for a one-level map. The three lists drain one after
+another, so a gate stamps over a flaggable icon and never under it.
+
+**Which buildings carry a flag, read out of the factory.** The last icon missing
+was a Den of Thieves drawn `Object_0` — a plain building in the FIRST list.
+Flaggability is not a field and is not decided inside `CAdvMapBuilding`: it is
+decided when the object is built. `0xB526A0` switches on the shared document's
+`Type` (`add eax,-0Ch`, `cmp eax,73h`, a 116-byte index table at `0xB53984` into
+nine cases at `0xB53960`), and exactly one case — `0xB526C3` — allocates 0x138
+bytes and calls `CAdvMapBuildingFlagged`'s constructor `0xD30FC0`. That
+constructor has ONE caller, so there is no other way to make one; its vtable
+`+0x04` is `0xAD0230` (`lea eax,[ecx-44h]`) where every other building class has
+`0x4797F0` (`xor eax,eax`). Two `Type` values reach it: `BUILDING_LIGHTHOUSE`
+(0x1A) and `BUILDING_DEN_OF_THIEVES` (0x26). The same read named the other two
+constants in the collector: `0x27` is the gate and `0x63`/`0x64` are
+`BUILDING_BIARA_CITADEL` and `BUILDING_DEMON_SOVEREIGN_CITADEL`.
+
+**Where it lands.** A two-level order is **20 of 20 byte-identical**, both
+minimaps included, whether it comes from the console or from a dialog SAVE — and
+the two write the same `minimap_floor_02.dds` down to its md5, which is the
+second independent map saying the two paths draw the same picture.
+
 **The icons are the game's own art, copied pixel for pixel.** `0xDD00E0`
 first collects the objects worth an icon, and the drawer then runs a loop
 per collected list.
