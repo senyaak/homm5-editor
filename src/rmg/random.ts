@@ -146,20 +146,30 @@ export class RmgRandom {
    * This is where `Zone #%d … k == %2.2f` comes from, so getting it exactly
    * right matters for the very first phase that grows anything.
    *
-   * The engine draws the same 31 bits as `next()`, scales by 1/2^31, and then
-   * does the interpolation in SINGLE precision — `cvtpd2ps` before the multiply
-   * and every operation after it a `ss`. JavaScript has only doubles, so each
-   * step is rounded back to float with `Math.fround`; skipping that gives
-   * answers that are right to seven digits and wrong afterwards, which is
-   * precisely the kind of drift that shows up a thousand draws later.
+   * The engine draws the same 31 bits as `next()` and interpolates — and the
+   * two builds do it differently, which is the trap this port has walked into
+   * four times now. The GAME (`0xEB14D0`, SSE) puts the draw through
+   * `cvtpd2ps` FIRST, so a 31-bit integer is squeezed into a float's 24-bit
+   * mantissa before anything else, and every step after it is an `ss`. The
+   * EDITOR (`0xCFD330`, x87) keeps the whole thing on the stack —
+   *
+   *     fild [esp]              ; the full 31 bits, no rounding
+   *     fld b; fsub a; fmulp    ; draw * (b - a)
+   *     fmul [1172694h]         ; * 2^-31, exact, a power of two
+   *     fadd a
+   *
+   * — and rounds once, where the caller stores the result. The reference maps
+   * are the EDITOR's, so this port speaks the editor's arithmetic: one
+   * `Math.fround` at the end and none in the middle. The difference is a
+   * single ulp and it is not cosmetic — it is what parted `S3-5P2Z7N2.2` at
+   * the second seed's water order, at draw SIX of the whole run.
    */
   betweenFloat(a: number, b: number): number {
     // The engine's betweenFloat steps the state itself rather than calling
     // next(), so the trace must show ONE 'f', not an 'n' inside an 'f' — the
     // draw is inlined here for the same reason.
     const draw = Number((this.step() >> 23n) & 0x7fffffffn);
-    const scaled = Math.fround(Math.fround(draw) * SCALE);
-    const value = Math.fround(a + Math.fround(scaled * Math.fround(b - a)));
+    const value = Math.fround(draw * (b - a) * SCALE + a);
     if (this.onDraw) {
       FLOAT_BITS[0] = value;
       this.onDraw('f', INT_BITS[0]);

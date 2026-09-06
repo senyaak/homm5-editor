@@ -299,12 +299,14 @@ twenty-two templates.
 
 3. **Then the debts, in the order the sweep prices them** — the minimap's ten
    channel bytes and monster levels other than MEDIUM. (The `caption-text`
-   counter was the third and is closed: it belongs to the save path.)
+   counter was the third and is closed: it belongs to the save path.) These two
+   are now what is left of the whole plan.
 
-4. **Water, as a second dimension.** Orderable now — `-water 2` — and the
-   reason it was not is under "The water is two fields, and the handler zeroes
-   both" below. It is also the only way to reach a zone's `CanBeWater`, the one
-   field of the format the sweep of readers could not settle.
+4. **Water, as a second dimension — DONE.** `-water 2` orders it, both seeds
+   are swept, and 87 of the 88 orders across the four sweeps (two dry, two
+   water) are byte-identical.
+   It also reached a zone's `CanBeWater`, the last unsettled field of the
+   format: read by nothing, and changes nothing when it is turned on.
 
 ### The sweep, run
 
@@ -2413,6 +2415,37 @@ on each, kept in `bin/rmg-water/`. It began at three byte-identical maps and
 **closed at twenty-two** — every water order the sweep gives, byte for byte,
 `map.xdb`, `GroundTerrain.bin`, the texts and the minimap documents alike.
 
+**And then a SECOND water seed**, 987654321, in `bin/rmg-water2/`, because one
+seed is one path — the rule that has already caught this port twice. It found
+two more, and both were general rather than watery:
+
+- **`%g` goes scientific under 1e-4, and MSVC pads the exponent to three
+  digits.** One artifact of `S7-22P2-8Z15K2.4c` sits at a rotation of
+  3.80096e-005; the engine writes exactly that and this port wrote
+  `0.0000380096`, because JavaScript's own `String` keeps writing digits down
+  to 1e-6. Eight bytes of one map, and the only reason they were ever seen is
+  that a second seed was run. `fmtRot` implements the rule now, and still
+  refuses `%g`'s large-exponent half — a rotation is an angle and no run has
+  produced one to check a reading against.
+- **`betweenFloat` is the fourth place the two builds diverge**, and this one
+  is at the root of everything. The GAME (`0xEB14D0`, SSE) puts the 31-bit
+  draw through `cvtpd2ps` FIRST — squeezing it into a float's 24-bit mantissa
+  — and every step after it is an `ss`. The EDITOR (`0xCFD330`, x87) keeps the
+  whole interpolation on the stack: `fild` the full 31 bits, `fld b; fsub a;
+  fmulp`, `fmul` by 2^-31 (exact, a power of two), `fadd a`, and one rounding
+  where the caller stores it. The port had ported the game's version. It is a
+  single ulp; on `S3-5P2Z7N2.2` at the second seed it moved the first
+  divergence from draw SIX to draw 108674, and it changes no byte of the 44
+  dry maps or the 22 first-seed water maps.
+
+What is left of that seed is one order — `S3-5P2Z7N2.2` — where zone 6's two
+shipyards stand elsewhere: the engine's at (166,95) and (155,161), the port's
+at (165,100) and (157,167), with the other twelve of the fourteen identical.
+The border table and the zone grid are identical going in, the pool lengths
+agree draw for draw (24, 23, 22, 21), and the tile each index names does not —
+so the candidate list's CONTENT parts while its length does not, which is
+where the next reading starts.
+
 **Five findings.** The first was hiding behind a convention: the zone grid at
 the roads boundary had 586 cells where the engine says **−2** and the port said
 −1 — the sea tiles the carve leaves ON the zone's `+0xCC` list (adjusted border
@@ -2986,13 +3019,34 @@ template are decoration: changing zone 0's from 100 to 400 and its
 static sweep therefore counts it read, and the probe finds it inert, and both
 are right about different things.
 
-**`CanBeWater` is the one field neither instrument settles.** No read of `+0x0C`
-appears anywhere: LoadTemplate's every dereference of the item was enumerated
-(`+4`, `+8`, `+0x10`, `+0x14`, `+0x1C`) and this is not among them, and the
-water branch is taken on a GENERATOR-level flag instead. But the console
-command has no water switch, so every map this batch can order is dry, and a
-probe on a dry map could not tell an unread field from an unreachable one. It
-stands as unread by the code, unprobed by the engine.
+**`CanBeWater` is settled now, and the answer is that it does nothing.** The
+static half was always clear: no read of `+0x0C` appears anywhere, LoadTemplate's
+every dereference of the item was enumerated (`+4`, `+8`, `+0x10`, `+0x14`,
+`+0x1C`) and this is not among them, and the water branch is taken on a
+GENERATOR-level flag instead. What was missing was the probe, because the
+console command could not order water — and now it can.
+
+The probe, with both controls, since a one-sided experiment on this proves
+nothing:
+
+- three copies of `S1P2Z2M1` as LOOSE files under `<game>/data/RMG/Templates/`
+  (the editor reads them; a loose folder under `data/` is mounted, which
+  `data/RMGTemp` already showed), one untouched, one with `CanBeWater` true on
+  all four zones, one with zone 1's `Size` 10 → 11;
+- each ordered with `-water 2` at seed 1785351845;
+- **the NOISE control first**: the same order twice differs by 29 bytes of
+  `map.xdb` (the `RMGguid`) and ONE byte of `GroundTerrain.bin` (the
+  uninitialised record `rmg-diff-map` already exempts). Anything at or under
+  that is not a finding;
+- **the positive control**: `Size` 10 → 11 moves 440,489 bytes of `map.xdb` and
+  53,444 of the terrain. The instrument is awake;
+- **`CanBeWater` true on every zone**: one byte of terrain — the noise — and a
+  `map.xdb` whose only difference is the recorded `<Template href>` naming a
+  different probe file, plus the shift that one character makes.
+
+So it is read by nothing and changes nothing, on the one order that could ever
+have shown it. Whatever the field was for, the shipped generator does not use
+it.
 
 ### The preset table — the road strengths reach nothing
 

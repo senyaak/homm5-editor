@@ -21,15 +21,33 @@ import { buildBlankMap } from '../map/blank-map.ts';
 
 const NL = '\r\n';
 
-/** `%g` with MSVC's default 6 significant digits, of the stored f32. */
+/**
+ * `%g` with MSVC's default 6 significant digits, of the stored f32.
+ *
+ * `%g` goes SCIENTIFIC when the decimal exponent is under -4, and MSVC pads
+ * the exponent to three digits with its sign: an artifact of the second seed's
+ * `S7-22P2-8Z15K2.4c` sits at a rotation of 3.80096e-005 and the engine writes
+ * exactly that, where JavaScript's own `String` would keep writing digits down
+ * to 1e-6 and give `0.0000380096`. Eight bytes of one map, and the only reason
+ * they were ever seen is that a second seed was run.
+ *
+ * The other half of `%g` — scientific once the exponent reaches the precision,
+ * six — still refuses rather than guesses: a rotation is an angle and no run
+ * has produced one, so there is nothing to check a reading against.
+ */
 export function fmtRot(v: number): string {
   const f = Math.fround(v);
   if (f === 0) return '0';
-  const s = String(Number(f.toPrecision(6)));
-  // No reference run has ever written an exponent-form Rot; refuse to
-  // guess the CRT's exponent style rather than get it quietly wrong.
-  if (s.includes('e')) throw new Error(`Rot ${v} needs %g exponent form — unhandled`);
-  return s;
+  const sci = f.toExponential(5);
+  const parts = /^(-?)(\d)(?:\.(\d+))?e([+-]\d+)$/.exec(sci);
+  if (!parts) throw new Error(`Rot ${v}: unreadable exponential form ${sci}`);
+  const exponent = Number(parts[4]);
+  if (exponent >= 6) throw new Error(`Rot ${v} needs %g's large-exponent form — unmeasured`);
+  if (exponent >= -4) return String(Number(f.toPrecision(6)));
+  const mantissa = (parts[2] + (parts[3] ? `.${parts[3]}` : ''))
+    .replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+  const sign = exponent < 0 ? '-' : '+';
+  return `${parts[1]}${mantissa}e${sign}${String(Math.abs(exponent)).padStart(3, '0')}`;
 }
 
 /** What one object's map entry needs — tools/rmg-run.ts records satisfy it. */
