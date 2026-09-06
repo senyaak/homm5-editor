@@ -1997,8 +1997,26 @@ places fewer treasures leaves an emptier zone for every step behind it.
 Ordering the reference both ways and diffing the two oracle logs step by step is
 what named it — `1 treasures` is the first boundary that parts, nine draws at
 LITTLE against four at MISERABLE — and the port now takes both out of the map's
-own `sRMGProps`, so nothing is typed. A MISERABLE-ordered reference comes out
-**15 of 15 byte-identical** and the LITTLE one is untouched.
+own `sRMGProps`, so nothing is typed.
+
+**The whole scale is checked, both dials.** Seven orders of the reference: each
+of the five rungs with both set to it, plus the two crossed corners that prove
+they are two separate dials rather than one.
+
+| resource / exp | draws | entries |
+| --- | --- | --- |
+| MISERABLE / MISERABLE | 93,631 | 15 of 15 |
+| LITTLE / LITTLE | 92,438 | 15 of 15 |
+| NORMAL / NORMAL | 91,468 | 15 of 15 |
+| LOTS / LOTS | 89,595 | 15 of 15 |
+| MUCH / MUCH | 86,614 | 15 of 15 |
+| MISERABLE / MUCH | 90,378 | 15 of 15 |
+| MUCH / MISERABLE | 92,104 | 15 of 15 |
+
+The count FALLS as the dials rise, which is the opposite of the obvious guess
+and is the cascade rather than the step: a zone that gets more treasures has
+less room left for everything behind them, and the steps behind them are where
+the draws are.
 
 ### Two traps in the oracle itself
 
