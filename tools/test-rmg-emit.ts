@@ -112,6 +112,10 @@ for (const spec of RUNS) {
       races,
       mapName: grab(/<MapName>([^<]*)<\/MapName>/),
     },
+    // The references were SAVED FROM THE DIALOG, whose caption numbering starts
+    // at 2; the console command the sweeps use starts at 0. See
+    // `RmgTextsInput.captionBase`.
+    captionBase: 2,
   });
 
   if (ours === ref) {
@@ -150,6 +154,7 @@ for (const spec of RUNS) {
       monsterStrength: c.setup.monsterStrength,
       players,
       seed: REFERENCE_SEED,
+      captionBase: 2,
     });
     let bad = 0;
     for (const t of texts) {

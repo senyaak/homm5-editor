@@ -59,8 +59,23 @@ if (monster !== 'MONSTER_LEVEL_MEDIUM') {
 
 const run = runFull(dir, { seed, template, size, underground, water: water || undefined });
 console.log(`  replayed: ${run.c.rng.draws} draws, ${run.objects.length} objects`);
+// WHICH CAPTION NUMBERING TO EXPECT is not the generator's to say: the console
+// command numbers the scenario captions from 0, the editor's SAVE from 2 with
+// two unreferenced documents below them, and the same map ordered both ways
+// differs by exactly those two bytes. So the base is taken from the map under
+// test - how many caption documents it carries, less one per player - rather
+// than guessed from the path, which would misjudge an unpacked archive.
+//
+// This does not make the numbering unchecked. The base only says how many
+// documents exist; whether `map.xdb` REFERENCES the right ones is still a byte
+// comparison, and a map whose refs did not follow its own file set would fail
+// it. See `RmgTextsInput.captionBase`.
+const captions = [...theirs.keys()].filter((n) => /^caption-text-\d+\.txt$/.test(n)).length;
+const captionBase = Math.max(0, captions - players);
+if (captionBase) console.log(`  captions: ${captions} documents, so the numbering starts at ${captionBase} (an editor SAVE)`);
 const ours = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), run,
-  { seed, template, players, underground, water, guid, mapName, minimap });
+  { seed, template, players, underground, water, guid, mapName, minimap },
+  { captionBase });
 
 const ourNames = new Set(ours.map((f) => f.name));
 const missing = [...theirs.keys()].filter((n) => !ourNames.has(n));

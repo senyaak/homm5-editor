@@ -64,8 +64,9 @@ of every template the port accepts** (`0xECF760` → `heights.ts`,
 `test-rmg-heights`, replaying through the shared full-run driver
 `tools/rmg-run.ts`): every vertex of the surface, island and underground
 floor-0 planes — 24,147 across the three files — bit for bit, and
-**21 of 21 templates of the sweep with zero differing vertices, on BOTH
-seeds**. The
+**21 of 21 templates of the sweep, on BOTH seeds**, with nothing left but
+one-ulp vertices on 28 of the 44 maps (492 vertices in all, never two ulps).
+The
 last debt was two errors in the base field that were only visible
 together — the noise's two indices swapped and the Inferno/Necromancy
 dig switched off on a measurement the swap had corrupted; the story is
@@ -285,9 +286,11 @@ twenty-two templates.
 
    Each order reads `RMG/Templates/<name>.xdb -seed 1785351845 -size 1
    -resource 1 -exp 1 -pokeb 148 0`, the last of which is the minimap tick.
-   TWO differences are known in advance and are not findings: the
-   `caption-text` numbering (two bytes of `map.xdb`) and, if a monster level
-   is ever ordered, the port's MEDIUM-only setup.
+   ONE difference is known in advance and is not a finding: if a monster level
+   other than MEDIUM is ever ordered, the port's setup does not replay it. (The
+   `caption-text` numbering used to be the second such exemption; it is now
+   understood and reproduced - see "The caption numbering belongs to the save
+   path" below.)
 
 2. **A second seed over every template that passed.** One seed is one path: a
    template that agrees once is not a template that agrees. This is the same
@@ -310,25 +313,68 @@ for the small templates, MEDIUM for `S2-*`, LARGE for `S3-*` and HUGE for
 than refused — the comparison is still honest because `rmg-diff-map` reads the
 size back out of the map it is given.
 
-| the template | what the port reproduces |
+This table is the state the sweep was FIRST read in, kept because the shape of
+what moved is the record of how it moved. What it says now is under it.
+
+| the template | what the port reproduced then |
 | --- | --- |
-| `S1P2Z2M1`, `S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` | **everything.** 12 of 13 entries byte-identical, the 13th being the two `caption-text` bytes that are known |
-| `S0-1P2Z2K3.1T`, `.2T`, `T`, `S1P2Z3K5.1`, `S1-2P2Z7V2`, `S2-4P2Z7B2`, `S3-4P2-4Z4K1M` | **every object, every text, every terrain plane but one.** `map.xdb` differs by the known `caption-text` bytes alone; masks, ground flags, passability and the river plane are identical; only HEIGHTS differ, by 4 bytes on `S1-2P2Z7V2` and by a few thousand on the rest |
-| the other eleven | `map.xdb` still differs wholesale — the object layer diverges |
+| `S1P2Z2M1`, `S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` | **everything.** 12 of 13 entries byte-identical, the 13th being the two `caption-text` bytes that were known |
+| `S0-1P2Z2K3.1T`, `.2T`, `T`, `S1P2Z3K5.1`, `S1-2P2Z7V2`, `S2-4P2Z7B2`, `S3-4P2-4Z4K1M` | **every object, every text, every terrain plane but one.** `map.xdb` differed by the known `caption-text` bytes alone; masks, ground flags, passability and the river plane identical; only HEIGHTS differed, by 4 bytes on `S1-2P2Z7V2` and by a few thousand on the rest |
+| the other eleven | `map.xdb` still differed wholesale — the object layer diverged |
 | `S7-22P2-8Z15K2.4c` | the port refuses it: fifteen zones, and the fourteenth would rehash the queue whose order has never been read |
+
+**Where it stands now, measured over BOTH sweeps' 44 maps** (`rmg-diff-map` on
+each):
+
+- **`map.xdb` is byte-identical on all 44**, entry set included. The last two
+  bytes went with the caption numbering below.
+- **`GroundTerrain.bin` differs on 28 of them, by 1 to 57 bytes** — and every
+  one of those bytes is one of two things: a height vertex one ULP out (never
+  more, on either sweep), or the engine's own uninitialised byte in the `0x0e`
+  record, which flips between two identical runs of the engine itself.
+- Everything else — masks, ground flags, passability, the river plane, the
+  minimap documents, all eleven texts, `map-tag.xdb` — is byte-identical
+  everywhere.
 
 **Ten of twenty-one, up from four**, and the four were every template whose
 towns matched its players. What moved the other six was one routine — the
 garrison below. The cartographer and the zero possession marker moved six
 more; the table above is the state before those two.
 
-**The standing count is TWENTY-ONE of twenty-one.** Every template the port
-accepts now reproduces the whole object layer, down to the two `caption-text`
-bytes that are known; three of them — `S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` and the
-reference — are byte-identical through the terrain as well, and the rest differ
-only in the height plane, by anything from 4 bytes to a few thousand. The port
-refuses `S7-22P2-8Z15K2.4c` outright, and that refusal is the whole of what is
-left of the sweep.
+**The standing count is TWENTY-ONE of twenty-one, on both seeds.** Every
+template the port accepts reproduces the whole object layer and its whole
+`map.xdb`, byte for byte; fourteen of the forty-two maps are byte-identical
+through the terrain as well, and the other twenty-eight differ only by height
+vertices one ULP out — 218 such vertices over the first sweep, 274 over the
+second, none more than one ulp. The port refuses `S7-22P2-8Z15K2.4c` outright,
+and that refusal plus the ulp layer is the whole of what is left of the sweep.
+
+##### The caption numbering belongs to the SAVE PATH, not to the generator
+
+The two `caption-text` bytes rode along as a known exemption for months, and
+they were not a debt at all: they are the difference between the two ways of
+getting a map out of the engine, and the split is total.
+
+| | caption documents written | what `map.xdb` references |
+| --- | --- | --- |
+| the console command, all **44** maps of both sweeps | 2 | `caption-text-0`, `-1` |
+| the editor's own SAVE, all **11** maps under `_tmp/oracle` | 4 | `caption-text-2`, `-3` |
+
+Same seeds, same templates, same everything else; the two extra documents a
+dialog save writes are copies of the map name that nothing references. So the
+numbering is not the generator's to decide, and the port stops pretending it
+is: `RmgTextsInput.captionBase` says where the scenario captions start, 0 by
+default and 2 for the archive path. `rmg-pack` (which writes an `.h5m`, the
+thing a SAVE produces) and the reference-backed suites pass 2; `rmg-diff-map`
+takes it from the map under test — how many caption documents it carries, less
+one per player — because guessing from the path misjudges an unpacked archive,
+which is a folder that came out of a dialog. That does not make the numbering
+unchecked: the base only says how many documents exist, and whether `map.xdb`
+references the right ones is still a byte comparison.
+
+The port had hardcoded the dialog's 2, which is why it was exact against the
+three saved references and two bytes out against every map the batch ordered —
+a constant fitted to the only evidence anyone had looked at.
 
 **A debt the count hid, and where it went.** `S3-5P2-8Z8K2M` used to differ by
 five bytes, only two of them the `caption-text` numbering: three object AMOUNTS
@@ -418,9 +464,9 @@ least one feature the port does not carve at all.
 
 Twenty-two more launches at seed 987654321, `game/bin/rmg-seed2/`. **All
 twenty-one templates the port accepts reproduce the object layer again** — every
-`map.xdb` differs by the two `caption-text` bytes and nothing else — and two of
-them, `S1-2P2-4Z4K1S` and `S1-2P2-8Z8K2S`, come out byte-identical through the
-terrain as well. The twenty-second refuses in the port's own words
+`map.xdb` byte-identical, once the caption numbering below stopped being read as
+the dialog's — and six of them come out byte-identical through the terrain as
+well. The twenty-second refuses in the port's own words
 (`HashQueue: a 14th zone would rehash`), which is the refusal working.
 
 This is what the first sweep could not say. A template that agrees once agrees
@@ -523,6 +569,23 @@ node tools/rmg-census-heights.ts                                          # the 
 node tools/rmg-census-heights.ts --dir game/bin/rmg-seed2 --seed 987654321
 node tools/rmg-census-heights.ts --slot 13                                # just that one
 ```
+
+**Every line reports TWO numbers, because one of them hid the other.** The
+clusters are the 1e-4 view, which is the right lens for a debt with a shape;
+next to them sits BIT inequality with the worst distance in ulps. The first
+report this tool gave read "21 of 21, zero differing vertices" and was quoted
+as the plane being closed — true of the tolerance and false of the file, since
+28 of the 44 maps still wrote a different `GroundTerrain.bin`. What they carry
+is one-ulp vertices and nothing else:
+
+| | planes bit-identical | vertices one ulp out | worse than one ulp |
+| --- | --- | --- | --- |
+| seed 1785351845 | 8 of 21 | 218 | none |
+| seed 987654321 | 6 of 21 | 274 | none |
+
+That is the whole remaining height debt, and it is arithmetic rather than
+structure: the passes are the engine's, the inputs are the engine's, and what
+is left is where a double intermediate lands against an x87 one.
 
 | | the dig on the resolved race | the dig switched off | the base field read right |
 | --- | --- | --- | --- |

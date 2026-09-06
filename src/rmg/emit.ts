@@ -348,6 +348,8 @@ export interface RmgMapInput {
   groundAmbientLight: string;
   /** How many player slots are active (the first N). */
   players: number;
+  /** Where the scenario captions' numbering starts; see `RmgTextsInput`. */
+  captionBase?: number;
   /**
    * The dialog's Minimap tick. With it off the engine writes no minimap files
    * and points the thumbnail at a stock texture, and says so in the record —
@@ -489,13 +491,14 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
   text = patch(text, 'href="objective-caption-text.txt"', 'href="objective-caption-text-0.txt"');
   text = patch(text, 'href="objective-desc-text.txt"', 'href="objective-desc-text-0.txt"');
 
-  // The scenario-info refs: the first N players get generated texts (the
-  // caption counter continues after the map name's caption-text-0..1),
-  // the rest empty out.
+  // The scenario-info refs: the first N players get generated texts, the rest
+  // empty out. WHERE THE NUMBERING STARTS depends on how the map was written,
+  // not on anything the generator decides - see `RmgTextsInput.captionBase`.
+  const captionBase = input.captionBase ?? 0;
   for (let i = 0; i < 8; i++) {
     const suf = i === 0 ? '' : `.${i}`;
     text = patch(text, `href="scenario-caption${suf}.txt"`,
-      i < input.players ? `href="caption-text-${2 + i}.txt"` : 'href=""');
+      i < input.players ? `href="caption-text-${captionBase + i}.txt"` : 'href=""');
     text = patch(text, `href="scenario-description${suf}.txt"`,
       i < input.players ? `href="desc-text-${i}.txt"` : 'href=""');
   }

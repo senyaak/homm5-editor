@@ -30,6 +30,12 @@ export interface RmgTextsInput {
   monsterStrength: number;
   players: number;
   seed: number;
+  /**
+   * The index the FIRST scenario caption document gets. The generator's own
+   * output numbers from 0; a map saved through the editor's dialog starts at 2
+   * and carries two unreferenced copies at 0 and 1. See `buildRmgTexts` below.
+   */
+  captionBase?: number;
 }
 
 /** A params-relative text file, decoded by its BOM (they ship UTF-16LE). */
@@ -45,7 +51,22 @@ function encode(text: string): Buffer {
   return Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]);
 }
 
-/** The generated text files, named as the archive holds them. */
+/**
+ * The generated text files, named as the archive holds them.
+ *
+ * THE CAPTION NUMBERING IS THE SAVE PATH'S, NOT THE GENERATOR'S. Ordering the
+ * same map two ways gives two numberings, and the split is total: all 44 maps
+ * of the two console sweeps (`tools/rmg-batch.ts`, one launch per order) write
+ * exactly `players` caption documents and reference them from 0, while all 11
+ * maps saved through the editor's own dialog write two MORE at 0 and 1 that
+ * nothing references and reference the generator's at 2. Same seeds, same
+ * templates, same everything else - `map.xdb` differs by those two bytes alone.
+ *
+ * So the caller says which it is writing: `captionBase` 0 for the generator's
+ * own output (the default), 2 for a comparison against a dialog-saved archive.
+ * The port used to hardcode 2, which made it exact against the three saved
+ * references and two bytes out against every map the batch orders.
+ */
 export function buildRmgTexts(dataRoot: string, input: RmgTextsInput): Array<{ name: string; data: Buffer }> {
   const params = find(parse(readFileSync(join(dataRoot, 'RMG', 'Params', 'Default.xdb'), 'utf8')), 'RMGParameters');
   if (!params) throw new Error('RMG/Params/Default.xdb: not an RMGParameters');
@@ -76,7 +97,12 @@ export function buildRmgTexts(dataRoot: string, input: RmgTextsInput): Array<{ n
   const description = encode(desc);
   files.push({ name: 'mapname-text-0.txt', data: name });
   files.push({ name: 'mapdesc-text-0.txt', data: description });
-  for (let i = 0; i < 2 + input.players; i++) files.push({ name: `caption-text-${i}.txt`, data: name });
+  // ONE PER SCENARIO ITEM, plus whatever the numbering starts above. Every one
+  // of them is a copy of the map name; only the last `players` are referenced.
+  const captionBase = input.captionBase ?? 0;
+  for (let i = 0; i < captionBase + input.players; i++) {
+    files.push({ name: `caption-text-${i}.txt`, data: name });
+  }
   for (let i = 0; i < input.players; i++) files.push({ name: `desc-text-${i}.txt`, data: description });
   files.push({ name: 'mapobjective-text-0.txt', data: encode(paramText(dataRoot, href('DefaultRMGObjective'))) });
   files.push({ name: 'objective-caption-text-0.txt', data: encode(paramText(dataRoot, href('ObjectiveCaption'))) });

@@ -58,7 +58,7 @@ const ours = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), run, {
   water: 0,
   guid: grab(/<RMGguid>([^<]*)<\/RMGguid>/),
   mapName: grab(/<MapName>([^<]*)<\/MapName>/),
-});
+}, { captionBase: 2 });
 
 const theirs = readdirSync(archiveDir).sort();
 const oursNames = ours.map((f) => f.name).sort();
@@ -104,7 +104,7 @@ for (const seed of [42, 20260902]) {
   const built = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), other, {
     seed, template: 'S1P2Z2M1', players: 2, underground: false, water: 0,
     guid: '00000000-0000-0000-0000-000000000000', mapName: `seed ${seed}`,
-  });
+  }, { captionBase: 2 });
   const names = built.map((f) => f.name).sort();
   const terrain = built.find((f) => f.name === 'GroundTerrain.bin')!;
   const minimap = built.find((f) => f.name === 'minimap_floor_01.dds')!;

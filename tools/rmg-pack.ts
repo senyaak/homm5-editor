@@ -103,9 +103,13 @@ const hex = (n: number): string => Array.from({ length: n },
 // comparing against a map it wrote.
 const guid = flag('guid') ?? `${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}`;
 
+// An `.h5m` is what the editor's SAVE writes, so its caption numbering is the
+// dialog's: two unreferenced documents at 0 and 1 and the scenario captions at
+// 2. The console command writes the other numbering, and `rmg-diff-map` knows
+// which it is looking at. See `RmgTextsInput.captionBase`.
 const files = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), run, {
   seed, template, players, underground, water, guid, mapName,
-});
+}, { captionBase: 2 });
 
 const prefix = `Maps/RMG/${guid}`;
 const staging = join('_tmp', 'rmg-pack');

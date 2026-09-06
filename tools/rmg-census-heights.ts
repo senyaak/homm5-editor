@@ -21,9 +21,12 @@
 // scratch script: the hardcoded table it used to carry was already wrong for
 // the second seed, whose slots are a different set in a different order.
 //
-// The tolerance is 1e-4, so a one-ulp plane reads as clean. Use
-// `tools/rmg-diff-map.ts` to find that there IS something (it counts bytes) and
-// this to find out what.
+// TWO NUMBERS PER MAP, because one of them hides the other. The clusters use a
+// 1e-4 tolerance, which is the right lens for a debt with a shape - but it
+// calls a one-ulp plane clean, and a one-ulp plane still writes a different
+// `GroundTerrain.bin`. So every line also reports BIT inequality and the worst
+// distance in ULPs. A map that is clean by clusters and not by bits has the
+// arithmetic debt and nothing else.
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -88,7 +91,7 @@ if (!slots.length) {
 }
 console.log(`${dir}, seed ${seed}, ${slots.length} slot(s)\n`);
 
-let clean = 0, failures = 0, worstAll = 0, totalAll = 0;
+let clean = 0, exact = 0, failures = 0, worstAll = 0, totalAll = 0, ulpAll = 0;
 for (const n of slots) {
   const t0 = Date.now();
   const slot = readSlot(n);
@@ -113,6 +116,20 @@ for (const n of slots) {
     // different story from a cluster in open ground.
     const craters = run.objects.filter((o) => o.craterTown || o.craterDwelling)
       .map((o) => [o.x, o.y, o.craterTown ? 8 : 2.5] as const);
+    // The bit layer, which the 1e-4 clusters below cannot see.
+    let bitDiffs = 0, worstUlp = 0;
+    {
+      const ob = new Uint32Array(ours.buffer, ours.byteOffset, ours.length);
+      const tb = new Uint32Array(theirs.buffer, theirs.byteOffset, theirs.length);
+      for (let i = 0; i < ob.length; i++) {
+        if (ob[i] === tb[i]) continue;
+        bitDiffs++;
+        // Same sign and same exponent here, so the raw distance IS the ulp count.
+        const d = Math.abs(ob[i]! - tb[i]!);
+        if (d > worstUlp) worstUlp = d;
+      }
+    }
+
     const seen = new Uint8Array(v * v);
     const clusters: string[] = [];
     let total = 0, worst = 0;
@@ -149,7 +166,10 @@ for (const n of slots) {
     totalAll += total;
     worstAll = Math.max(worstAll, worst);
     if (!total) clean++;
+    if (!bitDiffs) exact++;
+    ulpAll += bitDiffs;
     line += `  ${String(total).padStart(5)} vertices, worst ${worst.toFixed(4)}, ${clusters.length} clusters`;
+    line += bitDiffs ? `; ${bitDiffs} differ in BITS, worst ${worstUlp} ulp` : '; bit-identical';
     const shown = clusters.slice(0, 6);
     if (shown.length) line += `\n        ${shown.join('\n        ')}`;
     if (clusters.length > shown.length) line += `\n        … ${clusters.length - shown.length} more`;
@@ -159,6 +179,7 @@ for (const n of slots) {
   }
   console.log(`${line}   [${((Date.now() - t0) / 1000).toFixed(0)}s]`);
 }
-console.log(`\n${clean} of ${slots.length} planes bit-clean`
-  + `, ${totalAll} differing vertices in all, worst ${worstAll.toFixed(4)}`
-  + (failures ? `, ${failures} slot(s) the port could not run` : ''));
+console.log(`\n${exact} of ${slots.length} planes BIT-identical`
+  + `; ${clean} clean at 1e-4, ${totalAll} differing vertices there, worst ${worstAll.toFixed(4)}`
+  + `; ${ulpAll} vertices differ in bits alone`
+  + (failures ? `; ${failures} slot(s) the port could not run` : ''));

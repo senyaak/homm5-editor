@@ -181,6 +181,10 @@ function minimapFiles(
 /** Every file the archive holds, in no particular order — packing sorts them. */
 export function buildMapFiles(
   dataRoot: string, exePath: string, run: FullRun, order: MapOrder,
+  // The caption numbering belongs to the SAVE PATH, not to the generator: 0 is
+  // what the console command writes, 2 what the editor's dialog does. See
+  // `RmgTextsInput.captionBase`.
+  opts: { captionBase?: number } = {},
 ): MapFile[] {
   const c = run.c;
   const twoLevel = c.floors.length > 1;
@@ -212,6 +216,7 @@ export function buildMapFiles(
           mapName: order.mapName,
         },
         minimap: order.minimap !== false,
+        captionBase: opts.captionBase,
       }), 'utf8'),
     },
     {
@@ -232,6 +237,7 @@ export function buildMapFiles(
     monsterStrength: c.setup.monsterStrength,
     players: order.players,
     seed: order.seed,
+    captionBase: opts.captionBase,
   }));
 
   const withXpointer = (l: TerrainLayer): { path: string; mask: Uint8Array } => ({
