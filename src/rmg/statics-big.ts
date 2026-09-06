@@ -115,10 +115,12 @@ export interface PlacedStatic {
   /** Radians — a quadrant multiple, or the map angle for FireDots. */
   angle: number;
   /**
-   * The subterranean point light (`vt+0x3C`) — two draws when the
-   * resource path matches the class's substrings ("Crystal" for
-   * Subterra/SubInferno, "Fakel"/"FireColumn" for Dwarven). The colour
-   * costs no draw: preset `PointLightParams.Colors[zoneId % count]`.
+   * The subterranean point light (`vt+0x3C`) — two draws when the resource
+   * path matches the CLASS's own substrings, which are `LIGHT_NAMES` above and
+   * are not shared between the three. The colour costs no draw and is not this
+   * record's: it is the zone's RACE PRESET's
+   * `PointLightParams.Colors[zoneIndex % count]`, taken where the run is
+   * assembled.
    */
   light?: { z: number; radius: number };
 }
