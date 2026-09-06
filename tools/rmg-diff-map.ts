@@ -24,7 +24,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
-import { buildMapFiles } from './rmg-build.ts';
+import { buildMapFiles, MAP_SIZES } from './rmg-build.ts';
 import { describeOrder, readOrder, unreplayable } from './rmg-order.ts';
 import { runFull } from './rmg-run.ts';
 import { dataDir, gameDir } from './game-dir.ts';
@@ -140,3 +140,17 @@ for (const file of ours.sort((a, b) => a.name.localeCompare(b.name))) {
     + ` (ours ${file.data.length}b, theirs ${want.length}b)`);
 }
 console.log(`  ${same} of ${theirs.size} entries byte-identical`);
+// A SAVED map may have been EDITED after it was generated, and then this tool
+// blames the port for a brush stroke. Two of the three differing maps in one
+// sweep were exactly that — a hand-painted box of heights, everything else
+// identical — and each cost an hour before the same order was put through the
+// console and came back byte-identical. There is no marker in the file that
+// says "edited", so the check is to generate it again rather than to guess.
+if (same < theirs.size) {
+  const order = `RMG/Templates/${template}.xdb -seed ${seed} -size ${MAP_SIZES.indexOf(size as never)}`
+    + `${underground ? ' -underground 1' : ''}${water ? ` -water ${water}` : ''} -resource 1 -exp 1`;
+  console.log('  Before reading this as a divergence: a saved map may have been EDITED after');
+  console.log('  it was generated, and only the engine can tell you. Order it again —');
+  console.log(`    node tools/rmg-batch.ts --game <dir> --order "${order}"`);
+  console.log('  — and diff THAT. If the fresh one is clean, the saved one was painted on.');
+}

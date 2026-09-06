@@ -1914,6 +1914,28 @@ Proven: every address, offset and arithmetic step above is read out of
 `bin/H5_Game_H5E.exe`, and the four points above are measured off the
 reference file.
 
+### Two traps in the oracle itself
+
+Both cost a wrong diagnosis before they were named, and neither is about the
+generator.
+
+**A saved map may have been EDITED after it was generated.** A sweep over the
+maps in `game/Maps` reported three divergences; two of them were brush strokes.
+`H5E Random 20260902.h5m` differs from the port in 397 bytes, all of them the
+height plane, 123 vertices inside one small box — and the same order put through
+the console comes back **byte-identical**, so what the diff was reading was a
+hand-painted hillside. `123456788.h5m` is the same story. Nothing in the file
+says "edited", so `rmg-diff-map` now prints the order to re-generate whenever it
+reports a difference: the fresh map is the only thing that can tell the two
+apart.
+
+**`bin/homm5-editor-rmg.log` APPENDS across runs.** A step-comparison script
+that takes the first occurrence of each label reads SOMEONE ELSE'S ORDER, and
+what comes back is a coherent, confident and entirely fictional story — in this
+case "the port spends 39 draws in `loadTemplate` where the engine spends 10",
+when both spend 48. Cut the log at the `cli: RMG/Templates/...` line of your own
+order before parsing it.
+
 ### The minimap's water arms
 
 Everything above was measured on the reference, and the reference is a dry
