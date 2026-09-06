@@ -64,7 +64,8 @@ of every template the port accepts** (`0xECF760` → `heights.ts`,
 `test-rmg-heights`, replaying through the shared full-run driver
 `tools/rmg-run.ts`): every vertex of the surface, island and underground
 floor-0 planes — 24,147 across the three files — bit for bit, and
-**21 of 21 templates of the sweep with zero differing vertices**. The
+**21 of 21 templates of the sweep with zero differing vertices, on BOTH
+seeds**. The
 last debt was two errors in the base field that were only visible
 together — the noise's two indices swapped and the Inferno/Necromancy
 dig switched off on a measurement the swap had corrupted; the story is
@@ -425,9 +426,21 @@ terrain as well. The twenty-second refuses in the port's own words
 This is what the first sweep could not say. A template that agrees once agrees
 on one path through the stream; the same template on another seed walks
 different zones, different races, different templates for its guards. The
-height plane moves with the seed as expected — 22888 bytes on
+height plane moved with the seed as expected — 22888 bytes on
 `S6-11P2-8Z8K2.4a` against 4695 on the first seed, 1 byte on `S1-3P2-4Z5V` —
-and stays the only thing that moves.
+and was the only thing that moved.
+
+**And the height plane now closes on this seed too**: 21 of 21, zero differing
+vertices, worst 0.0000, the same as the first sweep
+(`tools/rmg-census-heights.ts --dir game/bin/rmg-seed2 --seed 987654321`). That
+is the check the base-field fix needed, because a rule found on one seed and
+verified on that same seed is a rule fitted to its own evidence. This set is not
+even the same templates: it carries `S0-1P2Z2K3.1T`, which the first sweep's
+slots do not.
+
+The census was sabotage-checked before its zeros were believed — the same slot
+replayed at a deliberately wrong seed reports 8,278 differing vertices, worst
+6.86. A comparison that cannot go red proves nothing by staying green.
 
 **The heights, measured rather than described.** With the object layer settled
 the plane is the only thing left, and it holds two different debts — told apart
@@ -496,9 +509,20 @@ the smoothed image of one delta added before it).
 
 ##### The census: exactly what is left, template by template
 
-`_tmp/height-census.ts` walks all 21 accepted templates against the second
-sweep's maps and reports the height plane's differing vertices as CLUSTERS,
-at a 1e-4 tolerance so the one-ulp noise stays out of the way.
+`tools/rmg-census-heights.ts` walks every map a sweep generated and reports the
+height plane's differing vertices as CLUSTERS, at a 1e-4 tolerance so one-ulp
+noise stays out of the way. It reads each slot's own folder rather than a table
+of templates — the template out of `map.xdb`, the size out of the plane, the
+underground flag out of whether the slot has a second terrain file — so a sweep
+taken with a different order file needs no edit. That is not tidiness: the
+hardcoded table it grew out of was already wrong for the second seed, whose
+slots are a different set in a different order.
+
+```bash
+node tools/rmg-census-heights.ts                                          # the first sweep
+node tools/rmg-census-heights.ts --dir game/bin/rmg-seed2 --seed 987654321
+node tools/rmg-census-heights.ts --slot 13                                # just that one
+```
 
 | | the dig on the resolved race | the dig switched off | the base field read right |
 | --- | --- | --- | --- |
