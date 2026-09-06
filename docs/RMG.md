@@ -2108,7 +2108,18 @@ Direct3D device is the usual reason a Windows process is not at the defaults,
 and the editor makes one before it reads its command line.
 
 It was not deduced. `native/rmg/minimap-probe.c` hooks three things and logs
-them for one minimap build:
+them for one minimap build — with `minimap` in `<game>/bin/homm5-editor-rmg.txt`
+AND a build that was asked for the probe's lines, which is a compile-time
+switch and not a run-time one:
+
+```bash
+npm run build-native -- --log rmg/minimap-probe,core/detour
+```
+
+(`core/detour` because a detour that refuses says so under its own file's
+switch, and a probe that reports "NOT installed" with no reason costs a
+launch to work out.)
+
 
 | hook | what it logs | the port against it |
 | --- | --- | --- |
