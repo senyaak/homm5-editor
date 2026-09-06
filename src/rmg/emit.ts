@@ -358,8 +358,14 @@ export function renderObject(o: EmitObject): string[] {
 }
 
 /** What buildRmgMapDesc patches over the blank skeleton. */
+/** `RESOURCE_*` / `EXP_*` in the enum's own order — types.xml, not guessed. */
+const MULTIPLIER_NAMES = ['MISERABLE', 'LITTLE', 'NORMAL', 'LOTS', 'MUCH'] as const;
+
 export interface RmgMapInput {
   tiles: number;
+  /** The order's two multipliers, 0 MISERABLE .. 4 MUCH; both default LITTLE. */
+  resourceMultiplier?: number;
+  expMultiplier?: number;
   twoLevel: boolean;
   objects: readonly EmitObject[];
   /** The drawn surface ambient light href (params list at setup's index). */
@@ -595,10 +601,13 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
   if (input.minimap !== false) {
     text = patch(text, '\t\t\t<Minimap>false</Minimap>', '\t\t\t<Minimap>true</Minimap>');
   }
+  // The blank carries MISERABLE, which is what the GAME orders; the editor's
+  // dialog and the console command ask for other rungs of the same enum.
+  const rung = (i: number): string => MULTIPLIER_NAMES[i] ?? 'LITTLE';
   text = patch(text, '\t\t\t<ResourceMultiplier>RESOURCE_MISERABLE</ResourceMultiplier>',
-    '\t\t\t<ResourceMultiplier>RESOURCE_LITTLE</ResourceMultiplier>');
+    `\t\t\t<ResourceMultiplier>RESOURCE_${rung(input.resourceMultiplier ?? 1)}</ResourceMultiplier>`);
   text = patch(text, '\t\t\t<ExpMultiplier>EXP_MISERABLE</ExpMultiplier>',
-    '\t\t\t<ExpMultiplier>EXP_LITTLE</ExpMultiplier>');
+    `\t\t\t<ExpMultiplier>EXP_${rung(input.expMultiplier ?? 1)}</ExpMultiplier>`);
 
   // The dialogs camera.
   const cam = input.camera ?? RMG_CAMERA;

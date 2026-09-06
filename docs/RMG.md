@@ -1972,6 +1972,34 @@ a floor per object, and two of this map's passages are underground.
 With those, that order is **18 of 18 byte-identical** and so is every other map
 in the corpus, the two-level dialog SAVEs at 20 of 20 among them.
 
+### The three ways of ordering a map disagree about the multipliers
+
+`ResourceMultiplier` and `ExpMultiplier` are not labels and not cosmetic, and
+the three paths that can ask for a map ask for three different rungs:
+
+| ordered by | Resource | Exp |
+| --- | --- | --- |
+| the editor's dialog, as the references were set | LITTLE | LITTLE |
+| the console command, on its constructor's defaults | NORMAL | NORMAL |
+| **THE GAME** | **MISERABLE** | **MISERABLE** |
+
+Which is why a map the GAME generates could not be compared at all until now:
+the port had LITTLE written into two call sites as the literal `1`.
+
+**What they change.** Both index the same `{0.2, 0.5, 1, 2, 4}` ladder, and
+three steps read it — the treasures off `generator+0xA8` (RESOURCE), the chests
+and the UPGRADE BUILDINGS off `+0xB0` (EXP). The upgrade-buildings note already
+said "`generator+0xB0` — 1 in every traced run, what writes it is unread"; this
+is what writes it. The effect is not small and not local: the same order at
+MISERABLE spends 93,631 draws against LITTLE's 92,438, because a step that
+places fewer treasures leaves an emptier zone for every step behind it.
+
+Ordering the reference both ways and diffing the two oracle logs step by step is
+what named it — `1 treasures` is the first boundary that parts, nine draws at
+LITTLE against four at MISERABLE — and the port now takes both out of the map's
+own `sRMGProps`, so nothing is typed. A MISERABLE-ordered reference comes out
+**15 of 15 byte-identical** and the LITTLE one is untouched.
+
 ### Two traps in the oracle itself
 
 Both cost a wrong diagnosis before they were named, and neither is about the

@@ -92,6 +92,20 @@ export interface ChainOptions {
   /** WaterAmount (0/1/2); the water reference supplies 2 — see map-setup.ts. */
   water?: number;
   /**
+   * `ResourceMultiplier` and `ExpMultiplier` as the enum counts them —
+   * 0 MISERABLE, 1 LITTLE, 2 NORMAL, 3 LOTS, 4 MUCH. They are NOT labels:
+   * the treasures step scales its count by the `{0.2, 0.5, 1, 2, 4}` ladder,
+   * resource for the treasures and exp for the chests, so a step that spends
+   * nine draws at LITTLE spends four at MISERABLE and the run parts there.
+   *
+   * Both default to LITTLE, which is what every reference was ordered at.
+   * The three ways of ordering a map disagree about them: the editor's dialog
+   * was set to LITTLE, the console command's own defaults are NORMAL (which is
+   * why `-resource` and `-exp` exist), and THE GAME orders MISERABLE.
+   */
+  resourceMultiplier?: number;
+  expMultiplier?: number;
+  /**
    * Every draw as it is taken, for `tools/rmg-diff-draws.ts`. It has to be
    * attached here rather than by the caller: the RNG is made inside this
    * function, and by the time a caller holds `c.rng` the chain has run.
@@ -128,6 +142,8 @@ export interface Chain {
   presets: Map<number, RacePreset>;
   tables: GuardTables;
   setup: ReturnType<typeof mapSetup>;
+  /** The two ladder indices the order carried — see `ChainOptions`. */
+  multipliers: { resource: number; exp: number };
   loaded: LoadedTemplate;
   townResult: TownsResult;
   /**
@@ -467,6 +483,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
 
   return {
     dir, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
+    multipliers: { resource: options.resourceMultiplier ?? 1, exp: options.expMultiplier ?? 1 },
     teleports, floors, grid, border, occ, room, gridAtFillTerrain,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, the
@@ -609,7 +626,7 @@ export class ZoneFill {
     const { c } = this;
     return placeZoneUpgradeBuildings({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, density: this.zone.upgBuildingsDensity, multIndex: 1,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, density: this.zone.upgBuildingsDensity, multIndex: c.multipliers.exp,
       list: this.priced(this.pricePreset.newUpgradeBuildings)
         .map((p, i) => ({ href: p.type, value: p.value, foot: p.foot,
           guardStrenght: this.pricePreset.newUpgradeBuildings[i]!.guardStrenght })),
@@ -709,7 +726,7 @@ export class ZoneFill {
       // port's candidate list loses tiles the engine keeps).
       points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
       density: kind === 'treasures' ? this.zone.treasureDensity : this.zone.treasureChestDensity,
-      multIndex: 1, kind,
+      multIndex: kind === 'treasures' ? c.multipliers.resource : c.multipliers.exp, kind,
       footprints: TREASURE_TYPES.map((t) => c.footprint(`/MapObjects/${t}.(AdvMapTreasureShared).xdb`)),
     }, c.rng);
   }

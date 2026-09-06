@@ -76,8 +76,11 @@ if (monsterStrength < 0) {
   process.exit(2);
 }
 
-const run = runFull(dir,
-  { seed, template, size, underground, water: water || undefined, monsterStrength });
+const run = runFull(dir, {
+  seed, template, size, underground, water: water || undefined, monsterStrength,
+  resourceMultiplier: order.extras.resourceIndex,
+  expMultiplier: order.extras.expIndex,
+});
 console.log(`  replayed: ${run.c.rng.draws} draws, ${run.objects.length} objects`);
 // WHICH CAPTION NUMBERING TO EXPECT is not the generator's to say: the console
 // command numbers the scenario captions from 0, the editor's SAVE from 2 with

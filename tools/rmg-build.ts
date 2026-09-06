@@ -224,6 +224,8 @@ export function buildMapFiles(
       data: Buffer.from(buildRmgMapDesc({
         tiles: c.size,
         twoLevel,
+        resourceMultiplier: c.multipliers.resource,
+        expMultiplier: c.multipliers.exp,
         objects: run.objects,
         groundAmbientLight: c.params.groundTerrainLights[c.setup.ambientLightIndex]!,
         players: order.players,

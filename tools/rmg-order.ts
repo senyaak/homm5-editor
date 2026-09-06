@@ -26,6 +26,9 @@ export const SIZE_NAMES = [
   'MAP_SIZE_EXTRALARGE', 'MAP_SIZE_HUGE', 'MAP_SIZE_IMPOSSIBLE',
 ] as const;
 
+/** `RESOURCE_*` / `EXP_*` in the enum's own order — types.xml, not guessed. */
+export const MULTIPLIERS = ['MISERABLE', 'LITTLE', 'NORMAL', 'LOTS', 'MUCH'] as const;
+
 export interface MapOrder {
   seed: number;
   guid: string;
@@ -58,6 +61,9 @@ export interface MapOrder {
   extras: {
     resource: string;
     exp: string;
+    /** The two as the enum counts them, 0 MISERABLE .. 4 MUCH; -1 when absent. */
+    resourceIndex: number;
+    expIndex: number;
     randomTowns: boolean;
     grail: boolean;
     /** One per player, `TOWN_*`; empty when the map names none. */
@@ -78,11 +84,12 @@ export interface MapOrder {
  */
 export function unreplayable(o: MapOrder): string[] {
   const out: string[] = [];
-  const { resource, exp, randomTowns, grail, startHeroes } = o.extras;
-  if (resource && resource !== 'RESOURCE_LITTLE') {
-    out.push(`ResourceMultiplier is ${resource}; the port replays RESOURCE_LITTLE`);
+  const { randomTowns, grail, startHeroes, resourceIndex, expIndex } = o.extras;
+  // The two multipliers ARE replayed now — the treasures step takes its ladder
+  // index from them. Only a value outside the enum would stop the comparison.
+  if (resourceIndex < 0 || expIndex < 0) {
+    out.push('one of the two multipliers is not a value this enum has');
   }
-  if (exp && exp !== 'EXP_LITTLE') out.push(`ExpMultiplier is ${exp}; the port replays EXP_LITTLE`);
   if (randomTowns) out.push('RandomTowns is on; the port takes each player\'s race from the template');
   if (grail) out.push('Grail is on; the port does not place one');
   if (startHeroes.length) {
@@ -158,6 +165,10 @@ export function readOrder(path: string): { order: MapOrder; files: Map<string, B
       extras: {
         resource: /<ResourceMultiplier>(\w+)</.exec(text)?.[1] ?? '',
         exp: /<ExpMultiplier>(\w+)</.exec(text)?.[1] ?? '',
+        resourceIndex: MULTIPLIERS.indexOf(
+          (/<ResourceMultiplier>RESOURCE_(\w+)</.exec(text)?.[1] ?? 'LITTLE') as never),
+        expIndex: MULTIPLIERS.indexOf(
+          (/<ExpMultiplier>EXP_(\w+)</.exec(text)?.[1] ?? 'LITTLE') as never),
         randomTowns: /<RandomTowns>true</.test(text),
         grail: /<Grail>true</.test(text),
         // ONLY the order's own PlayersInfo. `<Race>` appears again for each of
