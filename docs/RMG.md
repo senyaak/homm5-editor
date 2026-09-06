@@ -2438,13 +2438,31 @@ two more, and both were general rather than watery:
   divergence from draw SIX to draw 108674, and it changes no byte of the 44
   dry maps or the 22 first-seed water maps.
 
-What is left of that seed is one order — `S3-5P2Z7N2.2` — where zone 6's two
-shipyards stand elsewhere: the engine's at (166,95) and (155,161), the port's
-at (165,100) and (157,167), with the other twelve of the fourteen identical.
-The border table and the zone grid are identical going in, the pool lengths
-agree draw for draw (24, 23, 22, 21), and the tile each index names does not —
-so the candidate list's CONTENT parts while its length does not, which is
-where the next reading starts.
+##### A shipyard needs somewhere to put the ship
+
+That seed's last order, `S3-5P2Z7N2.2`, put zone 6's two shipyards elsewhere —
+the engine's at (166,95) and (155,161), the port's at (165,100) and (157,167),
+with the other twelve of the fourteen identical. **The gate is the ship.**
+
+The candidate list was never in doubt once it was checked properly: the zone
+tile lists are identical entry for entry on all seven zones (the oracle's `zt`
+dump against the port's), and the pool arithmetic reconstructs exactly. The
+engine draws `2 of 24`, `3 of 23`, `18 of 22`, `6 of 21`, `9 of 20`; splicing
+each pick out of the port's own 24-entry pool names O2, O4, O20, O8 and then
+**O12** — and O8 is (165,100), which the port accepts, while O12 is (166,95),
+which the engine takes. Same pool, same picks, one different verdict.
+
+And on those two tiles every gate `0xEC3510` has reads the SAME: both sit at
+border 3, both have all five blocked cells free and in the zone, two of them at
+border 2 either way, both face `q = 3` from a centroid the two sides agree on
+to the last bit. What separates them is the river plane — `shipTile`'s ring
+walk answers `null` for (165,100) and `[-1,-4]` for (166,95). The engine will
+not seat a shipyard where the ship cannot float, and refuses the tile at the
+seat loop rather than placing one and leaving it dry.
+
+The port asks the same question in the same place now, and the order lands on
+the engine's own **240384 draws**, byte for byte. `test-rmg-water` keeps the
+two positions; taking the gate out reddens it.
 
 **Five findings.** The first was hiding behind a convention: the zone grid at
 the roads boundary had 586 cells where the engine says **−2** and the port said

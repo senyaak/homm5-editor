@@ -409,5 +409,25 @@ if (existsSync(dataDir())) {
     ships.map((l) => l.length).join(' '));
 }
 
+console.log('\na shipyard needs somewhere to put the ship');
+
+// THE GATE THE FIRST WATER SEED COULD NOT SEE. A seat that passes every other
+// test can still have no usable water in its ring, and the engine refuses it
+// there rather than placing a shipyard with no ship. Zone 6 of this order draws
+// (165,100) fifth - its ring holds nothing - and the engine goes on to draw
+// (166,95) sixth, whose ring answers [-1,-4]. Every other gate reads the same
+// on the two tiles.
+//
+// The positions are the ENGINE'S, off its own `-water 2` map of this order.
+if (existsSync(dataDir())) {
+  const wide = runChain(dataDir(), {
+    template: 'S3-5P2Z7N2.2', size: 176, players: 2, seed: 987654321,
+    monsterStrength: 1, water: 2,
+  });
+  const six = (wide.water?.shipyards.get(6) ?? []).map((sh) => `${sh.x},${sh.y}`).join(' ');
+  check("zone 6's shipyards stand where the engine's stand",
+    six === '166,95 155,161', six || 'none placed');
+}
+
 console.log(failures ? `\n${failures} failed` : '\nall good');
 process.exit(failures ? 1 : 0);

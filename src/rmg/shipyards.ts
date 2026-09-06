@@ -86,6 +86,11 @@ export interface ShipyardInput {
   tiles: Tile[];
   /** The carve's depth (zone+0x160). */
   depth: number;
+  /**
+   * The river plane as the carve left it — a GATE, not a decoration. See the
+   * seat loop: a tile with nowhere to put the ship is refused.
+   */
+  river: { w: number; data: Uint8Array };
   /** The town entry (zone+0xC) when the +0xF8 flag says the zone has one. */
   town: { x: number; y: number } | null;
   foot: Footprint;
@@ -166,7 +171,14 @@ export function placeShipyard(input: ShipyardInput, rng: DrawSource): PlacedShip
     const dx = fl(tile[0] - ref.x);
     const dy = fl(tile[1] - ref.y);
     q = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy < 0 ? 3 : 1);
-    if (fits(fitCtx, input.foot, tile, q)) {
+    // AND THE SHIP HAS TO HAVE SOMEWHERE TO FLOAT. `shipTile` is the engine's
+    // own ring walk over the river plane, and a shipyard whose ring holds no
+    // usable water is refused here rather than placed and left without a ship
+    // — measured on `S3-5P2Z7N2.2` at seed 987654321, where zone 6's first
+    // shipyard drew (165,100) fifth (its ring: nothing) and the engine went on
+    // to draw (166,95) sixth (its ring: [-1,-4]). Every other gate reads the
+    // same on the two tiles; this is the one that separates them.
+    if (fits(fitCtx, input.foot, tile, q) && shipTile(tile, input.river, size)) {
       placedAt = tile;
       break;
     }

@@ -436,7 +436,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
               points: stamped, blocked: blockedList(z.index),
               connectionPoints: actives, guardSeats: seats,
               zoneIndex: z.index, floor: f, tiles: water.kept.get(z.index)!, framed,
-              depth: water.depth,
+              depth: water.depth, river: water.river,
               town: templateZone.town ? { x: centre.b, y: centre.a } : null,
               foot: chainFootprint(SHIPYARD_HREF),
               guardPowerUnit: params.basicLeverGuardPower * params.connectionGuardLevel,
