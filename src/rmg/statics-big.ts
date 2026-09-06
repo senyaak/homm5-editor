@@ -470,6 +470,13 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
     // neither is materialised here. The carve is called by EVERY
     // subterranean zone and no-ops after the first (its conversion pass
     // turns the clean patches to blocked).
+    // A DWARVEN ZONE HAS NO SWEEP AT ALL, and this function still runs one:
+    // `0xEC7070` is `call [vt+0x40]`, `recomputeRoom(0x3C, 0)`, `ret`, where
+    // Subterra's and SubInferno's `+0x34` carry the lakes, the mountains and
+    // the sweep below. Read and not ported — no template here has produced a
+    // dwarven underground, so nothing can hold the change honest. See
+    // docs/RMG.md, "The three subterranean classes are three different zones".
+    //
     // THE CARVE IS NOT EVERY SUBTERRANEAN CLASS'S. `0xED11D0` has exactly three
     // references in the executable and all three are the tail jumps of the three
     // `+0x40` slots; the only code that CALLS `+0x40` is `0xEC4A85` and
