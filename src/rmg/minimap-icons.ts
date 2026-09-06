@@ -10,10 +10,11 @@
 //   - else `Type` 0x63 or 0x64, the two campaign citadels, drawn `Town_1`.
 //
 // The port has no runtime components, so the first gate is taken from the
-// shared document's CLASS, which is what the component is built from: a town,
-// a mine, an abandoned mine or a dwelling can be flagged, an ordinary
-// building cannot. On the reference run that is exactly the engine's list —
-// 2 towns, 18 mines and the 2 dwellings, and none of the 39 buildings.
+// shared document's CLASS — which is what the component is built from — plus,
+// for a plain building, its `Type`: the factory builds a flagged class for two
+// of them and an unflagged one for the rest. On the reference run that is
+// exactly the engine's list: 2 towns, 18 mines and the 2 dwellings, and none of
+// the 39 buildings, none of which is one of the two.
 //
 // The SECOND list was named here and not ported, on the reasoning that the
 // reference's list was complete. It is complete for a ONE-LEVEL map: the
@@ -82,6 +83,7 @@ export function iconNameFor(shared: string, owner: number, buildingType = ''): s
   if (shared.includes('AdvMapDwellingShared')) {
     return UNFLAGGABLE_DWELLINGS.has(buildingType) ? null : `Object_${owner}`;
   }
+  if (FLAGGED_BUILDINGS.has(buildingType)) return `Object_${owner}`;
   // The SECOND list, and the RMG fills it the moment a map has two levels: a
   // `SAdvMapBuildingShared` whose `Type` is 0x27, `BUILDING_SUBTERRA_GATE`.
   // Both halves of a pair carry it — `Subterranean_Gate_In` and `_Out` are two
@@ -103,6 +105,29 @@ export function iconNameFor(shared: string, owner: number, buildingType = ''): s
 export function iconList(name: string): number {
   return name === 'UnderworldExitEnter' ? 1 : 0;
 }
+
+/**
+ * The two BUILDINGS that carry a flag, and why it is exactly two — READ.
+ *
+ * Whether a building is flaggable is not a field and not decided inside
+ * `CAdvMapBuilding`: it is decided when the object is BUILT. The world-object
+ * factory switches on the shared document's `Type` at `0xB526A0` —
+ * `add eax,-0Ch / cmp eax,73h / ja default`, then a 116-byte index table at
+ * `0xB53984` into nine cases at `0xB53960` — and exactly one case,
+ * `0xB526C3`, allocates 0x138 bytes and calls `CAdvMapBuildingFlagged`'s
+ * constructor `0xD30FC0`. That constructor has ONE caller, so there is no
+ * other way to make a flagged building. Its vtable slot `+0x04` lands on
+ * `0xAD0230` (`lea eax,[ecx-44h]`, a real subobject) where every other
+ * building class lands on `0x4797F0` (`xor eax,eax`).
+ *
+ * The two `Type` values that reach that case are 0x1A and 0x26. Towns, mines,
+ * abandoned mines, dwellings, garrisons and dwarven warrens are flaggable too,
+ * but they are separate `NDb::SAdvMap*` records and other branches of the same
+ * factory — the class test above catches them.
+ */
+const FLAGGED_BUILDINGS: ReadonlySet<string> = new Set([
+  'BUILDING_LIGHTHOUSE', 'BUILDING_DEN_OF_THIEVES',
+]);
 
 /**
  * The three dwellings that cannot be flagged — READ, not fitted.
