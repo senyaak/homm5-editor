@@ -297,8 +297,9 @@ twenty-two templates.
    trap that put two wrong numbers in the `-size` table, and it costs another
    twenty-two launches to avoid.
 
-3. **Then the debts, in the order the sweep prices them** — the `caption-text`
-   counter, the minimap's ten channel bytes, monster levels other than MEDIUM.
+3. **Then the debts, in the order the sweep prices them** — the minimap's ten
+   channel bytes and monster levels other than MEDIUM. (The `caption-text`
+   counter was the third and is closed: it belongs to the save path.)
 
 4. **Water, as a second dimension**, once `GenerateMap`'s first argument is
    identified. It is also the only way to reach a zone's `CanBeWater`, the one
@@ -321,24 +322,24 @@ what moved is the record of how it moved. What it says now is under it.
 | `S1P2Z2M1`, `S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` | **everything.** 12 of 13 entries byte-identical, the 13th being the two `caption-text` bytes that were known |
 | `S0-1P2Z2K3.1T`, `.2T`, `T`, `S1P2Z3K5.1`, `S1-2P2Z7V2`, `S2-4P2Z7B2`, `S3-4P2-4Z4K1M` | **every object, every text, every terrain plane but one.** `map.xdb` differed by the known `caption-text` bytes alone; masks, ground flags, passability and the river plane identical; only HEIGHTS differed, by 4 bytes on `S1-2P2Z7V2` and by a few thousand on the rest |
 | the other eleven | `map.xdb` still differed wholesale — the object layer diverged |
-| `S7-22P2-8Z15K2.4c` | the port refuses it: fifteen zones, and the fourteenth would rehash the queue whose order has never been read |
+| `S7-22P2-8Z15K2.4c` | the port refused it: fifteen zones, and the fourteenth would rehash the queue whose order had never been read. It reproduces now — the refusal outlived its reason, and what actually parted was the neighbour scan's order |
 
-**Where it stands now: EVERY map the port accepts is byte-identical, on both
+**Where it stands now: ALL FORTY-FOUR MAPS ARE BYTE-IDENTICAL, on both
 seeds.** `rmg-diff-map` over both sweeps' 44 orders reports 13 of 13 entries
-identical on 42 of them, and the two it does not report on are the same
-template twice — `S7-22P2-8Z15K2.4c`, which the port refuses (fifteen zones).
-`map.xdb`, `map-tag.xdb`, all eleven texts, both minimap documents and
-`GroundTerrain.bin`: every byte.
+identical on every one of them — `map.xdb`, `map-tag.xdb`, all eleven texts,
+both minimap documents and `GroundTerrain.bin`, every byte — and the port
+refuses nothing any more.
 
 (`rmg-diff-map` exempts exactly one byte of a terrain file — the `0x0e`
 record's uninitialised payload, which flips between two identical runs of the
 engine itself.)
 
-Three findings closed the last of it, and each is written up below: the caption
+Four findings closed the last of it, and each is written up below: the caption
 numbering belongs to the save path rather than to the generator; the relief cone
-is rounded in a different place by each of the two builds; and the terrain
-paints have to read the zone grid AS FILLTERRAIN SAW IT, not as it stands when
-the chain ends.
+is rounded in a different place by each of the two builds; the terrain paints
+have to read the zone grid AS FILLTERRAIN SAW IT, not as it stands when the
+chain ends; and the jitter's neighbour offsets go on the engine's two indices
+the other way round, which nothing under fourteen zones could see.
 
 ##### The paints read the grid at the wrong MOMENT
 
@@ -375,57 +376,93 @@ towns matched its players. What moved the other six was one routine — the
 garrison below. The cartographer and the zero possession marker moved six
 more; the table above is the state before those two.
 
-**The standing count is TWENTY-ONE of twenty-one, on both seeds.** Every
-template the port accepts reproduces the whole object layer and its whole
-`map.xdb`, byte for byte; fourteen of the forty-two maps are byte-identical
-through the terrain as well, and the other twenty-eight differ only by height
-vertices one ULP out — 218 such vertices over the first sweep, 274 over the
-second, none more than one ulp. The port refuses `S7-22P2-8Z15K2.4c` outright,
-and that refusal plus the ulp layer is the whole of what is left of the sweep.
+**The standing count is TWENTY-TWO of twenty-two, on both seeds** — the whole
+object layer, the whole `map.xdb` and the whole terrain, byte for byte, on all
+forty-four maps. (Two intermediate states this paragraph used to record are gone
+and worth naming so the arithmetic below still parses: the ULP layer, 218 height
+vertices over the first sweep and 274 over the second, which the relief cone's
+rounding closed; and the refusal of `S7-22P2-8Z15K2.4c`, which the neighbour
+order closed.)
 
-##### The fifteen-zone template: what is measured, and what is not
+##### The fifteen-zone template, closed: the neighbour scan's ORDER
 
-`S7-22P2-8Z15K2.4c` is the one template the port refuses, and the refusal now
-says what it knows rather than what it guessed. The old one — "a 14th zone would
-rehash, order unverified" — was guarding nothing: each tile is queued at most
-once per sweep, so the order the grow and flip queues are applied in cannot
-change the grid. The new one is a statement about evidence: **no run with more
-than thirteen zones on a floor has ever been reconciled**, thirteen being where
-the container rehashes and therefore where the evidence stops. `fillZones` takes
-a `runUnreconciled` flag so the probes can read past it; nothing that writes a
-map sets it.
+`S7-22P2-8Z15K2.4c` was the one template the port refused, and for a while the
+refusal was honest — the map really did come out different, and what made it
+different was not what the refusal guessed.
 
-**Measured, with the oracle's `areas` keyword** (`CollectOwnTiles` — the game's
-`0xEB7790`, the editor's `0xBFBF50`, found by fingerprint and by the chain of
-fields it walks: `+0xF4`, `+0x134`, `+0x34`, `+0xC8`/`+0xCC`, `+0xC4`, `+0xEC`).
-It logs `zc <zone> <tiles>` per zone per sweep and needs no trace, the zone
-being `this`:
+**What it looked like.** The areas agreed with the port's on all fifteen zones
+for 33 sweeps; sweep 34 spent 394 jitter draws against the port's 380; and
+after it the engine's zone 2 held one tile MORE than the port's and its zone 15
+one tile FEWER. The candidate COUNT for that sweep was 1796 on both sides, and
+the areas the sweep divides — the ones from sweep 33 — were identical. So the
+ratio test could not be the thing that parted, and it was not.
 
-- the zone areas agree with the port's on all fifteen zones for **33 sweeps**;
-- the jitter draws per sweep agree for those same 33, and sweep 34 spends 394
-  against the port's 380;
-- the candidate count for sweep 34 is 1796 on both sides;
-- after sweep 34 the areas differ by exactly one tile in two places: the
-  engine's zone 2 holds 4270 where the port has 4269, and its zone 15 holds
-  1823 where the port has 1824. One tile goes to zone 2 in the engine and to
-  zone 15 here;
-- the comparison is STRICT on both sides — relaxing the port's to `>=` makes it
-  draw on a tie in sweep 2 where the engine does not.
+**Two readings that were wrong, and the shape of being wrong.** The first said
+"a fourteenth zone rehashes the queue, and the order is unverified" — guarding
+nothing, since each tile is queued at most once per sweep, so the queues'
+order cannot move a tile. The second said "no run past thirteen zones has ever
+been reconciled" — true, and useless as a cause. In between, a tie guard was
+tried and refused every template including the byte-identical ones.
 
-**Not established, and worth saying so.** Attributing each `tf` in the trace to
-a particular candidate is not reliable: scoring the port's own rule against the
-engine's draws that way disagrees on 3,899 of 11,682 candidates over the sweeps
-that DO reproduce, and the first disagreement it names is a tie the port and the
-engine plainly resolve the same way. Attributing the draw to the following
-candidate instead is worse (6,198). So the earlier reading of this — "fourteen
-verdicts differ, all of them zones 2 against 6" — rests on that attribution and
-is not evidence. What the trace supports is the per-sweep totals; what the
-`areas` dump supports is the one-tile difference above.
+**What it was.** Not the totals — the CANDIDATES. Comparing the engine's own
+`gz` pairs against the port's list, pair for pair (which needs no attribution
+of draws to candidates, and so sidesteps the thing that could not be read),
+they part at sweep 27, on ONE candidate out of 1401: tile (95,140), owned by
+zone 13, whose best neighbour is zone 2 in the engine and zone 15 in the port.
+Both have two neighbours there. It is a tie, and the tie is broken by the
+container's iteration order.
 
-The next reading is where a `tf` sits relative to its candidate's two `gz`
-lines — the GetZone detour fires before the ratio, the draw after it, but a
-sweep also calls GetZone from places that never draw, and until that is read the
-per-candidate view is guesswork.
+**And the container's order was right; the INSERTION order was not.** The
+counter is the same STLPort hash_map as everything else here — `0x989990`
+divides the key by the bucket count and walks the chain, `0x46E800` inserts at
+the bucket HEAD (`[eax] = buckets[i]; buckets[i] = eax`) — so a bucket yields
+its keys newest first. Zones 2 and 15 both land in bucket 2 of 13. Which of
+them is "newest" is decided by which the eight-neighbour scan meets first, and
+the port met them in the opposite order, because the offset table's two
+components were going on the wrong two indices:
+
+```
+0xcf38a1  mov esi,12BCED4h            ; the table, read as [esi-4] and [esi]
+0xcf38b4  fadd st,dword ptr [esi-4]   ; component 0 -> the FIRST index
+0xcf38d7  fadd st,dword ptr [esi]     ; component 1 -> the SECOND
+```
+
+and the engine's first index is the one its OUTER loop walks (`[esp+1Ch]`,
+stepped at `0xcf3bd5`/`0xcf3be3`), which is this port's `b`. The port was
+adding component 0 to `a`. The eight offsets are symmetric, so this visits the
+same eight tiles and counts the same counts — it only changes the ORDER they
+are met in, and that is invisible until two of the neighbours are zones whose
+indices share a bucket. Which needs a zone index of 14 or more. Which is one
+template out of twenty-two.
+
+**With the offsets on the right indices**: the engine's candidate pairs match
+for all **443 sweeps**, the `areas` dumps for all **444 snapshots**, the jitter
+draws per sweep for every sweep that has any, and the map is **byte-identical
+on both seeds**. The refusal and its `runUnreconciled` escape are gone, and
+`test-rmg-fill-zones` keeps three of the engine's own numbers for this template
+— the tie's candidate, sweep 34's 394 draws, and the phase's 383,555.
+
+**The oracle's `areas` keyword** is what made the divergence visible in the
+first place: `CollectOwnTiles` — the game's `0xEB7790`, the editor's `0xBFBF50`,
+found by fingerprint and by the chain of fields it walks (`+0xF4`, `+0x134`,
+`+0x34`, `+0xC8`/`+0xCC`, `+0xC4`, `+0xEC`) — logging `zc <zone> <tiles>` per
+zone per sweep. It needs no trace: the zone arrives as `this`.
+
+**A note on the ratio's precision, read while looking at this.** The editor
+computes both quotients on the x87 stack and compares them there —
+
+```
+0xcf3ad5  fidiv st,dword ptr [esp+14h]   ; area(best) / area(own)
+0xcf3adf  fidiv st,dword ptr [edi+144h]  ; size(best) / size(own)
+0xcf3ae5  fcompp
+```
+
+— so nothing rounds to float32 on the way, which is what the port used to do
+after reading the GAME's SSE build. The port stops rounding them. It changes
+no verdict anywhere measured (0 of 769,446 candidates on this template, the
+only one whose Sizes are not all equal), so it is a correction to the reading
+rather than to the output — the same split as the relief cone, caught before
+it could cost anything.
 
 ##### The relief cone: the two builds round it in opposite places
 
@@ -3368,7 +3405,8 @@ zone owning ≥3 of its 8 neighbours, no draw; **jitter** — an assigned tile �
 from the border with no unassigned neighbour and ≥3 neighbours of one other
 zone flips to it with probability ~0.6 (`betweenFloat(0,1) > 0.4f`, the draw
 spent either way), but only while that zone is under quota:
-`sizeOther/sizeOwn > countOther/countOwn`, both divisions single precision.
+`sizeOther/sizeOwn > countOther/countOwn`, both quotients staying on the x87
+stack in the editor's build (the game's SSE one rounds them to single).
 Decisions queue up per sweep and apply at its end, and the areas the jitter
 reads are the *previous* sweep's snapshot — zero before the first, where the
 ratio is NaN and a strict `comiss` refuses without drawing: **sweep one costs
@@ -3381,7 +3419,9 @@ the numbers an editor-oracle run of seed 1785351845 must log, phase by phase.
 
 Tie-breaks are the same 13-bucket hash containers as the zone order, down to
 `-1` hashing into bucket 8, and the port models them rather than taking a
-plain maximum. Named holes: the grid's initial −1 is assumed (whoever builds
+plain maximum — including the head insertion, which stays invisible until two
+zone indices share a bucket and then decides a tile (see the fifteen-zone
+template above). Named holes: the grid's initial −1 is assumed (whoever builds
 the floor writes it; unread), and the engine checks the jitter's 6-tile
 margin against the dimension pair SWAPPED relative to the neighbour bounds —
 indistinguishable on the square maps it makes, so the port refuses rectangles

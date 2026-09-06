@@ -112,11 +112,6 @@ export interface ChainOptions {
   /** Each sweep's areas, the numbers the next sweep's ratio divides. */
   areas?: (sweep: number, areas: ReadonlyMap<number, number>) => void;
   /**
-   * Replay a template `fillZones` refuses, to READ where it parts from the
-   * engine. The map that comes out is not the engine's — see the refusal.
-   */
-  runUnreconciled?: boolean;
-  /**
    * The draw counter as each phase ends. "The 13807th draw disagrees" is a
    * number; "the 13807th draw is in zoneConnections, which starts at 13798"
    * is a place to read, and the difference between the two is this callback.
@@ -254,8 +249,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   const filled = fillZones(size, size, placed.zones, made.twoFloors, rng,
     options.jitter || options.candidate || options.areas
       ? { jitter: options.jitter, candidate: options.candidate, areas: options.areas }
-      : undefined,
-    options.runUnreconciled ?? false);
+      : undefined);
   phase('fillZones');
   // THE ZONE'S `+0xCC`, TAKEN WHERE THE ENGINE TAKES IT. `0xEB7790` — whose
   // one caller is FillZones' own tail at 0xeaa609, right after the grow and

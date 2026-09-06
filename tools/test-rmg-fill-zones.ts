@@ -10,7 +10,11 @@
 // phases before them — which is fine for properties; the true engine chain,
 // boundary by boundary, lives in test-rmg-load-template.ts.
 
+import { existsSync } from 'node:fs';
+
 import { RmgRandom } from '../src/rmg/random.ts';
+import { dataDir } from './game-dir.ts';
+import { runChain } from './rmg-chain.ts';
 import { fillZones } from '../src/rmg/fill-zones.ts';
 import { generateGameZones } from '../src/rmg/zones.ts';
 import type { ZoneSeed } from '../src/rmg/zones.ts';
@@ -72,6 +76,42 @@ check('a rectangle refuses — the engine only ever runs square', (() => {
   try { fillZones(96, 72, placed.zones, false, new RmgRandom(1)); return false; }
   catch { return true; }
 })());
+
+console.log('\nfifteen zones on one floor, where the hash buckets collide');
+
+// THE ONLY CASE THAT CAN SEE THE NEIGHBOUR SCAN'S ORDER. Under thirteen zones
+// every index has a bucket to itself, so head insertion never has to break a
+// tie and the eight offsets could be visited in any order without a single
+// tile moving. `S7-22P2-8Z15K2.4c` puts zones 2 and 15 in bucket 2 of 13, and
+// then the order decides which of two equal neighbour counts wins.
+//
+// The three numbers below are the ENGINE'S, off the oracle's own trace of the
+// editor generating this map (seed 1785351845): its `gz` pairs give the
+// candidate, its `tf` runs between the `zc` groups give the draws. The port
+// matched all 443 sweeps of pairs and all 444 area snapshots when they were
+// last measured; these three are the cheap end of that.
+if (!existsSync(dataDir())) {
+  console.log('  no unpacked RMG data - run `npm run unpack-data`; skipping');
+} else {
+  let jitterTotal = 0;
+  const perSweep = new Map<number, number>();
+  let seen = 0;
+  let candidate961 = '';
+  runChain(dataDir(), {
+    template: 'S7-22P2-8Z15K2.4c', size: 256, players: 2, seed: 1785351845,
+    monsterStrength: 1, water: 0,
+    jitter: (sweep) => { jitterTotal++; perSweep.set(sweep, (perSweep.get(sweep) ?? 0) + 1); },
+    candidate: (sweep, _a, _b, own, best) => {
+      if (sweep === 27 && seen++ === 961) candidate961 = `${own}->${best}`;
+    },
+  });
+  check('the tile the tie decides goes to zone 2, as the engine sends it',
+    candidate961 === '13->2', candidate961 || 'no such candidate');
+  check("sweep 34 spends the engine's 394 jitter draws",
+    perSweep.get(34) === 394, `${perSweep.get(34)}`);
+  check("the phase spends the engine's 383555 jitter draws in all",
+    jitterTotal === 383555, `${jitterTotal}`);
+}
 
 console.log(failures ? `\n${failures} failed` : '\nall good');
 process.exit(failures ? 1 : 0);

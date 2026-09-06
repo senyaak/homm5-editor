@@ -17,9 +17,12 @@
 //      from the border, no unassigned neighbour) flips to a neighbouring zone
 //      owning >= 3 neighbours with probability ~0.6 (betweenFloat(0,1) drawn,
 //      kept when > 0.4f) — but only while that zone is UNDER QUOTA:
-//      sizeOther/sizeOwn > countOther/countOwn, both divisions single
-//      precision. Areas converge to the template's proportions; borders
-//      stay ragged.
+//      sizeOther/sizeOwn > countOther/countOwn. Neither quotient leaves the
+//      x87 stack: 0xcf3ad5 and 0xcf3adf are `fidiv`, and the `fcompp` after
+//      them compares what the stack holds, so nothing rounds to float32 on
+//      the way. (The GAME's SSE build divides in single precision, and the
+//      reference maps are the EDITOR's — the same split as the relief cone.)
+//      Areas converge to the template's proportions; borders stay ragged.
 //
 // A sweep scans the whole grid with a drawn direction per axis (two below(2)
 // per sweep, per floor — even a zone-less floor pays them), queues every
@@ -33,10 +36,15 @@
 // Tie-breaks are the engine's hash containers, modelled exactly: 13 buckets,
 // bucket = key % 13 unsigned (so -1 lands in bucket 8), head insertion,
 // buckets iterated ascending, and the first strict maximum in that order
-// wins. The engine also checks the 6-tile margin against the SWAPPED
-// dimension pair (map+0xC vs +0x10) — indistinguishable on the square maps
-// the generator makes, and this port refuses rectangles rather than guess
-// which reading is faithful (see fillZones).
+// wins. Head insertion is only VISIBLE when two live keys share a bucket,
+// which needs a zone index of 14 or more — under thirteen zones the bucket
+// order is plain ascending and every within-bucket question is moot. That is
+// why the neighbour scan's ORDER went unchecked for so long, and why getting
+// it wrong cost exactly one template (see NBR). The engine also checks the
+// 6-tile margin against the SWAPPED dimension pair (map+0xC vs +0x10) —
+// indistinguishable on the square maps the generator makes, and this port
+// refuses rectangles rather than guess which reading is faithful (see
+// fillZones).
 
 import type { RmgRandom } from './random.ts';
 import { hashMapOrder } from './zones.ts';
@@ -46,7 +54,22 @@ const fl = Math.fround;
 const SQRT3 = fl(1.7320508); // [0xF4D5D8]
 const KEEP_ABOVE = fl(0.4); // [0xF5E500] — the jitter keeps a draw above this
 
-/** Neighbour offsets in the engine's own order (table 0x1093870). */
+/**
+ * Neighbour offsets in the engine's own order (table 0x1093870; the editor's
+ * 0x12BCED0, read pair by pair at `[esi-4]`/`[esi]` from 0xcf38b4).
+ *
+ * EACH PAIR IS (first index, second index) IN THE ENGINE'S ORDER, and the
+ * engine's first index is the one its OUTER loop walks — which is this port's
+ * `b`, not its `a` (see the scan below). So the pairs are destructured as
+ * `[db, da]`: component 0 goes on `b`.
+ *
+ * The eight offsets are symmetric, so putting them on the wrong index visits
+ * the same eight tiles and gets the same counts — it only changes the ORDER
+ * they are met in, and that is invisible until two of them are zones whose
+ * indices share a hash bucket. On `S7-22P2-8Z15K2.4c` they are: zone 2 and
+ * zone 15 both land in bucket 2 of 13, and one tile at sweep 27 went to the
+ * one the engine met second.
+ */
 const NBR: ReadonlyArray<readonly [number, number]> = [
   [0, -1], [1, 0], [0, 1], [-1, 0], [-1, -1], [1, -1], [1, 1], [-1, 1],
 ];
@@ -155,13 +178,6 @@ export function fillZones(
   twoFloors: boolean,
   rng: RmgRandom,
   spy?: FillZonesSpy,
-  /**
-   * Run a case the refusal below covers anyway. FOR READING THE DIVERGENCE, and
-   * for nothing else: what comes out is not the engine's map, which is exactly
-   * why the refusal exists. `rmg-diff-draws` and the probes under `_tmp` set it
-   * so the disagreement can be measured; no path that WRITES a map does.
-   */
-  runUnreconciled = false,
 ): FilledZones {
   const floorCount = twoFloors ? 2 : 1;
   // The engine checks the jitter's 6-tile margin against the dimensions
@@ -201,31 +217,15 @@ export function fillZones(
     }
   }
 
-  // A FLOOR OF MORE THAN THIRTEEN ZONES IS UNRECONCILED TERRITORY, and the
-  // refusal is a statement about evidence rather than about mechanism.
-  //
-  // Exactly one shipped template reaches it, `S7-22P2-8Z15K2.4c` with fifteen
-  // zones on one floor, and it does not reproduce: 33 sweeps match the engine
-  // draw for draw and the 34th spends 394 jitter draws against this port's 380.
-  // The candidates are identical - all 1796, own and best - so the grids agree
-  // everywhere a candidate can see; the fourteen tiles that differ all hang on
-  // zones 2 and 6, both Size 10, whose areas come out of sweep 33 EXACTLY equal
-  // here (4269 apiece) and unequal in the engine. Where that tile hides is
-  // known - the grow branch and the six-tile edge band emit no GetZone pair, so
-  // the candidate stream cannot see them - but which tile it is has not been
-  // read yet.
-  //
-  // The threshold is thirteen because that is where the container rehashes and
-  // therefore where every reconciled run stops: it is the edge of the evidence,
-  // not a claim that the rehash is the cause. The port refuses rather than hand
-  // back a map that is not the engine's - a wrong map is worse than none.
-  for (const zones of byFloor) {
-    if (zones.length > 13 && !runUnreconciled) {
-      throw new Error(`fillZones: ${zones.length} zones on one floor — no run past thirteen`
-        + ' has ever been reconciled, and the one shipped template that reaches it diverges'
-        + ' in sweep 34 over areas this port cannot check against the engine');
-    }
-  }
+  // A FLOOR PAST THIRTEEN ZONES USED TO BE REFUSED HERE, and it is worth a
+  // line why it no longer is. Thirteen is where the hash container rehashes,
+  // and it is also where two zone indices can first share a bucket - so it
+  // WAS the edge of the evidence, and the one shipped template that crosses
+  // it, `S7-22P2-8Z15K2.4c`, really did come out different. What made it
+  // different was the neighbour scan's order (see NBR), not the rehash. With
+  // the offsets on the indices the engine puts them on, all fifteen zones
+  // reproduce: the engine's own candidate pairs match for all 443 sweeps, the
+  // areas for all 444 snapshots, and the map is byte-identical on both seeds.
 
   // ---- pass 2: grow and jitter, sweep by sweep ----
   const sweepLimit = fl(fl(size) * SQRT3);
@@ -268,7 +268,7 @@ export function fillZones(
           const own = grid[a]![b]!;
           if (own === -1) {
             const cnt = new HashCounts();
-            for (const [da, db] of NBR) {
+            for (const [db, da] of NBR) {
               const na = a + da;
               const nb = b + db;
               if (na < 0 || na >= size || nb < 0 || nb >= size) continue;
@@ -280,7 +280,7 @@ export function fillZones(
           } else {
             if (a < 6 || a > size - 6 || b < 6 || b > size - 6) continue;
             const cnt = new HashCounts();
-            for (const [da, db] of NBR) {
+            for (const [db, da] of NBR) {
               const na = a + da;
               const nb = b + db;
               if (na < 0 || na >= size || nb < 0 || nb >= size) continue;
@@ -300,8 +300,8 @@ export function fillZones(
             // Stale on purpose: last sweep's areas. 0/0 is NaN and x/0 is
             // infinity, and a strict comiss says "no" to both — the engine's
             // own way of sitting the first sweep out.
-            const countRatio = fl((counts.get(zOther.index) ?? 0) / (counts.get(zOwn.index) ?? 0));
-            const sizeRatio = fl(zOther.size / zOwn.size);
+            const countRatio = (counts.get(zOther.index) ?? 0) / (counts.get(zOwn.index) ?? 0);
+            const sizeRatio = zOther.size / zOwn.size;
             if (sizeRatio > countRatio) {
               spy?.jitter?.(counter, a, b);
               const r = rng.betweenFloat(0, 1);
