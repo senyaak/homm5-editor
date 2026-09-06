@@ -25,7 +25,7 @@ import { join } from 'node:path';
 
 import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
 import { buildMapFiles } from './rmg-build.ts';
-import { describeOrder, readOrder } from './rmg-order.ts';
+import { describeOrder, readOrder, unreplayable } from './rmg-order.ts';
 import { runFull } from './rmg-run.ts';
 import { dataDir, gameDir } from './game-dir.ts';
 
@@ -51,6 +51,18 @@ const { seed, guid, mapName, template, size, players, water, monster, undergroun
 
 console.log(`${archive}`);
 console.log(`  ordered: ${describeOrder(order)}`);
+if (order.extras.races.length) console.log(`  races: ${order.extras.races.join(' ')}`);
+// SAY IT BEFORE DIFFING. A dialog can set generator inputs the console cannot,
+// and a map carrying one is not a map the port got wrong — it is an order the
+// port was never given. Reporting seventeen red entries for that would send the
+// next hour into a phase that is fine.
+const cannot = unreplayable(order);
+if (cannot.length) {
+  console.log(`  THIS ORDER IS NOT ONE THE PORT REPLAYS, so the comparison is not run:`);
+  for (const line of cannot) console.log(`    - ${line}`);
+  console.log(`  Order it again with those at the values above and the diff means something.`);
+  process.exit(3);
+}
 // The monster level the map was ordered with is the level the chain replays.
 // It reaches `mapSetup` as a fixed value, so it costs the same discarded draw
 // MEDIUM did, and from there it multiplies every guard's power.

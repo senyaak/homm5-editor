@@ -45,6 +45,50 @@ export interface MapOrder {
   underground: boolean;
   /** The order's Minimap tick: an order made with it off writes no minimap. */
   minimap: boolean;
+  /**
+   * The dialog's settings the port does NOT replay, as the map spells them.
+   *
+   * The console command cannot set most of these, so a batch-ordered map
+   * always has them at the constructor's values and they never came up. A map
+   * SAVED from the dialog can carry any of them, and then the port replays a
+   * different order than the one it is being diffed against — which reads as
+   * a bug in a phase rather than as an order nobody asked the port to make.
+   * `unreplayable` turns that into a sentence before a single byte is compared.
+   */
+  extras: {
+    resource: string;
+    exp: string;
+    randomTowns: boolean;
+    grail: boolean;
+    /** One per player, `TOWN_*`; empty when the map names none. */
+    races: string[];
+    /** A hero picked in the dialog rather than left to the generator. */
+    startHeroes: string[];
+  };
+}
+
+/**
+ * What in this order the port cannot replay, one line each — empty when it can.
+ *
+ * Each of these is a real generator input: the two multipliers are the
+ * `+0x98`/`+0xA0` the reference pinned to LITTLE and they move the draw count,
+ * random towns is `+0x95` and the grail `+0xA5`. The port is written for the
+ * reference's values and has no option for the others, so the honest answer to
+ * a map that carries them is to say so rather than to diff it.
+ */
+export function unreplayable(o: MapOrder): string[] {
+  const out: string[] = [];
+  const { resource, exp, randomTowns, grail, startHeroes } = o.extras;
+  if (resource && resource !== 'RESOURCE_LITTLE') {
+    out.push(`ResourceMultiplier is ${resource}; the port replays RESOURCE_LITTLE`);
+  }
+  if (exp && exp !== 'EXP_LITTLE') out.push(`ExpMultiplier is ${exp}; the port replays EXP_LITTLE`);
+  if (randomTowns) out.push('RandomTowns is on; the port takes each player\'s race from the template');
+  if (grail) out.push('Grail is on; the port does not place one');
+  if (startHeroes.length) {
+    out.push(`a starting hero was chosen (${startHeroes.join(', ')}); the port leaves that to the generator`);
+  }
+  return out;
 }
 
 /** Every file of a generated map, by its name inside the map folder. */
@@ -111,6 +155,22 @@ export function readOrder(path: string): { order: MapOrder; files: Map<string, B
       water, waterName, monster,
       underground: /<HasUnderground>true</.test(text),
       minimap: !/<Minimap>false</.test(text),
+      extras: {
+        resource: /<ResourceMultiplier>(\w+)</.exec(text)?.[1] ?? '',
+        exp: /<ExpMultiplier>(\w+)</.exec(text)?.[1] ?? '',
+        randomTowns: /<RandomTowns>true</.test(text),
+        grail: /<Grail>true</.test(text),
+        // ONLY the order's own PlayersInfo. `<Race>` appears again for each of
+        // the map's eight player slots, where it is TOWN_NO_TYPE on a generated
+        // map, and reading those as the order's races prints ten for a
+        // two-player map.
+        races: [...(/<PlayersInfo>([\s\S]*?)<\/PlayersInfo>/.exec(text)?.[1] ?? '')
+          .matchAll(/<Race>(\w+)</g)].map((m) => m[1]!),
+        // `<StartHero/>` is the empty one the generator fills; a chosen hero
+        // arrives as a href, and only that is worth reporting.
+        startHeroes: [...(/<PlayersInfo>([\s\S]*?)<\/PlayersInfo>/.exec(text)?.[1] ?? '')
+          .matchAll(/<StartHero href="([^"]+)"/g)].map((m) => m[1]!),
+      },
     },
   };
 }
