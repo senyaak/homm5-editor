@@ -321,7 +321,13 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   }
 
   phase('waterBorder');
-  fillDistToTowns(size, filled.floors, loaded.zones, townResult.centres);
+  // The list the engine has AT THIS MOMENT: the carve has already taken the
+  // sea out of the grid, and what it left on the list is what gets disowned.
+  // TRANSPOSED on the way in - a zone tile list is (x, y) against a grid read
+  // as `grid[y][x]`, and dist-to-towns indexes its grid the other way round.
+  fillDistToTowns(size, filled.floors, loaded.zones, townResult.centres,
+    (zoneIndex) => (water?.kept.get(zoneIndex) ?? zoneLists.get(zoneIndex) ?? [])
+      .map(([x, y]) => [y, x] as const));
   phase('distToTowns');
   const conn = zoneConnections({
     size, template, zones: loaded.zones, floors: filled.floors, distances,

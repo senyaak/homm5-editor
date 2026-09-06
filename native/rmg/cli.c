@@ -33,6 +33,7 @@
 //
 //   RMG/Templates/S1P2Z2M1.xdb -seed 1785351845 -size 1 -resource 1 -exp 1
 //   RMG/Templates/S1P2Z2M1.xdb -seed 1785351845 -size 1 -monsters 2
+//   RMG/Templates/S1P2Z2M1.xdb -seed 1785351845 -size 1 -water 2
 //
 // `-poke <offset> <value>` and `-pokeb` say any field of the request by DECIMAL
 // offset — the instrument that turned each guess about a field into a launch
@@ -93,36 +94,39 @@
  */
 #define RMG_CLI_EXEC_LINE_RVA 0xa342b0u
 /**
- * The RMG REQUEST's constructor — where an order's defaults come from.
+ * `CRandomMapGenerator::GenerateMap` — where an order is FINALLY said.
  *
- * The console command fills three fields of the record this builds — the size
- * at `+0x10`, the underground at `+0x0D`, the players at `+0x18` (0x73cea0
- * builds it, 0x73cecc onward fills it; the slots named by `net-probe --frame`)
- * — and leaves everything else at what this constructor put there. Two of
- * those defaults are the multipliers, `+0x98` and `+0xA0`, both NORMAL: the
- * enum runs MISERABLE, LITTLE, NORMAL, LOTS, MUCH from zero, and NORMAL is 2.
+ * The console command builds an RMG request on its own stack (`0x467E10` at
+ * 0x73cea0), fills a few fields of it (0x73cecc onward; the slots named by
+ * `net-probe --frame`) and hands it to this as the SECOND stack argument. The
+ * record lives on the handler's stack and nothing outside can reach it — so
+ * this call is the only place the rest of it can be said from, and the moment
+ * before it is the only moment when what is said cannot be overwritten again.
  *
- * That is the whole difference between an order given here and the same order
- * given in the dialog, and it is not cosmetic — the reference run was ordered
- * LITTLE and lands 970 draws away from the same order given as a command. So
- * the batch has to be able to say them, and this is the only place they can be
- * said from: the record lives on the handler's stack and nothing outside can
- * reach it.
+ * IT USED TO BE SAID AT THE CONSTRUCTOR, and that was wrong in a way that hid
+ * a whole dimension. The handler writes its own fields AFTER the constructor
+ * returns — including two zeroes, `+0x48` and `+0x96` — so anything poked into
+ * those two at construction time was erased before the generator ever saw it.
+ * They are exactly the two the water lives in. An earlier reading concluded
+ * "water is not in this record at all", poked eleven offsets to be sure, and
+ * could not have found it: the probe was blind precisely where the answer was.
  *
- * Seven bytes, two whole instructions, the second one's operand relocated —
- * the same shape as the command-line site above.
+ * Head: `push ebp; mov ebp,esp; and esp,-8` — six bytes, three whole
+ * instructions, nothing relocated. The oracle's own patches inside this
+ * function (the seed, at +0x32 and +0x47) are well past them.
  */
-#define RMG_CLI_REQUEST_RVA 0x67e10u
+#define RMG_CLI_GENERATE_RVA 0x8f9930u
 /**
- * The fields of that record this batch can say.
+ * The fields of the request this batch can say.
  *
  * The record is EMBEDDED IN THE GENERATOR AT `+0x10`, which is what ties the
  * offsets down: the copy at the top of `GenerateMap` is `lea ecx,[esi+10h]`
- * before `0xCFB500`, so every offset here is a generator offset minus 0x10 —
- * and each one lands on something already known from the other side.
- * `+0x0D` is the underground, which the console handler writes and the
- * generator reads at `+0x1D`; `+0x10` is the size, read at `+0x20` to index
- * the size table at `0xFF291C`; `+0x50` is the monster strength.
+ * before `0xCFB500`, and that copy is field for field at the SAME offsets — so
+ * every offset here is a generator offset minus 0x10, and each one lands on
+ * something already known from the other side. `+0x0D` is the underground,
+ * which the console handler writes and the generator reads at `+0x1D`; `+0x10`
+ * is the size, read at `+0x20` to index the size table at `0xFF291C`; `+0x50`
+ * is the monster strength.
  *
  * EVERY ONE OF THESE WAS PUT TO THE ENGINE, not just derived, with `-poke`
  * below: `+0x50` moved MonsterLevel to STRONG, `+0x94` turned the Minimap
@@ -130,22 +134,32 @@
  * two multipliers reproduced the reference exactly. The defaults agree with
  * what a command-ordered map records — MEDIUM, minimap on, no grail.
  *
- * WATER IS NOT HERE, and that is the finding rather than a gap in the
- * reading. Every other field of the map's `InitialParams` has its place in
- * this record; `WaterAmount` has none, and eleven offsets were poked one
- * launch at a time to be sure of it. The generator takes its water from
- * `GenerateMap`'s first stack ARGUMENT instead — `0xCF9B9E` reassigns `esi`
- * to `[ebp+8]` and only then reads `+0x58` as the amount, promoting 1 to 2
- * and setting the water bit at `+0xA6` that `LoadTemplate` branches on. That
- * object is not this one: poking this record at `+0x58` kills the editor,
- * because here `+0x54` is the players vector and `+0x58` is its `end`. So
- * ordering water needs that argument identified first, and until it is there
- * is no `-water` switch — a switch that silently does nothing is worse than
- * none.
+ * AND `+0x48` IS THE WATER AMOUNT. The generator reads it at `+0x58`, promotes
+ * a 1 to a 2 and sets the water bit at `+0xA6` (`0xCF9BDE`) that `LoadTemplate`
+ * branches on; the console handler zeroes both `+0x48` and `+0x96` on its way
+ * past, which is the whole reason a command-ordered map has never had water.
+ * The `esi` at `0xCF9BDE` is still the generator — the `mov esi,[ebp+8]` above
+ * it belongs to the FAILURE branch, which returns — so the amount was never in
+ * an argument of its own.
  */
 #define RMG_CLI_RESOURCE_OFF 0x98u
 #define RMG_CLI_EXP_OFF 0xa0u
 #define RMG_CLI_MONSTERS_OFF 0x50u
+#define RMG_CLI_WATER_OFF 0x48u
+/**
+ * The water FLAG, and it is a second field rather than a derived one.
+ *
+ * `+0x48` is the amount and decides everything the map is MADE of — the
+ * layers, the carve, the shipyards, `<WaterAmount>` in the record. `+0x96` is
+ * a bool beside it, and what reads it is the DESCRIPTION: with the amount
+ * alone, a command-ordered island map comes out with every water object on it
+ * and the prose "no water" in `desc-text-*`, which is the engine disagreeing
+ * with itself because the console handler zeroes both on its way past and only
+ * one of them was said. GenerateMap sets the generator's own copy at `+0xA6`
+ * from the amount, but that is a copy — the description reads the request.
+ * `-water` says both, which is what the dialog leaves behind.
+ */
+#define RMG_CLI_WATER_FLAG_OFF 0x96u
 
 /** `wstring::wstring(begin, end)` — the only kind of string that door takes. */
 #define RMG_CLI_WSTR_RVA 0x7d00u
@@ -392,36 +406,55 @@ static void rmg_cli_keep(int which) {
 static int g_rmgResource = -1;
 static int g_rmgExp = -1;
 static int g_rmgMonsters = -1;
+static int g_rmgWater = -1;
+/** Whether an order of ours is what this generation is - see the hook. */
+static int g_rmgOrdered = 0;
 
 /**
  * `-poke <offset> <value>` / `-pokeb` — one field of the request, said outright.
  *
  * A named switch is a claim about which offset holds what, and a claim is worth
- * one experiment. `-monsters` was right the first time and `-water` was not,
- * both of them derived the same way from the same copy — so rather than guess
- * again and rebuild for each guess, this says any offset and lets a launch
- * answer. What it finds becomes a named switch; it stays because the next field
- * will need it too.
+ * one experiment. So rather than guess and rebuild for each guess, this says
+ * any offset and lets a launch answer. What it finds becomes a named switch; it
+ * stays because the next field will need it too. `-water` is the second one it
+ * found — and the first time it was asked, it was asked at the constructor and
+ * came back "no", which is why the application moved to the call.
  */
 #define RMG_POKE_MAX 8
 static struct { unsigned off; int value; int wide; } g_rmgPoke[RMG_POKE_MAX];
 static int g_rmgPokes = 0;
 
-typedef void *(__fastcall *RmgRequestCtorFn)(void *self, void *edx);
-static RmgRequestCtorFn g_rmgRequestCtor;
+/** `ret 0Ch` — `this` in ecx, then the return buffer, the request, an out-int. */
+typedef void *(__fastcall *RmgGenerateMapFn)(void *self, void *edx, void *result,
+                                             void *request, int *outcome);
+static RmgGenerateMapFn g_rmgGenerateMap;
 
-/** The request, built as the engine builds it, then told what we were told. */
-static void *__fastcall rmg_request_ctor_hook(void *self, void *edx) {
-  void *made = g_rmgRequestCtor(self, edx);
-  if (g_rmgResource >= 0) *(int *)((BYTE *)self + RMG_CLI_RESOURCE_OFF) = g_rmgResource;
-  if (g_rmgExp >= 0) *(int *)((BYTE *)self + RMG_CLI_EXP_OFF) = g_rmgExp;
-  if (g_rmgMonsters >= 0) *(int *)((BYTE *)self + RMG_CLI_MONSTERS_OFF) = g_rmgMonsters;
-  for (int i = 0; i < g_rmgPokes; i++) {
-    BYTE *at = (BYTE *)self + g_rmgPoke[i].off;
-    if (g_rmgPoke[i].wide) *(int *)at = g_rmgPoke[i].value;
-    else *at = (BYTE)g_rmgPoke[i].value;
+/**
+ * The order, said into the request the instant before the generator reads it.
+ *
+ * Only for a generation WE asked for: a person generating from the dialog in a
+ * session that also ran `--rmg` would otherwise inherit the last order's
+ * multipliers. Nothing in a batch reaches the dialog, but the guard costs a
+ * flag and says what the values belong to.
+ */
+static void *__fastcall rmg_generate_hook(void *self, void *edx, void *result,
+                                          void *request, int *outcome) {
+  if (g_rmgOrdered && request) {
+    BYTE *req = (BYTE *)request;
+    if (g_rmgResource >= 0) *(int *)(req + RMG_CLI_RESOURCE_OFF) = g_rmgResource;
+    if (g_rmgExp >= 0) *(int *)(req + RMG_CLI_EXP_OFF) = g_rmgExp;
+    if (g_rmgMonsters >= 0) *(int *)(req + RMG_CLI_MONSTERS_OFF) = g_rmgMonsters;
+    if (g_rmgWater >= 0) {
+      *(int *)(req + RMG_CLI_WATER_OFF) = g_rmgWater;
+      *(req + RMG_CLI_WATER_FLAG_OFF) = (BYTE)(g_rmgWater != 0);
+    }
+    for (int i = 0; i < g_rmgPokes; i++) {
+      BYTE *at = req + g_rmgPoke[i].off;
+      if (g_rmgPoke[i].wide) *(int *)at = g_rmgPoke[i].value;
+      else *at = (BYTE)g_rmgPoke[i].value;
+    }
   }
-  return made;
+  return g_rmgGenerateMap(self, edx, result, request, outcome);
 }
 
 /**
@@ -466,7 +499,9 @@ static void rmg_cli_run_order(const char *from, const char *to) {
   g_rmgResource = -1;
   g_rmgExp = -1;
   g_rmgMonsters = -1;
+  g_rmgWater = -1;
   g_rmgPokes = 0;
+  g_rmgOrdered = 1;
   const char *p = from;
   while (p < to) {
     p = rmg_cli_spaces(p, to);
@@ -507,6 +542,7 @@ static void rmg_cli_run_order(const char *from, const char *to) {
     if (rmg_cli_word_is(word, p, "-resource")) ours = &g_rmgResource;
     else if (rmg_cli_word_is(word, p, "-exp")) ours = &g_rmgExp;
     else if (rmg_cli_word_is(word, p, "-monsters")) ours = &g_rmgMonsters;
+    else if (rmg_cli_word_is(word, p, "-water")) ours = &g_rmgWater;
     if (ours) {
       const char *q = rmg_cli_spaces(p, to);
       int value = 0;
@@ -717,13 +753,12 @@ static int install_rmg_cli(void) {
   g_rmgCliExecLine = (ExecLineFn)(base + RMG_CLI_EXEC_LINE_RVA);
   g_rmgCliWString = (WStringRangeFn)(base + RMG_CLI_WSTR_RVA);
 
-  static const BYTE ctorHead[] = { 0x6a, 0xff, 0x68, 0x59, 0x87, 0x02, 0x01 };
-  static const BYTE ctorSkip[] = { 0, 0, 0, 1, 1, 1, 1 };
-  g_rmgRequestCtor = (RmgRequestCtorFn)detour_relocated(
-      RMG_CLI_REQUEST_RVA, ctorHead, ctorSkip, sizeof(ctorHead),
-      (void *)rmg_request_ctor_hook, "the rmg request");
-  rmg_log(g_rmgRequestCtor ? "cli: the multipliers can be ordered"
-                           : "cli: the multipliers cannot be ordered - defaults stand");
+  static const BYTE generateHead[] = { 0x55, 0x8b, 0xec, 0x83, 0xe4, 0xf8 };
+  g_rmgGenerateMap = (RmgGenerateMapFn)detour(
+      RMG_CLI_GENERATE_RVA, generateHead, sizeof(generateHead),
+      (void *)rmg_generate_hook, "the rmg generation");
+  rmg_log(g_rmgGenerateMap ? "cli: the request can be ordered"
+                           : "cli: the request cannot be ordered - defaults stand");
 
   g_rmgCliArgOrig = detour_relocated(RMG_CLI_ARG_RVA, argHead, argSkip, sizeof(argHead),
                                      (void *)rmg_cli_arg_hook, "the editor's command line");

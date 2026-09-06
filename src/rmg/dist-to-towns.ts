@@ -41,6 +41,9 @@ const STEPS: ReadonlyArray<readonly [number, number, number]> = [
 /**
  * @param floors the zone grids — MUTATED: unreachable tiles become −2
  * @param centres per zone index, the point the wave starts from (towns.ts)
+ * @param tilesOf the zone's `+0xCC` list, for a caller that has carved it —
+ *        see below. Without it the tiles are read off the grid, which is the
+ *        same set whenever nothing has taken any away.
  * @returns per floor, the distance grid
  */
 export function fillDistToTowns(
@@ -48,6 +51,7 @@ export function fillDistToTowns(
   floors: Int32Array[][],
   zones: DistToTownsZone[],
   centres: Map<number, { a: number; b: number }>,
+  tilesOf?: (zoneIndex: number) => ReadonlyArray<readonly [number, number]>,
 ): Int32Array[][] {
   const grids: Int32Array[][] = [];
 
@@ -62,11 +66,26 @@ export function fillDistToTowns(
       const ca = Math.trunc(centre.a);
       const cb = Math.trunc(centre.b);
 
-      // The zone's own tiles, in the collection order — the engine walks this
-      // very list on every wave.
+      // THE ZONE'S `+0xCC` LIST, which is not the same thing as the tiles the
+      // grid says are the zone's. The engine walks the list; deriving it from
+      // the grid gives the same set as long as nothing has taken tiles out of
+      // the grid without taking them out of the list — true of every run with
+      // no water, and false the moment the water border carves.
+      //
+      // What the difference costs: a carved tile still on the list is walked,
+      // is unreachable (the grid no longer calls it the zone's), and the tail
+      // below writes −2 over it. Reading the grid instead leaves it at the
+      // carve's −1, and 586 tiles of a 96×96 island map came out that way —
+      // invisible until a phase reads the grid and gets −1 where the engine
+      // has −2.
+      const listed = tilesOf?.(zone.index);
       const tiles: Array<[number, number]> = [];
-      for (let b = 0; b < size; b++) {
-        for (let a = 0; a < size; a++) if (grid[a]![b] === zone.index) tiles.push([a, b]);
+      if (listed) {
+        for (const [a, b] of listed) tiles.push([a, b]);
+      } else {
+        for (let b = 0; b < size; b++) {
+          for (let a = 0; a < size; a++) if (grid[a]![b] === zone.index) tiles.push([a, b]);
+        }
       }
       if (!tiles.length) continue;
 

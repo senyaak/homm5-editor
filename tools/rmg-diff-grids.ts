@@ -2,6 +2,7 @@
 //
 //   node tools/rmg-diff-grids.ts --template S3-4P2-4Z4K1M --size 176
 //   node tools/rmg-diff-grids.ts --template S1-2P2-8Z8K2S --size 96 --seed 1785351845
+//   node tools/rmg-diff-grids.ts --template S0-1P2Z2K3T --size 96 --water 2
 //   node tools/rmg-diff-grids.ts --log some/other/homm5-editor-rmg.log --template ...
 //
 // WHY IT EXISTS. The height plane's base field scales a `dist` term by the
@@ -46,6 +47,9 @@ const template = flag('template') ?? 'S1P2Z2M1';
 const size = Number(flag('size') ?? 96);
 const seed = Number(flag('seed') ?? 1785351845);
 const players = Number(flag('players') ?? 2);
+// The order's water, because the carve moves both grids this compares: the sea
+// takes -1 in the zone grid and the rim out of the border table.
+const water = Number(flag('water') ?? 0);
 
 // ---------------------------------------------------------------- the dump
 
@@ -74,7 +78,7 @@ if (!dumped.length) process.exit(2);
 
 // ---------------------------------------------------------------- the port
 
-const c = runChain(dataDir(), { template, size, players, seed, monsterStrength: 1, water: 0 });
+const c = runChain(dataDir(), { template, size, players, seed, monsterStrength: 1, water });
 console.log(`  port: ${template} ${size}x${size}, seed ${seed}, ${c.loaded.zones.length} zones`);
 
 /** How many cells differ, under each orientation, plus where and by how much. */

@@ -301,8 +301,9 @@ twenty-two templates.
    channel bytes and monster levels other than MEDIUM. (The `caption-text`
    counter was the third and is closed: it belongs to the save path.)
 
-4. **Water, as a second dimension**, once `GenerateMap`'s first argument is
-   identified. It is also the only way to reach a zone's `CanBeWater`, the one
+4. **Water, as a second dimension.** Orderable now — `-water 2` — and the
+   reason it was not is under "The water is two fields, and the handler zeroes
+   both" below. It is also the only way to reach a zone's `CanBeWater`, the one
    field of the format the sweep of readers could not settle.
 
 ### The sweep, run
@@ -2364,19 +2365,81 @@ gave three right answers and one wrong one.
 | `+0x95` | random towns | poked to 1, the map records `<RandomTowns>true` |
 | `+0x98` `+0xA0` | the two multipliers | they reproduce the reference exactly |
 | `+0xA5` | grail | poked to 1, the map records `<Grail>true` |
+| `+0x48` | the WATER AMOUNT | `-water 2`, the map records `<WaterAmount>WATER_ISLAND_MAP` and its terrain grows the two water layers |
+| `+0x96` | the water FLAG the description reads | with the amount alone the prose says "no water" over a map full of water |
 
-**And WATER is not in that record at all** — which is a finding, not a gap in
-the reading. Every other field of the map's `InitialParams` has a place there;
-`WaterAmount` has none, and eleven offsets were poked a launch apiece to be
-sure. The generator takes its water from `GenerateMap`'s first stack ARGUMENT
-instead: `0xCF9B9E` reassigns `esi` to `[ebp+8]` and only then reads `+0x58` as
-the amount, promoting 1 to 2 and setting the water bit at `+0xA6` that
-`LoadTemplate` branches on. That object is not the request — poking the request
-at `+0x58` kills the editor, because there `+0x54` is the players vector and
-`+0x58` is its `end`. So the batch cannot order water yet, and there is no
-`-water` switch: a switch that silently does nothing is worse than none. What
-would close it is identifying that argument, which is one focused reading and
-not a guess.
+##### The water is two fields, and the handler zeroes both
+
+**Water IS in that record — at `+0x48`, with a flag beside it at `+0x96`** —
+and the reason a whole dimension looked absent is worth more than the offsets.
+
+The earlier reading said the generator takes its water from `GenerateMap`'s
+first stack ARGUMENT, off `0xCF9B9E`'s `mov esi,[ebp+8]` followed by a read of
+`+0x58`. The two instructions are real and the conclusion is not: the `mov` is
+in the FAILURE branch, which builds two empty strings into the return buffer
+(`[ebp+8]` is the hidden return pointer — the function is `ret 0Ch` for three
+stack arguments, of which the request is the SECOND) and returns. The read of
+`+0x58` is at `0xCF9BDE`, on the other side of a `jne`, where `esi` is still
+the generator. So it is a field of the generator, and the generator's record is
+the request copied field for field into `+0x10` (`0xCFB500`, same offsets) —
+generator `+0x58` is request `+0x48`.
+
+**Why eleven pokes could not find it.** `-poke` used to be applied in a detour
+on the request's CONSTRUCTOR, and the console handler writes its own fields
+after the constructor returns — including two zeroes, `mov [esp+0F4h],ebx` at
+`0x73cef0` (`+0x48`) and `mov [esp+142h],bl` at `0x73cee9` (`+0x96`). Every
+poke into those two was erased before the generator saw it. The instrument was
+blind in exactly the place the answer was, and it reported the blindness as an
+absence. So the application moved to `GenerateMap` itself
+(editor `0x8F9930`, head `push ebp; mov ebp,esp; and esp,-8`), which is the
+last moment before the record is read and the only one nothing overwrites.
+
+**And the amount alone is not enough.** With `+0x48` said and `+0x96` left at
+the handler's zero, the map comes out with every water layer, the carve, the
+shipyards and `<WaterAmount>WATER_ISLAND_MAP` — and a description reading "без
+водных пространств", no water. The description is composed from the REQUEST,
+and `+0x96` is what it reads; the generator's own copy at `+0xA6`, which
+`GenerateMap` sets from the amount at `0xCF9BF1`, is a copy and reaches
+nothing. `-water` says both, which is what the dialog leaves behind.
+
+With both said, a command-ordered island map is **13 of 13 entries
+byte-identical** to the port's on `S1P2Z2M1` — the same order the dialog-made
+water reference was given.
+
+##### The water sweep, first run
+
+Twenty-two orders, the same seed and templates as the dry sweep with `-water 2`
+on each, kept in `bin/rmg-water/`. **Three come out byte-identical** — the
+two-zone `S0-1P2Z2K3.1T`/`.2T` and `S1P2Z2M1` — six are 12 of 13 and the rest
+11 of 13. Where they differ is `map.xdb` (and `GroundTerrain.bin` on some), and
+the differences are IDENTITIES rather than counts: `S0-1P2Z2K3T` places 1079
+objects against the engine's 1079, class for class, and picks different
+artifacts and monsters inside them. That is a draw stream that parts, not a
+structure that does.
+
+**One finding so far, and it was hiding behind a convention.** The zone grid at
+the roads boundary had 586 cells where the engine says **−2** and the port said
+−1 — the sea tiles the carve leaves ON the zone's `+0xCC` list (adjusted border
+exactly 0) while taking them OUT of the grid. `FillDistToTown` walks the LIST,
+finds them unreachable and disowns them; the port derived its walk from the
+GRID instead, where they no longer are, so nothing disowned them. The
+derivation is the same set on every run with no water and different the moment
+a carve happens — which is the "zone's tile LIST is not the zone's tiles" rule
+again, in a place that had never been tested by a carve.
+
+`fillDistToTowns` now takes the list from the caller, and the caller hands it
+the post-carve one. Both grids match after that (`bd` and `zg` identical on the
+island order), and the dry sweep is untouched — the list and the derivation
+agree there by construction, order included.
+
+**The one still open** is three tiles. Zone 1's treasure-block growth spends
+one `below(8)` per seed that passes the occupancy, room and town-distance
+gates: the engine spends 1119 of them and the port 1122, and everything before
+draw 63334 agrees. The tile LIST is identical (3987 and 4021 entries, engine
+dump against port, entry for entry), so it is one of the three gates on three
+tiles — and the reading that names which needs the occupancy or the room AT
+THAT MOMENT, which is one boundary later than `grids` dumps them
+("additional objects set", not "roads created").
 
 **Four things this cost, each of them a measurement rather than a guess, and
 each of them a trap the next person would fall into.**
