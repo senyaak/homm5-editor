@@ -39,6 +39,7 @@
 // which reading is faithful (see fillZones).
 
 import type { RmgRandom } from './random.ts';
+import { hashMapOrder } from './zones.ts';
 import type { PlacedZone } from './zones.ts';
 
 const fl = Math.fround;
@@ -56,33 +57,29 @@ const NBR: ReadonlyArray<readonly [number, number]> = [
  * order, so it is modelled rather than replaced with a plain max.
  */
 class HashCounts {
-  private buckets: Array<Array<{ key: number; count: number }>> = Array.from({ length: 13 }, () => []);
-  private keys = 0;
+  /** In insertion order; `hashMapOrder` lays them out when they are read. */
+  private entries: Array<{ key: number; count: number }> = [];
 
   add(key: number): void {
-    const bucket = this.buckets[(key >>> 0) % 13]!;
-    const hit = bucket.find((e) => e.key === key);
+    const hit = this.entries.find((e) => e.key === key);
     if (hit) hit.count++;
-    else {
-      bucket.unshift({ key, count: 1 });
-      this.keys++;
-    }
+    else this.entries.push({ key, count: 1 });
   }
 
-  get size(): number { return this.keys; }
+  get size(): number { return this.entries.length; }
 
   has(key: number): boolean {
-    return this.buckets[(key >>> 0) % 13]!.some((e) => e.key === key);
+    return this.entries.some((e) => e.key === key);
   }
 
   /** The first strict maximum in iteration order, never key -1. */
   best(): { key: number; count: number } | null {
     let best: { key: number; count: number } | null = null;
-    for (const bucket of this.buckets) {
-      for (const e of bucket) {
-        if (e.key === -1) continue;
-        if (!best || e.count > best.count) best = e;
-      }
+    // Eight neighbours, so this never grows past one bucket table — but it is
+    // the same container and reads through the same door.
+    for (const e of hashMapOrder(this.entries, (x) => x.key, 'HashCounts')) {
+      if (e.key === -1) continue;
+      if (!best || e.count > best.count) best = e;
     }
     return best;
   }
@@ -90,29 +87,23 @@ class HashCounts {
 
 /**
  * The deferred-decision queues (map1/map2): zone index -> tiles to repaint,
- * applied in the container's iteration order. Same 13 buckets, same head
- * insertion — and the same refusal as floorIterationOrder: a fourteenth
- * distinct zone would rehash, and post-rehash order is an unread path no
- * shipped template can reach (a floor holds at most 12 zones).
+ * applied in the container's iteration order. The same container as the zone
+ * order, through the same door — including the rehash at the fourteenth key,
+ * which a fifteen-zone template does reach.
  */
 class HashQueue {
-  private buckets: Array<Array<{ key: number; points: Array<[number, number]> }>> = Array.from({ length: 13 }, () => []);
-  private keys = 0;
+  /** In insertion order; `hashMapOrder` lays them out when they are read. */
+  private queued: Array<{ key: number; points: Array<[number, number]> }> = [];
 
   push(key: number, a: number, b: number): void {
-    const bucket = this.buckets[(key >>> 0) % 13]!;
-    const hit = bucket.find((e) => e.key === key);
+    const hit = this.queued.find((e) => e.key === key);
     if (hit) hit.points.push([a, b]);
-    else {
-      if (this.keys === 13) throw new Error('HashQueue: a 14th zone would rehash — order unverified');
-      bucket.unshift({ key, points: [[a, b]] });
-      this.keys++;
-    }
+    else this.queued.push({ key, points: [[a, b]] });
   }
 
   /** Iteration order: buckets ascending, newest key first, points as pushed. */
   *entries(): Iterable<{ key: number; points: Array<[number, number]> }> {
-    for (const bucket of this.buckets) yield* bucket;
+    yield* hashMapOrder(this.queued, (e) => e.key, 'HashQueue');
   }
 }
 
@@ -141,6 +132,13 @@ export interface FillZonesSpy {
    * The oracle's `gz` lines are this callback's engine-side twin.
    */
   candidate?(sweep: number, a: number, b: number, own: number, best: number): void;
+  /**
+   * The areas as the sweep leaves them — the engine's own `CollectOwnTiles`
+   * (`0xEB7790`, called per zone from the sweep's tail) rebuilds the zone's
+   * `+0xCC` list, and the NEXT sweep's ratio divides those lengths. Worth
+   * hearing when a sweep's jitter count differs and its candidates do not.
+   */
+  areas?(sweep: number, areas: ReadonlyMap<number, number>): void;
 }
 
 /**
@@ -293,6 +291,7 @@ export function fillZones(
           if (z !== -1 && counts.has(z)) counts.set(z, counts.get(z)! + 1);
         }
       }
+      spy?.areas?.(counter, counts);
     }
     sweepsPerFloor = sweeps;
   }

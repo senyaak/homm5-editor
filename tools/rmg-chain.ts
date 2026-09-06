@@ -103,6 +103,15 @@ export interface ChainOptions {
    */
   jitter?: (sweep: number, a: number, b: number) => void;
   /**
+   * Every candidate that reaches the zone lookup, whether or not it goes on to
+   * draw — the engine's `gz` pairs are this callback's twin, so the two can be
+   * counted against each other when the jitter counts alone say only THAT a
+   * sweep differs.
+   */
+  candidate?: (sweep: number, a: number, b: number, own: number, best: number) => void;
+  /** Each sweep's areas, the numbers the next sweep's ratio divides. */
+  areas?: (sweep: number, areas: ReadonlyMap<number, number>) => void;
+  /**
    * The draw counter as each phase ends. "The 13807th draw disagrees" is a
    * number; "the 13807th draw is in zoneConnections, which starts at 13798"
    * is a place to read, and the difference between the two is this callback.
@@ -238,7 +247,9 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng);
   phase('placeZones');
   const filled = fillZones(size, size, placed.zones, made.twoFloors, rng,
-    options.jitter ? { jitter: options.jitter } : undefined);
+    options.jitter || options.candidate || options.areas
+      ? { jitter: options.jitter, candidate: options.candidate, areas: options.areas }
+      : undefined);
   phase('fillZones');
   // THE ZONE'S `+0xCC`, TAKEN WHERE THE ENGINE TAKES IT. `0xEB7790` — whose
   // one caller is FillZones' own tail at 0xeaa609, right after the grow and

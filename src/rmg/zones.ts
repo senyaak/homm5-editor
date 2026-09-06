@@ -67,41 +67,54 @@ export interface GeneratedZones {
 }
 
 /**
- * The order a floor's hash_map yields its zones in.
+ * The container the engine keeps these collections in, and the order it yields
+ * them in.
  *
- * The container is an STLPort-style hash_map: bucket = index % bucketCount,
- * insertion at the HEAD of a bucket, iteration buckets ascending. It starts
- * at 13 buckets and rehashes when an insert would push the count past the
- * bucket count — so the fourteenth zone grows it to 29, the thirtieth to 53
- * (the prime table at 0xF49470). Zones come in here in template file order,
- * the order LoadTemplate inserts them.
+ * It is an STLPort-style hash_map: bucket = key % bucketCount, insertion at the
+ * HEAD of a bucket, iteration buckets ascending. It starts at 13 buckets and
+ * rehashes when an insert would push the count past the bucket count — so the
+ * fourteenth key grows it to 29, the thirtieth to 53 (the prime table at
+ * 0xF49470).
  *
  * This order is load-bearing and not the obvious one: indices in shipped
- * templates reach 15, so on a small table zone 14 sits in bucket 1 and
- * iterates before zone 2 — but a template big enough to rehash holds its
- * zones in a 29-bucket table where indices up to 28 stop colliding at all.
+ * templates reach 15, so on a small table zone 14 sits in bucket 1 and iterates
+ * before zone 2 — while a collection big enough to rehash holds its keys in a
+ * 29-bucket table where indices up to 28 stop colliding at all and the order is
+ * plain ascending again.
  *
- * The one path this refuses: a collision in a table that has been rehashed.
- * Within-bucket order there depends on the order the rehash re-inserted the
- * old elements, which has not been read out of the executable — and no
- * shipped template reaches it (the suite checks). A named hole, not a guess.
+ * THE ONE PATH THIS REFUSES is a collision in a table that has been rehashed.
+ * Within-bucket order there depends on the order the rehash re-inserted the old
+ * elements, which has not been read out of the executable. Everywhere else the
+ * re-insertion order cannot be observed — with no collision a bucket holds one
+ * element however it was filled — so building the layout once, at the end, is
+ * the same answer as growing it live. A named hole, not a guess.
  */
-export function floorIterationOrder<T extends { index: number }>(seeds: T[]): T[] {
-  const bucketCount = [13, 29, 53].find((p) => seeds.length <= p);
-  if (!bucketCount) throw new Error('floorIterationOrder: >53 zones — grow the prime table when something needs it');
-  const rehashed = seeds.length > 13;
+const HASH_PRIMES = [13, 29, 53] as const;
+
+export function hashMapOrder<T>(items: readonly T[], keyOf: (item: T) => number, what: string): T[] {
+  const bucketCount = HASH_PRIMES.find((p) => items.length <= p);
+  if (!bucketCount) throw new Error(`${what}: over ${HASH_PRIMES[HASH_PRIMES.length - 1]} keys — grow the prime table when something needs it`);
+  const rehashed = items.length > HASH_PRIMES[0];
   const buckets: T[][] = Array.from({ length: bucketCount }, () => []);
-  for (const s of seeds) {
+  for (const item of items) {
     // The engine's hash takes the key as size_t, so a negative index wraps:
     // the water carve's -1 (sea) hashes as 0xFFFFFFFF and lands in bucket 8
-    // of 13. Non-negative indices are untouched by the >>> 0.
-    const bucket = buckets[(s.index >>> 0) % bucketCount]!;
+    // of 13. Non-negative keys are untouched by the >>> 0.
+    const bucket = buckets[(keyOf(item) >>> 0) % bucketCount]!;
     if (rehashed && bucket.length) {
-      throw new Error('floorIterationOrder: bucket collision after a rehash — within-bucket order unverified');
+      throw new Error(`${what}: bucket collision after a rehash — within-bucket order unverified`);
     }
-    bucket.unshift(s);
+    bucket.unshift(item);
   }
   return buckets.flat();
+}
+
+/**
+ * The order a floor's hash_map yields its zones in. Zones come in here in
+ * template file order, the order LoadTemplate inserts them.
+ */
+export function floorIterationOrder<T extends { index: number }>(seeds: T[]): T[] {
+  return hashMapOrder(seeds, (s) => s.index, 'floorIterationOrder');
 }
 
 const fl = Math.fround;
