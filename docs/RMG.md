@@ -64,9 +64,8 @@ of every template the port accepts** (`0xECF760` → `heights.ts`,
 `test-rmg-heights`, replaying through the shared full-run driver
 `tools/rmg-run.ts`): every vertex of the surface, island and underground
 floor-0 planes — 24,147 across the three files — bit for bit, and
-**21 of 21 templates of the sweep, on BOTH seeds**, with nothing left but
-one-ulp vertices on 28 of the 44 maps (492 vertices in all, never two ulps).
-The
+**21 of 21 templates of the sweep, on BOTH seeds, BIT-identical** — not
+merely inside a tolerance. The
 last debt was two errors in the base field that were only visible
 together — the noise's two indices swapped and the Inferno/Necromancy
 dig switched off on a measurement the swap had corrupted; the story is
@@ -328,10 +327,19 @@ each):
 
 - **`map.xdb` is byte-identical on all 44**, entry set included. The last two
   bytes went with the caption numbering below.
-- **`GroundTerrain.bin` differs on 28 of them, by 1 to 57 bytes** — and every
-  one of those bytes is one of two things: a height vertex one ULP out (never
-  more, on either sweep), or the engine's own uninitialised byte in the `0x0e`
-  record, which flips between two identical runs of the engine itself.
+- **39 of the 44 maps are byte-identical in EVERY entry.** The one-ulp layer
+  that used to sit under this — 28 of the 44, 492 vertices — was one rounding
+  in the relief cone; see "The relief cone: the two builds round it in opposite
+  places". (`rmg-diff-map` exempts one byte of a terrain file, the `0x0e`
+  record's uninitialised payload, which flips between two identical runs of the
+  engine itself.)
+- **What is left is TWO maps, and it is not arithmetic.** `S3-5P4Z12B4` at the
+  first seed (slots 1 and 16 are the same map ordered twice) differs by 31
+  bytes and `S1-3P2Z7V3` at the second by 10, both only in `GroundTerrain.bin`
+  and both the same shape: a blob of a few tiles where the engine paints
+  **Necropolis `DarkGround`** and the port paints a **Haven** tile — `Sand_Stone`
+  on the one, `Grass` on the other. Every other plane of both maps, heights
+  included, is identical.
 - Everything else — masks, ground flags, passability, the river plane, the
   minimap documents, all eleven texts, `map-tag.xdb` — is byte-identical
   everywhere.
@@ -348,6 +356,42 @@ through the terrain as well, and the other twenty-eight differ only by height
 vertices one ULP out — 218 such vertices over the first sweep, 274 over the
 second, none more than one ulp. The port refuses `S7-22P2-8Z15K2.4c` outright,
 and that refusal plus the ulp layer is the whole of what is left of the sweep.
+
+##### The relief cone: the two builds round it in opposite places
+
+The last of the height debt was 492 vertices over the two sweeps, every one of
+them exactly one ulp, and it was not in the late pass at all — the pass replayed
+over the engine's own entry plane came out exact, so the difference was in the
+plane the pass STARTS from: the constructor fill plus the statics' relief cones.
+
+The cone adds `2 * (3.5f - r)` per blocked offset within 3.5 of the centre, and
+the two builds round that differently:
+
+| | the game, SSE (`0xED1660`) | the editor, x87 (`0x794A80`) |
+| --- | --- | --- |
+| the squares and their sum | single (`mulss`, `addss`) | from f32 slots, product in the FPU |
+| the sqrt | double (`sqrtsd`) | `fsqrt`, stays in the FPU |
+| the radius | **rounded back to single** (`cvtsd2ss`, 0xED1714) | never rounded |
+| `3.5f - r` and the doubling | single | in the FPU |
+| the term handed to the add | already single | **rounded once**, storing to the f32 slot (0x794b60) |
+
+The two disagree on every offset whose radius is irrational — r² of 2, 5, 8 and
+10, the diagonals — and a vertex stacks several of those, which is exactly the
+"one ulp on a handful of vertices per map" the census was reporting. The port
+follows the EDITOR, because the reference maps are the editor's: radius and `t`
+in double, one `fround` on the doubled term. The guard (`t <= 0`) is on the
+unrounded value, which is what `fcomp` at 0x794afc compares.
+
+**Finding it took reading the editor rather than the game, and the game's
+version is a convincing wrong answer.** Ported from the SSE disassembly — round
+the radius, keep everything single — the debt goes from two vertices to one on
+the probe map, and the vertex that survives is a DIFFERENT one: some vertices
+then match the single path and others the double, which is what a mixed rounding
+looks like from the outside and is really two wrong answers taking turns.
+
+`0x794A80` was located by its calls to the height add (`0x873F90`, ten callers
+in the whole executable) and confirmed by fingerprint against the game's cone —
+63%, and the same `ret 0Ch`.
 
 ##### The caption numbering belongs to the SAVE PATH, not to the generator
 
@@ -575,17 +619,16 @@ clusters are the 1e-4 view, which is the right lens for a debt with a shape;
 next to them sits BIT inequality with the worst distance in ulps. The first
 report this tool gave read "21 of 21, zero differing vertices" and was quoted
 as the plane being closed — true of the tolerance and false of the file, since
-28 of the 44 maps still wrote a different `GroundTerrain.bin`. What they carry
-is one-ulp vertices and nothing else:
+28 of the 44 maps still wrote a different `GroundTerrain.bin`. What they carried
+was one-ulp vertices and nothing else:
 
 | | planes bit-identical | vertices one ulp out | worse than one ulp |
 | --- | --- | --- | --- |
-| seed 1785351845 | 8 of 21 | 218 | none |
-| seed 987654321 | 6 of 21 | 274 | none |
+| seed 1785351845, before the cone's rounding was read | 8 of 21 | 218 | none |
+| seed 987654321, before | 6 of 21 | 274 | none |
+| **both seeds, after** | **21 of 21** | **0** | none |
 
-That is the whole remaining height debt, and it is arithmetic rather than
-structure: the passes are the engine's, the inputs are the engine's, and what
-is left is where a double intermediate lands against an x87 one.
+That layer was one rounding in the relief cone, below.
 
 | | the dig on the resolved race | the dig switched off | the base field read right |
 | --- | --- | --- | --- |

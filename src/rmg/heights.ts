@@ -70,23 +70,45 @@ function heightAdd(h: HeightPlane, first: number, second: number, delta: number)
 }
 
 /**
- * `0xED1660` — the mountain relief cone, called by the statics accept
- * path with the static's position and its UNROTATED blocked list. Per
- * rotated offset within 3.5 of the centre, `2 * (3.5f - r)` is ADDED to
- * ONE vertex: EB1800((y + dy, x + dx)) — rows by the y half. The radius
- * is single except the sqrt (double, rounded back).
+ * `0xED1660` in the game, `0x794A80` in the editor — the mountain relief cone,
+ * called by the statics accept path with the static's position and its
+ * UNROTATED blocked list. Per rotated offset within 3.5 of the centre,
+ * `2 * (3.5f - r)` is ADDED to ONE vertex: the height add on (y + dy, x + dx),
+ * rows by the y half.
+ *
+ * THE TWO BUILDS ROUND THIS DIFFERENTLY, and the reference is the editor's.
+ * The game is SSE and rounds the RADIUS back to single (`cvtsd2ss` at
+ * 0xED1714) before subtracting it from 3.5f, so every step is single. The
+ * editor is x87 and does the opposite: the squares come from f32 slots but the
+ * sum, the sqrt, `3.5f - r` and the doubling all stay in the FPU, and the ONLY
+ * rounding is the store of the doubled term into the f32 slot the add is
+ * handed (0x794b60). The two disagree on every offset whose radius is
+ * irrational - r² of 2, 5, 8 and 10, the diagonals - and a vertex stacks
+ * several of those, which is worth a one-ulp plane on most maps of a sweep.
+ *
+ * The editor computes the radius TWICE, once for the guard and once for the
+ * term; the guard's copy is compared against 0 unrounded (0x794afc).
  */
 export function coneRelief(
   h: HeightPlane, x: number, y: number, q: number, blocked: readonly Offset[],
 ): void {
   for (const off of blocked) {
     const [dx, dy] = rotate(q, off);
+    // ONE ROUNDING, AND IT IS AT THE END. The editor computes the whole term
+    // in the FPU - the squares from f32 slots but exact, the sum, the sqrt,
+    // `3.5f - r` and the doubling all at the register's precision - and rounds
+    // exactly once, storing the doubled term into the f32 slot it passes to the
+    // add (`fstp dword [esp]` at 0x794b60, then the call). Rounding the radius
+    // instead, which is what the SSE build's `cvtsd2ss` does, is a DIFFERENT
+    // number: the two disagree on every offset whose radius is irrational (r²
+    // of 2, 5, 8, 10 - the diagonals), and a vertex stacks several of those.
     const r = Math.sqrt(dy * dy + dx * dx);
     const t = 3.5 - r;
+    // The guard is on the UNROUNDED value, compared against 0 (0x794afc).
     if (t <= 0) continue;
     // The engine's pt is (+0x44, +0x48) = the port's (y, x) — the cone
     // lands mem[x+dx][y+dy], the file's natural (row y+dy, col x+dx).
-    heightAdd(h, x + dx, y + dy, t + t);
+    heightAdd(h, x + dx, y + dy, fl(t + t));
   }
 }
 
