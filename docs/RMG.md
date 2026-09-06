@@ -2018,6 +2018,26 @@ and is the cascade rather than the step: a zone that gets more treasures has
 less room left for everything behind them, and the steps behind them are where
 the draws are.
 
+### Is the GAME's generator the console's? Not answered
+
+Two maps the GAME made sit in `<game>/H5E/` from July. One of them —
+`S0-1P2Z2K3.1T`, tiny, `-water 2`, WEAK, MISERABLE — has the SAME order recorded
+as a console run of it, field for field, GUID and typed map name aside. The
+console run is **15 of 15 byte-identical** with the port. The game's file is not,
+and the two engine maps differ from EACH OTHER at the very first object: the
+first town stands at 13,42 in one and 54,25 in the other.
+
+That is either a third ordering path that differs the way the console's
+`caption-text` numbering differs, or it is the file's age: those two were
+generated in July and this copy of the game has been cleaned to vanilla since,
+so the generator may simply have been reading other data. Nothing on disk can
+tell the two apart.
+
+**The experiment that would**: generate one map IN THE GAME now, order the same
+template, seed, size, water and monster level through `rmg-batch`, and diff the
+two ENGINE maps against each other. Same map means the game's path is the
+console's and everything here applies to it; different means a path to read.
+
 ### Two traps in the oracle itself
 
 Both cost a wrong diagnosis before they were named, and neither is about the
