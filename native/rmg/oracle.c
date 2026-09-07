@@ -185,6 +185,50 @@ static const RmgStepSite g_rmgStepSites[] = {
  */
 #define RMG_ED_STEP_END_RVA 0x8fa613u
 
+// THE GAME'S THIRTY-FOUR, the same formatter (`0xde080`, the sweep line's
+// target) reached from the same thirty-four sentences. Until these went in the
+// game logged its twelve counter reads and nothing after MainObjects, so the
+// one boundary the grids dump needs — "roads created" — never fired in the
+// game and the dump could only ever be taken against the editor. Same
+// generator: `tools/reverse/rmg-log-sites.ts --exe game/bin/H5_Game_H5E.exe`.
+static const RmgStepSite g_rmgGameStepSites[] = {
+    {0xaa42e7u, 4}, // at %g mines in zone %d set
+    {0xaa443fu, 4}, // at %g hero in zone %d set
+    {0xaa4597u, 4}, // at %g dwellings in zone %d set
+    {0xaa4792u, 4}, // at %g upgrade buildings in zone %d set
+    {0xaa48eau, 4}, // at %g prisons in zone %d set
+    {0xaa4a50u, 4}, // at %g cartographer in zone %d set
+    {0xaa4bb0u, 4}, // at %g shrines in zone %d set
+    {0xaa4d10u, 4}, // at %g resource buildings in zone %d set
+    {0xaa4e70u, 4}, // at %g treasury buildings in zone %d set
+    {0xaa4fd0u, 4}, // at %g luck/morale objects in zone %d set
+    {0xaa5130u, 4}, // at %g shops in zone %d set
+    {0xaa533cu, 4}, // at %g road created in zone %d
+    {0xaa561eu, 4}, // at %g big statics in zone %d set
+    {0xaa56d4u, 4}, // at %g one tile statics in zone %d set
+    {0xaa5882u, 4}, // at %g treasures in zone %d set
+    {0xaa5951u, 4}, // at %g chests in zone %d set
+    {0xaab3efu, 3}, // at %g editor db created
+    {0xaab74eu, 3}, // at %g map created
+    {0xaab7fbu, 3}, // at %g template loaded
+    {0xaab884u, 3}, // at %g start points set
+    {0xaab90du, 3}, // at %g zones filled in
+    {0xaab996u, 3}, // at %g distance-to-border table filled in
+    {0xaaba37u, 3}, // at %g terrain processed
+    {0xaabac0u, 3}, // at %g towns placed
+    {0xaabcf0u, 3}, // at %g dist to towns table filled in
+    {0xaabd79u, 3}, // at %g connections created
+    {0xaabe20u, 3}, // at %g main objects set
+    {0xaabf65u, 3}, // at %g roads created
+    {0xaabfdbu, 3}, // at %g statics set
+    {0xaac051u, 3}, // at %g additional objects set
+    {0xaac0c7u, 3}, // at %g treasure blocks set
+    {0xaac223u, 3}, // at %g finished creating map
+    {0xaac299u, 3}, // at %g map saved
+    {0xaac310u, 3}, // at %g temp db destroyed
+};
+#define RMG_GAME_STEP_END_RVA 0xaac310u
+
 typedef char *(__cdecl *StepZoneFn)(const char *fmt, double secs, int zone);
 typedef char *(__cdecl *StepPlainFn)(const char *fmt, double secs);
 /** The formatter itself — the sweep line's target, reached by more callers. */
@@ -1014,10 +1058,67 @@ static void rmg_dump_zone_tiles(void *self) {
   }
 }
 
+/**
+ * The zone table, filled from the map's own zone lists instead of from
+ * GetZone's answers.
+ *
+ * Every dump that reads a zone reads it through `g_rmgZones`, and that table
+ * was only ever filled by the GetZone detour — which goes in under `trace`,
+ * in the editor, at the editor's address. So `grids` in the GAME found an
+ * empty table and dumped nothing. The walk `rmg_dump_zones` already makes —
+ * floors at `map+0x34`, each floor's buckets at `+0xAC`, the zone behind each
+ * node's `+8` — reaches the same objects GetZone hands out (it has printed
+ * their ids and centres from both hosts), so the table is taken from there
+ * whenever FillZones is detoured, and no trace is needed to read a grid.
+ *
+ * The game's GetZone, for the day the trace wants it, is RVA 0xa9ff00 —
+ * `sub esp,10h; push ebx; push edi`, called exactly twice in FillZones at
+ * the same pair the editor's is.
+ */
+static void rmg_harvest_zones(void *self) {
+  const BYTE *me = (const BYTE *)self;
+  const BYTE *map;
+  const BYTE *floorsBegin;
+  const BYTE *floorsEnd;
+  int floorCount, f, found = 0;
+  if (!rmg_readable(me, 0x34)) return;
+  map = *(const BYTE *const *)(me + 0x0C);
+  if (!rmg_readable(map, 0x3C)) return;
+  floorsBegin = *(const BYTE *const *)(map + 0x34);
+  floorsEnd = *(const BYTE *const *)(map + 0x38);
+  if (!floorsBegin || floorsEnd < floorsBegin) return;
+  floorCount = (int)((floorsEnd - floorsBegin) / 0x120);
+  for (f = 0; f < floorCount && f < 4; f++) {
+    const BYTE *floor = floorsBegin + f * 0x120;
+    const BYTE *const *buckets;
+    int bucketCount, b;
+    if (!rmg_readable(floor, 0xB4)) continue;
+    buckets = *(const BYTE *const *const *)(floor + 0xAC);
+    bucketCount = (int)((*(const BYTE *const *)(floor + 0xB0) - (const BYTE *)buckets) / 4);
+    if (!buckets || bucketCount <= 0 || bucketCount > 4096) continue;
+    for (b = 0; b < bucketCount; b++) {
+      const BYTE *node = buckets[b];
+      while (node) {
+        BYTE *zone;
+        int id;
+        if (!rmg_readable(node, 12)) break;
+        zone = *(BYTE *const *)(node + 8);
+        if (rmg_readable(zone, 0x148)) {
+          id = *(const int *)(zone + 0xEC);
+          if (id >= 0 && id < 32) { g_rmgZones[id] = zone; found++; }
+        }
+        node = *(const BYTE *const *)node;
+      }
+    }
+  }
+  rmg_log_pair("zones harvested ", found, floorCount);
+}
+
 static void __fastcall rmg_fill_zones_hook(void *self, void *edx) {
-  rmg_dump_zones(self);
+  if (g_rmgZonesDump) rmg_dump_zones(self);
   if (g_rmgFillZonesOrig) g_rmgFillZonesOrig(self, edx);
-  rmg_dump_zone_tiles(self);
+  rmg_harvest_zones(self);
+  if (g_rmgZonesDump) rmg_dump_zone_tiles(self);
 }
 
 static char *__cdecl rmg_sweep_hook(const char *fmt, int sweep) {
@@ -1766,19 +1867,38 @@ static int install_rmg_oracle(void) {
   // magic multiply where the editor's is an `idiv` — two codegens of one
   // program — and the call it guards has the same shape and arity.
   if (!rmg_host_is_editor()) {
+    rmg_log("host: the game");
     if (patch_call(RMG_GAME_SWEEP_CALL_RVA, RMG_GAME_SWEEP_TARGET_RVA, &rmg_sweep_hook, "rmg sweeps")) {
       g_rmgSweepFmt = (SweepFmtFn)(base + RMG_GAME_SWEEP_TARGET_RVA);
       rmg_log("FillZones sweeps will be read");
     }
+    // The step boundaries, the game's thirty-four — the same hooks, since the
+    // formatter has the same contract in both builds (cdecl, `char *`, the
+    // caller cleans). Each site is patched on its own and each refusal names
+    // itself, the way the editor's are.
+    g_rmgStepFmt = (void *)(base + RMG_GAME_SWEEP_TARGET_RVA);
+    int steps = 0;
+    for (int i = 0; i < (int)(sizeof(g_rmgGameStepSites) / sizeof(g_rmgGameStepSites[0])); i++) {
+      const RmgStepSite *site = &g_rmgGameStepSites[i];
+      void *hook = site->rva == RMG_GAME_STEP_END_RVA ? (void *)&rmg_step_end
+                   : site->slots == 4                ? (void *)&rmg_step_zone
+                                                     : (void *)&rmg_step_plain;
+      if (!patch_call(site->rva, RMG_GAME_SWEEP_TARGET_RVA, hook, "rmg step boundary")) continue;
+      steps++;
+      if (site->rva == RMG_GAME_STEP_END_RVA) g_rmgStepEnds = 1;
+    }
+    rmg_log_pair("step boundaries ", steps, (int)(sizeof(g_rmgGameStepSites) / sizeof(g_rmgGameStepSites[0])));
   }
-  // The zone dump, when the config asks: the prologue is `push ebp; mov
+  // FillZones, detoured whenever anything downstream reads a zone: the zone
+  // dump itself, and every dump that goes through `g_rmgZones` — which the
+  // detour now fills (`rmg_harvest_zones`). The prologue is `push ebp; mov
   // ebp,esp; and esp,-8` in BOTH builds — six bytes, three whole instructions,
   // no relocation — so one head serves either host.
-  if (g_rmgZonesDump) {
+  if (g_rmgZonesDump || g_rmgGrids || g_rmgBlocks || g_rmgHeights || g_rmgPoints) {
     static const BYTE fillHead[6] = { 0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8 };
     DWORD rva = rmg_host_is_editor() ? 0x8f2ee0u : 0xaa94c0u;
-    g_rmgFillZonesOrig = (FillZonesFn)detour(rva, fillHead, 6, &rmg_fill_zones_hook, "rmg zone dump");
-    rmg_log(g_rmgFillZonesOrig ? "zones will be dumped at FillZones" : "the zone dump did NOT take");
+    g_rmgFillZonesOrig = (FillZonesFn)detour(rva, fillHead, 6, &rmg_fill_zones_hook, "rmg zone table");
+    rmg_log(g_rmgFillZonesOrig ? "zones will be read at FillZones" : "the FillZones detour did NOT take");
   }
 
   BYTE head[5];

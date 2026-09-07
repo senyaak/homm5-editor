@@ -87,6 +87,12 @@ export interface FullRun {
   /** Per floor, the massif vertex grids (meaningful on two-floor runs). */
   vertexHeights: VertexHeights[];
   roads: Map<number, Tile[]>;
+  /**
+   * The same tiles, kept apart the way the zone keeps them — `+0x74` (0x20,
+   * the zone road), `+0x80` (0x08) and `+0x8C` (0x10) — so the oracle's
+   * `rl`/`rt` dump can be compared list by list.
+   */
+  roadLists: Map<number, { road20: Tile[]; road08: Tile[]; road10: Tile[] }>;
   mineActives: Map<number, Tile[]>;
   guardSeats: Map<number, Tile[]>;
   fills: Map<number, ZoneFill>;
@@ -249,6 +255,7 @@ export function runFull(
   const fills = new Map<number, ZoneFill>();
   const mineActives = new Map<number, Tile[]>();
   const roads = new Map<number, Tile[]>();
+  const roadLists = new Map<number, { road20: Tile[]; road08: Tile[]; road10: Tile[] }>();
   const guardSeats = new Map<number, Tile[]>();
 
   for (const tz of c.template.zones) {
@@ -357,6 +364,7 @@ export function runFull(
     step(`zone ${zone} tail`);
 
     roads.set(zone, fill.road());
+    roadLists.set(zone, { road20: roads.get(zone)!, road08: [], road10: [] });
     step(`zone ${zone} road`);
   }
   step('first loop');
@@ -378,6 +386,7 @@ export function runFull(
         mineActives: mineActives.get(z.index) ?? [],
       }, c.rng);
       roads.set(z.index, [...roads.get(z.index)!, ...phase.road08, ...phase.road10]);
+      roadLists.set(z.index, { ...roadLists.get(z.index)!, road08: phase.road08, road10: phase.road10 });
     }
   }
   step('roads phase');
@@ -535,7 +544,7 @@ export function runFull(
   ));
   step('run');
 
-  return { c, objects, heightPlane, vertexHeights, roads, mineActives, guardSeats, fills, statics, lakes, passability };
+  return { c, objects, heightPlane, vertexHeights, roads, roadLists, mineActives, guardSeats, fills, statics, lakes, passability };
 }
 
 /**
