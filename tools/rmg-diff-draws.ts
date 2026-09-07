@@ -146,9 +146,19 @@ const phaseOf = (i: number): string => {
 
 let diverged = -1;
 const shared = Math.min(engine.length, port.length);
+// TWO DIFFERENCES THE GAME'S BUILD HAS THAT ARE NOT DIVERGENCES: it inlines
+// some `below(2)` coins as a bare `next()` (a `tn` where the port says `tb 0
+// of 2`, the stream in step), and its `betweenFloat` lands one ulp under the
+// port's (a `tf` a bit apart, the state untouched). Both are counted and
+// skipped so the first divergence named is one that moves the stream.
+let soft = 0;
 for (let i = 0; i < shared; i++) {
-  if (engine[i]!.kind !== port[i]!.kind || engine[i]!.value !== port[i]!.value) { diverged = i; break; }
+  const e = engine[i]!, p = port[i]!;
+  if (e.kind === 'n' && p.kind === 'b') { soft++; continue; }
+  if (e.kind === 'f' && p.kind === 'f' && Math.abs(e.value - p.value) <= 2) { if (e.value !== p.value) soft++; continue; }
+  if (e.kind !== p.kind || e.value !== p.value) { diverged = i; break; }
 }
+if (soft) console.log(`soft differences skipped: ${soft} (a tn for a tb, or a tf within two ulps)`);
 
 if (diverged === -1) {
   if (port.length <= engine.length) {
