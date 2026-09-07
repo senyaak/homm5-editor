@@ -29,7 +29,7 @@
 import { add24, div24, mul24, sub24, tr24 } from '../exe/x87.ts';
 
 /** Which machine a run computes on. */
-export type ArithName = 'double' | 'x87';
+export type ArithName = 'double' | 'x87' | 'sse';
 
 /**
  * One arithmetic.
@@ -99,7 +99,35 @@ export const X87: Arith = {
   store: tr24,
 };
 
+/**
+ * The GAME's build, which is a different compiler and not a different mode.
+ *
+ * `FillZones` in `H5_Game_H5E.exe` holds 74 floating-point instructions and
+ * every one of them is SSE — `divss`, `mulss`, `comiss`, and a `sqrtsd` whose
+ * answer is handed straight back through `cvtsd2ss`. The one `fstp` in the
+ * whole function only unloads a value the callee had already rounded to
+ * single. PC and RC do not reach SSE, so the control word this process carries
+ * cannot move anything here: what moves things is that EVERY intermediate
+ * lands on a float32, where the editor's x87 keeps its stack.
+ *
+ * So the truncated decimals in a map the game wrote and the extra draws its
+ * generator spends are two different findings. The first is the control word,
+ * reaching the printf that still runs on x87. The second is this.
+ */
+export const SSE: Arith = {
+  name: 'sse',
+  mul: (a, b) => Math.fround(a * b),
+  div: (a, b) => Math.fround(a / b),
+  add: (a, b) => Math.fround(a + b),
+  sub: (a, b) => Math.fround(a - b),
+  // `cvtps2pd; sqrtsd; cvtsd2ss` — the root itself is taken in double and
+  // rounded once on the way back, which is not the same as a single-precision
+  // root and is what the disassembly does.
+  sqrt: (a) => Math.fround(Math.sqrt(a)),
+  store: (a) => Math.fround(a),
+};
+
 /** By name, for an option that arrives as a string. */
 export function arithFor(name: ArithName | undefined): Arith {
-  return name === 'x87' ? X87 : DOUBLES;
+  return name === 'x87' ? X87 : name === 'sse' ? SSE : DOUBLES;
 }

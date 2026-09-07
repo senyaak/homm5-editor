@@ -2184,10 +2184,41 @@ where a 24-bit quotient cannot cross 1, every zone in this template has size 10
 so `sizeRatio` is exactly 1, and the jitter gate does not flip in 200,000 draws.
 The zone radii come out 26 on both machines at all three values of `k`.
 
-That is a finding rather than a dead end: the engine's FillZones must compute
-something in floating point that the port reproduces with exact integer logic —
-correct under round-to-nearest, and not under toward-zero. Finding it is a
-disassembly question, not another launch.
+And then the disassembly said the control word is not the cause AT ALL.
+
+**The game is an SSE build and the editor is an x87 build.** `FillZones` in
+`H5_Game_H5E.exe` holds 74 floating-point instructions and every one of them is
+SSE — `divss`, `mulss`, `comiss`, and a `sqrtsd` whose answer goes straight back
+through `cvtsd2ss`. The single `fstp` in the whole function only unloads a value
+the callee had already rounded to single. None of its direct callees hold an x87
+arithmetic instruction either. PC and RC do not reach SSE, so the word this
+process carries **cannot move anything in this function**.
+
+So the two findings are separate, and the neat story was wrong:
+
+| what | why |
+| --- | --- |
+| the game's map file truncates its decimals | the control word, reaching the `printf` that still runs on x87 |
+| the game's generator draws 225 more | the build — every SSE intermediate lands on a float32 where the editor's x87 keeps its stack |
+
+`src/rmg/arith.ts` grew a third machine for that, `SSE`, which rounds after every
+operation and takes the root the way `cvtps2pd; sqrtsd; cvtsd2ss` does. **It does
+not explain the gap either**: the same order comes back 127034 on all three
+machines.
+
+Nor can it, at this site, and the arithmetic says why. Every zone in this
+template has Size 10, so the ratio test's `sizeRatio` is exactly 1.0 on any
+machine; the areas are integers around 5,000-15,000, where the nearest quotient
+to 1.0 that is not 1.0 sits 6.7e-5 away and a float32 ulp is 1.2e-7, so no
+rounding crosses the compare. The paint gate needs a perfect square to sit on
+its boundary, and there both builds answer the same. The radii come out 26 with
+their pre-truncation values 0.68 and 0.87 away from the nearest integer.
+
+**So the two builds differ in BEHAVIOUR, not in precision, and where is open.**
+That is the next question: not another launch and not another rounding mode, but
+a logical diff of the two `FillZones` — draw sites and their guards, the
+neighbour threshold, the border margin, the sweep bounds, and when the areas the
+ratio test divides are updated.
 
 ### What one four-player island map found
 
