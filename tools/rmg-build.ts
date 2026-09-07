@@ -22,6 +22,7 @@ import { heightsToFile, latePass } from '../src/rmg/heights.ts';
 import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
 import { buildTerrainFile } from '../src/rmg/emit-terrain.ts';
 import { buildRmgTexts, GAME_CAPTION_TEXT } from '../src/rmg/emit-texts.ts';
+import { tr24 } from '../src/exe/x87.ts';
 import { MAP_SIZES } from '../src/rmg/create-map.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import { drawMinimap } from '../src/rmg/minimap.ts';
@@ -151,6 +152,7 @@ export function replayTerrain(dataRoot: string, run: FullRun): {
 function minimapFiles(
   dataRoot: string, run: FullRun, floor: number, layers: readonly TerrainLayer[],
   river: { w: number; data: Uint8Array }, sine: EngineSine, icons: ReturnType<typeof loadMinimapIcons>,
+  gameBuild = false,
 ): MapFile[] {
   const c = run.c;
   const side = c.size, border = 1, dim = c.size + 1;
@@ -200,11 +202,25 @@ function minimapFiles(
     drawIconLayer(iconObjects, icons, side, border), sine);
   // The port keeps the engine's byte order; writeDDS takes RGBA and stores BGRA.
   const rgba = new Uint8Array(image.data.length);
+  // THE GAME'S EXTRA STAGE. Every channel of a minimap the game wrote is the
+  // port's value put through a float32 normalise-and-back under chop —
+  // `trunc(tr24(v / 255) * 255)`, which fixes 0 and 255 and drops everything
+  // between by one. The four drawing functions the port reproduces hold no
+  // `1/255` in either build (read instruction by instruction: the resample's
+  // codegen differences move no byte); the round trip sits past them, where
+  // the game's writer hands the image to its texture layer and the editor's
+  // does not. Fitted to the bytes, not read: it makes the underground floor's
+  // file byte-identical and the surface floor's 56,646 of 65,536 pixels, with
+  // the rest one lower in red or green on the game's side — NOT the tile
+  // colours' parse (every model of it tried made the count worse, and blue is
+  // exact), so something the surface floor has and the underground does not.
+  const roundTrip = (v: number): number => Math.trunc(tr24(v / 255) * 255);
   for (let i = 0; i < rgba.length; i += 4) {
     rgba[i] = image.data[i + 2]!;
     rgba[i + 1] = image.data[i + 1]!;
     rgba[i + 2] = image.data[i]!;
     rgba[i + 3] = image.data[i + 3]!;
+    if (gameBuild) for (let k = 0; k < 4; k++) rgba[i + k] = roundTrip(rgba[i + k]!);
   }
   const stem = `minimap_floor_0${floor + 1}`;
   return [
@@ -312,7 +328,7 @@ export function buildMapFiles(
     const sine = readEngineSine(exePath);
     const icons = loadMinimapIcons(dataRoot);
     for (let f = 0; f < c.floors.length; f++) {
-      files.push(...minimapFiles(dataRoot, run, f, layers[f]!, river, sine, icons));
+      files.push(...minimapFiles(dataRoot, run, f, layers[f]!, river, sine, icons, order.gameBuild ?? false));
     }
   }
   return files;

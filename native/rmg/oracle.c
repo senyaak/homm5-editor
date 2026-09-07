@@ -1505,6 +1505,12 @@ static void __fastcall rmg_dents_hook(void *self, void *edx) {
   if (g_rmgDentsOrig) g_rmgDentsOrig(self, edx);
   rmg_dump_plane("hs ", 1);
 }
+/** The game's craters, with the inlined dents' result read on the way in. */
+static void __fastcall rmg_crater_hook_game(void *self, void *edx) {
+  rmg_dump_plane("hs ", 1);
+  if (g_rmgCraterOrig) g_rmgCraterOrig(self, edx);
+  rmg_dump_plane("hs ", 2);
+}
 static void __fastcall rmg_crater_hook(void *self, void *edx) {
   if (g_rmgCraterOrig) g_rmgCraterOrig(self, edx);
   rmg_dump_plane("hs ", 2);
@@ -1887,6 +1893,63 @@ static int install_rmg_oracle(void) {
       if (site->rva == RMG_GAME_STEP_END_RVA) g_rmgStepEnds = 1;
     }
     rmg_log_pair("step boundaries ", steps, (int)(sizeof(g_rmgGameStepSites) / sizeof(g_rmgGameStepSites[0])));
+    // The late pass, stage by stage, from the game: the same orchestrator
+    // (`0xECF760`, called at `0xEAC20C` — the `call` is two instructions past
+    // the `mov ecx,[edi+0Ch]` the header comments name) with the same nine
+    // stages, except that the game's compiler INLINED the lake dents into the
+    // orchestrator — there is no call to patch for stage 1 — so the crater
+    // hook here dumps the plane on its way IN as stage 1 and on its way out
+    // as stage 2. The hooks and the stage objects are the editor's: every
+    // stage is a thiscall with no stack arguments but the smooth's byte flag,
+    // and the level, mask and plane sit at the same offsets.
+    if (g_rmgStages) {
+      int ok = 1;
+      g_rmgLatePassOrig = (RmgStageFn)(base + 0xacf760u);
+      g_rmgBaseFieldOrig = (RmgStageFn)(base + 0xacf9a0u);
+      g_rmgCraterOrig = (RmgStageFn)(base + 0xad0240u);
+      g_rmgFlattenOrig = (RmgStageFn)(base + 0xad06d0u);
+      g_rmgLakeFlattenOrig = (RmgStageFn)(base + 0xacfe40u);
+      g_rmgSmoothOrig = (RmgSmoothFn)(base + 0xab2580u);
+      ok &= patch_call(0xaac20cu, 0xacf760u, &rmg_late_pass_hook, "late pass entry");
+      ok &= patch_call(0xacf773u, 0xacf9a0u, &rmg_base_field_hook, "late pass base field");
+      ok &= patch_call(0xacf926u, 0xad0240u, &rmg_crater_hook_game, "late pass craters");
+      ok &= patch_call(0xacf92du, 0xad06d0u, &rmg_flatten_hook, "late pass flatten 1");
+      ok &= patch_call(0xacf93cu, 0xab2580u, &rmg_smooth_hook, "late pass smooth 1");
+      ok &= patch_call(0xacf96du, 0xab2580u, &rmg_smooth_hook, "late pass smooth 2");
+      ok &= patch_call(0xacf974u, 0xad06d0u, &rmg_flatten_hook, "late pass flatten 2");
+      ok &= patch_call(0xacf97bu, 0xacfe40u, &rmg_lake_flatten_hook, "late pass lake flatten");
+      ok &= patch_call(0xacf98au, 0xab2580u, &rmg_smooth_hook, "late pass smooth 3");
+      rmg_log(ok ? "late pass stage dumps armed" : "late pass stage dumps INCOMPLETE");
+    }
+    // The draw trace from the game — the same six routines, the game's
+    // addresses and heads. The generator's state has the editor's shape
+    // (counter, lo, hi at 0xe1bcf0/f8/fc), the two 64-bit entries are laid
+    // out in the other order (next 0xab13a0, next63 0xab1360), `below` and
+    // `betweenFloat` are `ret`/`ret 8` as before, and SetMonster and
+    // PlaceTown open with the aligned `push ebp; mov ebp,esp; and esp,-8`
+    // frame this compiler favours. PlaceTown is CGameZone's vt+0x20 through
+    // RTTI (vtable RVA 0xbf4c4c); the hooks transfer unchanged.
+    if (g_rmgTrace) {
+      BYTE stateHead[5];
+      static const BYTE belowHead[5] = { 0x83, 0xEC, 0x08, 0x85, 0xC9 };
+      static const BYTE getZoneHead[5] = { 0x83, 0xEC, 0x10, 0x53, 0x57 };
+      static const BYTE alignedHead[6] = { 0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8 };
+      stateHead[0] = 0xA1; // mov eax, [state hi]
+      *(DWORD *)(stateHead + 1) = (DWORD)(base + 0xe1bcfcu);
+      g_rmgNextOrig = (RmgNextFn)detour(0xab13a0u, stateHead, 5, &rmg_next_trace, "rmg trace next");
+      g_rmgNext63Orig = (RmgNext63Fn)detour(0xab1360u, stateHead, 5, &rmg_next63_trace, "rmg trace next63");
+      g_rmgBelowOrig = (RmgBelowFn)detour(0xab13e0u, belowHead, 5, &rmg_below_trace, "rmg trace below");
+      g_rmgBetweenFloatOrig = (RmgBetweenFloatFn)detour(0xab14d0u, stateHead, 5,
+                                                        &rmg_between_float_trace, "rmg trace betweenFloat");
+      g_rmgGetZoneOrig = (RmgGetZoneFn)detour(0xa9ff00u, getZoneHead, 5, &rmg_get_zone_trace, "rmg trace GetZone");
+      g_rmgSetMonsterOrig = (RmgSetMonsterFn)detour(0xad2330u, alignedHead, 6,
+                                                    &rmg_set_monster_trace, "rmg trace SetMonster");
+      g_rmgPlaceTownOrig = (RmgPlaceTownFn)detour(0xab4cb0u, alignedHead, 6,
+                                                  &rmg_place_town_trace, "rmg trace PlaceTown");
+      rmg_log(g_rmgNextOrig && g_rmgNext63Orig && g_rmgBelowOrig && g_rmgBetweenFloatOrig && g_rmgGetZoneOrig
+                  ? "draw trace on - every draw and every GetZone will be written"
+                  : "draw trace INCOMPLETE - see the refusals above");
+    }
   }
   // FillZones, detoured whenever anything downstream reads a zone: the zone
   // dump itself, and every dump that goes through `g_rmgZones` — which the

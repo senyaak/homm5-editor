@@ -98,6 +98,17 @@ if (from) {
   options.players = order.players;
   options.underground = order.underground;
   options.water = order.water;
+  // The rest of the order, which used to be left at the chain's defaults and
+  // which a game-generated map never has at them.
+  const MONSTER_LEVELS = [
+    'MONSTER_LEVEL_WEAK', 'MONSTER_LEVEL_MEDIUM', 'MONSTER_LEVEL_STRONG',
+    'MONSTER_LEVEL_VERY_STRONG', 'MONSTER_LEVEL_IMPOSSIBLE',
+  ];
+  options.monsterStrength = Math.max(0, MONSTER_LEVELS.indexOf(order.monster));
+  options.resourceMultiplier = order.extras.resourceIndex;
+  options.expMultiplier = order.extras.expIndex;
+  // A map from the GAME replays as the game's build — see `ChainOptions.gameBuild`.
+  if (args.includes('--game-build')) options.gameBuild = true;
 } else {
   console.log('order:  the reference (S1P2Z2M1, 2 players, 96 tiles) — `--from <run>` for another');
 }

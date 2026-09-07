@@ -26,6 +26,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { latePass } from '../src/rmg/heights.ts';
+import type { ChainOptions } from './rmg-chain.ts';
+import { readOrder, unreplayable } from './rmg-order.ts';
 import { heightsInput, runFull } from './rmg-run.ts';
 import { dataDir, gameDir } from './game-dir.ts';
 
@@ -34,16 +36,44 @@ const flag = (name: string): string | undefined => {
   const i = args.indexOf(`--${name}`);
   return i >= 0 ? args[i + 1] : undefined;
 };
+const TAKES_A_VALUE = new Set(['--game', '--data', '--log', '--template', '--size', '--seed', '--players', '--floor', '--stage']);
+const mapPath = args.find((a, i) => !a.startsWith('--') && !TAKES_A_VALUE.has(args[i - 1] ?? ''));
 
 const logPath = flag('log') ?? join(gameDir(), 'bin', 'homm5-editor-rmg.log');
 if (!existsSync(logPath)) {
   console.error(`no dump at ${logPath}`);
   process.exit(2);
 }
-const template = flag('template') ?? 'S1P2Z2M1';
-const size = Number(flag('size') ?? 96);
-const seed = Number(flag('seed') ?? 1785351845);
-const players = Number(flag('players') ?? 2);
+// The order comes out of the map when one is given (`--game-build` for a map
+// the game generated — the game's stage hooks go in under `stages` alone, no
+// `trace` needed there); the flags are the older way of saying it.
+const MONSTER_LEVELS = [
+  'MONSTER_LEVEL_WEAK', 'MONSTER_LEVEL_MEDIUM', 'MONSTER_LEVEL_STRONG',
+  'MONSTER_LEVEL_VERY_STRONG', 'MONSTER_LEVEL_IMPOSSIBLE',
+];
+let options: ChainOptions;
+let size: number;
+if (mapPath) {
+  const read = readOrder(mapPath);
+  if (typeof read === 'string') { console.error(read); process.exit(2); }
+  const { order } = read;
+  const cannot = unreplayable(order);
+  if (cannot.length) { console.error(`this order is not one the port replays: ${cannot.join('; ')}`); process.exit(3); }
+  size = order.size;
+  options = {
+    seed: order.seed, template: order.template, size, players: order.players,
+    underground: order.underground, water: order.water || undefined,
+    monsterStrength: Math.max(0, MONSTER_LEVELS.indexOf(order.monster)),
+    resourceMultiplier: order.extras.resourceIndex, expMultiplier: order.extras.expIndex,
+  };
+} else {
+  size = Number(flag('size') ?? 96);
+  options = {
+    template: flag('template') ?? 'S1P2Z2M1', size, seed: Number(flag('seed') ?? 1785351845),
+    players: Number(flag('players') ?? 2), monsterStrength: 1, water: 0,
+  };
+}
+if (args.includes('--game-build')) options.gameBuild = true;
 const floorWanted = Number(flag('floor') ?? 0);
 const only = flag('stage') === undefined ? -1 : Number(flag('stage'));
 
@@ -78,39 +108,52 @@ console.log(`  dump: floor ${floorWanted}, stages ${[...dump.keys()].sort((a, b)
 
 // ------------------------------------------------------------- the port
 
-const run = runFull(dataDir(), { template, size, players, seed, monsterStrength: 1, water: 0 });
+const run = runFull(dataDir(), options);
 const v = size + 1;
-console.log(`  port: ${template} ${size}x${size}, seed ${seed}, plane ${v}x${v}`);
+console.log(`  port: ${options.template} ${size}x${size}, seed ${options.seed}, plane ${v}x${v}${options.gameBuild ? ", as the GAME's build" : ''}`);
 
 const bits = new Int32Array(1);
 const asFloat = (b: number): number => { bits[0] = b; return new Float32Array(bits.buffer)[0]!; };
 
-type Report = { diffs: number; worst: number; wr: number; wc: number; hist: Map<string, number> };
+type Report = { diffs: number; worst: number; wr: number; wc: number; hist: Map<string, number>; transposed: boolean };
 
 /** One stage, in the orientation the dump is known to use. */
 function compare(stage: number, ours: Float32Array): Report | undefined {
   const rows = dump.get(stage);
   if (!rows) return undefined;
-  let diffs = 0, worst = 0, wr = -1, wc = -1;
-  const hist = new Map<string, number>();
-  for (let r = 0; r < v; r++) {
-    const row = rows[r];
-    if (!row) continue;
-    for (let c = 0; c < v && c < row.length; c++) {
-      const eng = asFloat(row[c]!);
-      const our = ours[c * v + r]!;
-      if (Object.is(eng, our)) continue;
-      diffs++;
-      const d = eng - our;
-      if (Math.abs(d) > Math.abs(worst)) { worst = d; wr = r; wc = c; }
-      const key = Math.abs(d) < 1e-6 ? 'one ulp or less' : d.toFixed(2);
-      hist.set(key, (hist.get(key) ?? 0) + 1);
+  // BOTH ORIENTATIONS, the better one reported: the game's dump came out
+  // indexed the other way round from the editor's, and a plane read the wrong
+  // way looks like whole cones and dents in the wrong places.
+  let best: Report | undefined;
+  for (const transposed of [false, true]) {
+    let diffs = 0, worst = 0, wr = -1, wc = -1;
+    const hist = new Map<string, number>();
+    for (let r = 0; r < v; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      for (let c = 0; c < v && c < row.length; c++) {
+        const eng = asFloat(row[c]!);
+        const our = transposed ? ours[r * v + c]! : ours[c * v + r]!;
+        if (Object.is(eng, our)) continue;
+        diffs++;
+        const d = eng - our;
+        if (Math.abs(d) > Math.abs(worst)) { worst = d; wr = r; wc = c; }
+        const key = Math.abs(d) < 1e-6 ? 'one ulp or less' : d.toFixed(2);
+        hist.set(key, (hist.get(key) ?? 0) + 1);
+      }
     }
+    if (!best || diffs < best.diffs) best = { diffs, worst, wr, wc, hist, transposed };
   }
-  return { diffs, worst, wr, wc, hist };
+  return best;
 }
 
 const reports = new Map<number, Report>();
+// Stage 9 is the plane on the way IN — the constructor fill plus the relief
+// cones — which the entry hook dumps before anything of the pass has run.
+{
+  const r = compare(9, run.heightPlane.mem);
+  if (r) console.log(`  entry (cones)    ${r.diffs ? `${r.diffs} of ${v * v} differ, worst ${r.worst.toFixed(4)} at row ${r.wr}, col ${r.wc}` : 'identical'}`);
+}
 latePass(
   run.heightPlane,
   heightsInput(run),
@@ -119,6 +162,7 @@ latePass(
     const r = compare(stage, h.mem);
     if (r) reports.set(stage, r);
   },
+  run.c.arith,
 );
 
 let firstBad = -1;
@@ -128,7 +172,7 @@ for (let stage = 0; stage < NAMES.length; stage++) {
   const label = `${stage} ${NAMES[stage]}`.padEnd(16);
   if (!r.diffs) { console.log(`  ${label} identical`); continue; }
   if (firstBad < 0) firstBad = stage;
-  console.log(`  ${label} ${r.diffs} of ${v * v} differ, worst ${r.worst.toFixed(4)} at row ${r.wr}, col ${r.wc}`);
+  console.log(`  ${label} ${r.diffs} of ${v * v} differ, worst ${r.worst.toFixed(4)} at row ${r.wr}, col ${r.wc}${r.transposed ? ' (transposed)' : ''}`);
   const top = [...r.hist].sort((a, b) => b[1] - a[1]).slice(0, 6);
   console.log(`  ${' '.repeat(16)} engine minus ours: ${top.map(([d, n]) => `${d}×${n}`).join('  ')}`);
 }
