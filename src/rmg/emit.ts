@@ -17,7 +17,7 @@
 // Numbers: Rot is the engine's `%g` of the stored f32 — six significant
 // digits, trailing zeros trimmed. Positions are integers.
 
-import { div24, mul24, sub24 } from '../exe/x87.ts';
+import { div24, mul24, tr24 } from '../exe/x87.ts';
 import { buildBlankMap } from '../map/blank-map.ts';
 
 const NL = '\r\n';
@@ -56,19 +56,34 @@ const NL = '\r\n';
  * this port agree on object for object, the exact-decimal cut reproduces 503
  * and this reproduces **511**.
  */
+/**
+ * ...AND THE STEP IS ONE MULTIPLY, NOT SIX. The six-step reading above was the
+ * best fit to 511 decimals of one map; four more maps from the game held 23
+ * rotations it printed one short in the last digit (`0.61829` for the game's
+ * `0.618291`, every one of them a value below 1), and no ordering of chopped
+ * multiplies reproduces all 23 except this one: scale by the exact power of
+ * ten that puts six digits before the point — `10^k` is exact in the
+ * runtime's 80-bit table — chop ONCE to 24 bits, and take the integer. That is
+ * the shape of the runtime's own `$I10_OUTPUT`: the digits come out of an
+ * integer, and the only rounding on the way is the scaling multiply under the
+ * process's control word. Measured against every pair the five game maps
+ * hold: 23 of 23 rotations and, with the parse below, 5 of 5 colours.
+ *
+ * THE PARSE CHOPS TOO. `0.996078` in a preset comes out of the game as
+ * `0.996077`, `0.317647` as `0.317646`, `0.815686` as `0.815685`: the runtime's
+ * `atof` scales its digit integer by `10^-n` on the same x87 under the same
+ * word, so a text value lands on the float BELOW the decimal, and this print
+ * then cuts that float's six digits. `Number(text)` is the nearest double;
+ * `tr24` of it is that float. See `renderObject`'s colours.
+ */
 function cut6(f: number): string {
   const sign = f < 0 ? '-' : '';
   const a = Math.abs(f);
   let e = Math.floor(Math.log10(a));
-  let m = e === 0 ? a : div24(a, Math.fround(10 ** e));
-  if (m >= 10) { m = div24(m, 10); e++; }
-  if (m < 1) { m = mul24(m, 10); e--; }
-  let digits = '';
-  for (let i = 0; i < 6; i++) {
-    const d = Math.floor(m);
-    digits += String(d);
-    m = mul24(sub24(m, d), 10);
-  }
+  let m = mul24(a, 10 ** (5 - e));
+  if (m >= 1e6) { m = div24(m, 10); e++; }
+  if (m < 1e5) { m = mul24(m, 10); e--; }
+  const digits = String(Math.floor(m)).padStart(6, '0');
   return `${sign}${digits[0]}.${digits.slice(1)}e${e < 0 ? '-' : '+'}${Math.abs(e)}`;
 }
 
@@ -84,7 +99,9 @@ export function fmtRot(v: number, truncate = false): string {
   const mantissa = (parts[2] + (parts[3] ? `.${parts[3]}` : ''))
     .replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
   const sign = exponent < 0 ? '-' : '+';
-  return `${parts[1]}${mantissa}e${sign}${String(Math.abs(exponent)).padStart(3, '0')}`;
+  // The editor's runtime writes the exponent to three digits, the game's to
+  // two: `3.80096e-005` from one, `6.63329e-05` from the other, same value.
+  return `${parts[1]}${mantissa}e${sign}${String(Math.abs(exponent)).padStart(truncate ? 2 : 3, '0')}`;
 }
 
 /** What one object's map entry needs — tools/rmg-run.ts records satisfy it. */
@@ -92,6 +109,17 @@ export function fmtRot(v: number, truncate = false): string {
 export const RMG_CAMERA = {
   rod: '335.585', pitch: '-0.54063', yaw: '5.93275', fov: '35',
   anchor: ['94.785', '59.4308', '2'] as [string, string, string],
+};
+/**
+ * The same constant as the GAME's build writes it — its digits, not a
+ * rounding of the editor's: five maps from the game carry exactly these, and
+ * two of them (`Rod`, `Pitch`) are not what `cut6` makes of the editor's
+ * floats, so the values the game holds are computed under its own word and
+ * are taken as they come rather than derived.
+ */
+export const RMG_CAMERA_GAME = {
+  rod: '335.583', pitch: '-0.540628', yaw: '5.93274', fov: '35',
+  anchor: ['94.7849', '59.4307', '2'] as [string, string, string],
 };
 
 export interface EmitObject {
@@ -168,9 +196,11 @@ export function renderObject(o: EmitObject, truncate = false): string[] {
           `\t\t\t\t\t\t\t<z>${l.z}</z>`,
           '\t\t\t\t\t\t</Pos>',
           '\t\t\t\t\t\t<Color>',
-          `\t\t\t\t\t\t\t<x>${fmtRot(l.color[0], truncate)}</x>`,
-          `\t\t\t\t\t\t\t<y>${fmtRot(l.color[1], truncate)}</y>`,
-          `\t\t\t\t\t\t\t<z>${fmtRot(l.color[2], truncate)}</z>`,
+          // A colour is a value PARSED from a preset's text, and the game's
+          // parse lands on the float below the decimal — see `cut6`.
+          `\t\t\t\t\t\t\t<x>${fmtRot(truncate ? tr24(l.color[0]) : l.color[0], truncate)}</x>`,
+          `\t\t\t\t\t\t\t<y>${fmtRot(truncate ? tr24(l.color[1]) : l.color[1], truncate)}</y>`,
+          `\t\t\t\t\t\t\t<z>${fmtRot(truncate ? tr24(l.color[2]) : l.color[2], truncate)}</z>`,
           '\t\t\t\t\t\t</Color>',
           `\t\t\t\t\t\t<Radius>${l.radius}</Radius>`,
           '\t\t\t\t\t</Item>',
@@ -659,7 +689,7 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
     `\t\t\t<ExpMultiplier>EXP_${rung(input.expMultiplier ?? 1)}</ExpMultiplier>`);
 
   // The dialogs camera.
-  const cam = input.camera ?? RMG_CAMERA;
+  const cam = input.camera ?? (input.truncateFloats ? RMG_CAMERA_GAME : RMG_CAMERA);
   text = patch(text, '\t<dialogs/>', [
     '\t<dialogs>',
     '\t\t<Item>',

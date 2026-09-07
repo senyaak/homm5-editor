@@ -17,6 +17,9 @@ import { join } from 'node:path';
 
 import { find, findAll, parse } from '../format/xml.ts';
 
+/** What the GAME's generator writes into every scenario caption — see `captionText`. */
+export const GAME_CAPTION_TEXT = 'Это название карты';
+
 export interface RmgTextsInput {
   /** The typed map name. */
   mapName: string;
@@ -36,6 +39,16 @@ export interface RmgTextsInput {
    * and carries two unreferenced copies at 0 and 1. See `buildRmgTexts` below.
    */
   captionBase?: number;
+  /**
+   * What the two caption documents BELOW the base say. The editor's save path
+   * copies the map name into every caption document; the GAME's save writes
+   * its two unreferenced ones as a fixed placeholder — every map its generator
+   * has produced carries `Это название карты` ("this is the map's name") in
+   * `caption-text-0/1` and the real name in the referenced `2/3`. Taken as the
+   * value it is; where the game reads it from has not been found in the
+   * unpacked data or either executable.
+   */
+  captionText?: string;
 }
 
 /** A params-relative text file, decoded by its BOM (they ship UTF-16LE). */
@@ -100,8 +113,12 @@ export function buildRmgTexts(dataRoot: string, input: RmgTextsInput): Array<{ n
   // ONE PER SCENARIO ITEM, plus whatever the numbering starts above. Every one
   // of them is a copy of the map name; only the last `players` are referenced.
   const captionBase = input.captionBase ?? 0;
+  // The GAME's two unreferenced documents below the base carry a fixed
+  // placeholder rather than another copy of the name — see `captionText`;
+  // the referenced ones above it are the name in both builds.
+  const placeholder = input.captionText === undefined ? name : encode(input.captionText);
   for (let i = 0; i < captionBase + input.players; i++) {
-    files.push({ name: `caption-text-${i}.txt`, data: name });
+    files.push({ name: `caption-text-${i}.txt`, data: i < captionBase ? placeholder : name });
   }
   for (let i = 0; i < input.players; i++) files.push({ name: `desc-text-${i}.txt`, data: description });
   files.push({ name: 'mapobjective-text-0.txt', data: encode(paramText(dataRoot, href('DefaultRMGObjective'))) });

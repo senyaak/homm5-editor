@@ -395,7 +395,7 @@ export function runFull(
   // --- The statics, template order, big then one-tile per zone; the
   // relief cones write floor 0's height plane as they land.
   const heightPlane = makeHeightPlane(c.size, 6.0);
-  const vertexHeights = c.floors.map((_, f) => createVertexHeights(c.size, f));
+  const vertexHeights = c.floors.map((_, f) => createVertexHeights(c.size, f, c.arith));
   const statics: PlacedStatic[] = [];
   const lakes: LakePaint[] = [];
 
@@ -410,6 +410,7 @@ export function runFull(
     const water = Boolean(c.water) && f === 0;
 
     const big = placeZoneBigStatics({
+      swapJitterAxes: c.gameBuild, arith: c.arith,
       size: c.size, grid: floor.grid, border: floor.border, occupancy: floor.occ, room: floor.room,
       points: fill.points, zoneIndex: tz.index, floor: f,
       settingRace: lz.race,

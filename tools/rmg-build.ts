@@ -21,7 +21,7 @@ import { writeDDS } from '../src/format/texture.ts';
 import { heightsToFile, latePass } from '../src/rmg/heights.ts';
 import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
 import { buildTerrainFile } from '../src/rmg/emit-terrain.ts';
-import { buildRmgTexts } from '../src/rmg/emit-texts.ts';
+import { buildRmgTexts, GAME_CAPTION_TEXT } from '../src/rmg/emit-texts.ts';
 import { MAP_SIZES } from '../src/rmg/create-map.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import { drawMinimap } from '../src/rmg/minimap.ts';
@@ -224,7 +224,7 @@ export function buildMapFiles(
   const c = run.c;
   const twoLevel = c.floors.length > 1;
   const { layers, river } = replayTerrain(dataRoot, run);
-  latePass(run.heightPlane, heightsInput(run));
+  latePass(run.heightPlane, heightsInput(run), undefined, run.c.arith);
 
   const sizeIndex = MAP_SIZES.indexOf(c.size as (typeof MAP_SIZES)[number]);
   const races = Array.from({ length: order.players }, (_, i) =>
@@ -268,6 +268,7 @@ export function buildMapFiles(
   ];
   files.push(...buildRmgTexts(dataRoot, {
     mapName: order.mapName,
+    captionText: order.gameBuild ? GAME_CAPTION_TEXT : undefined,
     template: order.template,
     sizeIndex,
     underground: order.underground,

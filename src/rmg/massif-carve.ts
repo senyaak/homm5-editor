@@ -29,6 +29,8 @@
 // (`0x1093900`); out-of-bounds WRITES land in BSS sinks and never touch
 // the grids, so the port skips them.
 
+import { DOUBLES, type Arith } from './arith.ts';
+
 const fl = Math.fround;
 
 export interface VertexHeights {
@@ -71,7 +73,7 @@ export interface VertexHeights {
  * The carve only ever RAISES to rock, so this band survives it — which is why
  * a lava underground, the class that is never carved at all, shows it plainly.
  */
-export function createVertexHeights(size: number, floor: number): VertexHeights {
+export function createVertexHeights(size: number, floor: number, ar: Arith = DOUBLES): VertexHeights {
   const n = (size + 1) * (size + 1);
   const underground = floor === 1;
   const bytes = new Uint8Array(n).fill(underground ? 0x20 : 0x10);
@@ -81,7 +83,11 @@ export function createVertexHeights(size: number, floor: number): VertexHeights 
   const w = size + 1;
   const stop = 3 * Math.floor(size / 3);
   const RAMP_BYTES = [0x20, 26, 21];
-  const RAMP_FLOATS = [36.0, 30.0, 24.0];
+  // `((3-m)/3 + 1) * 18`, operation by operation: 36/30/24 on the editor's
+  // machine, and on the game's — every step chopped — 36, 29.999998 and
+  // 23.999998, which is what its underground plane holds at every ramp
+  // vertex (696 of them on a 176 map, all one ulp under, nothing else wrong).
+  const RAMP_FLOATS = [0, 1, 2].map((m) => ar.store(ar.mul(ar.add(ar.div(3 - m, 3), 1), 18)));
   for (let vy = 0; vy < size; vy++) {
     for (let vx = 0; vx < size; vx++) {
       const m = Math.min(vx, vy);
@@ -104,7 +110,7 @@ export function createVertexHeights(size: number, floor: number): VertexHeights 
  * grid taking `(val - old) * 1.125` per write (exact in single
  * precision: an integer times 9, times 2, times 1/16).
  */
-function smoothCell(size: number, h: VertexHeights, u0: number, v0: number): void {
+function smoothCell(size: number, h: VertexHeights, u0: number, v0: number, ar: Arith): void {
   const w = size + 1;
   const corner = (u: number, v: number): number =>
     u >= 0 && u < w && v >= 0 && v < w ? h.bytes[u * w + v]! : 0x20;
@@ -121,14 +127,19 @@ function smoothCell(size: number, h: VertexHeights, u0: number, v0: number): voi
       const colR = (3 - m) * g01 + m * g11;
       const val = Math.trunc((colL * (3 - k) + colR * k) / 9);
       const old = h.bytes[u * w + v]!;
-      h.floats[u * w + v] = fl(h.floats[u * w + v]! + fl(fl(fl((val - old) * 9) * 2) * fl(0.0625)));
+      // The term is exact on either machine; the ADD is not — on a ramp
+      // vertex already one ulp under (see the constructor) the game's chop
+      // lands one ulp under again: 32.249996 where nearest gives 32.25.
+      h.floats[u * w + v] = ar.store(ar.add(h.floats[u * w + v]!, fl(fl(fl((val - old) * 9) * 2) * fl(0.0625))));
       h.bytes[u * w + v] = val;
     }
   }
 }
 
 /** `0xED11D0` — the carve itself. Mutates occupancy and both height grids. */
-export function carveMassif(size: number, occupancy: Uint8Array, heights: VertexHeights): void {
+export function carveMassif(
+  size: number, occupancy: Uint8Array, heights: VertexHeights, ar: Arith = DOUBLES,
+): void {
   const w = size + 1;
   const q = Math.trunc(size / 3) - 1;
   for (let i = 1; i < q; i++) {
@@ -148,7 +159,7 @@ export function carveMassif(size: number, occupancy: Uint8Array, heights: Vertex
       }
       for (let u0 = 3 * j - 3; u0 <= 3 * j + 6; u0 += 3) {
         for (let v0 = 3 * i - 3; v0 <= 3 * i + 6; v0 += 3) {
-          smoothCell(size, heights, u0, v0);
+          smoothCell(size, heights, u0, v0, ar);
         }
       }
       for (let x = 3 * i - 3; x <= 3 * i + 5; x++) {

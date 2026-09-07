@@ -176,6 +176,8 @@ export interface Chain {
   arith: Arith;
   /** The option, kept for the roads phase to hand its routes through. */
   roadField?: ChainOptions['roadField'];
+  /** Whether this is the game's build — the later phases toss their own coins. */
+  gameBuild: boolean;
   loaded: LoadedTemplate;
   townResult: TownsResult;
   /**
@@ -526,6 +528,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     multipliers: { resource: options.resourceMultiplier ?? 1, exp: options.expMultiplier ?? 1 },
     arith: ar,
     roadField: options.roadField,
+    gameBuild: Boolean(options.gameBuild),
     teleports, floors, grid, border, occ, room, gridAtFillTerrain,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, the

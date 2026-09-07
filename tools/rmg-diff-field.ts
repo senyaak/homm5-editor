@@ -120,10 +120,22 @@ const n = Math.min(theirs.length, ours.length);
 for (let r = 0; r < n; r++) {
   const t = theirs[r]!, o = ours[r]!;
   const head = `  route ${r}: zone ${t.zone} kind 0x${t.kind.toString(16)} ${t.from[0]},${t.from[1]} -> ${t.to[0]},${t.to[1]}`;
-  if (t.zone !== o.zone || t.kind !== o.kind || t.from[0] !== o.from[0] || t.from[1] !== o.from[1]
-      || t.to[0] !== o.to[0] || t.to[1] !== o.to[1]) {
+  if (t.zone !== o.zone || t.kind !== o.kind || t.to[0] !== o.to[0] || t.to[1] !== o.to[1]) {
     console.log(`${head} — THE PORT ROUTES zone ${o.zone} kind 0x${o.kind.toString(16)} ${o.from[0]},${o.from[1]} -> ${o.to[0]},${o.to[1]} here; the call order parted`);
     break;
+  }
+  // `from` is paired loosely: the hook reads it as two floats, and on the
+  // roads phase's 0x08 routes the first came back 0 where the port had a
+  // real x — the field itself says where the wave started, at its one zero
+  // cell, so that is reported instead of trusting the header.
+  if (t.from[0] !== o.from[0] || t.from[1] !== o.from[1]) {
+    let zero = 'none';
+    for (let a = 0; a < size && zero === 'none'; a++) {
+      const row = t.rows[a];
+      if (!row) continue;
+      for (let b = 0; b < size; b++) if (row[b] === 0) { zero = `${a},${b}`; break; }
+    }
+    console.log(`${head}: the header's from differs from the port's ${o.from[0]},${o.from[1]}; the engine's field is zero at ${zero}`);
   }
   // The port's field is [x][y] x-major; the engine's rows are tried both ways.
   let best = { orient: '', diffs: Number.POSITIVE_INFINITY, first: '' };

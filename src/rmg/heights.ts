@@ -40,11 +40,26 @@
 // nine f32-times-f32 products is exact in double, which is exactly why
 // the plateau survives the smoothing in the file.
 
+import { DOUBLES, type Arith } from './arith.ts';
 import { RACE } from './load-template.ts';
 import type { Offset } from './town-data.ts';
 import { rotate } from './towns.ts';
 
 const fl = Math.fround;
+
+/**
+ * THE GAME'S BUILD, SECOND. Every site below is written the editor's way and
+ * takes an `Arith`; handed `DOUBLES` it computes what it computed before, to
+ * the bit (its operations are the plain operators and its store is `fl`).
+ * Handed the game's machine — single precision, every operation chopped
+ * (`SSE` in `arith.ts`) — it computes the game's plane: read off a large
+ * game map whose 30,625 surface vertices sat 5 to 10 ulps BELOW the port's,
+ * every one of them below and none above, the chop's own signature.
+ *
+ * Where the two builds compute a different EXPRESSION rather than the same
+ * one under two roundings — the base field — the site carries both, chosen
+ * by which machine it was handed.
+ */
 
 export interface HeightPlane {
   size: number;
@@ -64,9 +79,9 @@ export function makeHeightPlane(size: number, fill: number): HeightPlane {
  * `0xEB1800` — one add into the plane; rows by the FIRST component. The
  * delta arrives as the x87 DOUBLE intermediate; the store rounds once.
  */
-function heightAdd(h: HeightPlane, first: number, second: number, delta: number): void {
+function heightAdd(h: HeightPlane, first: number, second: number, delta: number, ar: Arith): void {
   const i = Math.trunc(first) * h.v + Math.trunc(second);
-  h.mem[i] = fl(h.mem[i]! + delta);
+  h.mem[i] = ar.store(ar.add(h.mem[i]!, delta));
 }
 
 /**
@@ -90,7 +105,7 @@ function heightAdd(h: HeightPlane, first: number, second: number, delta: number)
  * term; the guard's copy is compared against 0 unrounded (0x794afc).
  */
 export function coneRelief(
-  h: HeightPlane, x: number, y: number, q: number, blocked: readonly Offset[],
+  h: HeightPlane, x: number, y: number, q: number, blocked: readonly Offset[], ar: Arith = DOUBLES,
 ): void {
   for (const off of blocked) {
     const [dx, dy] = rotate(q, off);
@@ -102,13 +117,14 @@ export function coneRelief(
     // instead, which is what the SSE build's `cvtsd2ss` does, is a DIFFERENT
     // number: the two disagree on every offset whose radius is irrational (r²
     // of 2, 5, 8, 10 - the diagonals), and a vertex stacks several of those.
-    const r = Math.sqrt(dy * dy + dx * dx);
-    const t = 3.5 - r;
+    // The game's `cvtsd2ss` on the radius is `ar.sqrt` under its machine.
+    const r = ar === DOUBLES ? Math.sqrt(dy * dy + dx * dx) : ar.sqrt(dy * dy + dx * dx);
+    const t = ar.sub(3.5, r);
     // The guard is on the UNROUNDED value, compared against 0 (0x794afc).
     if (t <= 0) continue;
     // The engine's pt is (+0x44, +0x48) = the port's (y, x) — the cone
     // lands mem[x+dx][y+dy], the file's natural (row y+dy, col x+dx).
-    heightAdd(h, x + dx, y + dy, fl(t + t));
+    heightAdd(h, x + dx, y + dy, ar.store(ar.add(t, t)), ar);
   }
 }
 
@@ -203,34 +219,56 @@ export interface HeightsInput {
  * that order and with those roundings the double arithmetic here reproduces the
  * x87 result exactly; dividing instead of multiplying does not.
  */
-export function baseField(h: HeightPlane, input: HeightsInput): void {
+export function baseField(h: HeightPlane, input: HeightsInput, ar: Arith = DOUBLES): void {
   const { size } = input;
   const R42 = fl(1 / 42), R10 = fl(1 / 10), R29 = fl(1 / 29), R13 = fl(1 / 13);
   const R3 = fl(1 / 3), SCALE = fl(1 / 0.15);
+  // THE GAME'S SHAPE IS NOT THE EDITOR'S WITH CHOPPED OPERATIONS — it is a
+  // different expression (`0xECF9A0`, read instruction by instruction). The
+  // row arguments are DIVIDED in single (`divss` by 10.0f and 42.0f) where the
+  // editor multiplies by f32 reciprocals in double; the two row sines are
+  // KEPT DOUBLE (`movsd`) where the editor rounds them to f32 (`fstp dword`);
+  // the column product is formed `cos(j/13) * A * B * sin(j/29)` in double,
+  // where the editor forms `sin(o/29) * cos(o/13)` first; the scale is a
+  // double DIVIDE by 0.15 where the editor multiplies by 6.6666665f; the
+  // dist term is `divss` by 3.0f; `+ dterm + 12.0` and `min 3.0` run in
+  // double and the one single rounding is the `cvtpd2ps` at the end. So the
+  // two builds are two blocks here, and each is the one its disassembly says.
+  const game = ar !== DOUBLES;
   // The engine's outer loop; `n` is this port's second index.
   for (let n = 0; n <= size; n++) {
-    const A = fl(Math.sin(n * R10));
-    const B = fl(Math.sin(n * R42));
+    const A = game ? Math.sin(ar.div(n, 10)) : fl(Math.sin(n * R10));
+    const B = game ? Math.sin(ar.div(n, 42)) : fl(Math.sin(n * R42));
     for (let o = 0; o <= size; o++) {
       const ri = Math.min(n, size - 1);
       const ci = Math.min(o, size - 1);
-      let dterm = fl(input.border[ri]![ci]! * R3);
+      let dterm = game ? ar.store(ar.div(input.border[ri]![ci]!, 3)) : fl(input.border[ri]![ci]! * R3);
       const race = input.raceOf(input.grid[ri]![ci]!);
       if (race === RACE.INFERNO || race === RACE.NECROMANCY) dterm = fl(-dterm);
-      let p = Math.sin(o * R29) * Math.cos(o * R13);
-      p = p * A;
-      p = p * B;
-      let val = p * SCALE;
-      val = val + dterm;
-      val = val + 12.0;
+      let val: number;
+      if (game) {
+        let p = Math.cos(ar.div(o, 13)) * A;
+        p = p * B;
+        p = Math.sin(ar.div(o, 29)) * p;
+        val = p / 0.15;
+        val = val + dterm;
+        val = val + 12.0;
+      } else {
+        let p = Math.sin(o * R29) * Math.cos(o * R13);
+        p = p * A;
+        p = p * B;
+        val = p * SCALE;
+        val = val + dterm;
+        val = val + 12.0;
+      }
       // The engine stores the capped value to a f32 slot and passes THAT to
       // the add, so the value rounds twice: once here, once into the plane.
-      heightAdd(h, o, n, fl(Math.min(val, 3.0)));
+      heightAdd(h, o, n, ar.store(Math.min(val, 3.0)), ar);
       if (o < size && n < size && (input.occupancy[o * size + n]! & 0x18) !== 0) {
-        heightAdd(h, n, o, -1.0);
-        heightAdd(h, n + 1, o, -1.0);
-        heightAdd(h, n, o + 1, -1.0);
-        heightAdd(h, n + 1, o + 1, -1.0);
+        heightAdd(h, n, o, -1.0, ar);
+        heightAdd(h, n + 1, o, -1.0, ar);
+        heightAdd(h, n, o + 1, -1.0, ar);
+        heightAdd(h, n + 1, o + 1, -1.0, ar);
       }
     }
   }
@@ -241,27 +279,31 @@ export function baseField(h: HeightPlane, input: HeightsInput): void {
  * the craters: every 0x80 tile takes -0.5 on its four corners and leaves
  * the smoothing mask.
  */
-export function lakeDents(h: HeightPlane, mask: Uint8Array, occupancy: Uint8Array, size: number): void {
+export function lakeDents(
+  h: HeightPlane, mask: Uint8Array, occupancy: Uint8Array, size: number, ar: Arith = DOUBLES,
+): void {
   for (let o = 0; o < size; o++) {
     for (let n = 0; n < size; n++) {
       if ((occupancy[o * size + n]! & 0x80) === 0) continue;
-      heightAdd(h, n, o, -0.5);
-      heightAdd(h, n + 1, o, -0.5);
-      heightAdd(h, n, o + 1, -0.5);
-      heightAdd(h, n + 1, o + 1, -0.5);
+      heightAdd(h, n, o, -0.5, ar);
+      heightAdd(h, n + 1, o, -0.5, ar);
+      heightAdd(h, n, o + 1, -0.5, ar);
+      heightAdd(h, n + 1, o + 1, -0.5, ar);
       mask[o * size + n] = 0;
     }
   }
 }
 
 /** `0xEB2420` — set every listed vertex to their average + delta. */
-function setToAverage(h: HeightPlane, points: ReadonlyArray<readonly [number, number]>, delta: number): void {
+function setToAverage(
+  h: HeightPlane, points: ReadonlyArray<readonly [number, number]>, delta: number, ar: Arith,
+): void {
   if (points.length === 0) return;
   let sum = 0; // x87: the accumulation stays double
   for (const [first, second] of points) {
-    sum += h.mem[Math.trunc(second) * h.v + Math.trunc(first)]!;
+    sum = ar.add(sum, h.mem[Math.trunc(second) * h.v + Math.trunc(first)]!);
   }
-  const v = fl(sum / points.length + delta);
+  const v = ar.store(ar.add(ar.div(sum, points.length), delta));
   for (const [first, second] of points) {
     h.mem[Math.trunc(second) * h.v + Math.trunc(first)] = v;
   }
@@ -273,17 +315,17 @@ function setToAverage(h: HeightPlane, points: ReadonlyArray<readonly [number, nu
  * minus-one). The candidate scan is o-outer n-inner; the distance runs in
  * single with a double sqrt, dy² + dx² then + dz² in that order.
  */
-export function craterPass(h: HeightPlane, input: HeightsInput): void {
+export function craterPass(h: HeightPlane, input: HeightsInput, ar: Arith = DOUBLES): void {
   const { size } = input;
   for (const obj of input.objects) {
     if (obj.floor !== 0) continue;
-    if (obj.craterTown) craterOne(h, size, obj, 1, fl(8.0), -1.0);
-    if (obj.craterDwelling) craterOne(h, size, obj, 0, fl(2.5), -2.5);
+    if (obj.craterTown) craterOne(h, size, obj, 1, fl(8.0), -1.0, ar);
+    if (obj.craterDwelling) craterOne(h, size, obj, 0, fl(2.5), -2.5, ar);
   }
 }
 
 function craterOne(
-  h: HeightPlane, size: number, obj: HeightObject, plusOne: number, radius: number, delta: number,
+  h: HeightPlane, size: number, obj: HeightObject, plusOne: number, radius: number, delta: number, ar: Arith,
 ): void {
   // Engine +0x44 pairs the o axis and +0x48 the n axis — the port's y and
   // x respectively; the +0x48 difference squares FIRST (the addss order).
@@ -297,7 +339,7 @@ function craterOne(
       if (radius > d) points.push([o, n]);
     }
   }
-  setToAverage(h, points, delta);
+  setToAverage(h, points, delta, ar);
 }
 
 /**
@@ -306,20 +348,22 @@ function craterOne(
  * plus 0.25, ROUNDED HALF-EVEN to a quadrant. Returns rotated offsets
  * truncated to (signed byte) integers.
  */
-export function quarterTurn(angle: number): number {
+export function quarterTurn(angle: number, ar: Arith = DOUBLES): number {
   let a = angle;
   if (a < 0) {
-    do { a = a + fl(6.2831855); } while (a < 0);
+    do { a = ar.add(a, fl(6.2831855)); } while (a < 0);
   }
-  const q = a / fl(1.5707964) + 0.25;
+  const q = ar.add(ar.div(a, fl(1.5707964)), 0.25);
   // x87 fistp rounds half to even.
   let r = Math.round(q);
   if (Math.abs(q - Math.trunc(q)) === 0.5 && r % 2 !== 0) r -= 1;
   return r & 3;
 }
 
-export function rotateOffsets(offs: ReadonlyArray<Offset>, angle: number): Array<readonly [number, number]> {
-  const r = quarterTurn(angle);
+export function rotateOffsets(
+  offs: ReadonlyArray<Offset>, angle: number, ar: Arith = DOUBLES,
+): Array<readonly [number, number]> {
+  const r = quarterTurn(angle, ar);
   // r=0: identity; 1: (x,y)->(-y,x); 2: (-x,-y); 3: (y,-x) — the jump
   // table's (A,B,C) with dx = B*y + A*x, dy = A*y + C*x.
   const [a, b, c] = [[1, 0, 0], [0, -1, 1], [-1, 0, 0], [0, 1, -1]][r]!;
@@ -393,7 +437,7 @@ class EngineHashMap {
  */
 function flattenToAverage(
   h: HeightPlane, size: number,
-  x: number, y: number, rotated: ReadonlyArray<readonly [number, number]>,
+  x: number, y: number, rotated: ReadonlyArray<readonly [number, number]>, ar: Arith,
 ): void {
   // p.x (the second half — mem columns) carries the port x, p.y the port
   // y: the object's +0x44/+0x48 are the port's (y, x), same as the cone
@@ -415,9 +459,9 @@ function flattenToAverage(
     const yy = Math.trunc(py);
     const xx = Math.trunc(px);
     if (yy < 0 || yy > size || xx < 0 || xx > size) continue;
-    sum += h.mem[yy * h.v + xx]!;
+    sum = ar.add(sum, h.mem[yy * h.v + xx]!);
   }
-  const avg = fl(sum / pts.length); // len INCLUDES the skipped points
+  const avg = ar.store(ar.div(sum, pts.length)); // len INCLUDES the skipped points
   for (const [px, py] of pts) {
     const yy = Math.trunc(py);
     const xx = Math.trunc(px);
@@ -433,14 +477,14 @@ function flattenToAverage(
  * its average. The footprint is the shared blockedTiles plus the FIRST
  * active tile.
  */
-export function flattenPass(h: HeightPlane, mask: Uint8Array, input: HeightsInput): void {
+export function flattenPass(h: HeightPlane, mask: Uint8Array, input: HeightsInput, ar: Arith = DOUBLES): void {
   const { size } = input;
   for (const obj of input.objects) {
     if (obj.isStatic || obj.floor !== 0) continue;
     if (obj.skipFlattenTown || obj.skipFlattenDwelling) continue;
     const offs: Offset[] = [...obj.blocked];
     if (obj.firstActive) offs.push(obj.firstActive);
-    const rotated = rotateOffsets(offs, obj.rot);
+    const rotated = rotateOffsets(offs, obj.rot, ar);
     if (process.env['H5E_DBG_FLATTEN'] && rotated.length) {
       const xs = rotated.map(([dx]) => dx + obj.x);
       const ys = rotated.map(([, dy]) => dy + obj.y);
@@ -455,7 +499,7 @@ export function flattenPass(h: HeightPlane, mask: Uint8Array, input: HeightsInpu
       // port's tile layout (row y, byte x), the same the smooth consults.
       if (mx >= 0 && mx < size && my >= 0 && my < size) mask[my * size + mx] = 0;
     }
-    flattenToAverage(h, size, obj.x, obj.y, rotated);
+    flattenToAverage(h, size, obj.x, obj.y, rotated, ar);
   }
 }
 
@@ -466,7 +510,7 @@ export function flattenPass(h: HeightPlane, mask: Uint8Array, input: HeightsInpu
  * vertex copies through verbatim. The nine taps accumulate in the
  * engine's exact addss order.
  */
-export function smooth(h: HeightPlane, mask: Uint8Array, size: number, flag: boolean): void {
+export function smooth(h: HeightPlane, mask: Uint8Array, size: number, flag: boolean, ar: Arith = DOUBLES): void {
   const v = h.v;
   const kc = flag ? fl(0.8) : fl(0.2);
   const kn = flag ? fl(0.025) : fl(0.1);
@@ -480,16 +524,17 @@ export function smooth(h: HeightPlane, mask: Uint8Array, size: number, flag: boo
       }
       // x87: nine f32 products accumulate exactly in double; one rounding
       // at the store — which is precisely why the 9.0 plateau survives.
-      let s = H[(r - 1) * v + (c - 1)]! * kn;
-      s = s + H[r * v + (c - 1)]! * kn;
-      s = s + H[(r + 1) * v + (c - 1)]! * kn;
-      s = s + H[(r - 1) * v + c]! * kn;
-      s = s + H[r * v + c]! * kc;
-      s = s + H[(r + 1) * v + c]! * kn;
-      s = s + H[(r - 1) * v + (c + 1)]! * kn;
-      s = s + H[r * v + (c + 1)]! * kn;
-      s = s + H[(r + 1) * v + (c + 1)]! * kn;
-      t[r * v + c] = fl(s);
+      // The game's per-tap mulss/addss is the same line under its machine.
+      let s = ar.mul(H[(r - 1) * v + (c - 1)]!, kn);
+      s = ar.add(s, ar.mul(H[r * v + (c - 1)]!, kn));
+      s = ar.add(s, ar.mul(H[(r + 1) * v + (c - 1)]!, kn));
+      s = ar.add(s, ar.mul(H[(r - 1) * v + c]!, kn));
+      s = ar.add(s, ar.mul(H[r * v + c]!, kc));
+      s = ar.add(s, ar.mul(H[(r + 1) * v + c]!, kn));
+      s = ar.add(s, ar.mul(H[(r - 1) * v + (c + 1)]!, kn));
+      s = ar.add(s, ar.mul(H[r * v + (c + 1)]!, kn));
+      s = ar.add(s, ar.mul(H[(r + 1) * v + (c + 1)]!, kn));
+      t[r * v + c] = ar.store(s);
     }
   }
   for (let r = 1; r <= v - 2; r++) {
@@ -498,13 +543,15 @@ export function smooth(h: HeightPlane, mask: Uint8Array, size: number, flag: boo
 }
 
 /** `0xEB24B0` — set every listed tile's four corners to the min + delta. */
-function setToMin(h: HeightPlane, tiles: ReadonlyArray<readonly [number, number]>, delta: number): void {
+function setToMin(
+  h: HeightPlane, tiles: ReadonlyArray<readonly [number, number]>, delta: number, ar: Arith,
+): void {
   if (tiles.length === 0) return;
   let m = fl(1000.0);
   for (const [first, second] of tiles) {
     m = Math.min(h.mem[Math.trunc(second) * h.v + Math.trunc(first)]!, m);
   }
-  const val = fl(m + delta);
+  const val = ar.store(ar.add(m, delta));
   for (const [first, second] of tiles) {
     const yy = Math.trunc(second);
     const xx = Math.trunc(first);
@@ -521,7 +568,7 @@ function setToMin(h: HeightPlane, tiles: ReadonlyArray<readonly [number, number]
  * minimum minus 0.1. The sweep order fixes the member list, which fixes
  * nothing arithmetic here (min is order-blind) but is copied anyway.
  */
-export function lakeFlatten(h: HeightPlane, occupancy: Uint8Array, size: number): void {
+export function lakeFlatten(h: HeightPlane, occupancy: Uint8Array, size: number, ar: Arith = DOUBLES): void {
   const ids = new Int32Array(size * size);
   const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [
     [0, -1], [1, 0], [0, 1], [-1, 0], [-1, -1], [1, -1], [1, 1], [-1, 1],
@@ -552,7 +599,7 @@ export function lakeFlatten(h: HeightPlane, occupancy: Uint8Array, size: number)
           }
         }
       }
-      setToMin(h, members, fl(-0.1));
+      setToMin(h, members, fl(-0.1), ar);
     }
   }
 }
@@ -571,28 +618,29 @@ export function latePass(
   h: HeightPlane,
   input: HeightsInput,
   onStage?: (stage: number, h: HeightPlane) => void,
+  ar: Arith = DOUBLES,
 ): void {
   const { size } = input;
   const at = (stage: number): void => onStage?.(stage, h);
-  baseField(h, input);
+  baseField(h, input, ar);
   at(0);
   const mask = new Uint8Array(size * size).fill(1);
-  lakeDents(h, mask, input.occupancy, size);
+  lakeDents(h, mask, input.occupancy, size, ar);
   at(1);
-  craterPass(h, input);
+  craterPass(h, input, ar);
   at(2);
-  flattenPass(h, mask, input);
+  flattenPass(h, mask, input, ar);
   at(3);
-  smooth(h, mask, size, true);
+  smooth(h, mask, size, true, ar);
   at(4);
   mask.fill(1);
-  smooth(h, mask, size, true);
+  smooth(h, mask, size, true, ar);
   at(5);
-  flattenPass(h, mask, input); // re-zeroes the mask for the last smooth
+  flattenPass(h, mask, input, ar); // re-zeroes the mask for the last smooth
   at(6);
-  lakeFlatten(h, input.occupancy, size);
+  lakeFlatten(h, input.occupancy, size, ar);
   at(7);
-  smooth(h, mask, size, false);
+  smooth(h, mask, size, false, ar);
   at(8);
 }
 

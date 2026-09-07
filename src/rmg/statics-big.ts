@@ -75,6 +75,7 @@
 
 import type { DrawSource } from './armies.ts';
 import { mintName } from './armies.ts';
+import { DOUBLES, type Arith } from './arith.ts';
 import { coneRelief } from './heights.ts';
 import type { HeightPlane } from './heights.ts';
 import { carveMassif } from './massif-carve.ts';
@@ -126,6 +127,8 @@ export interface PlacedStatic {
 }
 
 export interface BigStaticsInput {
+  /** The machine the relief cones compute on — see `coneRelief`. */
+  arith?: Arith;
   size: number;
   grid: Int32Array[];
   border: Int32Array[];
@@ -178,6 +181,17 @@ export interface BigStaticsInput {
   mountains: Footprint[];
   /** The preset's OverLakeCenterObjects, resolved. */
   overLakeCenterObjects: Footprint[];
+  /**
+   * The GAME's build: the seed decorations' two jitter draws land in the
+   * other two axes. The same unspecified-evaluation-order coin the zone
+   * centres toss (`generateGameZones`, `swapAxes`), tossed here the same
+   * way: the editor puts the first `below(5)` in the map file's Y and the
+   * game in its X. Read off a large game map where the first decoration
+   * with unequal jitters stood at (124,14) against the port's (127,11) —
+   * the same seed, the same two draws, the axes exchanged — and off a small
+   * one at (24,24) against (22,26).
+   */
+  swapJitterAxes?: boolean;
   /** The preset's OverLakeOneTileRandomObjects, resolved (holes kept null). */
   overLakeOneTileRandomObjects: Array<Footprint | null>;
   /** `world+0x5C` — mapSetup's one betweenFloat(0, 2pi). */
@@ -223,7 +237,7 @@ export interface BigStaticsResult {
 /** `0xED1660` — the mountain relief cone; drawless. */
 function raiseRelief(input: BigStaticsInput, at: Tile, q: number, blocked: readonly Tile[]): void {
   if (!input.heightPlane) return;
-  coneRelief(input.heightPlane, at[0], at[1], q, blocked);
+  coneRelief(input.heightPlane, at[0], at[1], q, blocked, input.arith ?? DOUBLES);
 }
 
 /**
@@ -380,9 +394,10 @@ function growLakes(input: BigStaticsInput, rng: DrawSource): GrownLakes {
         const ja = rng.below(5) - 2;
         const jb = rng.below(5) - 2;
         const entry = input.overLakeCenterObjects[rng.below(input.overLakeCenterObjects.length)]!;
+        const [jx, jy] = input.swapJitterAxes ? [ja, jb] : [jb, ja];
         placed.push({
           type: entry.path, name: mintName(rng),
-          x: sx + jb, y: sy + ja, angle: q * (Math.PI / 2),
+          x: sx + jx, y: sy + jy, angle: q * (Math.PI / 2),
         });
       }
     }
@@ -491,7 +506,7 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
     // 121 lattice cells raised against the engine's none, and its
     // `UndergroundTerrain.bin` carrying only the initial frame.
     if (input.zoneClass === 'subterra' || input.zoneClass === 'dwarven') {
-      carveMassif(size, occupancy, input.vertexHeights!);
+      carveMassif(size, occupancy, input.vertexHeights!, input.arith ?? DOUBLES);
     }
   } else if (input.floor !== 1) {
     if (LAKE_RACES.has(input.settingRace) && input.floor === 0) {

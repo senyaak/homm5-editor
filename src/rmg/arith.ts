@@ -114,17 +114,34 @@ export const X87: Arith = {
  * generator spends are two different findings. The first is the control word,
  * reaching the printf that still runs on x87. The second is this.
  */
+/**
+ * AND IT ROUNDS TOWARD ZERO. The paragraph above was written with "PC and RC
+ * do not reach SSE" in mind, which is true of the x87 control word and beside
+ * the point: the CRT's `_controlfp(_RC_CHOP, _MCW_RC)` sets the x87 word AND
+ * MXCSR together, and the game's process carries `0x0C7F` on the x87 side —
+ * so its SSE side chops too. The road cost field, read out of the live game
+ * (`tools/rmg-diff-field.ts`), says so in the first cell: the engine holds
+ * `1.94` as `0x3ff851eb`, the float BELOW, where `0.94f + 1.0f` is an exact
+ * tie that nearest-even would have rounded UP to `0x3ff851ec`; every other
+ * differing cell sits below the nearest-rounded value as well, by one ulp
+ * where one operation happened and by eleven where a hundred did.
+ *
+ * Single precision with every operation rounded toward zero is exactly what
+ * the x87 machine below computes, `sqrt` included: `sqrtsd` under the same
+ * MXCSR truncates in double and `cvtsd2ss` truncates again, and truncation
+ * composes. So the GAME's machine is the 24-bit one, and what distinguishes
+ * it from a `0x0C7F` x87 is only where values get rounded — after every
+ * operation here, where an x87 could carry a wider exponent — which is
+ * nothing this generator's magnitudes reach.
+ */
 export const SSE: Arith = {
   name: 'sse',
-  mul: (a, b) => Math.fround(a * b),
-  div: (a, b) => Math.fround(a / b),
-  add: (a, b) => Math.fround(a + b),
-  sub: (a, b) => Math.fround(a - b),
-  // `cvtps2pd; sqrtsd; cvtsd2ss` — the root itself is taken in double and
-  // rounded once on the way back, which is not the same as a single-precision
-  // root and is what the disassembly does.
-  sqrt: (a) => Math.fround(Math.sqrt(a)),
-  store: (a) => Math.fround(a),
+  mul: mul24,
+  div: div24,
+  add: add24,
+  sub: sub24,
+  sqrt: sqrt24,
+  store: tr24,
 };
 
 /** By name, for an option that arrives as a string. */
