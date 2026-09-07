@@ -65,7 +65,7 @@ const options: ChainOptions = {
   underground: order.underground, water: order.water || undefined, monsterStrength,
   resourceMultiplier: order.extras.resourceIndex, expMultiplier: order.extras.expIndex,
 };
-if (gameBuild) { options.swapZoneAxes = true; options.arith = 'sse'; }
+if (gameBuild) options.gameBuild = true;
 console.log(`${mapPath}`);
 console.log(`  ordered: ${order.template} ${MAP_SIZES[order.sizeIndex]} seed ${order.seed}, ${order.players} players,`
   + ` water ${order.water}, ${order.underground ? 'with' : 'no'} underground, ${order.monster}`);

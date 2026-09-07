@@ -82,6 +82,22 @@ export interface ShipyardInput {
    * engine builds once per call of the placer and never clears — see the body.
    */
   framed: Tile[];
+  /**
+   * THE GAME'S BUILD ONLY — the centroid accumulator, MUTATED and CARRIED
+   * the way `framed` is. Absent, the facing is computed the editor's way.
+   *
+   * The centroid's running sum is an uninitialised local in both builds. In
+   * the editor the facing is a routine of its own (`0xC06830`) whose frame
+   * the fit and `shipTile` calls overwrite between attempts, so each attempt
+   * starts from a sum that reads as zero — the one-shot centroid the corpus
+   * matched. In the game the routine is INLINED into the placer
+   * (`0xECC3FC..0xECC427`): the sum lives in the placer's own frame, the
+   * retry re-enters ABOVE the summing block, and nothing zeroes it — so
+   * attempt k adds the whole tile list a k-th time and faces `k × centroid`.
+   * On a 96x96 island map that turns a shipyard's q=2 into the game's q=3:
+   * the reference is not elsewhere, it is the same point multiplied.
+   */
+  centroidSum?: { x: number; y: number };
   /** The rebuilt `+0xCC` — the carve's kept list, rim included. */
   tiles: Tile[];
   /** The carve's depth (zone+0x160). */
@@ -148,19 +164,20 @@ export function placeShipyard(input: ShipyardInput, rng: DrawSource): PlacedShip
   if (!pool.length) return null;
 
   // The facing — toward the town entry, or the tile centroid without one.
-  let ref: { x: number; y: number };
-  if (input.town) {
-    ref = input.town;
-  } else {
-    let sx = 0;
-    let sy = 0;
+  // The sum starts wherever the accumulator stands: fresh here for the
+  // editor, carried in for the game (see `centroidSum`), and in the game
+  // it is added to again on EVERY attempt, inside the loop below.
+  const sum = input.centroidSum ?? { x: 0, y: 0 };
+  const reference = (): { x: number; y: number } => {
+    if (input.town) return input.town;
     for (const [x, y] of tiles) {
-      sx = fl(sx + x);
-      sy = fl(sy + y);
+      sum.x = fl(sum.x + x);
+      sum.y = fl(sum.y + y);
     }
     const inv = fl(1 / tiles.length);
-    ref = { x: fl(sx * inv), y: fl(sy * inv) };
-  }
+    return { x: fl(sum.x * inv), y: fl(sum.y * inv) };
+  };
+  let ref = input.centroidSum ? null : reference();
 
   const fitCtx = { size, grid, border, occupancy, zoneIndex, floor: input.floor };
   let placedAt: Tile | null = null;
@@ -168,8 +185,9 @@ export function placeShipyard(input: ShipyardInput, rng: DrawSource): PlacedShip
   while (pool.length) {
     const pick = rng.below(pool.length);
     const tile = pool[pick]!;
-    const dx = fl(tile[0] - ref.x);
-    const dy = fl(tile[1] - ref.y);
+    if (input.centroidSum) ref = reference();
+    const dx = fl(tile[0] - ref!.x);
+    const dy = fl(tile[1] - ref!.y);
     q = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 2) : (dy < 0 ? 3 : 1);
     // AND THE SHIP HAS TO HAVE SOMEWHERE TO FLOAT. `shipTile` is the engine's
     // own ring walk over the river plane, and a shipyard whose ring holds no

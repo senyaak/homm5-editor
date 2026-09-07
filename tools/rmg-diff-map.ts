@@ -85,11 +85,9 @@ if (monsterStrength < 0) {
 const gameBuild = args.includes('--game-build');
 if (gameBuild) console.log(`  reading it as the GAME's build: zone axes swapped`);
 const run = runFull(dir, {
-  swapZoneAxes: gameBuild,
-  // The game's build is an SSE one, and the one place that reaches a map is the
-  // road router's cost field: `divss` per operation where the editor keeps the
-  // chain on the x87 stack. See `RoadInput.arith`.
-  arith: gameBuild ? 'sse' : 'double',
+  // The swapped axes, the SSE arithmetic the road router reaches a map
+  // through, and the shipyard's carried centroid — see `ChainOptions.gameBuild`.
+  gameBuild,
   // THE PLAYERS TOO. This used to leave `players` to the chain's default of 2,
   // which was invisible for as long as every map compared was a two-player one
   // and then replayed a four-player order as a two-player map — a zone the

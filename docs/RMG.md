@@ -2490,6 +2490,33 @@ ulp. So the question here is which reference the engine takes, not how it
 rounds it — and the port matches the editor on a water-and-underground map
 (21 of 22), so whatever it is, it is not simply "the port picks the wrong one".
 
+**It is the same centroid, multiplied.** Both builds read the same two fields
+off the shipyard's own zone — `+0xC/+0x10` under the `+0xF8` flag, else the sum
+over `+0xCC..+0xD0` divided by `1/n` — and both compile the same bug: the
+centroid's running sum is an uninitialised local that nothing zeroes. What
+differs is codegen. The editor's facing is a routine of its own (`0xC06830`,
+called per attempt at `0xC07083`), and its frame is overwritten by the fit and
+`shipTile` calls between attempts, so every attempt reads a sum that stands at
+zero — the one-shot centroid the corpus matched. The game INLINED it
+(`0xECC3FC..0xECC427`): the sum lives in the placer's own frame at `+0x44/+0x48`,
+the stores at `0xECC421/0xECC427` write it back, the failed-attempt path
+(`0xECC598 → 0xECC3A5`) re-enters ABOVE the summing block, and none of the
+thirty-seven stack stores in the placer touch those two slots. So attempt `k`
+adds the whole tile list a `k`-th time and faces `k × centroid`.
+
+Which reproduces the numbers exactly. Shipyard (18,60), centroid
+(50.234, 71.404): `k = 1` gives `dx = −32.23, dy = −11.40`, `q = 2`, the port's
+π; `k ≥ 2` gives the reference (100.47, 142.81), `dx = −82.47, dy = −82.81`,
+`|dx| ≤ |dy|` and `dy < 0`, `q = 3`, the game's 3π/2. `ShipyardInput.centroidSum`
+carries the accumulator with the same lifetime as `framed` (the placer's frame,
+across both attempts of a >100 map), and `ChainOptions.gameBuild` is now one
+flag for the three things the game's build does differently — the swapped
+axes, the SSE arithmetic, and this. With it both of the small map's shipyards
+face the way the game's do, and the map parts at its first STATIC instead
+(a crater at 26,61 against the port's 26,60) — the roads thread, same as the
+large map. `test-rmg-water` is unchanged: the editor path computes what it
+computed.
+
 ### What one four-player island map found
 
 The map the game was asked for on 07.09 — `S1-2P2-8Z8K2S`, 136x136, underground,

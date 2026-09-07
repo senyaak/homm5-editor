@@ -95,7 +95,7 @@ if (mapPath) {
 }
 // The two builds are the same source compiled twice and do not agree — see
 // `tools/rmg-diff-map.ts` for what `--game-build` stands for.
-if (gameBuild) { options.swapZoneAxes = true; options.arith = 'sse'; }
+if (gameBuild) options.gameBuild = true;
 
 // ---------------------------------------------------------------- the dump
 

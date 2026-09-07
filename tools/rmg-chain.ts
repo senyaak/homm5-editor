@@ -145,6 +145,14 @@ export interface ChainOptions {
    */
   swapZoneAxes?: boolean;
   /**
+   * The GAME's build, all of it at once: `arith: 'sse'`, `swapZoneAxes`, and
+   * the shipyard's carried centroid sum (`ShipyardInput.centroidSum`). The two
+   * options above stay for a run that wants one of them alone; a map the game
+   * generated wants all three, and a tool that named two of them was quietly
+   * comparing against a third build nobody ships.
+   */
+  gameBuild?: boolean;
+  /**
    * Every converged road cost field, as the router hands it to the walk —
    * see `RoadInput.field`. `kindBit` is 0x20 for the zone road, 0x08/0x10
    * for the roads phase.
@@ -266,7 +274,8 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   };
 
   const rng = new RmgRandom(options.seed ?? SEED);
-  const ar = arithFor(options.arith);
+  const ar = arithFor(options.arith ?? (options.gameBuild ? 'sse' : undefined));
+  const swapZoneAxes = options.swapZoneAxes || Boolean(options.gameBuild);
   rng.arith = ar;
   if (options.onDraw) rng.onDraw = options.onDraw;
   const phase = (label: string): void => options.onPhase?.(label, rng.draws);
@@ -287,7 +296,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   }, rng);
   phase('loadTemplate');
   const placed = generateGameZones(size, size,
-    loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng, ar, options.swapZoneAxes);
+    loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng, ar, swapZoneAxes);
   phase('placeZones');
   const filled = fillZones(size, size, placed.zones, made.twoFloors, rng,
     options.jitter || options.candidate || options.areas
@@ -473,8 +482,12 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
             // by exactly one shipyard a zone until this was read.
             const attempts = size > 100 ? 2 : 1;
             const framed: Tile[] = [];
+            // The game's centroid accumulator has the same lifetime as `framed`:
+            // the placer's frame, across both attempts. See `centroidSum`.
+            const centroidSum = options.gameBuild ? { x: 0, y: 0 } : undefined;
             for (let attempt = 0; attempt < attempts; attempt++) {
             const ship = placeShipyard({
+              centroidSum,
               size, grid: floors[f]!.grid, border: floors[f]!.border,
               occupancy: floors[f]!.occ, room: floors[f]!.room,
               points: stamped, blocked: blockedList(z.index),
