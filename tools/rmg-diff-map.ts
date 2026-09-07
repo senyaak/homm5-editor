@@ -76,7 +76,16 @@ if (monsterStrength < 0) {
   process.exit(2);
 }
 
+// WHICH BUILD MADE IT. The two executables are the same source compiled twice,
+// and they do not agree: the game's takes the two coordinate draws into the two
+// axes in the opposite order, so every zone centre comes out transposed and the
+// map after it is a different map. Nothing in `sRMGProps` records which engine
+// wrote the file, so it is said here — `--game-build` for a map generated in
+// the game, nothing for one ordered through the editor.
+const gameBuild = args.includes('--game-build');
+if (gameBuild) console.log(`  reading it as the GAME's build: zone axes swapped`);
 const run = runFull(dir, {
+  swapZoneAxes: gameBuild,
   // THE PLAYERS TOO. This used to leave `players` to the chain's default of 2,
   // which was invisible for as long as every map compared was a two-player one
   // and then replayed a four-player order as a two-player map — a zone the

@@ -2266,9 +2266,49 @@ The editor's side of the reading, on the order both engines have run:
              zone 6 (59, 143) r26 size10   zone 7 (115, 145) r26 size10
 
 Every centre is a whole number, so on the editor's side there is no rounding
-fuzz to lose — which makes the comparison sharp: if the game's eight are the
-same eight, then the same program really was handed the same state, and the 225
-draws have to come from somewhere neither the code nor the inputs explain.
+fuzz to lose — which makes the comparison sharp.
+
+**The game's eight are the editor's eight TRANSPOSED.** On one seed, zone for
+zone, with the same ids, the same radii and the same sizes:
+
+| zone | the game | the editor |
+| --- | --- | --- |
+| 1 | (49, 118) | (118, 49) |
+| 3 | (118, 70) | (70, 118) |
+| 4 | (79, 31) | (31, 79) |
+| 6 | (132, 131) | (131, 132) |
+| 2 | (114, 98) | (98, 114) |
+| 5 | (79, 31) | (31, 79) |
+| 7 | (31, 112) | (112, 31) |
+| 8 | (140, 28) | (28, 140) |
+
+The centres come from two `below()` draws each, and the draws are the same
+numbers in the same sequence — only WHICH OF THE TWO AXES each one lands in
+differs. That is C++ leaving the evaluation order of two arguments unspecified
+and the two builds taking it two ways. No rounding, no control word, no
+behaviour difference in FillZones: a coin that was never anyone's to call.
+
+**And it is the whole answer.** `swapZoneAxes` puts the second draw in x and the
+first in y, and the port lands on the game's own numbers:
+
+| map | phase 6 | 9 | 11 |
+| --- | --- | --- | --- |
+| `3223`, seed 1788787445 | 127259 = **127259** | 127331 = **127331** | 127424 = **127424** |
+| `0123456`, seed 1788783469 | 78322 = **78322** | 78755 = **78755** | 78916 = **78916** |
+| `32232`, seed 1788789832 | 128442 = **128442** | 128519 vs 128512 | 128583 vs 128578 |
+
+Two of the three follow the game to the draw through eleven boundaries where
+they had been 225 and 35 apart. The third meets it at the sixth and drifts by
+seven later — and that one also spends a draw between its seventh and eighth
+boundaries that neither of the others does, so its residue is a separate thread.
+
+The editor corpus is untouched: the option is off by default and the 22 maps
+come back with the same counts they had.
+
+**What is still open** is the rest of a game map. `rmg-diff-map --game-build`
+rebuilds `3223.h5m` to 15 of 23 entries, so the draw stream agrees for eleven
+boundaries and the map still parts somewhere after them. The same kind of
+question, one layer down.
 
 ### What one four-player island map found
 

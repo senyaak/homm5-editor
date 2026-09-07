@@ -138,6 +138,11 @@ export interface ChainOptions {
    * single precision toward zero. See `src/rmg/arith.ts`.
    */
   arith?: ArithName;
+  /**
+   * Take the two coordinate draws the way the GAME's build does — the second
+   * into x and the first into y. See `generateGameZones`.
+   */
+  swapZoneAxes?: boolean;
   onPhase?: (label: string, draws: number) => void;
 }
 
@@ -271,7 +276,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   }, rng);
   phase('loadTemplate');
   const placed = generateGameZones(size, size,
-    loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng, ar);
+    loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng, ar, options.swapZoneAxes);
   phase('placeZones');
   const filled = fillZones(size, size, placed.zones, made.twoFloors, rng,
     options.jitter || options.candidate || options.areas

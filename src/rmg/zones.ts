@@ -158,6 +158,15 @@ export function generateGameZones(
   twoFloors: boolean,
   rng: RmgRandom,
   ar: Arith = DOUBLES,
+  // WHICH DRAW IS WHICH AXIS. The two builds disagree, and it is visible in
+  // their own dumps: on one order and one seed, all eight zone centres come out
+  // of the game TRANSPOSED against the editor's — (49,118) where the editor has
+  // (118,49), zone for zone, with the same ids, the same radii and the same
+  // sizes. The draws are the same numbers in the same sequence; only which of
+  // the two coordinates each lands in differs. That is C++ leaving the
+  // evaluation order of two arguments unspecified and two builds taking it two
+  // ways, and it is the whole reason the same order gives two different maps.
+  swapAxes = false,
 ): GeneratedZones {
   const floorCount = twoFloors ? 2 : 1;
   const tiles = width * height;
@@ -171,7 +180,9 @@ export function generateGameZones(
   const n = Math.trunc(tiles / 100);
   const points: Array<{ x: number; y: number }> = [];
   for (let i = 0; i < n; i++) {
-    points.push({ x: fl(rng.below(width)), y: fl(rng.below(height)) });
+    const first = fl(rng.below(width));
+    const second = fl(rng.below(height));
+    points.push(swapAxes ? { x: second, y: first } : { x: first, y: second });
   }
 
   const floors: ZoneSeed[][] = Array.from({ length: floorCount }, () => []);
