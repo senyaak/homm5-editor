@@ -92,6 +92,18 @@
 #define RMG_ED_SWEEP_CALL_RVA 0x8f333eu
 /** The formatter it reaches — checked, like every call this file bends. */
 #define RMG_ED_SWEEP_TARGET_RVA 0xa8b510u
+/**
+ * The same two in the GAME, which has the same line under the same test.
+ *
+ * It was editor-only for as long as ordered runs came from the editor. They no
+ * longer do: the game and the editor part inside FillZones on the same order —
+ * 127,259 draws against 127,034 — and the decade the counts first disagree in
+ * is the only cheap way to say WHERE. The game's `% 10` is a magic multiply
+ * where the editor's is an `idiv`, which is the two codegens and not two
+ * programs; the call itself is the same shape and the same arity.
+ */
+#define RMG_GAME_SWEEP_CALL_RVA 0xaa9866u
+#define RMG_GAME_SWEEP_TARGET_RVA 0xde080u
 
 typedef char *(__cdecl *SweepFmtFn)(const char *fmt, int sweep);
 static SweepFmtFn g_rmgSweepFmt = NULL;
@@ -435,6 +447,8 @@ static int g_rmgField = 0;
  * for one more word.
  */
 static int g_rmgMinimap = 0;
+/** `zones` — dump every zone as FillZones is handed it, in either host. */
+static int g_rmgZonesDump = 0;
 
 /** The five places the oracle needs, whichever executable this is. */
 static DWORD g_rmgTimeCallRva = RMG_TIME_CALL_RVA;
@@ -614,6 +628,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "points")) g_rmgPoints = 1;
     if (take_word(&q, stop, "field")) g_rmgField = 1;
     if (take_word(&q, stop, "minimap")) g_rmgMinimap = 1;
+    if (take_word(&q, stop, "zones")) g_rmgZonesDump = 1;
   }
   VirtualFree(buf, 0, MEM_RELEASE);
 }
@@ -866,15 +881,89 @@ static float __stdcall rmg_between_float_trace(float a, float b) {
 }
 
 /**
- * Every tenth FillZones sweep, on its way to being logged (editor only).
+ * Every tenth FillZones sweep, on its way to being logged.
  *
  * The counter value read here is cumulative draws BEFORE the named sweep's
  * own coins — the engine tests `counter % 10` first and draws after — so the
  * port's number to match is the one recorded at the same point.
  */
+/**
+ * Every zone as FillZones receives it — the state the phase is HANDED.
+ *
+ * The two builds of this function were disassembled end to end and compared as
+ * logic, and they are the same program: same guards, same immediates, same
+ * three draw sites, same 6-tile margin with the same swapped dimensions, same
+ * neighbour hash down to the bucket count. On the same order they still part —
+ * 127,259 draws in the game against 127,034 in the editor. The same program on
+ * the same inputs cannot do that, so the inputs are not the same, and this
+ * prints them.
+ *
+ * The five fields are the ones the phase reads: the two CENTRE floats it
+ * truncates per tile, the radius the paint gate compares against, the Size the
+ * ratio test divides, and the id it writes into the grid. The centres are
+ * printed as their BITS — a centre that is 27.0000002 in one build and
+ * 26.9999998 in the other is a whole seed disc moved by a tile, and a decimal
+ * rendering is exactly what would hide it ([[capture-everything-filter-offline]]).
+ *
+ * `this` arrives in ECX with no stack arguments, so a fastcall hook with a
+ * spare second parameter is the same frame; the six bytes of the prologue are
+ * three whole instructions and carry no relocation in either build.
+ */
+typedef void(__fastcall *FillZonesFn)(void *self, void *edx);
+static FillZonesFn g_rmgFillZonesOrig = NULL;
+
+static void rmg_dump_zones(void *self) {
+  const BYTE *me = (const BYTE *)self;
+  const BYTE *map;
+  const BYTE *floorsBegin;
+  const BYTE *floorsEnd;
+  int floorCount, f;
+  if (!rmg_readable(me, 0x34)) { rmg_log("fill zones: this is not readable"); return; }
+  rmg_log_pair("fill zones dims ", *(const int *)(me + 0x2C), *(const int *)(me + 0x30));
+  map = *(const BYTE *const *)(me + 0x0C);
+  if (!rmg_readable(map, 0x3C)) { rmg_log("fill zones: no map behind +0x0C"); return; }
+  floorsBegin = *(const BYTE *const *)(map + 0x34);
+  floorsEnd = *(const BYTE *const *)(map + 0x38);
+  if (!floorsBegin || floorsEnd < floorsBegin) { rmg_log("fill zones: no floors"); return; }
+  floorCount = (int)((floorsEnd - floorsBegin) / 0x120);
+  for (f = 0; f < floorCount && f < 4; f++) {
+    const BYTE *floor = floorsBegin + f * 0x120;
+    const BYTE *const *buckets;
+    int bucketCount, b;
+    if (!rmg_readable(floor, 0xB4)) continue;
+    buckets = *(const BYTE *const *const *)(floor + 0xAC);
+    bucketCount = (int)((*(const BYTE *const *)(floor + 0xB0) - (const BYTE *)buckets) / 4);
+    if (!buckets || bucketCount <= 0 || bucketCount > 4096) continue;
+    for (b = 0; b < bucketCount; b++) {
+      const BYTE *node = buckets[b];
+      while (node) {
+        const BYTE *zone;
+        if (!rmg_readable(node, 12)) break;
+        zone = *(const BYTE *const *)(node + 8);
+        if (rmg_readable(zone, 0x148)) {
+          int vals[6];
+          vals[0] = f;
+          vals[1] = *(const int *)(zone + 0xEC);
+          vals[2] = *(const int *)(zone + 0xE4); // the centre floats, as bits
+          vals[3] = *(const int *)(zone + 0xE8);
+          vals[4] = *(const int *)(zone + 0x140);
+          vals[5] = *(const int *)(zone + 0x144);
+          rmg_log_ints("zone ", vals, 6);
+        }
+        node = *(const BYTE *const *)node;
+      }
+    }
+  }
+}
+
+static void __fastcall rmg_fill_zones_hook(void *self, void *edx) {
+  rmg_dump_zones(self);
+  if (g_rmgFillZonesOrig) g_rmgFillZonesOrig(self, edx);
+}
+
 static char *__cdecl rmg_sweep_hook(const char *fmt, int sweep) {
   BYTE *base = (BYTE *)GetModuleHandleW(NULL);
-  rmg_log_pair("sweep ", sweep, *(int *)(base + RMG_ED_COUNTER_FIELD_RVA));
+  rmg_log_pair("sweep ", sweep, *(int *)(base + g_rmgCounterFieldRva));
   return g_rmgSweepFmt ? g_rmgSweepFmt(fmt, sweep) : NULL;
 }
 
@@ -1509,8 +1598,8 @@ static int install_rmg_oracle(void) {
     g_rmgCounterRva = RMG_ED_COUNTER_RVA;
     g_rmgCounterFieldRva = RMG_ED_COUNTER_FIELD_RVA;
     rmg_log("host: the map editor");
-    // The per-sweep reading, editor only. Allowed to fail on its own — the
-    // phase boundaries are complete without it.
+    // The per-sweep reading. Allowed to fail on its own — the phase boundaries
+    // are complete without it.
     if (patch_call(RMG_ED_SWEEP_CALL_RVA, RMG_ED_SWEEP_TARGET_RVA, &rmg_sweep_hook, "rmg sweeps")) {
       g_rmgSweepFmt = (SweepFmtFn)((BYTE *)GetModuleHandleW(NULL) + RMG_ED_SWEEP_TARGET_RVA);
       rmg_log("FillZones sweeps will be read");
@@ -1612,6 +1701,25 @@ static int install_rmg_oracle(void) {
         rmg_log(ok ? "late pass stage dumps armed" : "late pass stage dumps INCOMPLETE");
       }
     }
+  }
+
+  // THE GAME'S SWEEP LINE, the same line under the same test. Its `% 10` is a
+  // magic multiply where the editor's is an `idiv` — two codegens of one
+  // program — and the call it guards has the same shape and arity.
+  if (!rmg_host_is_editor()) {
+    if (patch_call(RMG_GAME_SWEEP_CALL_RVA, RMG_GAME_SWEEP_TARGET_RVA, &rmg_sweep_hook, "rmg sweeps")) {
+      g_rmgSweepFmt = (SweepFmtFn)(base + RMG_GAME_SWEEP_TARGET_RVA);
+      rmg_log("FillZones sweeps will be read");
+    }
+  }
+  // The zone dump, when the config asks: the prologue is `push ebp; mov
+  // ebp,esp; and esp,-8` in BOTH builds — six bytes, three whole instructions,
+  // no relocation — so one head serves either host.
+  if (g_rmgZonesDump) {
+    static const BYTE fillHead[6] = { 0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8 };
+    DWORD rva = rmg_host_is_editor() ? 0x8f2ee0u : 0xaa94c0u;
+    g_rmgFillZonesOrig = (FillZonesFn)detour(rva, fillHead, 6, &rmg_fill_zones_hook, "rmg zone dump");
+    rmg_log(g_rmgFillZonesOrig ? "zones will be dumped at FillZones" : "the zone dump did NOT take");
   }
 
   BYTE head[5];

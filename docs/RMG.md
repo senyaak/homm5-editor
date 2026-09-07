@@ -2247,10 +2247,28 @@ are float32 and both builds truncate them in pass 1, and a centre that comes out
 by a tile — after which every sweep diverges. The radii (26, with 0.68 and 0.87
 of room) and the sizes (all 10) are already ruled out; the centres are not.
 
-**The next measurement** is a dump of every zone's `+0xE4`, `+0xE8`, `+0x140`,
-`+0x144` and `+0xEC` at the entry to FillZones, taken from both engines on the
-same order, plus the per-sweep draw counts the editor already logs extended to
-the game — which is the same `sweep % 10` formatter in both.
+**The instrument for that is built.** `zones` in `<game>/bin/homm5-editor-rmg.txt`
+detours FillZones itself — `push ebp; mov ebp,esp; and esp,-8`, six bytes and
+three whole instructions with no relocation in EITHER build, `this` in ECX with
+no stack arguments — and prints the grid dimensions and then every zone the
+phase is handed: floor, id, the two centre floats AS BITS, the radius and the
+Size. And the per-sweep line the editor already logged is now hooked in the game
+too (`0xaa9866` reaching `0xde080`, the same `__cdecl (fmt, sweep)` arity as the
+editor's `0x8f333e`/`0xa8b510`; the game's `% 10` is a magic multiply where the
+editor's is an `idiv`, which is codegen and not logic).
+
+The editor's side of the reading, on the order both engines have run:
+
+    fill zones dims 176 176
+    floor 0: zone 2 (71, 103) r26 size10   zone 3 (149, 98)  r26 size10
+             zone 5 (144, 46) r26 size10   zone 8 (87, 40)   r26 size10
+    floor 1: zone 1 (144, 46) r26 size10   zone 4 (45, 70)   r26 size10
+             zone 6 (59, 143) r26 size10   zone 7 (115, 145) r26 size10
+
+Every centre is a whole number, so on the editor's side there is no rounding
+fuzz to lose — which makes the comparison sharp: if the game's eight are the
+same eight, then the same program really was handed the same state, and the 225
+draws have to come from somewhere neither the code nor the inputs explain.
 
 ### What one four-player island map found
 
