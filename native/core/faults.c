@@ -31,6 +31,36 @@ static int g_faultsLeft = FAULTS_REPORTED;
 /** Ourselves, so an address in the log can be turned back into an offset. */
 static HINSTANCE g_ourModule = NULL;
 
+/**
+ * WHICH MODULE an address is in, by name.
+ *
+ * A fault outside the game and outside us used to print a bare number: the log
+ * gave `0x6e396689` and the two bases it knew, neither of them containing it,
+ * so the report answered "somewhere else" and the next step was another
+ * launch. Windows already knows which module a code address belongs to, so the
+ * line names the file and the offset inside it, and a fault in a driver, in
+ * granny2 or in the runtime says so on its own.
+ */
+static void log_module_of(DWORD address) {
+  HMODULE mod = NULL;
+  if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS
+                            | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          (LPCSTR)(INT_PTR)address, &mod)
+      || !mod) {
+    log_line("       and that is in NO loaded module - the heap, or one already gone");
+    return;
+  }
+  char path[MAX_PATH];
+  if (GetModuleFileNameA(mod, path, sizeof(path))) {
+    const char *name = path;
+    for (const char *p = path; *p; p++) {
+      if (*p == '\\' || *p == '/') name = p + 1;
+    }
+    log_text("       inside ", name);
+  }
+  log_hex("       at its offset         ", address - (DWORD)(INT_PTR)mod);
+}
+
 /** Where the game and we are, so an address in the log can be placed. */
 static void log_where_modules_are(void) {
   log_hex("       the game is loaded at ", (DWORD)(INT_PTR)GetModuleHandleW(NULL));
@@ -86,6 +116,7 @@ static LONG CALLBACK on_fault(EXCEPTION_POINTERS *info) {
   CONTEXT *c = info->ContextRecord;
   log_line("crash: an access violation");
   log_hex("       at code address       ", (DWORD)(INT_PTR)info->ExceptionRecord->ExceptionAddress);
+  log_module_of((DWORD)(INT_PTR)info->ExceptionRecord->ExceptionAddress);
   log_hex("       eip ", c->Eip);
   log_hex("       esp ", c->Esp);
   log_hex("       ebp ", c->Ebp);
