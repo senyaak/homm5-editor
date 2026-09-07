@@ -2157,11 +2157,37 @@ can be two different moments in one process — its generator is at 0x027F and
 its minimap resampler at 0x0C7F. The game's map file is written at the end of
 the run, and the same split would produce exactly what we see.
 
-**The reading that settles it** is one launch: the oracle prints the control
-word at the seed and again wherever it moves, so a map generated in the game
-now says which machine its generator ran on. Until then the mode is built and
-idle, which is the right state for it — it costs nothing and it is ready for
-the map that needs it.
+**The reading came back, and it is 0x0C7F.** A map generated in the game on
+07.09 (`3223.h5m`, `S6-11P2-8Z8K2.4a`, large, three players, underground, WEAK)
+prints `x87 control word 3199` at the seed and never another line — so the
+GAME'S GENERATOR runs at single precision, toward zero, from end to end, and it
+is not only the writer.
+
+And the same order through the console settles the rest:
+
+| | phase 4 | 5 | 6 | 9 | 11 |
+| --- | --- | --- | --- | --- | --- |
+| the game, 0x0C7F | 80 | 1622 | **127259** | 127331 | 127424 |
+| the editor, 0x027F | 80 | 1622 | **127034** | 127104 | 127188 |
+| the port, doubles | 80 | 1622 | **127034** | 127104 | 127188 |
+
+Two runs of the same engine on the same seed, agreeing to the draw for five
+phases and parting by 225 in the sixth, with the control word as the only known
+difference between them. The port sits exactly on the editor.
+
+**So the cause is settled and the SITE is not.** Everything the port's FillZones
+decides on a float was checked against this map and none of it moves: the paint
+pass compares an integer radius against the square root of a sum of integer
+squares (a flip needs the sum to be a perfect square, and then both machines
+answer the same), the ratio test is an integer over an integer at magnitudes
+where a 24-bit quotient cannot cross 1, every zone in this template has size 10
+so `sizeRatio` is exactly 1, and the jitter gate does not flip in 200,000 draws.
+The zone radii come out 26 on both machines at all three values of `k`.
+
+That is a finding rather than a dead end: the engine's FillZones must compute
+something in floating point that the port reproduces with exact integer logic —
+correct under round-to-nearest, and not under toward-zero. Finding it is a
+disassembly question, not another launch.
 
 ### What one four-player island map found
 
