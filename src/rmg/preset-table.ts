@@ -121,6 +121,17 @@ export interface RacePreset {
    * zMax 3, and the maps show z = 2 + below(5).
    */
   pointLightColors: Array<{ x: number; y: number; z: number }>;
+  /**
+   * `RaceColor` — the four point lights an UNDERGROUND TOWN wears.
+   *
+   * Not the zone's colour above: that one is picked per zone out of a list,
+   * this one is the faction's and there is exactly one. It was a hand-grown
+   * table in `tools/rmg-run.ts` for as long as the corpus held one underground
+   * faction, and every new map threw until someone read its colour off the
+   * result. It was in the preset all along, beside the lists the same preset
+   * already gives us ([[take-the-value-dont-derive-it]]).
+   */
+  raceColor: { x: number; y: number; z: number };
 }
 
 /** One `Building / Value / GuardStrenght` record of a preset's price lists. */
@@ -212,6 +223,14 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
       oneTileSmallBlockers: obj ? hrefs(find(obj, 'OneTileSmallBlockers')) : [],
       oneTileSmallNonblockers: obj ? hrefs(find(obj, 'OneTileSmallNonblockers')) : [],
       oneTileBigObjects: obj ? hrefs(find(obj, 'OneTileBigObjects')) : [],
+      raceColor: (() => {
+        const c = obj ? find(obj, 'RaceColor') : null;
+        return {
+          x: c ? Number(childText(c, 'x')) || 0 : 0,
+          y: c ? Number(childText(c, 'y')) || 0 : 0,
+          z: c ? Number(childText(c, 'z')) || 0 : 0,
+        };
+      })(),
       pointLightColors: (() => {
         const pl = obj ? find(obj, 'PointLightParams') : null;
         const list = pl ? find(pl, 'Colors') : null;

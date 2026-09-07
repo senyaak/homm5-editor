@@ -681,6 +681,19 @@ static void __fastcall rmg_seed_hook(int seed) {
   // for other reasons between generations, and those are nobody's business.
   if (g_rmgTrace) g_rmgRunActive = 1;
   rmg_log_pair("run seed ", seed, g_rmgForceSeed);
+  // AND THE MODE THE FLOATS WILL RUN IN. Bits 8-9 are the precision (00
+  // single, 10 double, 11 extended) and bits 10-11 the rounding (00 nearest,
+  // 11 toward zero), and it is process state, not the compiler's default. It
+  // belongs beside the seed because the two hosts do not agree: every float
+  // the GAME writes into a map is the data's value with its last digit cut
+  // off, and every one the EDITOR writes is rounded — 4.71238 against
+  // 4.71239 for the same 3*pi/2. If that is this word, it is also why the two
+  // draw different numbers of numbers in FillZones.
+  {
+    unsigned short cw = 0;
+    __asm__ __volatile__("fnstcw %0" : "=m"(cw));
+    rmg_log_pair("run x87 control word ", (int)cw, 0);
+  }
   ((SetSeedFn)((BYTE *)GetModuleHandleW(NULL) + g_rmgSetSeedRva))(seed);
 }
 

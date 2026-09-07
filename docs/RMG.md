@@ -2069,6 +2069,43 @@ says the game walked into something the editor's map does not contain. The crash
 report now names the module an address belongs to (`native/core/faults.c`), so
 the next one says whose bytes those are.
 
+### The game and the editor do not round the same way
+
+This is the answer to the section above, and it was hiding in plain text.
+
+Take the decimals a generated `map.xdb` is full of — rotations and the colours
+the presets hand out — and count how often each appears. A map the EDITOR made
+holds `1.5708`, `4.71239`, `0.294118`, `0.760784`. A map the GAME made holds
+`1.57079`, `4.71238`, `0.294117`, `0.760783`. Every one of the game's is the
+editor's with the last digit taken off rather than rounded, and every one of the
+editor's is the value the data itself carries: `RMGPresetTable.xdb` says
+`0.294118`, and pi/2 is 1.5707963.
+
+That is the x87 ROUNDING MODE, and the oracle now reads the control word beside
+the seed on every run, in whichever host it is living in:
+
+    run x87 control word 639          the editor — 0x027F, double precision,
+                                      round to nearest
+
+0x027F is the compiler's default. The game's is 0x0C7F — bits 8-9 clear (SINGLE
+precision, 24-bit) and bits 10-11 set (round TOWARD ZERO), which is where
+`src/exe/x87.ts` came from in the first place. The next launch of the game will
+print its own word into the same log and confirm it here.
+
+**So the two hosts compute differently, not just print differently.** The
+truncated text is only the visible half; the same control word governs every
+float the generator itself evaluates, and that is a full explanation for the 166
+extra draws the game spends in `FillZones` on an order the editor spends fewer
+on. The port matches the EDITOR byte for byte because the port's arithmetic is
+doubles rounded to nearest — which is exactly what the editor does.
+
+**What this costs.** Reproducing a map made in the GAME is not a matter of
+finding a missing switch: it needs the generator's arithmetic run in the single
+precision, toward-zero mode. That was on the list as a tidiness job ("the port
+would stop being right by accident"); it is not — it is the price of the game's
+maps, and it must be a MODE rather than a conversion, because turning it on
+everywhere would break the editor corpus that is currently green.
+
 ### What one four-player island map found
 
 The map the game was asked for on 07.09 — `S1-2P2-8Z8K2S`, 136x136, underground,

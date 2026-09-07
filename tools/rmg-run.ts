@@ -42,11 +42,19 @@ import { markPassability } from '../src/rmg/passability.ts';
 import type { LakePaint } from '../src/rmg/terrain.ts';
 import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
 import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
+import { RACE } from '../src/rmg/load-template.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import type { Chain, ChainOptions } from './rmg-chain.ts';
 import { runChain, ZoneFill } from './rmg-chain.ts';
 
 const HALF_PI = Math.PI / 2;
+
+/** A town document's `Type` back to the race whose preset holds its colour. */
+const TOWN_RACES: Record<string, number> = {
+  TOWN_HEAVEN: RACE.HEAVEN, TOWN_PRESERVE: RACE.PRESERVE, TOWN_ACADEMY: RACE.ACADEMY,
+  TOWN_DUNGEON: RACE.DUNGEON, TOWN_NECROMANCY: RACE.NECROMANCY, TOWN_INFERNO: RACE.INFERNO,
+  TOWN_FORTRESS: RACE.DWARF, TOWN_STRONGHOLD: RACE.STRONGHOLD,
+};
 
 /** One placed object — the height pass's view plus what the emitter writes. */
 export interface RunObject extends HeightObject {
@@ -163,16 +171,16 @@ export function runFull(
     if (t.kind === 'town') {
       const docType = /<Type>(\w+)<\/Type>/.exec(
         readFileSync(join(dir, t.shared.replace(/#xpointer.*$/, '').replace(/^\//, '')), 'utf8'))?.[1] ?? '';
-      // An underground town wears four faction-coloured point lights; the
-      // colour table grows one entry per faction a reference has shown.
-      const TOWN_LIGHT_COLORS: Record<string, readonly [number, number, number]> = {
-        TOWN_FORTRESS: [1, 0.392157, 0.101961],
-        TOWN_NECROMANCY: [0.560784, 0.360784, 0.439216],
-      };
+      // An underground town wears four point lights in its faction's own
+      // colour — the preset's `RaceColor`, not the zone light's list. This was
+      // a table grown by hand, one faction per reference that showed one, and
+      // it threw on every faction nobody had generated yet.
       let lights: RunObject['lights'];
       if (t.pointLights) {
-        const color = TOWN_LIGHT_COLORS[docType];
-        if (!color) throw new Error(`no light colour known for ${docType} — read it off this reference`);
+        const race = TOWN_RACES[docType];
+        const rc = race === undefined ? undefined : c.presets.get(race)?.raceColor;
+        if (!rc) throw new Error(`no preset RaceColor for ${docType}`);
+        const color: readonly [number, number, number] = [rc.x, rc.y, rc.z];
         lights = ([[0, -5], [0, 5], [-5, 0], [5, 0]] as const).map(([lx, ly]) => ({
           x: lx, y: ly, z: t.pointLights!.z, color, radius: t.pointLights!.radius,
         }));
