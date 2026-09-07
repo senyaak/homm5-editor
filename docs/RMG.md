@@ -2214,11 +2214,43 @@ rounding crosses the compare. The paint gate needs a perfect square to sit on
 its boundary, and there both builds answer the same. The radii come out 26 with
 their pre-truncation values 0.68 and 0.87 away from the nearest integer.
 
-**So the two builds differ in BEHAVIOUR, not in precision, and where is open.**
-That is the next question: not another launch and not another rounding mode, but
-a logical diff of the two `FillZones` — draw sites and their guards, the
-neighbour threshold, the border margin, the sweep bounds, and when the areas the
-ratio test divides are updated.
+**And they do not differ in behaviour either.** Both functions were disassembled
+end to end and compared as logic, and every guard, immediate, loop bound and
+draw site pairs up one for one:
+
+- three draw sites in each, in the same places under the same guards — two
+  unconditional `below(2)` coins at the top of every sweep, first driving the
+  outer loop, and one `betweenFloat(0,1)` reached only after the cell is owned,
+  the 6-tile margin passes, the neighbour map holds no `-1` and is not empty,
+  the winner beats a count of 2, and `sizeRatio > areaRatio`;
+- the neighbour threshold is `> 2` in all four places in both;
+- the border margin is 6 in both, and the SWAP is in both — bounds are checked
+  against `+0x10`/`+0x0C` and the margin against `+0x0C`/`+0x10`;
+- the sweep constant is the same `0x3FDDB3D7` and the count is 305 at size 176
+  in both (their products are 304.84094238 and 304.84093666, which bracket no
+  integer at any size from 24 to 176);
+- the areas are rebuilt once per sweep at the end of the body, by the same
+  routine, in both;
+- the neighbour-count hash has the same 13 buckets from byte-identical prime
+  tables, so even the tie-breaking among equal counts is the same.
+
+Two real differences were found and both are too small to matter here. The
+game's `betweenFloat` rounds the raw 31-bit draw to a float32 before scaling and
+multiplies in a different order, which moves the `0.4` gate for **30 values out
+of 2^31** — seven orders of magnitude short of 225. And the sweep product
+differs in its last bits, which changes no sweep count.
+
+**So FillZones is the same program on the same inputs, and it is not.** The
+remaining suspect is the state it is HANDED: the zone centres at `+0xE4`/`+0xE8`
+are float32 and both builds truncate them in pass 1, and a centre that comes out
+`27.0000002` in one build and `26.9999998` in the other moves a whole seed disc
+by a tile — after which every sweep diverges. The radii (26, with 0.68 and 0.87
+of room) and the sizes (all 10) are already ruled out; the centres are not.
+
+**The next measurement** is a dump of every zone's `+0xE4`, `+0xE8`, `+0x140`,
+`+0x144` and `+0xEC` at the entry to FillZones, taken from both engines on the
+same order, plus the per-sweep draw counts the editor already logs extended to
+the game — which is the same `sweep % 10` formatter in both.
 
 ### What one four-player island map found
 
