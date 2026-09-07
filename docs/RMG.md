@@ -2461,6 +2461,35 @@ dumps the engine's road lists and all four level grids at the roads boundary and
 proved the port byte-exact against the editor. Run it against the GAME on one
 order and diff the road lists.
 
+### A second, much cheaper divergence: a shipyard's facing
+
+Two more game maps arrived, both island water with an underground — a small
+96x96 and a medium 136x136, 13 of 20 entries each. The small one is the cheapest
+reproduction anyone has: it parts at object **49**, and the object is a
+shipyard's guard.
+
+    48  shipyard  18,60  rot 3.14159 (ours)   rot 4.71238 (the game)
+    49  guard     19,59  (ours)               19,61 (the game)
+
+So it is the shipyard's FACING, `q`, and the guard walks eight directions from
+`2q`. `q` comes from `|dx| > |dy| ? (dx > 0 ? 0 : 2) : (dy < 0 ? 3 : 1)` against
+a reference point: the zone's town entry when it has one, otherwise the centroid
+of its tiles.
+
+**And this one is not an ulp.** The port's reference for that shipyard is the
+centroid `50.234, 71.404`, giving `dx = -32.23` and `dy = -11.40` — `|dx|` is
+nearly three times `|dy|`, so `q = 2` with room to spare. The game's `q = 3`
+needs `|dx| <= |dy|` and `dy < 0`, which no rounding reaches from those numbers:
+its reference point is somewhere else entirely, near the shipyard in x and well
+below it in y — which is what a TOWN ENTRY looks like where the port took the
+centroid.
+
+Reading the reciprocal as a divide (the road router's difference) was tried on
+the centroid and changes nothing, as it cannot: the gap is 20 tiles wide, not an
+ulp. So the question here is which reference the engine takes, not how it
+rounds it — and the port matches the editor on a water-and-underground map
+(21 of 22), so whatever it is, it is not simply "the port picks the wrong one".
+
 ### What one four-player island map found
 
 The map the game was asked for on 07.09 — `S1-2P2-8Z8K2S`, 136x136, underground,
