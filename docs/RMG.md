@@ -2335,9 +2335,42 @@ accepts two. Of ~6,300 statics per side only 1,954 positions are shared.
 The underground terrain follows from it — 1.7% of the `Dead_Land` mask, in pairs
 two tiles apart, which is what a lake seeded from a different tile looks like.
 
-So the next question is the statics sweep, and the obvious suspect is the same
-kind of coin the zone axes turned out to be: a candidate order or a coordinate
-pair the two builds take the other way round.
+### The statics part because of OUR bug, not the build's
+
+The obvious next suspect was another coin like the zone axes — a candidate order
+the two builds take the other way round. It is not, and the check that says so
+is the cheap one that should have come first: **the port does not match the
+EDITOR on this map either.** Same order through the console, 15 of 20 entries,
+and the first object it gets wrong is number 993 — the underground ONE-TILE
+statics, where the port puts a `LavaStone_10` at 174,108 that the engine puts
+nowhere.
+
+174 is two tiles from the edge of a 176 map, and that is the whole story. An
+underground floor's vertex grid carries a height and a ground-flag byte, and at
+the FAR edge the engine leaves ROCK — height 36, flag 32 — where the port leaves
+open ground at 18 and 16:
+
+| map | the wall the engine has and the port does not |
+| --- | --- |
+| 176 tiles (177² vertices) | columns **174 and 175**, rows 174 and 175, indices 3..175 |
+| 136 tiles (137² vertices) | column **135**, row 135, indices 3..135 |
+
+Two wide on the larger map, one on the smaller, and in both the disagreement
+starts at index 3 and stops short of the last vertex. This is the same debt the
+four-player map showed as "265 vertices at the far edges" — it was written down
+as a crumb and it is not one: the one-tile pass tests that byte
+(`rock(x, y) = bytes[y * (size + 1) + x] > 0x10`), so a vertex the port thinks is
+open is a tile the port puts an object on, and one extra object desynchronises
+every draw after it. On this map the id stream survives 645 objects and then
+almost nothing matches.
+
+It also explains why the game comparison looked like a statics mystery: the
+port's first underground crater sits at 58,94 and the game's at 46,154, but the
+editor's is somewhere else again. Two bugs were being read as one.
+
+The lava underground is the case that makes it visible — that class is never
+massif-carved, so the wall cannot be the carve's doing and has to come from
+whatever fills the grid before it.
 
 ### What one four-player island map found
 
