@@ -5,6 +5,7 @@
 // assertions, nothing else.
 
 import { arithFor } from '../src/rmg/arith.ts';
+import type { Arith } from '../src/rmg/arith.ts';
 import type { ArithName } from '../src/rmg/arith.ts';
 import { join } from 'node:path';
 
@@ -157,6 +158,8 @@ export interface Chain {
   setup: ReturnType<typeof mapSetup>;
   /** The two ladder indices the order carried — see `ChainOptions`. */
   multipliers: { resource: number; exp: number };
+  /** The machine this run computes on — see `src/rmg/arith.ts`. */
+  arith: Arith;
   loaded: LoadedTemplate;
   townResult: TownsResult;
   /**
@@ -500,6 +503,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   return {
     dir, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
     multipliers: { resource: options.resourceMultiplier ?? 1, exp: options.expMultiplier ?? 1 },
+    arith: ar,
     teleports, floors, grid, border, occ, room, gridAtFillTerrain,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, the
@@ -768,6 +772,7 @@ export class ZoneFill {
   road(): Tile[] {
     const { c } = this;
     return buildZoneRoad({
+      arith: c.arith,
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ,
       zoneIndex: this.zoneIndex, points: this.points, kindBit: 0x20,
     }, c.rng);

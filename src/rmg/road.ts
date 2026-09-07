@@ -52,6 +52,8 @@
 // The road kinds: 0x08 -> zone+0x74 and 0x10 -> zone+0x80 belong to the
 // later roads phase (0xEBA690); this step is kind 0x20 alone.
 
+import { DOUBLES } from './arith.ts';
+import type { Arith } from './arith.ts';
 import type { DrawSource } from './armies.ts';
 import { EIGHT } from './placement.ts';
 import type { Tile } from './placement.ts';
@@ -68,6 +70,25 @@ const fl = Math.fround;
 const INV100 = fl(0.01);
 
 export interface RoadInput {
+  /**
+   * Which machine the cost field is computed on.
+   *
+   * This is the ONE place the two builds' arithmetic reaches a map. The editor
+   * multiplies by `0.01f` on the x87 stack and rounds once at the store
+   * (`fmul st,[0x10DFA10]` at `0xBFB4E3` and `0xBFB626`, the constant
+   * `0x3C23D70A`); the game DIVIDES, one `divss` per operation
+   * (`0xEC0DB4`, `0xEC0ED7`). One ulp in a cost flips a tie, the wave takes the
+   * other corridor, and the road bits `0x08/0x10/0x20` land elsewhere — which
+   * the statics' fit reads through its `& 0x3E` mask, the room recompute reads
+   * through `0x3C`, and the underground carve amplifies by turning whole 9x9
+   * patches from clean to blocking.
+   *
+   * The draw counter cannot see it: the walk spends one coin per tile and two
+   * corridors of the same length cost the same coins, so the route moves while
+   * the stream stays in step. That is exactly how a game map parts from the
+   * editor's on the same seed.
+   */
+  arith?: Arith;
   size: number;
   /** The zone grid, `[a][b]` with `b` the map x. */
   grid: Int32Array[];
@@ -84,6 +105,7 @@ export interface RoadInput {
 /** One route — `0xEC0B60`. Returns the walked tiles, `to` first. */
 export function routeRoad(input: RoadInput, from: Tile, to: Tile, rng: DrawSource): Tile[] {
   const { size, grid, border, occupancy, zoneIndex, kindBit } = input;
+  const ar = input.arith ?? DOUBLES;
 
   // The cost field, [x][y] flattened x-major to keep the sweep order the
   // engine's: outer over the first coordinate, inner over the second.
@@ -122,9 +144,15 @@ export function routeRoad(input: RoadInput, from: Tile, to: Tile, rng: DrawSourc
             // The editor's x87 step: (100-b)*0.01f + base [+ (5-b)], the
             // whole chain in DOUBLE, compared in double, and rounded to
             // single ONCE at the store (the Float32Array does the fstp).
-            let t = (100 - b) * INV100 + (k < 4 ? 1.0 : fl(1.41));
-            if (b < 5) t += 5 - b;
-            const next = t + c;
+            let t: number;
+            if (ar.name === 'sse') {
+              t = ar.add(ar.div(100 - b, 100), k < 4 ? 1.0 : fl(1.41));
+              if (b < 5) t = ar.add(t, 5 - b);
+            } else {
+              t = (100 - b) * INV100 + (k < 4 ? 1.0 : fl(1.41));
+              if (b < 5) t += 5 - b;
+            }
+            const next = ar.name === 'sse' ? ar.add(t, c) : t + c;
             if (next < cost[nx * size + ny]!) cost[nx * size + ny] = next;
           }
         }

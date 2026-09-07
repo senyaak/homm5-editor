@@ -367,6 +367,7 @@ export function runFull(
       const zone = c.zone(z.index);
       const centre = c.townResult.centres.get(z.index);
       const phase = buildZoneRoadsPhase({
+        arith: c.arith,
         size: c.size, grid: c.floors[f]!.grid, border: c.floors[f]!.border,
         occupancy: c.floors[f]!.occ, zoneIndex: z.index,
         townEntry: zone.town && centre ? [centre.b, centre.a] : null,

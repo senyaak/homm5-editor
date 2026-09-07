@@ -2422,6 +2422,45 @@ Two orders have already been ruled out by trying them: sorting the candidates
 y-outer puts the first crater at 70,95 (not 46,154) and drops the object count
 to 8173, where the port's own order gives the game's 8247 exactly.
 
+**And the order is not it — the game's is x-outer too.** Its own tile vector,
+read from a run of its own, goes `84,146 | 85,144 | 85,145 | 85,147 | 86,128`,
+which is the same walk. So is the FIT: both builds' `+0x44` was read instruction
+for instruction and every guard, immediate, grid offset and branch sense pairs
+up, the underground margin included — 5.0f in both, with the same dimension
+swap, `jb` against `fcomp/test ah,1` and `jbe` against `test ah,41h`. So are the
+room recompute, the carve and the rotation helper.
+
+The reasoning that pointed at the order was wrong, and worth writing down: a
+difference in the FIT does not move the draw stream. The roll is drawn once per
+FITTING tile and the acceptance is the first roll under the threshold, so the
+ordinal is fixed by the roll VALUES alone — which tile each roll is attached to
+is free. The port accepts at fit #73 on 58,94; the game accepts at its #73 on
+46,154, which is the port's #59. The game simply has **14 more tiles fitting**
+in that stretch, and the ids match all the way regardless.
+
+**It is the ROAD ROUTER, the one phase whose divergence the draw counter cannot
+see.** The walk spends one coin per tile, so two corridors of equal length cost
+the same coins and the route can move while the stream stays in step. The
+editor's cost step multiplies by `0.01f` on the x87 stack and rounds once at the
+store (`fmul st,[0x10DFA10]` at `0xBFB4E3`, `0xBFB626`); the game DIVIDES, one
+`divss` per operation (`0xEC0DB4`, `0xEC0ED7`). Roads write occupancy
+`0x08/0x10/0x20`, all three inside the fit's `& 0x3E` mask and inside the room
+recompute's `0x3C`, and underground the carve reads the same occupancy and turns
+whole 9x9 patches from clean to blocking — which is how a couple of moved road
+tiles become fourteen crater placements.
+
+`RoadInput.arith` now carries the choice, and `--game-build` asks for the SSE
+one. The first crater moves from **58,94 to 44,154**, against the game's
+**46,154** — the same row, two tiles along, where it had been on the other side
+of the map. So the site is right and the model of it is not yet exact; the
+object count also drifts (8294 against 8247) where the editor's arithmetic gave
+8247 on the nose. The editor corpus is untouched: 20 of 20, 21 of 22, 13 of 13.
+
+The measurement that would finish it is the `grids` instrument, which already
+dumps the engine's road lists and all four level grids at the roads boundary and
+proved the port byte-exact against the editor. Run it against the GAME on one
+order and diff the road lists.
+
 ### What one four-player island map found
 
 The map the game was asked for on 07.09 — `S1-2P2-8Z8K2S`, 136x136, underground,

@@ -35,6 +35,7 @@
 // along the walks. No border dents, no room points, no template reads —
 // the 0x08/0x10 split is hardwired by loop, not decided by data.
 
+import type { Arith } from './arith.ts';
 import type { DrawSource } from './armies.ts';
 import type { Tile } from './placement.ts';
 import { routeRoad } from './road.ts';
@@ -42,6 +43,8 @@ import { routeRoad } from './road.ts';
 const fl = Math.fround;
 
 export interface RoadsPhaseZoneInput {
+  /** Which machine the cost field runs on — see `RoadInput.arith`. */
+  arith?: Arith;
   size: number;
   /** The zone grid, `[a][b]` with `b` the map x. */
   grid: Int32Array[];
@@ -73,7 +76,7 @@ function dist([ax, ay]: Tile, [bx, by]: Tile): number {
 export function buildZoneRoadsPhase(input: RoadsPhaseZoneInput, rng: DrawSource): ZoneRoads {
   const { size, grid, border, occupancy, zoneIndex } = input;
   const route = (from: Tile, to: Tile, kindBit: number): Tile[] =>
-    routeRoad({ size, grid, border, occupancy, zoneIndex, points: [], kindBit }, from, to, rng);
+    routeRoad({ arith: input.arith, size, grid, border, occupancy, zoneIndex, points: [], kindBit }, from, to, rng);
 
   const road08: Tile[] = [];
   const road10: Tile[] = [];
