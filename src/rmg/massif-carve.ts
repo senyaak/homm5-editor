@@ -38,29 +38,59 @@ export interface VertexHeights {
   floats: Float32Array;
 }
 
-/** `0xEB2B60` — floor 1 starts 0x10/18.0, floor 0 0x20/36.0. */
+/**
+ * `0x874120` in the editor (`0xEB2B60` in the game) — the level grid's
+ * constructor, run ONCE PER FLOOR at map-create time, long before any zone
+ * exists. Its third argument is the surface flag: `push 1` for floor 0 and,
+ * when the map has one, `push 0` for floor 1 (`0x8744C0`).
+ *
+ * THE FILL. Every one of the `(size+1)^2` vertices starts at the floor's own
+ * value — the surface at byte 0x10 and float 6.0, the underground at 0x20 and
+ * 36.0, which is ROCK. The surface is then left alone; the underground is
+ * lowered.
+ *
+ * THE LOWERING, and the wall it leaves. Both loops run `0 .. size-1`, so the
+ * vertex line at `size` is never written on either axis. Inside, a vertex
+ * whose `min(vx, vy)` is under 3 takes the low-edge ramp — bytes
+ * `0x10 + trunc(16*(3-m)/3)` and floats `((3-m)/3 + 1) * 18`, which are the
+ * 32/26/21 and 36/30/24 measured off the references — and is NOT gated by
+ * anything else. Every other vertex is opened to 0x10 / 18.0 only while BOTH
+ * indices are below `3 * floor(size / 3)`:
+ *
+ *     0x874446  sub eax,edx          ; a - (a % 3)
+ *     0x874448  cmp esi,eax
+ *     0x87444a  jge <leave it rock>
+ *
+ * So the last `size mod 3` lines of each axis keep the constructor's rock, and
+ * the wall is 2 vertices wide at size 176 and 1 at size 136 — which is exactly
+ * what a map from the engine has and the port did not. It cost more than a
+ * crumb: the subterranean one-tile pass reads this byte to decide whether a
+ * tile is rock, so an open vertex is an object the port places and the engine
+ * does not, and one extra object moves every draw after it.
+ *
+ * The carve only ever RAISES to rock, so this band survives it — which is why
+ * a lava underground, the class that is never carved at all, shows it plainly.
+ */
 export function createVertexHeights(size: number, floor: number): VertexHeights {
   const n = (size + 1) * (size + 1);
-  const bytes = new Uint8Array(n).fill(floor === 1 ? 0x10 : 0x20);
-  const floats = new Float32Array(n).fill(floor === 1 ? 18.0 : 36.0);
-  if (floor === 1) {
-    // The reference's underground starts with a rock frame (writer not
-    // yet located in the disasm — held to the reference measurement):
-    // the LAST vertex line of each axis is plain wall (byte 0x20, float
-    // 36), and the LOW edges carry a three-vertex ramp — floats linear
-    // 36/30/24 by distance, bytes the smoother's own trunc interpolation
-    // from 32 toward 16 (32, 26, 21). The gradient seen near the far
-    // walls in the reference is not initial: it is the carve's smoothing
-    // reading the wall line as a corner.
-    const w = size + 1;
-    const RAMP_BYTES = [0x20, 26, 21];
-    const RAMP_FLOATS = [36.0, 30.0, 24.0];
-    for (let vy = 0; vy <= size; vy++) {
-      for (let vx = 0; vx <= size; vx++) {
-        const d = vx === size || vy === size ? 0 : Math.min(vx, vy);
-        if (d > 2) continue;
-        bytes[vy * w + vx] = RAMP_BYTES[d]!;
-        floats[vy * w + vx] = RAMP_FLOATS[d]!;
+  const underground = floor === 1;
+  const bytes = new Uint8Array(n).fill(underground ? 0x20 : 0x10);
+  const floats = new Float32Array(n).fill(underground ? 36.0 : 6.0);
+  if (!underground) return { bytes, floats };
+
+  const w = size + 1;
+  const stop = 3 * Math.floor(size / 3);
+  const RAMP_BYTES = [0x20, 26, 21];
+  const RAMP_FLOATS = [36.0, 30.0, 24.0];
+  for (let vy = 0; vy < size; vy++) {
+    for (let vx = 0; vx < size; vx++) {
+      const m = Math.min(vx, vy);
+      if (m < 3) {
+        bytes[vy * w + vx] = RAMP_BYTES[m]!;
+        floats[vy * w + vx] = RAMP_FLOATS[m]!;
+      } else if (vx < stop && vy < stop) {
+        bytes[vy * w + vx] = 0x10;
+        floats[vy * w + vx] = 18.0;
       }
     }
   }

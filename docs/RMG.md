@@ -2370,7 +2370,31 @@ editor's is somewhere else again. Two bugs were being read as one.
 
 The lava underground is the case that makes it visible — that class is never
 massif-carved, so the wall cannot be the carve's doing and has to come from
-whatever fills the grid before it.
+whatever fills the grid before it. It does, and the rule is arithmetic.
+
+**The level grid's constructor** (`0x874120` in the editor, `0xEB2B60` in the
+game) runs once per floor at map-create time, long before any zone exists, and
+its third argument is the surface flag — `push 1` for floor 0 and `push 0` for
+floor 1 (`0x8744C0`). It fills every vertex with the floor's own value: the
+surface 0x10 / 6.0, the underground 0x20 / 36.0, which is ROCK. The surface is
+then left alone. The underground is lowered, and the lowering is what leaves the
+wall:
+
+- both loops run `0 .. size-1`, so the vertex line at `size` is never written;
+- a vertex whose `min(vx, vy)` is under 3 takes the low-edge ramp — bytes
+  32/26/21, floats 36/30/24 — ungated;
+- every other vertex is opened to 0x10 / 18.0 **only while both indices are
+  below `3 * floor(size / 3)`** (`sub eax,edx` on `a % 3`, then `jge` past the
+  write at `0x874448`).
+
+So the last `size mod 3` lines of each axis keep the constructor's rock: two at
+size 176, one at 136, none at a size divisible by three. The carve only ever
+raises to rock, so the band survives it.
+
+`createVertexHeights` now does that, and the map that was 15 of 20 against the
+editor is **20 of 20**. The four-player map's `UndergroundTerrain.bin` debt —
+the "265 vertices" — is gone with it, taking that map from 20 of 22 to **21 of
+22**, and the whole 22-template corpus stays byte-identical.
 
 ### What one four-player island map found
 
