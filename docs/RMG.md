@@ -2396,6 +2396,32 @@ editor is **20 of 20**. The four-player map's `UndergroundTerrain.bin` debt —
 the "265 vertices" — is gone with it, taking that map from 20 of 22 to **21 of
 22**, and the whole 22-template corpus stays byte-identical.
 
+### What is left between the port and a GAME map
+
+With the wall paid, the port and the game agree on the SHAPE of the run: exactly
+**8247 objects each**, the id stream agreeing for 645, and the first 635 objects
+identical in type, id and position. What still differs is which tile the
+underground statics take — the port's first crater at 58,94 and the game's at
+46,154, minted by the SAME draw. A different tile at the same draw can only be a
+different candidate ORDER, since a difference in the fit test would move the
+rolls and the ids with them.
+
+The `zones` instrument now dumps that order: after FillZones returns it walks
+each zone's `+0xCC .. +0xD0` vector — the pairs of floats `CollectOwnTiles`
+rebuilds every sweep, which is the list the statics sweep later walks — and
+prints its head. The editor's is x-outer, y-inner:
+
+    zone tiles 1 1 7721  80,0  80,1  81,0  81,1  81,2
+
+which is what `zoneTiles` does, and is why the port matches the editor. The
+game's head is the reading still missing, and one generation with an underground
+is enough to take it — the pattern is visible in the first five pairs whatever
+the seed.
+
+Two orders have already been ruled out by trying them: sorting the candidates
+y-outer puts the first crater at 70,95 (not 46,154) and drops the object count
+to 8173, where the port's own order gives the game's 8247 exactly.
+
 ### What one four-player island map found
 
 The map the game was asked for on 07.09 — `S1-2P2-8Z8K2S`, 136x136, underground,

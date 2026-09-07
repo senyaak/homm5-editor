@@ -956,9 +956,68 @@ static void rmg_dump_zones(void *self) {
   }
 }
 
+/**
+ * And the ORDER each zone's tiles come in, once the phase has filled them.
+ *
+ * `CollectOwnTiles` rebuilds `zone+0xCC .. +0xD0` at the end of every sweep as
+ * pairs of floats, and that vector is the candidate list the statics sweep
+ * walks. The port and the game now draw the same numbers in the same order —
+ * 8247 objects each, the id stream agreeing for 645 — and still put the first
+ * underground crater on different tiles, at the same draw. That can only be the
+ * candidate ORDER, and this is the reading that settles which order each build
+ * has: the head of the vector, zone by zone, from both.
+ */
+static void rmg_dump_zone_tiles(void *self) {
+  const BYTE *me = (const BYTE *)self;
+  const BYTE *map;
+  const BYTE *floorsBegin;
+  const BYTE *floorsEnd;
+  int floorCount, f;
+  if (!rmg_readable(me, 0x34)) return;
+  map = *(const BYTE *const *)(me + 0x0C);
+  if (!rmg_readable(map, 0x3C)) return;
+  floorsBegin = *(const BYTE *const *)(map + 0x34);
+  floorsEnd = *(const BYTE *const *)(map + 0x38);
+  if (!floorsBegin || floorsEnd < floorsBegin) return;
+  floorCount = (int)((floorsEnd - floorsBegin) / 0x120);
+  for (f = 0; f < floorCount && f < 4; f++) {
+    const BYTE *floor = floorsBegin + f * 0x120;
+    const BYTE *const *buckets;
+    int bucketCount, b;
+    if (!rmg_readable(floor, 0xB4)) continue;
+    buckets = *(const BYTE *const *const *)(floor + 0xAC);
+    bucketCount = (int)((*(const BYTE *const *)(floor + 0xB0) - (const BYTE *)buckets) / 4);
+    if (!buckets || bucketCount <= 0 || bucketCount > 4096) continue;
+    for (b = 0; b < bucketCount; b++) {
+      const BYTE *node = buckets[b];
+      while (node) {
+        const BYTE *zone;
+        if (!rmg_readable(node, 12)) break;
+        zone = *(const BYTE *const *)(node + 8);
+        if (rmg_readable(zone, 0x148)) {
+          const BYTE *from = *(const BYTE *const *)(zone + 0xCC);
+          const BYTE *to = *(const BYTE *const *)(zone + 0xD0);
+          int vals[14];
+          int i, n = 0;
+          vals[n++] = f;
+          vals[n++] = *(const int *)(zone + 0xEC);
+          vals[n++] = (from && to >= from) ? (int)((to - from) / 8) : -1;
+          for (i = 0; i < 5 && from && rmg_readable(from + i * 8, 8) && from + i * 8 < to; i++) {
+            vals[n++] = (int)((const float *)(from + i * 8))[0];
+            vals[n++] = (int)((const float *)(from + i * 8))[1];
+          }
+          rmg_log_ints("zone tiles ", vals, n);
+        }
+        node = *(const BYTE *const *)node;
+      }
+    }
+  }
+}
+
 static void __fastcall rmg_fill_zones_hook(void *self, void *edx) {
   rmg_dump_zones(self);
   if (g_rmgFillZonesOrig) g_rmgFillZonesOrig(self, edx);
+  rmg_dump_zone_tiles(self);
 }
 
 static char *__cdecl rmg_sweep_hook(const char *fmt, int sweep) {
