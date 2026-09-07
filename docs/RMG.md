@@ -5898,3 +5898,41 @@ All of them need the **unwrapped** executable (`npm run unwrap-exe`); the
 shipped one ships its code encrypted and disassembles to noise. Where the game
 is has to be SAID — `--game <dir>` or `HOMM5_GAME`, never guessed from where the
 checkout sits (`tools/game-dir.ts`), which from a worktree would be wrong.
+
+### The game's build, where it stands (08.09)
+
+Five maps the game generated, replayed with `--game-build`: two large
+underground maps and a small island one at **18 of 20**, the rest at 17. The
+draw stream is the game's to the last draw — a full trace (702,880 draws,
+S3-6P2-4Z9B3) matches with zero differences — and `map.xdb` is byte-identical
+wherever the unmodelled `<Birds>` draw did not land. What it took, each read
+off a game map or out of the game executable and none of it guessed:
+
+- **The SSE build chops.** `_controlfp(_RC_CHOP)` sets MXCSR with the x87
+  word; the road cost field proved it (801 of 801 route fields bit-identical
+  with the 24-bit machine, `tools/rmg-diff-field.ts`). `SSE` in `arith.ts` is
+  that machine; `ChainOptions.gameBuild` is the one flag.
+- **Four evaluation-order coins**: the zone centres' two draws, the lake
+  decorations' two jitters, the shipyard's centroid accumulator that the
+  inlined placer never zeroes (`k × centroid`), and `betweenFloat`, which
+  rounds the draw to a float first and scales before it multiplies by the span.
+- **The game's runtime**: `%g` is one chopped multiply by the exact power of
+  ten and then the integer; `atof` chops; the exponent has two digits; the
+  captions below the base carry a placeholder; the camera constant is taken as
+  the game writes it.
+- **The late height pass** runs on the game's machine, with the base field as
+  the game's own expression (`cos(j/13)·A·B·sin(j/29) / 0.15`, the row sines
+  kept double), the relief cone's `cvtsd2ss`, the underground ramp and the
+  carve's add. The underground plane is byte-identical; the surface plane sits
+  within a few ulps on ~30% of its vertices, both directions — the stage-by-stage
+  instrument (`stages`, now from the game too, `tools/rmg-diff-stages.ts`)
+  is armed for it.
+- **The minimap** the game writes is the port's put through a float32
+  `/255 · 255` under chop (the underground floor byte-identical, the surface
+  floor 56,646 of 65,536 pixels); the four drawing functions were compared
+  instruction by instruction and hold no such step, so it sits in the game's
+  texture path, past what the port reproduces.
+
+Open, in order of cost: `S4-6P2-8Z8K2L`, on which the game spends one draw
+more than the port in the towns pass (a trace on that template names it); the
+surface heights' last ulps; the surface minimap's remaining pixels.

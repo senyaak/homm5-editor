@@ -188,7 +188,17 @@ export class RmgRandom {
     // that is `Math.fround(draw * (b - a) * SCALE + a)` to the bit — the
     // operations are the plain ones and only the store rounds.
     const ar = this.arith;
-    const value = ar.store(ar.add(ar.mul(ar.mul(draw, ar.sub(b, a)), SCALE), a));
+    // THE GAME'S SHAPE IS NOT THE EDITOR'S UNDER ANOTHER ROUNDING (`0xEB14D0`,
+    // read instruction by instruction): the 31-bit draw goes `cvtdq2pd` then
+    // `cvtpd2ps` — squeezed to 24 bits BEFORE any arithmetic, which the
+    // editor's `fild` never does — and the scale is applied FIRST, `(draw *
+    // 2^-31) * (b - a) + a`, all `ss`, where the editor multiplies by `(b - a)`
+    // first. Either half alone moves the map angle's value by the one ulp the
+    // game's trace showed (1077830373 against 1077830374); both are needed
+    // in general. Under DOUBLES the line below is the editor's, untouched.
+    const value = ar === DOUBLES
+      ? ar.store(ar.add(ar.mul(ar.mul(draw, ar.sub(b, a)), SCALE), a))
+      : ar.store(ar.add(ar.mul(ar.mul(ar.store(draw), SCALE), ar.sub(b, a)), a));
     if (this.onDraw) {
       FLOAT_BITS[0] = value;
       this.onDraw('f', INT_BITS[0]);
