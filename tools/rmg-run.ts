@@ -384,6 +384,7 @@ export function runFull(
           ...c.teleportActives(z.index),
         ],
         mineActives: mineActives.get(z.index) ?? [],
+        field: c.roadField && ((kind, cost, from, to) => c.roadField!(z.index, kind, cost, from, to)),
       }, c.rng);
       roads.set(z.index, [...roads.get(z.index)!, ...phase.road08, ...phase.road10]);
       roadLists.set(z.index, { ...roadLists.get(z.index)!, road08: phase.road08, road10: phase.road10 });

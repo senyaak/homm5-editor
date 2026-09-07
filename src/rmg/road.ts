@@ -100,6 +100,13 @@ export interface RoadInput {
   points: Tile[];
   /** 0x20 for this step; the roads phase reuses the router with 0x08/0x10. */
   kindBit: number;
+  /**
+   * The converged cost field, before the walk reads it — the reading the
+   * oracle's `field` dump gives from the live engine, so the two can be held
+   * against each other bit for bit (`tools/rmg-diff-field.ts`). `[x][y]`,
+   * x-major, as `cost` below.
+   */
+  field?: (cost: Float32Array, from: Tile, to: Tile) => void;
 }
 
 /** One route — `0xEC0B60`. Returns the walked tiles, `to` first. */
@@ -164,6 +171,7 @@ export function routeRoad(input: RoadInput, from: Tile, to: Tile, rng: DrawSourc
     wave++;
     if (allReached) break;
   }
+  input.field?.(cost, from, to);
 
   // The walk, one coin per tile.
   const out: Tile[] = [];

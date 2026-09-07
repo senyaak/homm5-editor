@@ -58,6 +58,8 @@ export interface RoadsPhaseZoneInput {
   connectionPoints: Tile[];
   /** `zone+0x11C` — every mine stamp's active tiles, in stamp order. */
   mineActives: Tile[];
+  /** Every route's converged cost field — see `RoadInput.field`. */
+  field?: (kindBit: number, cost: Float32Array, from: Tile, to: Tile) => void;
 }
 
 export interface ZoneRoads {
@@ -76,7 +78,10 @@ function dist([ax, ay]: Tile, [bx, by]: Tile): number {
 export function buildZoneRoadsPhase(input: RoadsPhaseZoneInput, rng: DrawSource): ZoneRoads {
   const { size, grid, border, occupancy, zoneIndex } = input;
   const route = (from: Tile, to: Tile, kindBit: number): Tile[] =>
-    routeRoad({ arith: input.arith, size, grid, border, occupancy, zoneIndex, points: [], kindBit }, from, to, rng);
+    routeRoad({
+      arith: input.arith, size, grid, border, occupancy, zoneIndex, points: [], kindBit,
+      field: input.field && ((cost, f, t) => input.field!(kindBit, cost, f, t)),
+    }, from, to, rng);
 
   const road08: Tile[] = [];
   const road10: Tile[] = [];

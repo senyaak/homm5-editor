@@ -470,6 +470,8 @@ static RmgPlaceTownFn g_rmgPlaceTownOrig = NULL;
  * floats. Head: `sub esp,50h; mov edx,[esp+58h]` — 7 relocation-free bytes.
  */
 #define RMG_ED_ROUTER_RVA 0x7fb1b0u
+/** The same routine in the game — `0xEC0B60`, with a realigned prologue. */
+#define RMG_GAME_ROUTER_RVA 0xac0b60u
 
 typedef void *(__fastcall *RmgGetZoneFn)(void *self, void *edx, void **out, int index);
 static RmgGetZoneFn g_rmgGetZoneOrig = NULL;
@@ -866,18 +868,22 @@ static void *__fastcall rmg_get_zone_trace(void *self, void *edx, void **out, in
  * a tile), and the field lives on the zone at `+0xA8` (row table) / `+0xAC`
  * (dimA) / `+0xB0` (dimB), as bit patterns so the diff is exact.
  *
- *   fld <zoneId> <toX> <toY> <dimA> <dimB>
+ *   fld <zoneId> <fromX> <fromY> <toX> <toY> <dimA> <dimB> <kind>
  *   fc <row> <bits...>            one row of the cost field, per dimA row
  */
 static int __fastcall rmg_router_hook(void *self, void *edx, float *from, float *to, int kind,
                                       void *outList) {
   BYTE *zone = (BYTE *)self;
   int tx = -1, ty = -1, want = 0, ret;
+  // EVERY route, since the game's build was found to part from the port on a
+  // tile of nearly every list on a map (`tools/rmg-diff-grids.ts`) — which
+  // route is the first to differ is the tool's to say, not this hook's to
+  // guess. It used to keep two named routes; capture everything, filter
+  // offline.
   if (g_rmgField && to && rmg_readable(to, 8)) {
     tx = (int)to[0];
     ty = (int)to[1];
-    // The two routes the corridors diverge on: zone 2's 60:70 and zone 3's 47:7.
-    if ((tx == 60 && ty == 70) || (tx == 47 && ty == 7)) want = 1;
+    want = 1;
   }
   ret = g_rmgRouterOrig(self, edx, from, to, kind, outList);
   if (!want || !rmg_readable(zone, 0xF0)) return ret;
@@ -885,7 +891,7 @@ static int __fastcall rmg_router_hook(void *self, void *edx, float *from, float 
     float **rows = *(float ***)(zone + 0xA8);
     int dimA = *(int *)(zone + 0xAC);
     int dimB = *(int *)(zone + 0xB0);
-    int hdr[7];
+    int hdr[8];
     int r;
     hdr[0] = *(int *)(zone + 0xEC);
     hdr[1] = from && rmg_readable(from, 8) ? (int)from[0] : -1;
@@ -894,7 +900,8 @@ static int __fastcall rmg_router_hook(void *self, void *edx, float *from, float 
     hdr[4] = ty;
     hdr[5] = dimA;
     hdr[6] = dimB;
-    rmg_log_ints("fld ", hdr, 7);
+    hdr[7] = kind;
+    rmg_log_ints("fld ", hdr, 8);
     if (!rows || dimA <= 0 || dimA > 256 || dimB <= 0 || dimB > 256
         || !rmg_readable(rows, (unsigned)dimA * 4)) {
       rmg_log("field: unreadable");
@@ -1823,14 +1830,6 @@ static int install_rmg_oracle(void) {
       static const BYTE placeTownHead[7] = { 0x81, 0xEC, 0xA8, 0x00, 0x00, 0x00, 0x53 };
       g_rmgPlaceTownOrig = (RmgPlaceTownFn)detour(RMG_ED_PLACE_TOWN_RVA, placeTownHead, 7,
                                                   &rmg_place_town_trace, "rmg trace PlaceTown");
-      // The router's field, only when asked: its first two instructions are
-      // also seven relocation-free bytes.
-      if (g_rmgField) {
-        static const BYTE routerHead[7] = { 0x83, 0xEC, 0x50, 0x8B, 0x54, 0x24, 0x58 };
-        g_rmgRouterOrig = (RmgRouterFn)detour(RMG_ED_ROUTER_RVA, routerHead, 7,
-                                              &rmg_router_hook, "rmg road field");
-        rmg_log(g_rmgRouterOrig ? "router field dump armed" : "router field dump did NOT take");
-      }
       rmg_log(g_rmgNextOrig && g_rmgNext63Orig && g_rmgBelowOrig && g_rmgBetweenFloatOrig && g_rmgGetZoneOrig
                   ? "draw trace on - every draw and every GetZone will be written"
                   : "draw trace INCOMPLETE - see the refusals above");
@@ -1899,6 +1898,21 @@ static int install_rmg_oracle(void) {
     DWORD rva = rmg_host_is_editor() ? 0x8f2ee0u : 0xaa94c0u;
     g_rmgFillZonesOrig = (FillZonesFn)detour(rva, fillHead, 6, &rmg_fill_zones_hook, "rmg zone table");
     rmg_log(g_rmgFillZonesOrig ? "zones will be read at FillZones" : "the FillZones detour did NOT take");
+  }
+  // The router's field, when asked, from either host. The editor's opens
+  // `sub esp,50h; mov edx,[esp+58h]` — seven relocation-free bytes; the
+  // game's realigns the stack first, `push ebp; mov ebp,esp; and esp,-8` —
+  // six, whole instructions, and its arguments are read off ebp after that,
+  // which a trampoline that replays those six bytes preserves. Same hook: the
+  // thiscall's four stack arguments sit where they sat, and the field lives
+  // on the zone at the same offsets in both builds.
+  if (g_rmgField) {
+    static const BYTE edHead[7] = { 0x83, 0xEC, 0x50, 0x8B, 0x54, 0x24, 0x58 };
+    static const BYTE gameHead[6] = { 0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8 };
+    g_rmgRouterOrig = rmg_host_is_editor()
+        ? (RmgRouterFn)detour(RMG_ED_ROUTER_RVA, edHead, 7, &rmg_router_hook, "rmg road field")
+        : (RmgRouterFn)detour(RMG_GAME_ROUTER_RVA, gameHead, 6, &rmg_router_hook, "rmg road field");
+    rmg_log(g_rmgRouterOrig ? "router field dump armed" : "router field dump did NOT take");
   }
 
   BYTE head[5];

@@ -144,6 +144,12 @@ export interface ChainOptions {
    * into x and the first into y. See `generateGameZones`.
    */
   swapZoneAxes?: boolean;
+  /**
+   * Every converged road cost field, as the router hands it to the walk —
+   * see `RoadInput.field`. `kindBit` is 0x20 for the zone road, 0x08/0x10
+   * for the roads phase.
+   */
+  roadField?: (zone: number, kindBit: number, cost: Float32Array, from: Tile, to: Tile) => void;
   onPhase?: (label: string, draws: number) => void;
 }
 
@@ -160,6 +166,8 @@ export interface Chain {
   multipliers: { resource: number; exp: number };
   /** The machine this run computes on — see `src/rmg/arith.ts`. */
   arith: Arith;
+  /** The option, kept for the roads phase to hand its routes through. */
+  roadField?: ChainOptions['roadField'];
   loaded: LoadedTemplate;
   townResult: TownsResult;
   /**
@@ -504,6 +512,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     dir, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
     multipliers: { resource: options.resourceMultiplier ?? 1, exp: options.expMultiplier ?? 1 },
     arith: ar,
+    roadField: options.roadField,
     teleports, floors, grid, border, occ, room, gridAtFillTerrain,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, the
@@ -771,10 +780,12 @@ export class ZoneFill {
   /** `0xEC05B0` — the zone road, kind 0x20; one below(2) per walked tile. */
   road(): Tile[] {
     const { c } = this;
+    const { zoneIndex } = this;
     return buildZoneRoad({
       arith: c.arith,
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ,
-      zoneIndex: this.zoneIndex, points: this.points, kindBit: 0x20,
+      zoneIndex, points: this.points, kindBit: 0x20,
+      field: c.roadField && ((cost, from, to) => c.roadField!(zoneIndex, 0x20, cost, from, to)),
     }, c.rng);
   }
 }
