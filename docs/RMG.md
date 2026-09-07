@@ -2038,6 +2038,79 @@ template, seed, size, water and monster level through `rmg-batch`, and diff the
 two ENGINE maps against each other. Same map means the game's path is the
 console's and everything here applies to it; different means a path to read.
 
+**It was run on 07.09, and the two paths part at the sixth phase.** The game was
+asked for `S1-2P2-8Z8K2S`, medium (136x136, read out of the terrain files the run
+left in `data/RMGTemp/CurrentMap`), underground, island water, VERY_STRONG, four
+players, resources 2 and experience 4. The seed hook wrote its seed down —
+1788775876 — and the same order went through the console:
+
+|         | phase 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
+| ------- | --- | - | - | -- | --- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
+| game    | 0 | 3 | 9 | 64 | 981 | 81291 | 81291 | 81291 | 81719 | 81719 | 81892 | 81892 |
+| console | 0 | 3 | 9 | 64 | 981 | 81125 | 81125 | 81125 | 81541 | 81541 | 81718 | 81718 |
+
+The first five agree to the draw — the template loads, the size and the players
+and the start points are the same request — and `FillZones` then draws 166 more
+numbers in the game than in the editor. So it is not the file's age and not the
+`caption-text` kind of difference: the same order gives two different maps, and
+the divergence is inside zone filling.
+
+What is NOT ruled out: the game's screen sets four things the console line has no
+switch for (Tears of Asha, hide-minimap, random towns, and which player is the
+human), and one of those reaching `FillZones` would look exactly like this. The
+next step is `-poke` on the request's remaining fields, not another launch of the
+game.
+
+**And the game CRASHED on that map**, in the twelfth phase, placing the first
+zone's main objects — an access violation outside both the executable and the
+extension. The editor generated the same order to the end. The two are not the
+same map after phase 6, so this says nothing about the settings being bad; it
+says the game walked into something the editor's map does not contain. The crash
+report now names the module an address belongs to (`native/core/faults.c`), so
+the next one says whose bytes those are.
+
+### What one four-player island map found
+
+The map the game was asked for on 07.09 — `S1-2P2-8Z8K2S`, 136x136, underground,
+island water, four players — was the first order in the corpus that was none of
+the things every earlier one had been: not two players, not one floor, not dry.
+Ordered through the console and diffed, it came back **20 of 22 entries
+byte-identical**, and each of the three things it broke was the port's, not the
+engine's.
+
+**`rmg-diff-map` never passed the player count.** `runFull` takes `players` and
+the order records it; the diff tool left it to the chain's default of 2. Four
+zones the engine gave start towns to came back with two owners, and the first
+read of player 3's race threw. Invisible while every map compared was a
+two-player one.
+
+**A water map kept only its surface layers.** `replayTerrain` built the terrain
+layer set from `[gridAtFillTerrain[0]]` when the map had water, which is the
+same array on a one-floor map and one floor short on a two-floor one;
+`paintRoads` then asked for `layers[1]` and got nothing. Water and an underground
+had never been ordered together.
+
+**The point-light colour table had one entry.** An underground Necropolis wears
+four lights at `0.560784, 0.360784, 0.439216`, read off this map. The table grows
+by observation, one faction per reference (`tools/rmg-run.ts`).
+
+**And `<Birds>` is a DRAW, not a setting.** The engine writes
+`<Birds href="/MapObjects/_(AdvMapBirds)/Pigeons_Adv.xdb#xpointer(/AdvMapBirds)"/>`
+on some maps and an empty `<Birds/>` on others, and the port always writes the
+empty one. Four launches say which: same template, same size, with and without
+water, with and without an underground, two players and four — birds every time
+at seed 1788775876, and no birds at seed 987654321. Nothing but the seed moves
+it, and all 22 templates of the one-seed sweep agree with each other, so the pick
+happens early, before the stream has diverged. With the href pasted in, this
+map's `map.xdb` is **byte-identical** — one line is the whole difference.
+
+The last entry is still open: `UndergroundTerrain.bin` differs at **265 vertices,
+which is exactly the two far edges** (x = 135 for y = 3..135 and y = 135 for
+x = 3..135, sharing their corner). The engine has height 36 and ground flag 32
+there where the port has 18 and 16 — a wall the carve leaves standing along the
+last row and column, and the port stops one short of it
+([[one-object-differs-means-a-boundary]]).
+
 ### Two traps in the oracle itself
 
 Both cost a wrong diagnosis before they were named, and neither is about the

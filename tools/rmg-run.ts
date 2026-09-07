@@ -167,6 +167,7 @@ export function runFull(
       // colour table grows one entry per faction a reference has shown.
       const TOWN_LIGHT_COLORS: Record<string, readonly [number, number, number]> = {
         TOWN_FORTRESS: [1, 0.392157, 0.101961],
+        TOWN_NECROMANCY: [0.560784, 0.360784, 0.439216],
       };
       let lights: RunObject['lights'];
       if (t.pointLights) {

@@ -104,9 +104,12 @@ export function replayTerrain(dataRoot: string, run: FullRun): {
   // ALWAYS the FillTerrain-time grid, water or not: the later one has the
   // dist-to-towns pass's -2 over a zone's unreachable tiles, and a vertex whose
   // zone does not resolve is skipped rather than painted.
-  const layers = c.water
-    ? [fillTerrain(c.size, c.size, c.loaded.zones, [c.gridAtFillTerrain[0]!], c.presets, transitive)[0]!]
-    : fillTerrain(c.size, c.size, c.loaded.zones, c.gridAtFillTerrain, c.presets, transitive);
+  // EVERY FLOOR, water or not. The water branch used to keep floor 0 alone,
+  // which was invisible while every water map in the corpus was one-floored and
+  // threw the moment one had an underground: `paintRoads` asks for `layers[f]`.
+  // The two expressions are the same thing on a single-floor map, so this takes
+  // nothing away from what was green.
+  const layers = fillTerrain(c.size, c.size, c.loaded.zones, c.gridAtFillTerrain, c.presets, transitive);
   if (c.water) {
     const deepWaterBottom = c.params.deepWaterBottom ? readTileInfo(dataRoot, c.params.deepWaterBottom) : null;
     const deepWaterTile = c.params.deepWaterTile ? readTileInfo(dataRoot, c.params.deepWaterTile) : null;

@@ -77,6 +77,13 @@ if (monsterStrength < 0) {
 }
 
 const run = runFull(dir, {
+  // THE PLAYERS TOO. This used to leave `players` to the chain's default of 2,
+  // which was invisible for as long as every map compared was a two-player one
+  // and then replayed a four-player order as a two-player map — a zone the
+  // engine gave a start town to came back unowned, and the first thing that
+  // asked for player 3's race threw. The order records it; nothing here should
+  // be guessing it.
+  players,
   seed, template, size, underground, water: water || undefined, monsterStrength,
   resourceMultiplier: order.extras.resourceIndex,
   expMultiplier: order.extras.expIndex,
@@ -150,10 +157,15 @@ console.log(`  ${same} of ${theirs.size} entries byte-identical`);
 // console and came back byte-identical. There is no marker in the file that
 // says "edited", so the check is to generate it again rather than to guess.
 if (same < theirs.size) {
-  const order = `RMG/Templates/${template}.xdb -seed ${seed} -size ${MAP_SIZES.indexOf(size as never)}`
-    + `${underground ? ' -underground 1' : ''}${water ? ` -water ${water}` : ''} -resource 1 -exp 1`;
+  // THE WHOLE ORDER, not a plausible-looking one: this line used to say
+  // `-resource 1 -exp 1` whatever the map was ordered with and to leave the
+  // players and the monster level out entirely, so a person following it
+  // compared a different map and read the difference as a fix that had worked.
+  const again = `RMG/Templates/${template}.xdb -seed ${seed} -size ${MAP_SIZES.indexOf(size as never)}`
+    + ` -players ${players}${underground ? ' -underground 1' : ''}${water ? ` -water ${water}` : ''}`
+    + ` -monsters ${monsterStrength} -resource ${order.extras.resourceIndex} -exp ${order.extras.expIndex}`;
   console.log('  Before reading this as a divergence: a saved map may have been EDITED after');
   console.log('  it was generated, and only the engine can tell you. Order it again —');
-  console.log(`    node tools/rmg-batch.ts --game <dir> --order "${order}"`);
+  console.log(`    node tools/rmg-batch.ts --game <dir> --order "${again}"`);
   console.log('  — and diff THAT. If the fresh one is clean, the saved one was painted on.');
 }
