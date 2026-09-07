@@ -41,6 +41,14 @@ import type { FullRun } from './rmg-run.ts';
 /** The order a map was generated from, plus the two values nobody generates. */
 export interface MapOrder {
   seed: number;
+  /**
+   * The map was made by the GAME's executable, not the editor's.
+   *
+   * Two things follow from it and nothing else does: the two coordinate draws
+   * go into the two axes the other way round (`swapZoneAxes`), and every
+   * decimal is written by a runtime whose x87 rounds toward zero.
+   */
+  gameBuild?: boolean;
   /** The template's name without its path, e.g. `S1P2Z2M1`. */
   template: string;
   players: number;
@@ -226,6 +234,7 @@ export function buildMapFiles(
       name: 'map.xdb',
       data: Buffer.from(buildRmgMapDesc({
         tiles: c.size,
+        truncateFloats: order.gameBuild ?? false,
         twoLevel,
         resourceMultiplier: c.multipliers.resource,
         expMultiplier: c.multipliers.exp,

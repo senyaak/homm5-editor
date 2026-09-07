@@ -113,7 +113,7 @@ const captions = [...theirs.keys()].filter((n) => /^caption-text-\d+\.txt$/.test
 const captionBase = Math.max(0, captions - players);
 if (captionBase) console.log(`  captions: ${captions} documents, so the numbering starts at ${captionBase} (an editor SAVE)`);
 const ours = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), run,
-  { seed, template, players, underground, water, guid, mapName, minimap },
+  { seed, template, players, underground, water, guid, mapName, minimap, gameBuild },
   { captionBase });
 
 const ourNames = new Set(ours.map((f) => f.name));

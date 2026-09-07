@@ -17,6 +17,7 @@
 // Numbers: Rot is the engine's `%g` of the stored f32 — six significant
 // digits, trailing zeros trimmed. Positions are integers.
 
+import { div24, mul24, sub24 } from '../exe/x87.ts';
 import { buildBlankMap } from '../map/blank-map.ts';
 
 const NL = '\r\n';
@@ -35,15 +36,51 @@ const NL = '\r\n';
  * six — still refuses rather than guesses: a rotation is an angle and no run
  * has produced one, so there is nothing to check a reading against.
  */
-export function fmtRot(v: number): string {
+/**
+ * The six digits as the GAME's process produces them.
+ *
+ * `%g` hands the value to the C runtime, and the runtime makes its digits on
+ * the x87 - under a control word whose precision is SINGLE and whose rounding
+ * is TOWARD ZERO, which is what a process with a Direct3D device carries and
+ * what the game's oracle reads at every phase boundary. So the conversion is
+ * not "the exact decimal, cut": every step of it lands on 24 bits and always
+ * the value nearer zero.
+ *
+ * Normalise into [1,10) with one divide, then six times take the leading digit
+ * and step - `mul24(sub24(m, d), 10)` - and the digits come out the game's.
+ * Cutting the exact decimal instead is right for most values and wrong exactly
+ * where the float sits inside an ulp above its own six-digit prefix: it writes
+ * `0.996078` and `0.0627451` where the game writes `0.996077` and `0.062745`.
+ *
+ * Measured, not fitted: of the 511 decimals in the 635 objects a game map and
+ * this port agree on object for object, the exact-decimal cut reproduces 503
+ * and this reproduces **511**.
+ */
+function cut6(f: number): string {
+  const sign = f < 0 ? '-' : '';
+  const a = Math.abs(f);
+  let e = Math.floor(Math.log10(a));
+  let m = e === 0 ? a : div24(a, Math.fround(10 ** e));
+  if (m >= 10) { m = div24(m, 10); e++; }
+  if (m < 1) { m = mul24(m, 10); e--; }
+  let digits = '';
+  for (let i = 0; i < 6; i++) {
+    const d = Math.floor(m);
+    digits += String(d);
+    m = mul24(sub24(m, d), 10);
+  }
+  return `${sign}${digits[0]}.${digits.slice(1)}e${e < 0 ? '-' : '+'}${Math.abs(e)}`;
+}
+
+export function fmtRot(v: number, truncate = false): string {
   const f = Math.fround(v);
   if (f === 0) return '0';
-  const sci = f.toExponential(5);
+  const sci = truncate ? cut6(f) : f.toExponential(5);
   const parts = /^(-?)(\d)(?:\.(\d+))?e([+-]\d+)$/.exec(sci);
   if (!parts) throw new Error(`Rot ${v}: unreadable exponential form ${sci}`);
   const exponent = Number(parts[4]);
   if (exponent >= 6) throw new Error(`Rot ${v} needs %g's large-exponent form — unmeasured`);
-  if (exponent >= -4) return String(Number(f.toPrecision(6)));
+  if (exponent >= -4) return String(Number(truncate ? sci : f.toPrecision(6)));
   const mantissa = (parts[2] + (parts[3] ? `.${parts[3]}` : ''))
     .replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
   const sign = exponent < 0 ? '-' : '+';
@@ -118,7 +155,7 @@ function typeOf(o: EmitObject): string {
 }
 
 /** One object's `<Item>` block, exactly as the engine's serializer writes it. */
-export function renderObject(o: EmitObject): string[] {
+export function renderObject(o: EmitObject, truncate = false): string[] {
   const type = typeOf(o);
   const lights = o.lights?.length
     ? [
@@ -131,9 +168,9 @@ export function renderObject(o: EmitObject): string[] {
           `\t\t\t\t\t\t\t<z>${l.z}</z>`,
           '\t\t\t\t\t\t</Pos>',
           '\t\t\t\t\t\t<Color>',
-          `\t\t\t\t\t\t\t<x>${fmtRot(l.color[0])}</x>`,
-          `\t\t\t\t\t\t\t<y>${fmtRot(l.color[1])}</y>`,
-          `\t\t\t\t\t\t\t<z>${fmtRot(l.color[2])}</z>`,
+          `\t\t\t\t\t\t\t<x>${fmtRot(l.color[0], truncate)}</x>`,
+          `\t\t\t\t\t\t\t<y>${fmtRot(l.color[1], truncate)}</y>`,
+          `\t\t\t\t\t\t\t<z>${fmtRot(l.color[2], truncate)}</z>`,
           '\t\t\t\t\t\t</Color>',
           `\t\t\t\t\t\t<Radius>${l.radius}</Radius>`,
           '\t\t\t\t\t</Item>',
@@ -149,7 +186,7 @@ export function renderObject(o: EmitObject): string[] {
     `\t\t\t\t\t<y>${o.y}</y>`,
     `\t\t\t\t\t<z>${o.z}</z>`,
     '\t\t\t\t</Pos>',
-    `\t\t\t\t<Rot>${fmtRot(o.rot)}</Rot>`,
+    `\t\t\t\t<Rot>${fmtRot(o.rot, truncate)}</Rot>`,
     `\t\t\t\t<Floor>${o.floor}</Floor>`,
     '\t\t\t\t<Name/>',
     '\t\t\t\t<CombatScript/>',
@@ -363,6 +400,18 @@ const MULTIPLIER_NAMES = ['MISERABLE', 'LITTLE', 'NORMAL', 'LOTS', 'MUCH'] as co
 
 export interface RmgMapInput {
   tiles: number;
+  /**
+   * Write every decimal the way the GAME's process does - six significant
+   * digits CUT, not rounded.
+   *
+   * `%g` asks the C runtime to round the seventh digit and the runtime does
+   * that on the x87, so under a control word whose rounding is TOWARD ZERO the
+   * digit is dropped instead. The game's process carries 0x0C7F and the
+   * editor's generator does not, which is why every decimal in a map the GAME
+   * wrote is the value the data holds with its last digit taken off: 0.733332
+   * where the editor writes 0.733333, 4.71238 where it writes 4.71239.
+   */
+  truncateFloats?: boolean;
   /** The order's two multipliers, 0 MISERABLE .. 4 MUCH; both default LITTLE. */
   resourceMultiplier?: number;
   expMultiplier?: number;
@@ -492,7 +541,7 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
   });
 
   // The objects.
-  const items = input.objects.flatMap((o) => renderObject(o));
+  const items = input.objects.flatMap((o) => renderObject(o, input.truncateFloats ?? false));
   text = patch(text, '\t<objects/>', ['\t<objects>', ...items, '\t</objects>'].join(NL));
 
   // The drawn ambient light; a two-level RMG map lights its underground

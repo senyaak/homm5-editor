@@ -2305,10 +2305,39 @@ boundaries that neither of the others does, so its residue is a separate thread.
 The editor corpus is untouched: the option is off by default and the 22 maps
 come back with the same counts they had.
 
-**What is still open** is the rest of a game map. `rmg-diff-map --game-build`
-rebuilds `3223.h5m` to 15 of 23 entries, so the draw stream agrees for eleven
-boundaries and the map still parts somewhere after them. The same kind of
-question, one layer down.
+### How a game map parts, and where
+
+`rmg-diff-map --game-build` rebuilds `3223.h5m` to 15 of 23 entries, and the
+difference splits cleanly into one thing solved and one thing found.
+
+**The decimals were the first difference and are now exact.** `map.xdb` parted
+at byte 644, on `0.733333` against `0.733332` — the writer, not the generator.
+`%g` hands the value to the C runtime and the runtime makes its digits on the
+x87, so under a word whose precision is SINGLE and whose rounding is TOWARD ZERO
+the conversion is not "the exact decimal, cut": every step of it lands on 24 bits
+and always nearer zero. Normalise into `[1,10)` with one divide, then six times
+take the leading digit and step (`mul24(sub24(m, d), 10)`), and the digits come
+out the game's. Cutting the exact decimal instead is right for most values and
+wrong exactly where the float sits within an ulp above its own six-digit prefix.
+
+Measured on the 511 decimals of the 635 objects the two maps agree on object for
+object: **the exact cut reproduces 503, this reproduces 511**. `emit.ts` writes
+it when `truncateFloats` is on, which `--game-build` sets.
+
+**And the objects part at the statics.** The first 635 — every town, mine,
+dwelling, shrine, treasure and guard, on both floors — are identical in type, id
+and position. Number 636 is the first `AdvMapStatic`, on the underground floor, a
+`Crater_12x10`: ours at 58,94 and the game's at 46,154. The ids keep matching
+for a while after, so the draw stream is still in step and it is the placement
+that has moved; the game accepts three of that first crater where the port
+accepts two. Of ~6,300 statics per side only 1,954 positions are shared.
+
+The underground terrain follows from it — 1.7% of the `Dead_Land` mask, in pairs
+two tiles apart, which is what a lake seeded from a different tile looks like.
+
+So the next question is the statics sweep, and the obvious suspect is the same
+kind of coin the zone axes turned out to be: a candidate order or a coordinate
+pair the two builds take the other way round.
 
 ### What one four-player island map found
 
