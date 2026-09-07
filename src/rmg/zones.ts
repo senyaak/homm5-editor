@@ -38,6 +38,8 @@
 // below. Single precision is marked with fround exactly where the code says
 // `ss`; the square roots and the /3.0 are genuinely double.
 
+import { DOUBLES } from './arith.ts';
+import type { Arith } from './arith.ts';
 import type { RmgRandom } from './random.ts';
 
 /** A zone as LoadTemplate leaves it: index, template Size, floor. */
@@ -127,10 +129,13 @@ const SQRT2 = fl(1.41421354); // the constant as the executable spells it
  * precision, the square root and the /3.0 genuinely double, truncated to int.
  * With `twoFloors` the result stretches by the executable's own sqrt(2).
  */
-export function zoneRadius(tiles: number, size: number, sizeSum: number, k: number, twoFloors: boolean): number {
-  const scale = fl(tiles * k);
-  let r = Math.trunc(Math.sqrt(fl(fl(size * scale) / sizeSum)) / 3.0);
-  if (twoFloors) r = Math.trunc(fl(r * SQRT2));
+export function zoneRadius(
+  tiles: number, size: number, sizeSum: number, k: number, twoFloors: boolean,
+  ar: Arith = DOUBLES,
+): number {
+  const scale = ar.store(ar.mul(tiles, k));
+  let r = Math.trunc(ar.div(ar.sqrt(ar.store(ar.div(ar.store(ar.mul(size, scale)), sizeSum))), 3.0));
+  if (twoFloors) r = Math.trunc(ar.store(ar.mul(r, SQRT2)));
   return r;
 }
 
@@ -152,6 +157,7 @@ export function generateGameZones(
   zones: ZoneSeed[],
   twoFloors: boolean,
   rng: RmgRandom,
+  ar: Arith = DOUBLES,
 ): GeneratedZones {
   const floorCount = twoFloors ? 2 : 1;
   const tiles = width * height;
@@ -159,7 +165,7 @@ export function generateGameZones(
   // Accumulated in FLOAT, element order and all — an int sum would be exact
   // where the engine's is rounded.
   let sizeSum = 0;
-  for (const z of zones) sizeSum = fl(sizeSum + fl(z.size));
+  for (const z of zones) sizeSum = ar.store(ar.add(sizeSum, ar.store(z.size)));
 
   // The candidate points, drawn once. below(W) feeds x, below(H) feeds y.
   const n = Math.trunc(tiles / 100);
@@ -190,7 +196,7 @@ export function generateGameZones(
     shuffle();
 
     const r = new Map<ZoneSeed, number>();
-    for (const floor of ordered) for (const z of floor) r.set(z, zoneRadius(tiles, z.size, sizeSum, k, twoFloors));
+    for (const floor of ordered) for (const z of floor) r.set(z, zoneRadius(tiles, z.size, sizeSum, k, twoFloors, ar));
 
     out.length = 0;
     let allPlaced = true;
@@ -208,9 +214,9 @@ export function generateGameZones(
           if (p.y < zr || p.y > height - zr) continue;
           let ok = true;
           for (const other of placedHere) {
-            const dx = fl(other.x - p.x);
-            const dy = fl(other.y - p.y);
-            const d = fl(Math.sqrt(fl(fl(dx * dx) + fl(dy * dy))));
+            const dx = ar.store(ar.sub(other.x, p.x));
+            const dy = ar.store(ar.sub(other.y, p.y));
+            const d = ar.store(ar.sqrt(ar.store(ar.add(ar.store(ar.mul(dx, dx)), ar.store(ar.mul(dy, dy))))));
             if (other.r + zr > d) { ok = false; break; }
           }
           if (ok) { placed = { ...z, x: p.x, y: p.y, r: zr }; break; }
@@ -220,7 +226,7 @@ export function generateGameZones(
     }
 
     const kUsed = k;
-    k = fl(k * K_DECAY); // decays whether or not the pass succeeded
+    k = ar.store(ar.mul(k, K_DECAY)); // decays whether or not the pass succeeded
     if (allPlaced) return { zones: out, passes, k: kUsed };
   }
 }

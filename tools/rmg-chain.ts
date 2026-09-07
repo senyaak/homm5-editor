@@ -4,6 +4,8 @@
 // of this; they now share one, so a new step's test is the step and its
 // assertions, nothing else.
 
+import { arithFor } from '../src/rmg/arith.ts';
+import type { ArithName } from '../src/rmg/arith.ts';
 import { join } from 'node:path';
 
 import { readArmyTemplates } from '../src/rmg/armies.ts';
@@ -130,6 +132,12 @@ export interface ChainOptions {
    * number; "the 13807th draw is in zoneConnections, which starts at 13798"
    * is a place to read, and the difference between the two is this callback.
    */
+  /**
+   * Which machine to compute on — the editor's doubles (the default, and what
+   * every reference map in the corpus was checked against) or the game's
+   * single precision toward zero. See `src/rmg/arith.ts`.
+   */
+  arith?: ArithName;
   onPhase?: (label: string, draws: number) => void;
 }
 
@@ -242,6 +250,8 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   };
 
   const rng = new RmgRandom(options.seed ?? SEED);
+  const ar = arithFor(options.arith);
+  rng.arith = ar;
   if (options.onDraw) rng.onDraw = options.onDraw;
   const phase = (label: string): void => options.onPhase?.(label, rng.draws);
   phase('start');
@@ -261,12 +271,13 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   }, rng);
   phase('loadTemplate');
   const placed = generateGameZones(size, size,
-    loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng);
+    loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng, ar);
   phase('placeZones');
   const filled = fillZones(size, size, placed.zones, made.twoFloors, rng,
     options.jitter || options.candidate || options.areas
       ? { jitter: options.jitter, candidate: options.candidate, areas: options.areas }
-      : undefined);
+      : undefined,
+    ar);
   phase('fillZones');
   // THE ZONE'S `+0xCC`, TAKEN WHERE THE ENGINE TAKES IT. `0xEB7790` — whose
   // one caller is FillZones' own tail at 0xeaa609, right after the grow and

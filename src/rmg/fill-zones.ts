@@ -46,6 +46,8 @@
 // refuses rectangles rather than guess which reading is faithful (see
 // fillZones).
 
+import { DOUBLES } from './arith.ts';
+import type { Arith } from './arith.ts';
 import type { RmgRandom } from './random.ts';
 import { hashMapOrder } from './zones.ts';
 import type { PlacedZone } from './zones.ts';
@@ -178,6 +180,7 @@ export function fillZones(
   twoFloors: boolean,
   rng: RmgRandom,
   spy?: FillZonesSpy,
+  ar: Arith = DOUBLES,
 ): FilledZones {
   const floorCount = twoFloors ? 2 : 1;
   // The engine checks the jitter's 6-tile margin against the dimensions
@@ -208,9 +211,9 @@ export function fillZones(
     for (let a = 0; a < size; a++) {
       for (let b = 0; b < size; b++) {
         for (const z of byFloor[f]!) {
-          const dax = fl(a - Math.trunc(z.x));
-          const dby = fl(b - Math.trunc(z.y));
-          const d = fl(Math.sqrt(fl(fl(dax * dax) + fl(dby * dby))));
+          const dax = ar.store(ar.sub(a, Math.trunc(z.x)));
+          const dby = ar.store(ar.sub(b, Math.trunc(z.y)));
+          const d = ar.store(ar.sqrt(ar.store(ar.add(ar.store(ar.mul(dax, dax)), ar.store(ar.mul(dby, dby))))));
           if (z.r > d) { grid[a]![b] = z.index; break; }
         }
       }
@@ -228,7 +231,7 @@ export function fillZones(
   // areas for all 444 snapshots, and the map is byte-identical on both seeds.
 
   // ---- pass 2: grow and jitter, sweep by sweep ----
-  const sweepLimit = fl(fl(size) * SQRT3);
+  const sweepLimit = ar.store(ar.mul(ar.store(size), SQRT3));
   let sweepsPerFloor = 0;
   let jitterDraws = 0;
   let firstSweepJitterDraws = 0;
@@ -242,7 +245,7 @@ export function fillZones(
     for (const z of byFloor[f]!) counts.set(z.index, 0);
 
     let sweeps = 0;
-    for (let counter = 0; sweepLimit > fl(counter); counter++) {
+    for (let counter = 0; sweepLimit > ar.store(counter); counter++) {
       if (counter % 10 === 0) decades.push({ sweep: counter, draws: rng.draws });
       sweeps++;
       const grow = new HashQueue();
@@ -300,8 +303,10 @@ export function fillZones(
             // Stale on purpose: last sweep's areas. 0/0 is NaN and x/0 is
             // infinity, and a strict comiss says "no" to both — the engine's
             // own way of sitting the first sweep out.
-            const countRatio = (counts.get(zOther.index) ?? 0) / (counts.get(zOwn.index) ?? 0);
-            const sizeRatio = zOther.size / zOwn.size;
+            // Two `fidiv`s and an `fcompp`: nothing rounds to float32 on the
+            // way, but at 0x0C7F the divides themselves land on 24 bits.
+            const countRatio = ar.div(counts.get(zOther.index) ?? 0, counts.get(zOwn.index) ?? 0);
+            const sizeRatio = ar.div(zOther.size, zOwn.size);
             if (sizeRatio > countRatio) {
               spy?.jitter?.(counter, a, b);
               const r = rng.betweenFloat(0, 1);

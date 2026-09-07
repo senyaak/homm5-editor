@@ -2117,6 +2117,52 @@ would stop being right by accident"); it is not — it is the price of the game'
 maps, and it must be a MODE rather than a conversion, because turning it on
 everywhere would break the editor corpus that is currently green.
 
+### Two machines, and what the second one does NOT explain
+
+`src/rmg/arith.ts` makes the generator's arithmetic a choice. `DOUBLES` is what
+every reference map was checked against — the plain operators, with `store`
+being `Math.fround`, which is what every `fl(...)` in this generator already
+meant. `X87` routes the same expressions through `src/exe/x87.ts`: each
+operation lands on 24 bits and always toward zero, and a store truncates
+instead of rounding. `ChainOptions.arith` picks one, the default is `DOUBLES`,
+and the whole 22-map corpus comes back with the same byte counts it had before
+the option existed — the two files that differed still differ by 2702 and 795.
+
+Threading it needed no rewriting, because the port already marks every place
+the engine drops a value into a `float`. `fl(a * b)` becomes
+`store(mul(a, b))`, which is `Math.fround(a * b)` on the first machine and
+`mul24(a, b)` on the second.
+
+**It is wired, it is live, and on the one map the game has given us it changes
+nothing.** That is not a guess — the mode was checked by sabotage:
+
+| asked | answer |
+| --- | --- |
+| `zoneRadius` over 4,050 plausible shapes | **7** differ between the machines |
+| `betweenFloat(0,1)`, 200,000 draws | **96,139** differ |
+| ...and land on opposite sides of FillZones' `0.4` gate | **0** |
+| the map's zone areas, both machines | identical, zone for zone |
+| `fillZones` draws, both machines | 78,287 either way — and the game spent 78,322 |
+
+The third row is the reason for the fourth and fifth: a draw's truncated float
+and its rounded float straddle a constant only when the exact value is within
+an ulp of it, which over a run of this size happens zero times. So the jitter
+takes the same decisions, the grid grows the same way, and the phase costs the
+same number of draws.
+
+**So the game's 35 extra draws in `FillZones` are still unexplained**, and the
+text evidence is weaker than it looked: it proves the game's map WRITER runs
+toward zero, not that its generator does. The editor is the proof that those
+can be two different moments in one process — its generator is at 0x027F and
+its minimap resampler at 0x0C7F. The game's map file is written at the end of
+the run, and the same split would produce exactly what we see.
+
+**The reading that settles it** is one launch: the oracle prints the control
+word at the seed and again wherever it moves, so a map generated in the game
+now says which machine its generator ran on. Until then the mode is built and
+idle, which is the right state for it — it costs nothing and it is ready for
+the map that needs it.
+
 ### What one four-player island map found
 
 The map the game was asked for on 07.09 — `S1-2P2-8Z8K2S`, 136x136, underground,

@@ -42,6 +42,9 @@ const MASK47 = (1n << 47n) - 1n;
  */
 const SCALE = Math.fround(1 / 2 ** 31);
 
+import { DOUBLES } from './arith.ts';
+import type { Arith } from './arith.ts';
+
 /** One float32 and its bits — the hook's union, spelled in JavaScript. */
 const FLOAT_BITS = new Float32Array(1);
 const INT_BITS = new Int32Array(FLOAT_BITS.buffer);
@@ -68,6 +71,17 @@ export class RmgRandom {
 
   /** The seed as the map records it (`sRMGProps/RMGstartseed`). */
   readonly seed: number;
+
+  /**
+   * Which machine the one float draw is computed on.
+   *
+   * `betweenFloat` is the only arithmetic in this class, and it is the most
+   * seed-critical float in the generator: one ulp parted `S3-5P2Z7N2.2` at
+   * draw six. The editor computes it at double precision and rounds once at
+   * the store; a host running at `0x0C7F` rounds every step toward zero
+   * instead. See `arith.ts`.
+   */
+  arith: Arith = DOUBLES;
 
   constructor(seed: number) {
     this.seed = seed | 0;
@@ -169,7 +183,12 @@ export class RmgRandom {
     // next(), so the trace must show ONE 'f', not an 'n' inside an 'f' — the
     // draw is inlined here for the same reason.
     const draw = Number((this.step() >> 23n) & 0x7fffffffn);
-    const value = Math.fround(draw * (b - a) * SCALE + a);
+    // One instruction per step, in the order the disassembly above has them:
+    // `fsub`, `fmulp`, `fmul`, `fadd`, and the caller's store. Under DOUBLES
+    // that is `Math.fround(draw * (b - a) * SCALE + a)` to the bit — the
+    // operations are the plain ones and only the store rounds.
+    const ar = this.arith;
+    const value = ar.store(ar.add(ar.mul(ar.mul(draw, ar.sub(b, a)), SCALE), a));
     if (this.onDraw) {
       FLOAT_BITS[0] = value;
       this.onDraw('f', INT_BITS[0]);
