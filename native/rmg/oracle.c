@@ -671,6 +671,25 @@ static long __cdecl rmg_time_hook(void *arg) {
  * Called once per run, before anything is drawn, so it is also where a run
  * begins as far as the log is concerned and where the boundary count restarts.
  */
+/**
+ * The x87 control word, but only when it has MOVED.
+ *
+ * It is process state and it does not hold still: the same editor reads
+ * 0x027F at the seed hook and 0x0C7F inside the minimap's resampler, so a
+ * single reading at the start of a run says nothing about the mode the middle
+ * of the run computes in. Every boundary asks, and only a change is written,
+ * which makes the log say WHERE it moved instead of how often it was asked.
+ */
+static int g_rmgLastCw = -1;
+
+static void rmg_read_control_word(const char *where) {
+  unsigned short cw = 0;
+  __asm__ __volatile__("fnstcw %0" : "=m"(cw));
+  if ((int)cw == g_rmgLastCw) return;
+  g_rmgLastCw = (int)cw;
+  rmg_log_pair(where, (int)cw, 0);
+}
+
 static void __fastcall rmg_seed_hook(int seed) {
   int i;
   g_rmgReads = 0;
@@ -689,11 +708,8 @@ static void __fastcall rmg_seed_hook(int seed) {
   // off, and every one the EDITOR writes is rounded — 4.71238 against
   // 4.71239 for the same 3*pi/2. If that is this word, it is also why the two
   // draw different numbers of numbers in FillZones.
-  {
-    unsigned short cw = 0;
-    __asm__ __volatile__("fnstcw %0" : "=m"(cw));
-    rmg_log_pair("run x87 control word ", (int)cw, 0);
-  }
+  g_rmgLastCw = -1;
+  rmg_read_control_word("x87 control word ");
   ((SetSeedFn)((BYTE *)GetModuleHandleW(NULL) + g_rmgSetSeedRva))(seed);
 }
 
@@ -707,6 +723,7 @@ static void __fastcall rmg_seed_hook(int seed) {
 static int rmg_counter_hook(void) {
   int value = g_rmgCounter ? g_rmgCounter() : 0;
   rmg_log_pair("phase ", ++g_rmgReads, value);
+  rmg_read_control_word("x87 control word now ");
   // The twelfth boundary is the door of MainObjects, not the end of the run —
   // stopping there is what kept every MainObjects draw out of the log. The
   // narration site that says `temp db destroyed` ends it now; this stays as the

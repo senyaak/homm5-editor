@@ -2082,22 +2082,33 @@ editor's is the value the data itself carries: `RMGPresetTable.xdb` says
 `0.294118`, and pi/2 is 1.5707963.
 
 That is the x87 ROUNDING MODE, and the oracle now reads the control word beside
-the seed on every run, in whichever host it is living in:
+the seed and again at every phase boundary, writing a line only when it MOVES.
 
-    run x87 control word 639          the editor — 0x027F, double precision,
-                                      round to nearest
+**The word is a moment, not a process.** This section first said "the editor is
+0x027F" and that was too coarse: the same editor reads 0x027F at the seed hook
+and 0x0C7F inside the minimap's resampler (the table above, measured earlier).
+Both readings are true, of different moments. What the boundary-by-boundary
+reading settles is the moment that matters here:
 
-0x027F is the compiler's default. The game's is 0x0C7F — bits 8-9 clear (SINGLE
-precision, 24-bit) and bits 10-11 set (round TOWARD ZERO), which is where
-`src/exe/x87.ts` came from in the first place. The next launch of the game will
-print its own word into the same log and confirm it here.
+    run seed 1 0
+    x87 control word 639 0     0x027F — double precision, round to nearest
+    phase 1 … phase 12         and not one line after it: it never moved
 
-**So the two hosts compute differently, not just print differently.** The
-truncated text is only the visible half; the same control word governs every
-float the generator itself evaluates, and that is a full explanation for the 166
-extra draws the game spends in `FillZones` on an order the editor spends fewer
-on. The port matches the EDITOR byte for byte because the port's arithmetic is
-doubles rounded to nearest — which is exactly what the editor does.
+So the EDITOR'S GENERATOR runs the compiler's default from end to end, and the
+editor's minimap does not. That is exactly the division `src/exe/x87.ts` was
+already built along — the minimap speaks 24-bit toward zero, the generator
+doubles — and it is why 136 reference maps came out right on doubles.
+
+**The game's generator has not been read yet.** Its map files say what to
+expect — every float in them is the data's value truncated rather than rounded,
+which is round-toward-zero — and 0x0C7F is what a process with a Direct3D device
+usually carries. The oracle will print it on the next launch, and until it does,
+"the game generates at 0x0C7F" is the hypothesis and not the reading.
+
+If it holds, the two hosts compute differently and not just print differently:
+the same control word governs every float the generator evaluates, which would
+explain the 166 extra draws the game spends in `FillZones` on an order the
+editor spends fewer on.
 
 **What this costs.** Reproducing a map made in the GAME is not a matter of
 finding a missing switch: it needs the generator's arithmetic run in the single
