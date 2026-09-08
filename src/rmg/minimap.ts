@@ -62,7 +62,7 @@
 
 import type { EngineSine } from '../exe/sine-table.ts';
 import { mul24, parse24 } from '../exe/x87.ts';
-import { lanczos3, resampleFiltered, type Bitmap } from './resample.ts';
+import { LANCZOS3_SUPPORT, lanczos3, resampleFiltered, type Bitmap } from './resample.ts';
 import type { TerrainLayer } from './terrain.ts';
 
 /** The side of the picture the `.dds` carries, both axes. */
@@ -226,8 +226,11 @@ export function mergeLayers(terrain: Bitmap, icons: Bitmap): Bitmap {
 
 /** The finished 256x256 picture: both layers resampled, then merged. */
 export function drawMinimap(floor: MinimapFloor, icons: Bitmap, sine: EngineSine): Bitmap {
-  const filter = lanczos3(sine);
-  const terrain = resampleFiltered(drawTerrainLayer(floor), MINIMAP_SIDE, MINIMAP_SIDE, filter);
-  const stamped = resampleFiltered(icons, MINIMAP_SIDE, MINIMAP_SIDE, filter);
+  // The game's build parses its colours its own way AND resamples on doubles
+  // — one flag, since a map is one build's or the other's.
+  const game = floor.gameParse ?? false;
+  const filter = lanczos3(sine, game);
+  const terrain = resampleFiltered(drawTerrainLayer(floor), MINIMAP_SIDE, MINIMAP_SIDE, filter, LANCZOS3_SUPPORT, game);
+  const stamped = resampleFiltered(icons, MINIMAP_SIDE, MINIMAP_SIDE, filter, LANCZOS3_SUPPORT, game);
   return mergeLayers(terrain, stamped);
 }

@@ -45,7 +45,7 @@
 // 3072 of them — is reproduced here exactly.
 
 import { engineSin24, type EngineSine } from '../exe/sine-table.ts';
-import { add24, div24, mul24, sub24 } from '../exe/x87.ts';
+import { add24, div24, mul24, sub24, tr24 } from '../exe/x87.ts';
 
 /** A 32-bit image: four bytes a pixel, in whatever channel order the caller keeps. */
 export interface Bitmap {
@@ -69,7 +69,25 @@ export type Filter = (t: number) => number;
  * under the control word above. The reference minimaps are the editor's
  * output, so this is the editor's.
  */
-export function lanczos3(sine: EngineSine): Filter {
+export function lanczos3(sine: EngineSine, game = false): Filter {
+  if (game) {
+    // THE GAME'S `0x975800`: `a = x * pi` and `b = (x / 3.0) * pi` stay
+    // DOUBLES (`mulsd`, `divsd`), the sine's argument is `cvtsd2ss` of them
+    // (a chop, the same float the editor's `fstp dword` gives), and the two
+    // divides and the final multiply run on the x87 at 24 bits in both builds
+    // — so the weights are 24-bit numbers either way, differing in the last
+    // bit or two through the double `a` and `b`. Read side by side with the
+    // editor's, instruction by instruction.
+    return (t: number): number => {
+      const x = t < 0 ? -t : t;
+      if (x >= LANCZOS3_SUPPORT) return 0;
+      const a = x * Math.PI;
+      const first = a === 0 ? 1 : div24(engineSin24(sine, tr24(a)), a);
+      const b = (x / 3.0) * Math.PI;
+      const second = b === 0 ? 1 : div24(engineSin24(sine, tr24(b)), b);
+      return mul24(second, first);
+    };
+  }
   return (t: number): number => {
     const x = t < 0 ? -t : t;
     if (x >= LANCZOS3_SUPPORT) return 0;
@@ -91,7 +109,33 @@ interface Contribution {
 }
 
 /** The contribution table for one axis, `0x7914A2` and `0x79163F` verbatim. */
-function contributions(dst: number, src: number, filter: Filter, support: number): Contribution[] {
+function contributions(dst: number, src: number, filter: Filter, support: number, game = false): Contribution[] {
+  if (game) {
+    // THE GAME'S `0x9743A0`: `cvtdq2pd` and `divsd` — the ratio, the centres
+    // and the down-scaling steps are doubles and DIVIDE where the editor
+    // multiplies by a 24-bit reciprocal (`0x97479D divsd` against `0x7916CB
+    // fmul`). Read side by side; the weights come out of the same filter.
+    const scale = dst / src;
+    const down = scale < 1;
+    const fscale = down ? 1 / scale : 1;
+    const width = down ? support * fscale : support;
+    const out: Contribution[] = [];
+    for (let i = 0; i < dst; i++) {
+      const center = (i + 0.5) / scale - 0.5;
+      const left = Math.ceil(center - width);
+      const right = Math.floor(center + width);
+      const n = Math.max(0, right - left + 1);
+      const index = new Int32Array(n);
+      const weight = new Float64Array(n);
+      for (let j = left, k = 0; j <= right; j++, k++) {
+        const t = center - j;
+        weight[k] = down ? filter(t / fscale) / fscale : filter(t);
+        index[k] = j < 0 ? -j : j >= src ? 2 * src - j - 1 : j;
+      }
+      out.push({ index, weight });
+    }
+    return out;
+  }
   // `fild` then `fidiv`: the ratio is a float, truncated, like everything else.
   const scale = div24(dst, src);
   const down = scale < 1;
@@ -126,18 +170,34 @@ function toByte(sum: number): number {
   return v < 0 ? 0 : v > 255 ? 255 : v;
 }
 
-/** Resize `src` to `dstW` x `dstH` the way the editor's `0x791330` does. */
+/** The game's: the sum is a double, `addsd 0.5` then `cvttsd2si`, clamped. */
+function toByteGame(sum: number): number {
+  const v = Math.trunc(sum + 0.5);
+  return v < 0 ? 0 : v > 255 ? 255 : v;
+}
+
+/**
+ * Resize `src` to `dstW` x `dstH` the way the editor's `0x791330` does — or,
+ * with `game`, the way the game's `0x9743A0` does: the same taps, weights and
+ * passes, but each tap `cvtdq2pd` the byte, `mulsd` the weight and `addsd`
+ * into a DOUBLE accumulator, where the editor's x87 at 24 bits rounds the
+ * running sum at every step. On a large map that is a handful of pixels
+ * sitting within a rounding's width of a `.5` boundary.
+ */
 export function resampleFiltered(
-  src: Bitmap, dstW: number, dstH: number, filter: Filter, support = LANCZOS3_SUPPORT,
+  src: Bitmap, dstW: number, dstH: number, filter: Filter, support = LANCZOS3_SUPPORT, game = false,
 ): Bitmap {
   if (dstW === src.width && dstH === src.height) {
     return { width: dstW, height: dstH, data: Uint8Array.from(src.data) };
   }
+  const mul = game ? (a: number, b: number) => a * b : mul24;
+  const add = game ? (a: number, b: number) => a + b : add24;
+  const byte = game ? toByteGame : toByte;
 
   // Horizontal: (dst.width x src.height), one source row at a time. Four
   // accumulators, one per channel, each `fild` the byte, `fmul` the weight and
   // `faddp` — so the running sum is rounded at every step, not at the end.
-  const across = contributions(dstW, src.width, filter, support);
+  const across = contributions(dstW, src.width, filter, support, game);
   const mid = new Uint8Array(dstW * src.height * 4);
   for (let y = 0; y < src.height; y++) {
     const row = y * src.width * 4;
@@ -147,21 +207,21 @@ export function resampleFiltered(
       for (let k = 0; k < index.length; k++) {
         const at = row + index[k]! * 4;
         const w = weight[k]!;
-        b = add24(b, mul24(src.data[at]!, w));
-        g = add24(g, mul24(src.data[at + 1]!, w));
-        r = add24(r, mul24(src.data[at + 2]!, w));
-        a = add24(a, mul24(src.data[at + 3]!, w));
+        b = add(b, mul(src.data[at]!, w));
+        g = add(g, mul(src.data[at + 1]!, w));
+        r = add(r, mul(src.data[at + 2]!, w));
+        a = add(a, mul(src.data[at + 3]!, w));
       }
       const to = (y * dstW + x) * 4;
-      mid[to] = toByte(b);
-      mid[to + 1] = toByte(g);
-      mid[to + 2] = toByte(r);
-      mid[to + 3] = toByte(a);
+      mid[to] = byte(b);
+      mid[to + 1] = byte(g);
+      mid[to + 2] = byte(r);
+      mid[to + 3] = byte(a);
     }
   }
 
   // Vertical: the same over the columns of what the first pass wrote.
-  const down = contributions(dstH, src.height, filter, support);
+  const down = contributions(dstH, src.height, filter, support, game);
   const out = new Uint8Array(dstW * dstH * 4);
   for (let x = 0; x < dstW; x++) {
     for (let y = 0; y < dstH; y++) {
@@ -170,16 +230,16 @@ export function resampleFiltered(
       for (let k = 0; k < index.length; k++) {
         const at = (index[k]! * dstW + x) * 4;
         const w = weight[k]!;
-        b = add24(b, mul24(mid[at]!, w));
-        g = add24(g, mul24(mid[at + 1]!, w));
-        r = add24(r, mul24(mid[at + 2]!, w));
-        a = add24(a, mul24(mid[at + 3]!, w));
+        b = add(b, mul(mid[at]!, w));
+        g = add(g, mul(mid[at + 1]!, w));
+        r = add(r, mul(mid[at + 2]!, w));
+        a = add(a, mul(mid[at + 3]!, w));
       }
       const to = (y * dstW + x) * 4;
-      out[to] = toByte(b);
-      out[to + 1] = toByte(g);
-      out[to + 2] = toByte(r);
-      out[to + 3] = toByte(a);
+      out[to] = byte(b);
+      out[to + 1] = byte(g);
+      out[to + 2] = byte(r);
+      out[to + 3] = byte(a);
     }
   }
   return { width: dstW, height: dstH, data: out };
