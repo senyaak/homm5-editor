@@ -5973,3 +5973,23 @@ the hole-tile mean tried and rejected on `IconObject.holes`. The game's seed
 can be forced now (`0x91D03C`, the screen's `_time64`), which is how the
 seed-specific extra towns draw of `ГСК-011` and the two older maps that part
 early will be traced.
+
+**08.09, afternoon: the dwarven underground, half closed.** The three game
+maps that still parted early all had a dwarven underground — the one coin of
+`LoadTemplate` the corpus had never produced, read long ago and never ported.
+With the game's seed forced (the screen's `_time64` at `0x91D03C`) one of them
+replayed in the game with the draw trace on, 505,183 draws as the original.
+Two things closed on it: the dwarven zone's big statics is the carve, a room
+recompute and no draw at all, and its one-tile statics is a lattice torch-
+and-column placer of its own (`CGameDwarvenZone` vt+0x30 `0xEC7090`,
+`placeDwarvenOneTileStatics`) — with both, the stream matches the engine's
+through all four dwarven zones' statics. Two remain, both on that trace: a
+single `below(zones)` between "zones filled in" and the first town, which is
+not in the towns pass (read: no draw there) but in the FillTerrain part that
+runs only under the map's dwarven flag (`byte [map+0x8C]`, `0xED17F0`); and
+the dwarven zone's treasure blocks, where the engine draws a resource kind
+(`below(7)`) after the artifact where the port lays a chest. The trace log
+is kept beside the others (`homm5-editor-rmg-20260908-trace-011-forced.log`);
+`rmg-diff-draws --from game/H5E/L_L_W_2_ГСК-011.h5m --game-build --full`
+names the first of the two, and an extra `below(zones.length)` at the head
+of `placeTowns` aligns the stream to the second.
