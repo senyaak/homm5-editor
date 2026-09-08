@@ -71,6 +71,13 @@ export interface MapOrder {
     /** A hero picked in the dialog rather than left to the generator. */
     startHeroes: string[];
   };
+  /**
+   * The `<Birds>` href, when the map has one. The generator decides it outside
+   * its draw stream (two full traces from the game match the port draw for
+   * draw and the line still comes and goes), so it is carried with the order
+   * the way the GUID is — a value the process made, not one to rebuild.
+   */
+  birds?: string;
 }
 
 /**
@@ -162,6 +169,7 @@ export function readOrder(path: string): { order: MapOrder; files: Map<string, B
       water, waterName, monster,
       underground: /<HasUnderground>true</.test(text),
       minimap: !/<Minimap>false</.test(text),
+      birds: /<Birds href="([^"]+)"/.exec(text)?.[1],
       extras: {
         resource: /<ResourceMultiplier>(\w+)</.exec(text)?.[1] ?? '',
         exp: /<ExpMultiplier>(\w+)</.exec(text)?.[1] ?? '',

@@ -50,6 +50,13 @@ export interface MapOrder {
    * decimal is written by a runtime whose x87 rounds toward zero.
    */
   gameBuild?: boolean;
+  /**
+   * The `<Birds>` href the map carries, when it carries one. The generator
+   * decides it outside its own draw stream — two full traces from the game
+   * match the port draw for draw and the line still comes and goes — so, like
+   * the GUID, it is a value the process made and the order carries as it is.
+   */
+  birds?: string;
   /** The template's name without its path, e.g. `S1P2Z2M1`. */
   template: string;
   players: number;
@@ -173,11 +180,15 @@ function minimapFiles(
   for (const o of run.objects) {
     if (o.floor !== floor || !o.shared) continue;
     const docPath = o.shared.split('#')[0]!.replace(/^\//, '');
-    const docType = /<Type>(\w+)<\/Type>/.exec(readFileSync(join(dataRoot, docPath), 'utf8'))?.[1] ?? '';
+    const docText = readFileSync(join(dataRoot, docPath), 'utf8');
+    const docType = /<Type>(\w+)<\/Type>/.exec(docText)?.[1] ?? '';
     const name = iconNameFor(o.shared, o.town?.playerId ?? 0, docType);
     if (!name) continue;
     const foot = c.footprint(o.shared);
-    iconObjects.push({ x: o.x, y: o.y, rot: o.rot, blocked: foot.blocked, active: foot.active, name });
+    // The hole tiles too — the anchor's mean runs over them (`IconObject.holes`).
+    const holes = [...(/<holeTiles>([\s\S]*?)<\/holeTiles>/.exec(docText)?.[1] ?? '')
+      .matchAll(/<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/g)].map((m) => [Number(m[1]), Number(m[2])] as const);
+    iconObjects.push({ x: o.x, y: o.y, rot: o.rot, blocked: foot.blocked, active: foot.active, holes, name });
   }
   // The drawer drains its three lists one after another, so the gates go over
   // the flaggable ones wherever they share a pixel. `sort` is stable, which
@@ -249,6 +260,7 @@ export function buildMapFiles(
       data: Buffer.from(buildRmgMapDesc({
         tiles: c.size,
         truncateFloats: order.gameBuild ?? false,
+        birds: order.birds,
         twoLevel,
         resourceMultiplier: c.multipliers.resource,
         expMultiplier: c.multipliers.exp,

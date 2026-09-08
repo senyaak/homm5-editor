@@ -62,6 +62,15 @@ export interface IconObject {
   blocked: readonly Offset[];
   /** Its `activeTiles`, unrotated — the anchor averages both together. */
   active: readonly Offset[];
+  /**
+   * Its `holeTiles`, unrotated — NOT averaged in: tried, and it moves the
+   * mines of every game map off their pixels. Kept on the object for the one
+   * case that is still open: a medium game map's Fairie Tree (five blocked,
+   * three holes, one active, anchor exactly 192) drawn one pixel left of
+   * where blocked-and-active put it, while a large map's mine with the same
+   * exact-192 anchor stands where the port puts it.
+   */
+  holes?: readonly Offset[];
   /** The looked-up name, `Town_1` / `Mine_0` / `Object_0` / `UnderworldExitEnter`. */
   name: string;
 }

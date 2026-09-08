@@ -443,6 +443,13 @@ export interface RmgMapInput {
    * where the editor writes 0.733333, 4.71238 where it writes 4.71239.
    */
   truncateFloats?: boolean;
+  /**
+   * The `<Birds>` href, when the map has one. Not the generator's to decide
+   * from its seed — two full draw traces from the game match the port to the
+   * last draw and the line still comes and goes — so it is carried in with
+   * the order, the way the GUID is, and written as the value it was.
+   */
+  birds?: string;
   /** The order's two multipliers, 0 MISERABLE .. 4 MUCH; both default LITTLE. */
   resourceMultiplier?: number;
   expMultiplier?: number;
@@ -688,6 +695,8 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
     `\t\t\t<ResourceMultiplier>RESOURCE_${rung(input.resourceMultiplier ?? 1)}</ResourceMultiplier>`);
   text = patch(text, '\t\t\t<ExpMultiplier>EXP_MISERABLE</ExpMultiplier>',
     `\t\t\t<ExpMultiplier>EXP_${rung(input.expMultiplier ?? 1)}</ExpMultiplier>`);
+
+  if (input.birds) text = patch(text, '\t<Birds/>', `\t<Birds href="${input.birds}"/>`);
 
   // The dialogs camera.
   const cam = input.camera ?? (input.truncateFloats ? RMG_CAMERA_GAME : RMG_CAMERA);
