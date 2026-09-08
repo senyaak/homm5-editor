@@ -66,7 +66,7 @@ export interface ZoneTeleportsInput {
   grid: Int32Array[];
   border: Int32Array[];
   /** MUTATED: the teleport's stamp marks 2 and 4; the guard marks nothing. */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   /** MUTATED: the stamp's 4s join the zone's room points (`zone+0x68`). */
   points: Tile[];
   /** MUTATED when carried: stamped-blocked tiles join the zone's `+0x5C` ledger. */

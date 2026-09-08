@@ -143,7 +143,7 @@ export function paintRoads(
   layers: TerrainLayer[],
   size: number,
   grid: Int32Array[],
-  occupancy: Uint8Array,
+  occupancy: Int32Array,
   zones: RoadPaintZone[],
 ): void {
   const v = size + 1;

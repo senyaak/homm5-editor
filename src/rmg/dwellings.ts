@@ -52,7 +52,7 @@ export interface DwellingStepInput {
   grid: Int32Array[];
   border: Int32Array[];
   /** MUTATED: the stamp marks 2 and 4 the way the engine does. */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   /** MUTATED: the zone's stamped points — what the room is measured from. */
   points: Tile[];
   /** MUTATED when carried: stamped-blocked tiles join the zone's `+0x5C` ledger. */

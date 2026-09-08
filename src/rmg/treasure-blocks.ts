@@ -59,7 +59,7 @@ export interface TreasureBlock {
 export interface BuildBlocksInput {
   size: number;
   /** The zone grid is not read by this phase — occupancy and room are. */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   /** The room grid AFTER `0xEC28E0(0x38, 0)`: distance to the nearest road. */
   room: Int32Array[];
   /** `zone+0xCC` — every tile of the zone, in FillZones' scan order. */
@@ -231,7 +231,7 @@ export interface PlacedTreasure {
 export interface FillBlocksInput {
   size: number;
   /** Read for the guard's facing only — this phase stamps nothing. */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   blocks: TreasureBlock[];
   /** The distributor's `+0x70`, in ascending id order. */
   artifacts: readonly ArtifactEntry[];

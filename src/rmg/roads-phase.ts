@@ -50,7 +50,7 @@ export interface RoadsPhaseZoneInput {
   grid: Int32Array[];
   border: Int32Array[];
   /** MUTATED: 0x08/0x10 are OR'd along the walks. */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   zoneIndex: number;
   /** `zone+0xC` under the `zone+0xF8` flag — the town ENTRY, else null. */
   townEntry: Tile | null;

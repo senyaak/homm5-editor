@@ -133,7 +133,7 @@ export interface BigStaticsInput {
   grid: Int32Array[];
   border: Int32Array[];
   /** MUTATED: stamps, lake seeds (2), lake blobs (0x80). */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   /** MUTATED IN PLACE — the level's persistent room grid. */
   room: Int32Array[];
   /** MUTATED: stamped actives join the zone's `+0x68` points. */

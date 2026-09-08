@@ -5993,3 +5993,48 @@ is kept beside the others (`homm5-editor-rmg-20260908-trace-011-forced.log`);
 `rmg-diff-draws --from game/H5E/L_L_W_2_ГСК-011.h5m --game-build --full`
 names the first of the two, and an extra `below(zones.length)` at the head
 of `placeTowns` aligns the stream to the second.
+
+**08.09, evening: the dwarven underground's draws, closed.** Both of the two
+that were left came off the same forced-seed trace, and neither was where the
+log said it was.
+
+The first was the FillTerrain pre-step, and the log could not have named it:
+GenerateMap gates it on the dwarven coin (`cmp byte ptr [ecx+8Ch],0` at
+0xEABA09) and 0xED17F0 runs 0xEB2A20 on the level's SECOND floor, present only
+when the floor vector holds two (`end - begin >= 0x240`, entries of 0x120). The
+draw is `mov ecx,8; call 0xEB13E0` — the literal 8 of 0xEB2A25, smeared as
+`8 + below(8)` over a `(w/3+1)x(h/3+1)` coarse grid — and the traced map has
+eight zones, so a limit of 8 in the log reads equally well as `below(zones)`.
+The port had the function (`dwarvenCoarse`) and had never called it; it is
+called now, from the chain between `calcBorderTiles` and `placeTowns`.
+
+The second was not a treasure-block rule at all. The engine's block at seed
+(3,55) grew TWO points and the port's grew three, and with three the value per
+point fell under 2 — so the port laid a chest where the engine drew a resource
+kind, and the missing `below(7)` was the shape of the difference, not its
+cause. The extra point was (2,56), and it passed the growth's "at least two
+footprints around it" on tiles at x = 1, which carry no object at all in the
+game's map. Those tiles are the dwarven rock mask's: 0xEC7225 sets `0x40` AND
+`0x400` on them, and the massif carve of the NEXT dwarven zone converts a tile
+reading EXACTLY `0x40` into a footprint (`cmp dword ptr [eax+ecx*4],40h`,
+0xED162A). The port's occupancy was a BYTE, the `0x400` fell off it, and the
+carve claimed tiles the engine leaves alone. The grid is an `Int32Array` now —
+which is what the engine has, `or dword ptr [eax+ebx*4],400h` — the mask sets
+both bits, the marked list is taken by `0x400`, and the deep columns are
+`2 | 0x400`. `tools/test-rmg-underground.ts` holds the two values apart
+without any game data, and reddens when either half is undone.
+
+With those, `ГСК-011` matches the game **draw for draw, all 505,183 of them**,
+and its `map.xdb` — 9,943 objects — is byte-identical. Eighteen of its twenty
+entries are; the two that are not, `UndergroundTerrain.bin` and
+`minimap_floor_02.dds`, are the same two on `ГСК-004` and `ГСК-015` and on no
+other map, and all three of those are the dwarven ones. Over the twelve game
+maps the checkout holds: seven byte-identical in every entry, those three at
+18 of 20, `ГСК-007` at 19 (the Fairie Tree icon, unchanged), and the old
+`ГСК-001` at 14 of 17 — measured again with the change stashed, so it is
+where it already was. The underground
+terrain file is 438,392 bytes against the game's 467,195 and parts at byte 7,
+so the dwarven cave floor is painted from something FillTerrain's port does
+not read yet — the pre-step's coarse grid is the obvious candidate, since it
+is per-floor state (`+0x78`/`+0x7C` of the 0x120-byte floor) that nothing in
+the port consumes. That is where the next session starts.

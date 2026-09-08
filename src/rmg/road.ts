@@ -94,7 +94,7 @@ export interface RoadInput {
   grid: Int32Array[];
   border: Int32Array[];
   /** MUTATED: the kind bit is OR'd along the walk. */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   zoneIndex: number;
   /** The zone's `+0x68` points in PUSH order — towns, passages, stamps. */
   points: Tile[];

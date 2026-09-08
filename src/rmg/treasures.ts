@@ -66,7 +66,7 @@ interface ZoneContext {
   size: number;
   grid: Int32Array[];
   border: Int32Array[];
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   points: Tile[];
   /** MUTATED when carried: stamped-blocked tiles join the zone's `+0x5C` ledger. */
   blocked?: Tile[];

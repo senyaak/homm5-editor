@@ -145,7 +145,7 @@ if (!dumped.length && !lists.size) process.exit(2);
 // ---------------------------------------------------------------- the port
 
 /** The four grids per floor, copied at the boundary — the run moves on after. */
-interface Snapshot { grid: Int32Array[]; border: Int32Array[]; occ: Uint8Array; room: Int32Array[] }
+interface Snapshot { grid: Int32Array[]; border: Int32Array[]; occ: Int32Array; room: Int32Array[] }
 let snapshot: Snapshot[] | null = null;
 let drawsAt = -1;
 const run = runFull(dataDir(), options, (label, draws, chain) => {
@@ -154,7 +154,7 @@ const run = runFull(dataDir(), options, (label, draws, chain) => {
   snapshot = chain.floors.map((f) => ({
     grid: f.grid.map((r) => Int32Array.from(r)),
     border: f.border.map((r) => Int32Array.from(r)),
-    occ: Uint8Array.from(f.occ),
+    occ: Int32Array.from(f.occ),
     room: f.room.map((r) => Int32Array.from(r)),
   }));
 });

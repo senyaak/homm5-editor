@@ -138,7 +138,7 @@ function smoothCell(size: number, h: VertexHeights, u0: number, v0: number, ar: 
 
 /** `0xED11D0` — the carve itself. Mutates occupancy and both height grids. */
 export function carveMassif(
-  size: number, occupancy: Uint8Array, heights: VertexHeights, ar: Arith = DOUBLES,
+  size: number, occupancy: Int32Array, heights: VertexHeights, ar: Arith = DOUBLES,
 ): void {
   const w = size + 1;
   const q = Math.trunc(size / 3) - 1;

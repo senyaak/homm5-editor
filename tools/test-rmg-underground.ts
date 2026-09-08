@@ -20,12 +20,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { createVertexHeights } from '../src/rmg/massif-carve.ts';
+import { carveMassif, createVertexHeights } from '../src/rmg/massif-carve.ts';
 import { recomputeRoom } from '../src/rmg/placement.ts';
-import type { Tile } from '../src/rmg/placement.ts';
+import { RmgRandom } from '../src/rmg/random.ts';
+import type { Footprint, Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
 import { LIGHT_NAMES, placeZoneBigStatics } from '../src/rmg/statics-big.ts';
-import { placeZoneOneTileStatics, placeSubterraOneTileStatics } from '../src/rmg/statics-one-tile.ts';
+import { placeDwarvenOneTileStatics, placeZoneOneTileStatics, placeSubterraOneTileStatics } from '../src/rmg/statics-one-tile.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { RACE_BY_NAME } from '../src/rmg/load-template.ts';
 import { readArtifacts, rmgArtifactPool } from '../src/rmg/artifacts.ts';
@@ -40,6 +41,59 @@ let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
   console.log(`  ${ok ? 'ok  ' : 'FAIL'}  ${name}${detail ? ' — ' + detail : ''}`);
   if (!ok) failures++;
+}
+
+// --------------------------------------------- the dwarven zone's own bit
+// The dwarven one-tile pass marks its rock and frame tiles with TWO bits —
+// `or dword ptr [eax+ebx*4],40h` then `or ...,400h` at 0xEC7225 — and the
+// massif carve of the NEXT dwarven zone converts a tile reading EXACTLY 0x40
+// into a footprint (`cmp dword ptr [eax+ecx*4],40h`, 0xED162A). Held in a
+// byte the 0x400 is lost, the marked tile reads 0x40, and the carve gives it
+// a footprint the engine never has: on `ГСК-011` that put a third point into
+// a treasure block the game grew with two. So the grid is 32 bits wide, and
+// this holds the two values apart without any game data.
+{
+  const size = 12;
+  const occ = new Int32Array(size * size);
+  const marked = 4 * size + 4;
+  const plain = 4 * size + 5;
+  occ[marked] = 0x40 | 0x400;
+  occ[plain] = 0x40;
+  // A footprint inside every 9x9 window this size admits, so the carve stamps
+  // nothing of its own and only its conversion pass is under test.
+  occ[7 * size + 7] = 2;
+  carveMassif(size, occ, createVertexHeights(size, 1));
+  check('the dwarven rock mask survives the massif carve', occ[marked] === (0x40 | 0x400),
+    `0x${occ[marked]!.toString(16)}`);
+  check('a bare 0x40 is the carve patch itself, and still becomes a footprint', occ[plain] === 2,
+    `0x${occ[plain]!.toString(16)}`);
+}
+
+// And the mark itself, from the pass that writes it. Run over a bare level of
+// its own, the pass marks the rock and the frame and stands its columns on
+// what is left; what matters here is that nothing it touched is left reading
+// EXACTLY 0x40, which is the value the carve claims for its own patch.
+{
+  const size = 24;
+  const occ = new Int32Array(size * size);
+  const rows = (v: number): Int32Array[] =>
+    Array.from({ length: size }, () => new Int32Array(size).fill(v));
+  const column = (path: string): Footprint => ({ path, blocked: [], active: [], marker: [0, 0] });
+  const tiles: Tile[] = [];
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) tiles.push([x, y]);
+  placeDwarvenOneTileStatics({
+    size, grid: rows(1), border: rows(0), occupancy: occ, room: rows(0),
+    points: [], zoneIndex: 1, roads: [], tiles,
+    smallBlockers: [column('Torch')], smallNonblockers: [],
+    bigObjects: [column('Dwarf_Column'), column('Dwarf_Column2')], mapAngle: 0,
+    vertexHeights: createVertexHeights(size, 1),
+    pointLight: { zMin: 0, zMax: 1, lightRadiusMin: 0, lightRadiusMax: 1 },
+    lightNames: [],
+  }, new RmgRandom(1));
+  const both = [...occ].filter((v) => v === (0x40 | 0x400)).length;
+  const bare = [...occ].filter((v) => v === 0x40).length;
+  check('the dwarven pass marks its rock with both 0x40 and 0x400', both > 0, `${both} tiles`);
+  check('and leaves nothing reading the carve’s bare 0x40', bare === 0, `${bare} tiles`);
 }
 
 const dir = dataDir();

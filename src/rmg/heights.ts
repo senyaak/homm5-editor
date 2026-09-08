@@ -170,7 +170,7 @@ export interface HeightObject {
 export interface HeightsInput {
   size: number;
   /** Floor 0 tile grids, the port's own layout (rows literal to the engine). */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   border: Int32Array[];
   /** The zone ids, indexed like `border`. */
   grid: Int32Array[];
@@ -289,7 +289,7 @@ export function baseField(h: HeightPlane, input: HeightsInput, ar: Arith = DOUBL
  * the smoothing mask.
  */
 export function lakeDents(
-  h: HeightPlane, mask: Uint8Array, occupancy: Uint8Array, size: number, ar: Arith = DOUBLES,
+  h: HeightPlane, mask: Uint8Array, occupancy: Int32Array, size: number, ar: Arith = DOUBLES,
 ): void {
   for (let o = 0; o < size; o++) {
     for (let n = 0; n < size; n++) {
@@ -596,7 +596,7 @@ function setToMin(
  * minimum minus 0.1. The sweep order fixes the member list, which fixes
  * nothing arithmetic here (min is order-blind) but is copied anyway.
  */
-export function lakeFlatten(h: HeightPlane, occupancy: Uint8Array, size: number, ar: Arith = DOUBLES): void {
+export function lakeFlatten(h: HeightPlane, occupancy: Int32Array, size: number, ar: Arith = DOUBLES): void {
   const ids = new Int32Array(size * size);
   const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [
     [0, -1], [1, 0], [0, 1], [-1, 0], [-1, -1], [1, -1], [1, 1], [-1, 1],

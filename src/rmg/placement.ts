@@ -117,7 +117,7 @@ export function filterByRoom(
   room: Int32Array[],
   grid: Int32Array[],
   border: Int32Array[],
-  occupancy: Uint8Array,
+  occupancy: Int32Array,
   size: number,
   zoneIndex: number,
   divisor: number,
@@ -195,7 +195,7 @@ export interface FitContext {
   size: number;
   grid: Int32Array[];
   border: Int32Array[];
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   zoneIndex: number;
   /** The zone's floor — floor 1 adds the five-tile margin (0xEC365D). */
   floor?: number;
@@ -290,7 +290,7 @@ export function tryPlace(
 export interface StampContext {
   size: number;
   /** MUTATED: blocked tiles mark 2, active tiles and the marker mark 4. */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   /** MUTATED: the tiles marked 4 join the zone's room points. */
   points: Tile[];
   /**

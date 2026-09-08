@@ -53,7 +53,7 @@ import { readTownShared, readTownSpecializations } from '../src/rmg/town-data.ts
 import type { TownShared } from '../src/rmg/town-data.ts';
 import { placeTowns } from '../src/rmg/towns.ts';
 import type { TownsResult } from '../src/rmg/towns.ts';
-import { makeRiverPlane, stampZoneSeaRiver } from '../src/rmg/terrain.ts';
+import { dwarvenCoarse, makeRiverPlane, stampZoneSeaRiver } from '../src/rmg/terrain.ts';
 import type { RiverPlane } from '../src/rmg/terrain.ts';
 import { carveWaterBorder, placeWaterTreasures, waterDepth } from '../src/rmg/water-border.ts';
 import type { PlacedWaterTreasure, WaterMark } from '../src/rmg/water-border.ts';
@@ -220,11 +220,11 @@ export interface Chain {
    */
   gridAtFillTerrain: Int32Array[][];
   /** Per floor: the zone grid, border table, occupancy and room grid. */
-  floors: Array<{ grid: Int32Array[]; border: Int32Array[]; occ: Uint8Array; room: Int32Array[] }>;
+  floors: Array<{ grid: Int32Array[]; border: Int32Array[]; occ: Int32Array; room: Int32Array[] }>;
   /** Floor 0's zone grid, border table and occupancy. */
   grid: Int32Array[];
   border: Int32Array[];
-  occ: Uint8Array;
+  occ: Int32Array;
   /**
    * Floor 0's PERSISTENT room grid (`level+0xF4`): every step recomputes
    * its own zone's tiles in place and the rest keep their stale values —
@@ -322,6 +322,15 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     zoneLists.set(z.index, zoneTiles(size, filled.floors[z.floor] ?? filled.floors[0]!, z.index));
   }
   const distances = calcBorderTiles(size, size, filled.floors);
+  // THE DWARVEN PRE-STEP, which is FillTerrain's first half. GenerateMap at
+  // 0xEABA15 gates it on `byte [map+0x8C]` - the dwarven-underground coin -
+  // and calls 0xED17F0, which runs 0xEB2A20 on the SECOND floor and only when
+  // the level vector holds one (`end - begin >= 0x240`, two 0x120 entries).
+  // That is one draw, `8 + below(8)`, smeared over a (w/3+1)x(h/3+1) coarse
+  // grid nothing else in the chain reads. The limit is the literal 8 of
+  // `mov ecx,8` at 0xEB2A25 - on the traced map the zone count was 8 too, and
+  // the log alone could not tell the two apart.
+  if (setup.dwarvenUnderground && made.twoFloors) dwarvenCoarse(rng);
   // FILLTERRAIN RUNS HERE, between CalcBorderTiles and PlaceTowns, so its
   // vertex walk sees the grid as it stands at this moment. Two later passes
   // dent it - FillDistToTowns writes -2 over a zone's unreachable tiles, the

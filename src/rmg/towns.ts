@@ -119,7 +119,7 @@ export interface TownsResult {
    */
   centres: Map<number, { a: number; b: number }>;
   /** Per floor: 0 free, 2 under a building's blocked tiles, 4 under the rest. */
-  occupancy: Uint8Array[];
+  occupancy: Int32Array[];
   /**
    * Per zone index, the tiles marked 4 in MARK order — the town's active
    * tiles rotated, then the possession marker. This is the head of the
@@ -198,7 +198,14 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
   const { creatures, basicLeverGuardPower, monsterStrength } = input;
   const objects: PlacedObject[] = [];
   const centres = new Map<number, { a: number; b: number }>();
-  const occupancy = floors.map(() => new Uint8Array(size * size));
+  // A DWORD PER TILE, as the engine has it (`or dword ptr [eax+ebx*4],400h`
+  // in the dwarven one-tile pass, `cmp dword ptr [eax+ecx*4],40h` in the
+  // massif carve). A byte would fit every bit the surface phases use, and it
+  // did until the dwarven underground: its rock mask sets 0x40 AND 0x400, and
+  // in a byte the second is lost - which leaves a tile reading exactly 0x40,
+  // the very value the next zone's massif carve turns into a footprint. The
+  // engine's tile reads 0x440 there and is left alone.
+  const occupancy = floors.map(() => new Int32Array(size * size));
   const stamped = new Map<number, Array<[number, number]>>();
   const stampedBlocked = new Map<number, Array<[number, number]>>();
   const byIndex = new Map(zones.map((z) => [z.index, z]));

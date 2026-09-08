@@ -60,7 +60,7 @@ export interface ShipyardInput {
   grid: Int32Array[];
   border: Int32Array[];
   /** MUTATED: the stamp's 2s, the guard's 4, and the 5x5 halo of 1s. */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   /** The floor's persistent room grid — recomputed here (0xEC28E0 mask 4). */
   room: Int32Array[];
   /**

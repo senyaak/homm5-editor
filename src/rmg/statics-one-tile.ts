@@ -54,7 +54,7 @@ export interface OneTileStaticsInput {
   grid: Int32Array[];
   border: Int32Array[];
   /** MUTATED: 2 under blockers and big objects, 1 under nonblockers. */
-  occupancy: Uint8Array;
+  occupancy: Int32Array;
   /** MUTATED IN PLACE — the level's persistent room grid. */
   room: Int32Array[];
   /** The zone's `+0x68` points — read by the recompute only. */
@@ -398,8 +398,9 @@ export function placeSubterraOneTileStatics(
 //   A. the rock/edge mask, over the whole LEVEL: a tile whose three corners
 //      (x,y), (x,y+1), (x+1,y) of the byte vertex grid are all != 0x10, or
 //      with y < 2, x < 2, y > 3*floor((size-1)/3) or x > the same, gets
-//      occupancy |= 0x40 and |= 0x400 (0x40 stands for both here — the
-//      port's occupancy is a byte, and this function never tells them apart).
+//      occupancy |= 0x40 and |= 0x400 — TWO bits, and they have to stay two:
+//      a tile left at exactly 0x40 is the value the next zone's massif carve
+//      turns into a footprint, and the engine's 0x440 is not that value.
 //   recomputeRoom(0x400, all=1): room = trunc(distance to the nearest marked
 //      tile), over the whole level.
 //   B. over the zone's tiles, room == 1 -> list A, room == 2 -> list B.
@@ -438,11 +439,11 @@ export function placeDwarvenOneTileStatics(
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const rock3 = y < size - 1 && V(x, y) !== 0x10 && V(x, y + 1) !== 0x10 && V(x + 1, y) !== 0x10;
-      if (rock3 || y < 2 || x < 2 || y > fence || x > fence) occupancy[y * size + x] = occupancy[y * size + x]! | 0x40;
+      if (rock3 || y < 2 || x < 2 || y > fence || x > fence) occupancy[y * size + x] = occupancy[y * size + x]! | 0x40 | 0x400;
     }
   }
   const marked: Tile[] = [];
-  for (const [x, y] of input.tiles) if ((occupancy[y * size + x]! & 0x40) !== 0) marked.push([x, y]);
+  for (const [x, y] of input.tiles) if ((occupancy[y * size + x]! & 0x400) !== 0) marked.push([x, y]);
   recomputeRoom(room, size, grid, zoneIndex, marked, true);
 
   // B. The two rings hugging the walls.
@@ -501,7 +502,7 @@ export function placeDwarvenOneTileStatics(
   // 3. Every deep tile takes the reserved column, no draw for the choice.
   for (const t of listC) {
     if (!input.bigObjects.length) throw new Error('dwarven one-tile statics: OneTileBigObjects empty — the engine reads past its end');
-    create(input.bigObjects[0]!, t, 2 | 0x40, false);
+    create(input.bigObjects[0]!, t, 2 | 0x400, false);
   }
   // 4. The room-2 tiles, spaced, from the torches but the last.
   for (const t of listD) {
