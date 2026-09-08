@@ -250,12 +250,16 @@ export function baseField(h: HeightPlane, input: HeightsInput, ar: Arith = DOUBL
         let p = Math.cos(ar.div(o, 13)) * A;
         p = p * B;
         p = Math.sin(ar.div(o, 29)) * p;
-        // MEASURED, not read: against the game's own stage-0 plane a divide
-        // by 0.15 leaves 259 vertices one ulp off, the multiply by the f32
-        // reciprocal 6.6666665 fixes 128 of them and breaks none, and no
-        // other rounding in a grid of 96 does better — so the constant the
-        // disassembly was read as `0.15` is the reciprocal after all.
-        val = p * SCALE;
+        // THE CONSTANT IS THE FLOAT 0.15, PROMOTED: `divsd xmm1,[0F4C7B0h]`
+        // divides by 0.15000000596046448, which is `(double)0.15f` and not the
+        // double 0.15 — and that one bit is 109 vertices of a large map. A
+        // divide by the double 0.15 left 259 one ulp off, the f32 reciprocal
+        // multiply 109, this 0 of 31,329 (`_tmp/base-grid3`, against the
+        // game's own stage-0 plane). The CRT's sin and cos, for their part,
+        // are `fsin`/`fcos` at 53 bits round-to-nearest whatever MXCSR says —
+        // ucrtbase falls back to the x87 under a non-default rounding mode —
+        // so `Math.sin`/`Math.cos` are the right reading of them.
+        val = p / fl(0.15);
         val = val + dterm;
         val = val + 12.0;
       } else {
