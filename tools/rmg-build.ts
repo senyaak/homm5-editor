@@ -198,7 +198,7 @@ function minimapFiles(
       && !bigWaterCovers(layers, dim, tx, ty);
   };
   const image = drawMinimap(
-    { side, border, layers, dim, masked: (tx, ty) => mask[ty * side + tx] === 1, spared, flags },
+    { side, border, layers, dim, masked: (tx, ty) => mask[ty * side + tx] === 1, spared, flags, gameParse: gameBuild },
     drawIconLayer(iconObjects, icons, side, border), sine);
   // The port keeps the engine's byte order; writeDDS takes RGBA and stores BGRA.
   const rgba = new Uint8Array(image.data.length);
@@ -209,11 +209,9 @@ function minimapFiles(
   // `1/255` in either build (read instruction by instruction: the resample's
   // codegen differences move no byte); the round trip sits past them, where
   // the game's writer hands the image to its texture layer and the editor's
-  // does not. Fitted to the bytes, not read: it makes the underground floor's
-  // file byte-identical and the surface floor's 56,646 of 65,536 pixels, with
-  // the rest one lower in red or green on the game's side — NOT the tile
-  // colours' parse (every model of it tried made the count worse, and blue is
-  // exact), so something the surface floor has and the underground does not.
+  // does not. Fitted to the bytes, not read. With the game's own parse of the
+  // tile colours on top (`MinimapFloor.gameParse`) a large map's two floors
+  // come to 65,532 and 65,535 of 65,536 pixels.
   const roundTrip = (v: number): number => Math.trunc(tr24(v / 255) * 255);
   for (let i = 0; i < rgba.length; i += 4) {
     rgba[i] = image.data[i + 2]!;

@@ -17,7 +17,7 @@
 // Numbers: Rot is the engine's `%g` of the stored f32 — six significant
 // digits, trailing zeros trimmed. Positions are integers.
 
-import { div24, mul24, tr24 } from '../exe/x87.ts';
+import { div24, mul24, parse24 } from '../exe/x87.ts';
 import { buildBlankMap } from '../map/blank-map.ts';
 
 const NL = '\r\n';
@@ -196,11 +196,12 @@ export function renderObject(o: EmitObject, truncate = false): string[] {
           `\t\t\t\t\t\t\t<z>${l.z}</z>`,
           '\t\t\t\t\t\t</Pos>',
           '\t\t\t\t\t\t<Color>',
-          // A colour is a value PARSED from a preset's text, and the game's
-          // parse lands on the float below the decimal — see `cut6`.
-          `\t\t\t\t\t\t\t<x>${fmtRot(truncate ? tr24(l.color[0]) : l.color[0], truncate)}</x>`,
-          `\t\t\t\t\t\t\t<y>${fmtRot(truncate ? tr24(l.color[1]) : l.color[1], truncate)}</y>`,
-          `\t\t\t\t\t\t\t<z>${fmtRot(truncate ? tr24(l.color[2]) : l.color[2], truncate)}</z>`,
+          // A colour is a value PARSED from a preset's text, and the game
+          // parses digit by digit on its chopping machine — `parse24`, the
+          // reading the minimap's tile colours settled; see `cut6`.
+          `\t\t\t\t\t\t\t<x>${fmtRot(truncate ? parse24(String(l.color[0])) : l.color[0], truncate)}</x>`,
+          `\t\t\t\t\t\t\t<y>${fmtRot(truncate ? parse24(String(l.color[1])) : l.color[1], truncate)}</y>`,
+          `\t\t\t\t\t\t\t<z>${fmtRot(truncate ? parse24(String(l.color[2])) : l.color[2], truncate)}</z>`,
           '\t\t\t\t\t\t</Color>',
           `\t\t\t\t\t\t<Radius>${l.radius}</Radius>`,
           '\t\t\t\t\t</Item>',

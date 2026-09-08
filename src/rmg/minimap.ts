@@ -61,6 +61,7 @@
 // because the flags were thought to make it unreachable.
 
 import type { EngineSine } from '../exe/sine-table.ts';
+import { mul24, parse24 } from '../exe/x87.ts';
 import { lanczos3, resampleFiltered, type Bitmap } from './resample.ts';
 import type { TerrainLayer } from './terrain.ts';
 
@@ -153,6 +154,14 @@ export interface MinimapFloor {
    */
   spared?: (tx: number, ty: number) => boolean;
   /**
+   * THE GAME'S BUILD: its tile colours come out of its own digit-by-digit
+   * chopping parse (`parse24` in `src/exe/x87.ts`) and a chopping multiply,
+   * so a few of them are one below the editor's. Measured on a large game
+   * map: 62,090 of the surface floor's 65,536 pixels identical without it,
+   * 65,532 with it; the underground floor 63,056 to 65,535.
+   */
+  gameParse?: boolean;
+  /**
    * The floor's ground flags, `(side + 1)^2` on the vertex grid.
    *
    * A SURFACE floor's are the constructor's uniform 16 and the arm that reads
@@ -180,9 +189,15 @@ export function drawTerrainLayer(floor: MinimapFloor): Bitmap {
       const doc = rock ? null : tileDocument(layers, dim, tx, ty);
       if (doc) {
         const [cr, cg, cb] = doc.minimapColor;
-        r = Math.trunc(Math.fround(Math.fround(cr) * 255));
-        g = Math.trunc(Math.fround(Math.fround(cg) * 255));
-        b = Math.trunc(Math.fround(Math.fround(cb) * 255));
+        // The game parses the tile's colour text its own way (`parse24`) and
+        // multiplies on its chopping machine; `String(c)` is the xdb's decimal
+        // again, since the port holds the nearest double of a short decimal.
+        const byte = floor.gameParse
+          ? (c: number): number => Math.trunc(mul24(parse24(String(c)), 255))
+          : (c: number): number => Math.trunc(Math.fround(Math.fround(c) * 255));
+        r = byte(cr);
+        g = byte(cg);
+        b = byte(cb);
       }
       if (floor.masked(tx, ty) && !(floor.spared?.(tx, ty) ?? false)) {
         b >>= 1; g >>= 1; r >>= 1;

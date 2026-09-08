@@ -140,3 +140,43 @@ export function div24(a: number, b: number): number {
   else if (!over(t + step)) t += step;
   return t;
 }
+
+/**
+ * A decimal in an xdb, as the GAME's process reads it.
+ *
+ * The game's text-to-float is not the CRT's correctly rounded `atof`: it
+ * accumulates the fraction digit by digit, `v += d * 10^-i`, on a machine
+ * whose every operation chops to 24 bits toward zero — so a value written as
+ * six digits of `k/255` can land far enough under the decimal that `* 255`
+ * truncates to `k - 1`, and which values do depends on their digits, not on
+ * how far above `k/255` they sit. Measured on the minimap of a large game
+ * map: the tile colours this parse lowers (Dead_Land red, Water red, the
+ * SandRoad and SnowRoad greens) take the surface floor from 62,090 of 65,536
+ * pixels to 65,532 and the underground floor to 65,535, where a single chop
+ * of the exact decimal (`tr24(Number(text))`) moves nothing and every
+ * uniform "n ulps under" model tried made it worse. Read from the bytes it
+ * produces, not from the parser's code.
+ *
+ * The integer part and the digits are exact (`5` and `d` are small). The
+ * powers of ten are a TABLE built by repeated division under round-to-
+ * NEAREST — `p[i] = p[i-1] / 10` — which is what a static table computed at
+ * start-up looks like before the process switched its rounding to chop;
+ * only the products and the sums chop. That is the one shape, of eleven
+ * tried, consistent with every colour the game lowered and every colour it
+ * kept (42 constraints): the chopped powers lower `0.227451` where the game
+ * does not, the nearest ones keep `0.00784314` where the game lowers it.
+ * Five colours of a town's point light printed by the game agree as well.
+ */
+const POW10_NEAREST: number[] = (() => {
+  const p: number[] = [];
+  let x = 1;
+  for (let i = 0; i < 12; i++) { x = Math.fround(x / 10); p.push(x); }
+  return p;
+})();
+export function parse24(text: string): number {
+  const neg = text.startsWith('-');
+  const [ip, fp = ''] = (neg ? text.slice(1) : text).split('.');
+  let v = Number(ip);
+  for (let i = 0; i < fp.length && i < POW10_NEAREST.length; i++) v = add24(v, mul24(Number(fp[i]), POW10_NEAREST[i]!));
+  return neg ? -v : v;
+}
