@@ -3,6 +3,7 @@
 //   node tools/rmg-diff-draws.ts --game <dir>
 //   node tools/rmg-diff-draws.ts --game <dir> --from game/bin/rmg-batch/10
 //   node tools/rmg-diff-draws.ts --game <dir> --from <run> --full --context 20
+//   node tools/rmg-diff-draws.ts --from <run> --full --log <kept trace>.log
 //
 // Reads the last run's `t*` lines out of bin/homm5-editor-rmg.log (written by
 // the oracle when the config says `trace`), replays the same seed through the
@@ -40,9 +41,13 @@ const flag = (name: string): string | undefined => {
   return i >= 0 ? args[i + 1] : undefined;
 };
 
-const logPath = join(gameDir(), 'bin', 'homm5-editor-rmg.log');
+// The oracle always writes `bin/homm5-editor-rmg.log`, and a trace worth
+// keeping gets renamed beside it. `--log <path>` replays one of those kept
+// files instead of the live one, so a reading can be re-checked without
+// copying a 20 MB log back over the name the oracle owns.
+const logPath = flag('--log') ?? join(gameDir(), 'bin', 'homm5-editor-rmg.log');
 if (!existsSync(logPath)) {
-  console.error(`no ${logPath} — generate a map with \`trace\` in the oracle config first`);
+  console.error(`no ${logPath} — generate a map with \`trace\` in the oracle config first, or point --log at a kept one`);
   process.exit(1);
 }
 
