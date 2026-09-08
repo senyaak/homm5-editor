@@ -62,6 +62,10 @@ export function recomputeRoom(
   grid: Int32Array[],
   zoneIndex: number,
   points: Tile[],
+  // `0xEC28E0`'s second argument: with it every cell of the level takes the
+  // fresh distance, foreign zones' included — the dwarven one-tile pass's
+  // rock-distance recompute (`mask 0x400, all=1`) is the one caller.
+  all = false,
 ): void {
   for (let x = 0; x < size; x++) {
     for (let y = 0; y < size; y++) {
@@ -72,7 +76,7 @@ export function recomputeRoom(
         room[y]![x] = 1000;
         continue;
       }
-      if (grid[y]![x] !== zoneIndex) continue;
+      if (!all && grid[y]![x] !== zoneIndex) continue;
       let m = 10000;
       for (const [px, py] of points) {
         const d = Math.hypot(px - x, py - y);

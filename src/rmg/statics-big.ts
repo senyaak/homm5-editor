@@ -528,6 +528,12 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
 
   // The sweep. Room with mask 0x3C, candidates once, types in file order.
   recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads]);
+  // A DWARVEN ZONE STOPS HERE: its `+0x34` (`0xEC7070`) is the carve, this
+  // recompute and `ret` — no lakes, no mountains, no sweep, not one draw.
+  // The first map to produce one (a game map whose underground coin fell
+  // that way, seed 1788807597) shows the engine's "big statics" step for
+  // it spending exactly zero draws where the port's sweep spent 5,796.
+  if (input.zoneClass === 'dwarven') return { placed, lakeSeeds, lakeTiles, lakeRoom, lakeBorder };
   const candidates: Tile[] = [];
   for (const [x, y] of input.tiles ?? zoneTiles(size, grid, zoneIndex)) {
     if (room[y]![x]! > 1) candidates.push([x, y]);

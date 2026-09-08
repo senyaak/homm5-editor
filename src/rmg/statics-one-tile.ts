@@ -384,3 +384,130 @@ export function placeSubterraOneTileStatics(
 
   return placed;
 }
+
+// ---------------------------------------------------------------------------
+// The DWARVEN one-tile statics — CGameDwarvenZone's vtable +0x30 (`0xEC7090`,
+// vtable `0xFF5214`), read instruction by instruction from the game and held
+// against a game map whose underground coin fell dwarven (seed 1788807597).
+//
+// It shares nothing with the other classes' passes: no room buckets by 2/3-4/
+// >4, no fence, no below(4) quadrant, no survival rolls. It is a LATTICE
+// torch-and-column placer:
+//
+//   recomputeRoom(0x3C, 0)
+//   A. the rock/edge mask, over the whole LEVEL: a tile whose three corners
+//      (x,y), (x,y+1), (x+1,y) of the byte vertex grid are all != 0x10, or
+//      with y < 2, x < 2, y > 3*floor((size-1)/3) or x > the same, gets
+//      occupancy |= 0x40 and |= 0x400 (0x40 stands for both here — the
+//      port's occupancy is a byte, and this function never tells them apart).
+//   recomputeRoom(0x400, all=1): room = trunc(distance to the nearest marked
+//      tile), over the whole level.
+//   B. over the zone's tiles, room == 1 -> list A, room == 2 -> list B.
+//   1. list A: only x % 10 == 5 or y % 10 == 5; OneTileBigObjects non-empty;
+//      no ledger point nearer than 4.0; entry 1 + below(n - 1) (entry 0 is
+//      reserved for pass 3); mint; light for "Fakel"/"FireColumn" (two
+//      draws); occupancy = 2; the tile joins the zone's +0x148 ledger.
+//   2. list B: the same with x % 10 == 0 or y % 10 == 0, OneTileSmallBlockers
+//      and entry below(n).
+//   recomputeRoom(0x3C, 0)
+//   C. over the zone's tiles with occupancy == 0: room > 2 -> list C,
+//      room == 2 -> list D.
+//   3. list C: no gates, no draw for the entry — OneTileBigObjects[0]
+//      (the Dwarf_Column), mint, occupancy = 2 | 0x400, no ledger.
+//   4. list D: no lattice, the spacing rule, entry below(n - 1) (never the
+//      last), mint, light, occupancy = 2, ledger.
+//
+// Every rotation is the literal 0. The trace of the first dwarven zone seen
+// spends 2,289 draws in exactly this rhythm: below(3), the mint's two
+// below(65535), below(5), below(5), per placed object.
+
+export function placeDwarvenOneTileStatics(
+  input: SubterraOneTileStaticsInput,
+  rng: DrawSource,
+): PlacedStatic[] {
+  const { size, grid, occupancy, room, zoneIndex } = input;
+  const w = size + 1;
+  const placed: PlacedStatic[] = [];
+  const fl = Math.fround;
+
+  recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads]);
+
+  // A. The rock and frame mask, level-wide.
+  const V = (x: number, y: number): number => input.vertexHeights.bytes[y * w + x]!;
+  const fence = 3 * Math.floor((size - 1) / 3);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const rock3 = y < size - 1 && V(x, y) !== 0x10 && V(x, y + 1) !== 0x10 && V(x + 1, y) !== 0x10;
+      if (rock3 || y < 2 || x < 2 || y > fence || x > fence) occupancy[y * size + x] = occupancy[y * size + x]! | 0x40;
+    }
+  }
+  const marked: Tile[] = [];
+  for (const [x, y] of input.tiles) if ((occupancy[y * size + x]! & 0x40) !== 0) marked.push([x, y]);
+  recomputeRoom(room, size, grid, zoneIndex, marked, true);
+
+  // B. The two rings hugging the walls.
+  const listA: Tile[] = [];
+  const listB: Tile[] = [];
+  for (const [x, y] of input.tiles) {
+    const r = room[y]![x]!;
+    if (r === 1) listA.push([x, y]);
+    else if (r === 2) listB.push([x, y]);
+  }
+
+  const ledger: Tile[] = [];
+  const dist = ([ax, ay]: Tile, [bx, by]: Tile): number =>
+    fl(Math.sqrt(fl((ax - bx) * (ax - bx) + (ay - by) * (ay - by))));
+  const tooClose = (at: Tile): boolean => ledger.some((p) => dist(p, at) < fl(4));
+  const create = (entry: Footprint, at: Tile, occ: number, join: boolean): void => {
+    const item: PlacedStatic = { type: entry.path, name: mintName(rng), x: at[0], y: at[1], angle: 0 };
+    if (input.lightNames.some((sub) => entry.path.includes(sub))) {
+      const p = input.pointLight;
+      item.light = {
+        z: p.zMin + rng.below(p.zMax - p.zMin),
+        radius: p.lightRadiusMin + rng.below(p.lightRadiusMax - p.lightRadiusMin),
+      };
+    }
+    placed.push(item);
+    occupancy[at[1] * size + at[0]] = occ;
+    if (join) ledger.push(at);
+  };
+
+  // 1. The inner ring, on the 5-lattice, from the columns past the first.
+  for (const t of listA) {
+    if (t[0] % 10 !== 5 && t[1] % 10 !== 5) continue;
+    if (!input.bigObjects.length) continue;
+    if (tooClose(t)) continue;
+    create(input.bigObjects[1 + rng.below(input.bigObjects.length - 1)]!, t, 2, true);
+  }
+  // 2. The second ring, on the 0-lattice, from the torches.
+  for (const t of listB) {
+    if (t[0] % 10 !== 0 && t[1] % 10 !== 0) continue;
+    if (!input.smallBlockers.length) continue;
+    if (tooClose(t)) continue;
+    create(input.smallBlockers[rng.below(input.smallBlockers.length)]!, t, 2, true);
+  }
+
+  recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads]);
+
+  // C. The open floor, by room.
+  const listC: Tile[] = [];
+  const listD: Tile[] = [];
+  for (const [x, y] of input.tiles) {
+    if (occupancy[y * size + x] !== 0) continue;
+    const r = room[y]![x]!;
+    if (r > 2) listC.push([x, y]);
+    else if (r === 2) listD.push([x, y]);
+  }
+  // 3. Every deep tile takes the reserved column, no draw for the choice.
+  for (const t of listC) {
+    if (!input.bigObjects.length) throw new Error('dwarven one-tile statics: OneTileBigObjects empty — the engine reads past its end');
+    create(input.bigObjects[0]!, t, 2 | 0x40, false);
+  }
+  // 4. The room-2 tiles, spaced, from the torches but the last.
+  for (const t of listD) {
+    if (!input.smallBlockers.length) continue;
+    if (tooClose(t)) continue;
+    create(input.smallBlockers[rng.below(input.smallBlockers.length - 1)]!, t, 2, true);
+  }
+  return placed;
+}

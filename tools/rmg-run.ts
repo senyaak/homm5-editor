@@ -36,7 +36,7 @@ import { LIGHT_NAMES, placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import type { PlacedStatic } from '../src/rmg/statics-big.ts';
 import type { TownGuardStack } from '../src/rmg/town-guard.ts';
 import {
-  placeSubterraOneTileStatics, placeWaterOneTileStatics, placeZoneOneTileStatics,
+  placeDwarvenOneTileStatics, placeSubterraOneTileStatics, placeWaterOneTileStatics, placeZoneOneTileStatics,
 } from '../src/rmg/statics-one-tile.ts';
 import { markPassability } from '../src/rmg/passability.ts';
 import type { LakePaint } from '../src/rmg/terrain.ts';
@@ -465,7 +465,7 @@ export function runFull(
       mapAngle: c.setup.angle,
     };
     const one = subterranean
-      ? placeSubterraOneTileStatics({
+      ? (lz.kind === 'dwarven' ? placeDwarvenOneTileStatics : placeSubterraOneTileStatics)({
           ...oneInput, vertexHeights: vertexHeights[f]!,
           pointLight: c.params.pointLightParams,
           lightNames: LIGHT_NAMES[lz.kind] ?? [],
