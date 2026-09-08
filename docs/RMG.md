@@ -5949,3 +5949,27 @@ row sines, the column trigonometry or all four to single each fixes some of
 the 259 and breaks others (`_tmp/base-score.ts` scores a variant by fixed and
 broken cells against the `hs 0` dump), so the remaining difference is not one
 of those — parked as the last ulps of the game build's surface relief.
+
+**08.09, later: the game's build, closed to the byte on seven maps of eight.**
+Every remaining difference was measured stage by stage against the game's own
+planes (`stages` from the game, the engine's stage *k* in, its stage *k+1* out)
+rather than guessed: the smoothing sums its nine taps row by row (3,308 vertices
+off with the column order, 0 with this); the crater's candidate scan is
+n-outer, which only a chopping sum can tell; the flatten sums in double and
+chops once; the base field divides by `(double)0.15f` = 0.15000000596046448 —
+the float promoted, not the double 0.15 and not its reciprocal — and the CRT's
+`sin`/`cos` are x87 `fsin`/`fcos` at 53 bits round-to-nearest (ucrtbase falls
+back to the x87 under any non-default MXCSR), so `Math.sin` reads them right.
+With those the late pass is bit-identical, every terrain file of every game map
+too. The minimap followed: the game parses an xdb decimal digit by digit on
+its chopping machine against a power-of-ten table built by nearest divisions
+(`parse24`, one shape of eleven consistent with 42 tile colours), resamples on
+doubles and divides where the editor multiplies by a reciprocal, and the
+`<Birds>` line is not the generator's — two full traces match the port draw
+for draw while it comes and goes — so the order carries it as it carries the
+GUID. Seven maps are byte-identical in every entry; the eighth has one icon
+(a Fairie Tree whose anchor is exactly 192) one pixel left of the port's, with
+the hole-tile mean tried and rejected on `IconObject.holes`. The game's seed
+can be forced now (`0x91D03C`, the screen's `_time64`), which is how the
+seed-specific extra towns draw of `ГСК-011` and the two older maps that part
+early will be traced.
