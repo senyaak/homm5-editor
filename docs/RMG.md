@@ -5936,3 +5936,16 @@ off a game map or out of the game executable and none of it guessed:
 Open, in order of cost: `S4-6P2-8Z8K2L`, on which the game spends one draw
 more than the port in the towns pass (a trace on that template names it); the
 surface heights' last ulps; the surface minimap's remaining pixels.
+
+**08.09, two full traces from the game.** `S3-6P2-4Z9B3` (702,880 draws) and
+`S4-6P2-8Z8K2L` (806,446 draws) both match the port draw for draw with no
+difference at all — so the one extra towns draw seen on `ГСК-011` is a branch
+that seed takes and these do not, and only a trace on that seed would name it.
+The late pass measured stage by stage on the second map: the entry plane (the
+cones) is identical; the base field differs on 259 of 31,329 vertices by one
+ulp, every one of them in the zone that digs (a negated dist term), in both
+directions; craters add 193, and the smoothing passes carry it. Rounding the
+row sines, the column trigonometry or all four to single each fixes some of
+the 259 and breaks others (`_tmp/base-score.ts` scores a variant by fixed and
+broken cells against the `hs 0` dump), so the remaining difference is not one
+of those — parked as the last ulps of the game build's surface relief.
