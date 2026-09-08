@@ -1990,6 +1990,18 @@ static int install_rmg_oracle(void) {
   // editor a seed is usually TYPED into the screen instead, which makes the
   // forcing moot — the screen's number wins before time() is ever asked.
   g_time = (TimeFn)patch_indirect_call(g_rmgTimeCallRva, &rmg_time_hook, "rmg seed source");
+  // THE GAME'S SEED IS BORN ELSEWHERE. Its GenerateMap copies the request's
+  // seed into `this+0x90`, records it as RMGstartseed and tests it; only a
+  // ZERO falls through to the `time` call above, and the game's screen never
+  // hands it a zero: `0x91CF10` fills the request with `_time64(NULL)` at
+  // VA 0x91D03C (`push 0; call [_time64]; mov [edi+80h],eax`), once per
+  // generation, the only live producer of that field in the image. Hooking
+  // that call lands one number in the map's record AND in the generator; a
+  // forced zero would re-enable the fallback, so never force 0.
+  if (!rmg_host_is_editor()) {
+    TimeFn t = (TimeFn)patch_indirect_call(0x51d03cu, &rmg_time_hook, "rmg seed source (screen)");
+    if (t) g_time = t;
+  }
   if (g_rmgForceSeed && !g_time) rmg_log("the seed cannot be forced - it will be the clock's");
   rmg_log(g_rmgForceSeed && g_time ? "oracle ready, with a seed of ours" : "oracle ready");
   return 1;

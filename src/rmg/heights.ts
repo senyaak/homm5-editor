@@ -465,14 +465,19 @@ function flattenToAverage(
   for (const [px, py] of pts) m2.insertMax(Math.trunc(px), Math.trunc(py));
   for (const { key, val } of m2.entries()) pts.push([key, val + 1] as const);
 
+  // DOUBLE in both builds: the game's `0xEB1890` sums with `addsd` and divides
+  // in double, then chops once — measured on its own planes (stage 2 in,
+  // stage 3 out, `_tmp/stage-flatten`): a double sum with a chopped store
+  // leaves 0 of 31,329 vertices off, a single chopping sum 342. (The
+  // craters' `0xEB2420` is the other way round — see `setToAverage`.)
   let sum = 0; // double
   for (const [px, py] of pts) {
     const yy = Math.trunc(py);
     const xx = Math.trunc(px);
     if (yy < 0 || yy > size || xx < 0 || xx > size) continue;
-    sum = ar.add(sum, h.mem[yy * h.v + xx]!);
+    sum += h.mem[yy * h.v + xx]!;
   }
-  const avg = ar.store(ar.div(sum, pts.length)); // len INCLUDES the skipped points
+  const avg = ar.store(sum / pts.length); // len INCLUDES the skipped points
   for (const [px, py] of pts) {
     const yy = Math.trunc(py);
     const xx = Math.trunc(px);
