@@ -250,7 +250,12 @@ export function baseField(h: HeightPlane, input: HeightsInput, ar: Arith = DOUBL
         let p = Math.cos(ar.div(o, 13)) * A;
         p = p * B;
         p = Math.sin(ar.div(o, 29)) * p;
-        val = p / 0.15;
+        // MEASURED, not read: against the game's own stage-0 plane a divide
+        // by 0.15 leaves 259 vertices one ulp off, the multiply by the f32
+        // reciprocal 6.6666665 fixes 128 of them and breaks none, and no
+        // other rounding in a grid of 96 does better — so the constant the
+        // disassembly was read as `0.15` is the reciprocal after all.
+        val = p * SCALE;
         val = val + dterm;
         val = val + 12.0;
       } else {
@@ -329,9 +334,15 @@ function craterOne(
 ): void {
   // Engine +0x44 pairs the o axis and +0x48 the n axis — the port's y and
   // x respectively; the +0x48 difference squares FIRST (the addss order).
+  //
+  // THE SCAN IS n-OUTER. In double the 193 values of a town's crater sum the
+  // same in any order, so the editor never said which; the game's single
+  // chopping sum does, and against its own plane (`_tmp/crater-sum`) the
+  // n-outer walk gives the crater's value to the bit — 7.874853 where
+  // o-outer gives 7.874857, eight ulps off. The editor's plane is unchanged.
   const points: Array<readonly [number, number]> = [];
-  for (let o = 0; o < size; o++) {
-    for (let n = 0; n < size; n++) {
+  for (let n = 0; n < size; n++) {
+    for (let o = 0; o < size; o++) {
       const d0 = obj.y - (o + plusOne);
       const d1 = obj.x - (n + plusOne);
       const dz = obj.z - 0;
@@ -524,15 +535,23 @@ export function smooth(h: HeightPlane, mask: Uint8Array, size: number, flag: boo
       }
       // x87: nine f32 products accumulate exactly in double; one rounding
       // at the store — which is precisely why the 9.0 plateau survives.
-      // The game's per-tap mulss/addss is the same line under its machine.
+      // The game's per-tap mulss/addss is the same line under its machine,
+      // and there the ORDER of the nine adds is the whole result: measured
+      // against the game's own plane after this pass (`_tmp/stage-local2`,
+      // the engine's stage 3 in, its stage 4 out), the order below — the
+      // row above, then this row, then the row below, each left to right,
+      // the centre in the middle — reproduces every one of the 31,329
+      // vertices, and the column-wise order the editor's reading suggested
+      // leaves 3,308 of them one ulp off. In double the nine products sum
+      // exactly whatever the order, so the editor's result is unchanged.
       let s = ar.mul(H[(r - 1) * v + (c - 1)]!, kn);
-      s = ar.add(s, ar.mul(H[r * v + (c - 1)]!, kn));
-      s = ar.add(s, ar.mul(H[(r + 1) * v + (c - 1)]!, kn));
       s = ar.add(s, ar.mul(H[(r - 1) * v + c]!, kn));
-      s = ar.add(s, ar.mul(H[r * v + c]!, kc));
-      s = ar.add(s, ar.mul(H[(r + 1) * v + c]!, kn));
       s = ar.add(s, ar.mul(H[(r - 1) * v + (c + 1)]!, kn));
+      s = ar.add(s, ar.mul(H[r * v + (c - 1)]!, kn));
+      s = ar.add(s, ar.mul(H[r * v + c]!, kc));
       s = ar.add(s, ar.mul(H[r * v + (c + 1)]!, kn));
+      s = ar.add(s, ar.mul(H[(r + 1) * v + (c - 1)]!, kn));
+      s = ar.add(s, ar.mul(H[(r + 1) * v + c]!, kn));
       s = ar.add(s, ar.mul(H[(r + 1) * v + (c + 1)]!, kn));
       t[r * v + c] = ar.store(s);
     }
