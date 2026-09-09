@@ -6139,3 +6139,64 @@ SUBOBJECT the icon pass holds when it calls `[eax+0xB4]` / `[eax+0xB8]`
 `CAdvMapDwelling` has three vtables, and `+0xB4` on the primary one is a lazy
 document getter (0xD0FCD0), which is not what the anchor is walking. A slot
 read without its vtable says nothing.
+
+**09.09, further: the Fairie Tree's icon — the slots are the right ones, and
+the object contradicts itself.** The step left open above was to find which
+subobject the icon pass holds when it calls `[eax+0xB4]` / `[eax+0xB8]`. It is
+the one at `+0xC0`, and its vtable is `CAdvMapDwelling`'s `0xFD36F0`: `+0xA0`
+is the world position (`0xC7BD80`, three floats out of the placement
+component), `+0xB4` is `lea eax,[ecx-0x68]` and `+0xB8` is
+`lea eax,[ecx-0x5C]` — plain members at `obj+0x58` and `obj+0x64`. The
+rotation setter `0xC7BBD0` pins the offsets rather than leaving them fitted:
+it reads the angle at `[edi-0x74]`, and the angle is `obj+0x4C`.
+
+Those two members are filled by `0xC7A970`, which takes the shared document's
+`+0x54` (blockedTiles) into `obj+0x58` and its `+0x6C` (activeTiles) into
+`obj+0x64` — also `+0x60`, the holes, into `obj+0x70`, and the possession
+marker into `obj+0x7C` — and puts each through the quarter-turn rotate
+`0xABE1D0` with the object's own angle. So the lists the anchor averages are
+ROTATED, and the port's rule is the engine's. `0xC7A970` has exactly two
+callers, the rotation setter and the marker setter; attaching the shared
+document does not call it. And the rotation setter opens with `ucomiss`
+against the angle it already holds and RETURNS when the two are equal, so an
+object handed its final angle before its document arrives would never have its
+footprint rotated at all. That is the shape of a mechanism, not a measurement.
+
+Three things were then measured against the whole corpus rather than argued:
+
+  * AN ANCHOR LANDING EXACTLY ON AN INTEGER PIXEL IS NOT WHAT MOVED IT. The
+    Fairie Tree's rotated `px` is exactly 192.0 — `(101.5 - 1) * 256 / 134`,
+    with nothing left to round — which made "the truncation goes the other way
+    on the edge" the obvious guess. `ГСК-004`, `-010` and `-006`,
+    byte-identical maps all three, carry seven such icons between them; two of
+    them have the same half-tile mean this one has (an
+    `Academy_Military_Post` at 3pi/2 and a `DwarvenDwelling` at pi/2, both
+    landing on exactly 64.0), and every one of the seven is drawn where the
+    port puts it.
+  * "THE FIRST DWELLING OF A MAP KEEPS AN UNROTATED FOOTPRINT" IS REFUTED. The
+    Fairie Tree is object `#124`, the first dwelling of `ГСК-007`, and the two
+    dwellings after it are drawn rotated — which made the guess worth making.
+    But `ГСК-011`'s first dwelling is a `Graveyard` at rot pi and `ГСК-012`'s
+    is a `Battle_Academy` at rot pi, both on maps the port reproduces byte for
+    byte, and both are drawn ROTATED.
+  * THE OBJECT CONTRADICTS ITSELF, and this is the finding. Handing the icon
+    pass the UNROTATED mean for this one object and changing nothing else
+    brings `ГСК-007` to 20 of 20. Doing the same to the DARKENING MASK — the
+    same footprint, the same object, the same two members — costs 202 bytes
+    against the standing 72, and emptying its lists there costs 225. So the
+    tiles this object blocks are registered from the ROTATED footprint while
+    its icon is anchored on the UNROTATED one, and one list cannot be both.
+
+Which is why no arithmetic rule was ever going to close this: the anchor's
+inputs are not in doubt any more, and neither is its arithmetic. Between the
+registration and the draw something rewrote `obj+0x58` and `obj+0x64`, and
+`0xC7A970` is their only writer — it writes an unrotated list exactly when the
+angle it is handed is zero. What is left is to watch that happen:
+`native/rmg/minimap-probe.c` already owns the editor's minimap window, and a
+hook on the anchor logging the object, its `+0x4C` angle and both lists would
+say it in one run.
+
+One more thing the corpus says about the shape of the search: it holds exactly
+ONE Fairie Tree, and it is the icon that misses — the Preserve race appears on
+one map only. So "this document" is not ruled out either. It is untested, and
+a second map with a Preserve zone would test it.
