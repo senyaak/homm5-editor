@@ -57,7 +57,7 @@ if (!existsSync(dir)) {
   const t = readTemplate(join(dir, 'Templates', 'S1P2Z2M1.xdb'));
   const p = readParams(join(dir, 'Params', 'Default.xdb'));
   const rng = new RmgRandom(1785351845);
-  const made = createMap(t, { players: 2, size: 8 }, rng);
+  const made = createMap(t, { players: 2, size: 1 }, rng);
   const setup = mapSetup(p, { monsterStrength: 1, water: 0 }, rng);
   const lt = loadTemplate(t, {
     twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,

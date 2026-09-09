@@ -6322,3 +6322,89 @@ the painted-on one above and whose ORDER now reproduces at 15 of 15. What is
 left in that folder is `32232.h5m`, a three-player two-level `S6-11P2-8Z8K2.4a`
 at 22 of 23: `minimap_floor_02.dds`, 101 bytes from 101238, on the game's
 build. That is the next one, and the tools above are pointed at it.
+
+
+**09.09, THE SIZE FIT AND BOTH CONVERSIONS — READ, and the two named holes in
+[`create-map.ts`](../src/rmg/create-map.ts) are closed.** The question that
+started it was which orders a test matrix would even have to make, and the
+first answer was a fit to 22 observations that turned out to be right for the
+wrong reason. What the executable says:
+
+`vt+0x14`, a size INDEX into the template's own units — `0xEADE20`, and it is
+a seven-way JUMP TABLE, not arithmetic. Read case by case, then the table's
+own dwords read to make sure the order is the file's:
+
+    index  0   1   2   3   4   5    6
+    units  5  10  18  31  47  66  102
+
+Which is the tile count squared over a thousand, ROUNDED — 96x96 is 9.2 and the
+table says 10 — so there is no divisor to argue about and never was.
+
+`vt+0x18`, units back to an index — `0xEADE90`, a ladder of five compares:
+under 8 is TINY, under 15 SMALL, under 25 MEDIUM, under 40 LARGE, under 60
+EXTRALARGE, under 90 HUGE, and 90 or more IMPOSSIBLE. Note it is NOT the
+inverse of the table above: 10 units is SMALL going one way, and the step that
+answers SMALL starts at 8.
+
+THE FIT ITSELF, `0xEAB616`, and it runs on whatever the size ended up being —
+supplied or drawn, after the players rather than before:
+
+    eax = vt14(settings[0x20])       ; the size, in units
+    eax = eax * (settings[0x1D] + 1) ; TIMES THE FLOORS
+    if (eax >= template.minMapSize) keep it
+    else:
+        idx = vt18(minMapSize)
+        if (idx <= 5) settings[0x20] = idx
+        else:                                  ; wants more than the biggest
+            settings[0x20] = min(vt18(minMapSize / 2), 4)
+            settings[0x1D] = 1                 ; an underground, FORCED
+
+So the request is honoured whenever the map carries the template's units, and
+there is NO upper bound in this path at all: `-size 6` on `S1P2Z2M1`, whose
+range is 5..14 units, makes a 320x320 map out of a two-zone template and the
+port reproduces it byte for byte. Nine orders were measured against it, and
+the one that separates "times the floors" from every reading I had before is
+`S6-11P2-8Z8K2.4a -size 3 -underground 1`: 31 units twice over is 62, which
+clears the template's 60, so LARGE STANDS — while `-size 0 -underground 1` on
+the same template is lifted to HUGE. The forced-underground branch is ported
+from the instructions and untested by any map here: the largest MinMapSize
+shipped is 70, and the branch needs 90.
+
+**AND THE DIALOG'S FILTER IS THE SAME RELATION, from the other side.** Two
+screenshots of the game's own template list settled it — MEDIUM selected, with
+the underground off and on. Off, the list is exactly the five templates whose
+range contains 18 (`S1-2P2-4Z4K1S`, `S1-2P2-8Z8K2S`, `S1-2P2Z7V2`,
+`S1-3P2-4Z5V`, `S1-3P2Z7V3`); on, it is exactly the eight whose range contains
+36 — which is a DIFFERENT set, not a subset, and the predictions that make it
+convincing are the absences: `S1-3P2-4Z5V` (Max 34) and `S2-3P2Z7N2` (Max 35)
+drop out, `S4-6P2-8Z8K2L` (Min 36) appears on the boundary, and `S6-11`/`S7-*`
+are still out of reach. So the dialog filters on `Min <= units * floors <= Max`
+and the console's `rmg` command checks only the lower half — which is why
+ticking the underground swaps small templates for LARGE ones rather than the
+other way round, and why the two paths were so easy to mistake for two rules.
+The template's own `<Underground>` field (+0x88, read out of the serialiser at
+`0xB9C1A0`) is not what filters: the generator ignores it outright —
+`S1P2Z2M1`, the one template that says `false`, makes two floors on request —
+so it can only be UI, and which UI is unread.
+
+`tools/test-rmg-template.ts` holds both tables, the ladder's every step, the
+nine measured fits and the forced branch. `tools/rmg-chain.ts` now hands
+`createMap` the real index rather than the reference's 8 units, and says so out
+loud if the engine would lift an order rather than quietly building a map the
+engine would not make: no order in the corpus reaches that, because every size
+a generated map RECORDS is a fixed point of the fit.
+
+**A second case of the mask's veto, on a map a fifth the size.** The same probe
+run that answered the underground question — `S1P2Z2M1 -size 1 -underground 1`
+— came out 17 of 18, and the 329 bytes are ONE tile of the cave floor, (21,70),
+which the engine leaves bright with `Dwarf_Floor_Incrusted`'s own 212/131/56.
+Put that value into the layer before the resample and the file is identical.
+On the tile: a `Shrine_Of_Magic_1` with an EMPTY blocked list whose one active
+tile is its own, and a `Fakel_01` that blocks it — byte for byte the shape of
+`32232.h5m`'s 101 bytes, on a 96x96 map instead of a two-level 176. Against it
+stands `ГСК-004`, where the claimant is an `AdvMapTreasureShared` and the
+engine DOES darken. A sweep of every template run and every probe found no
+other conflict of that shape anywhere — three cases in all — which is why the
+port's proxy ("no blocked list, claims nothing") has survived this long.
+`0xA46E80` is the veto and `0xA55C10` skips both registrations when it answers,
+which is now read; which classes it answers for is not.

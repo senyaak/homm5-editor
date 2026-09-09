@@ -58,7 +58,7 @@ const template = readTemplate(join(dir, 'Templates', 'S1P2Z2M1.xdb'));
 const params = readParams(join(dir, 'Params', 'Default.xdb'));
 
 const rng = new RmgRandom(1785351845);
-const made = createMap(template, { players: 2, size: 8 }, rng);
+const made = createMap(template, { players: 2, size: 1 }, rng);
 check('CreateMap leaves the counter at 3', rng.draws === 3, `${rng.draws}`);
 
 // Whether the operator fixed the strength or the water cannot matter here:

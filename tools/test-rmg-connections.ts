@@ -63,7 +63,7 @@ const tables: GuardTables = {
 };
 
 const rng = new RmgRandom(1785351845);
-const made = createMap(template, { players: 2, size: 8 }, rng);
+const made = createMap(template, { players: 2, size: 1 }, rng);
 const setup = mapSetup(params, { monsterStrength: 1, water: 0 }, rng);
 const loaded = loadTemplate(template, {
   twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,

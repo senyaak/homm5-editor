@@ -288,12 +288,28 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   if (options.onDraw) rng.onDraw = options.onDraw;
   const phase = (label: string): void => options.onPhase?.(label, rng.draws);
   phase('start');
-  // `size: 8` is the order in the TEMPLATE's units, and the conversion from
-  // the dialog's map size to that number is `vt+0x18`, which is unread — so
-  // this stays the references' 8 and `options.size` only lays out the grid.
-  // An order of another size is not something this chain can honestly make.
+  // THE REQUEST CARRIES THE SIZE INDEX, now that `vt+0x14`/`vt+0x18` are read
+  // (`create-map.ts`): the tile count the caller asked for, back through the
+  // engine's own table. `createMap` may then move it — a size too small for
+  // the template's units is lifted — and every size a generated map RECORDS is
+  // already a fixed point of that lift, so an order read out of a map comes
+  // back unchanged. An order typed by hand may not, and then the grid below
+  // follows the engine rather than the request.
+  const asked = MAP_SIZES.indexOf(size as (typeof MAP_SIZES)[number]);
+  // A tile count outside the engine's seven is nobody's order; the reference's
+  // index stands in, rather than leaving the size UNSUPPLIED, which would send
+  // the phase down its drawing branch and change the value it yields.
+  const requested = asked < 0 ? MAP_SIZES.indexOf(SIZE as (typeof MAP_SIZES)[number]) : asked;
   const made = createMap(template,
-    { players: options.players ?? 2, size: 8, underground: options.underground }, rng);
+    { players: options.players ?? 2, size: requested, underground: options.underground }, rng);
+  if (made.size !== requested) {
+    // Said out loud rather than followed: the grid below is laid out from the
+    // caller's tile count, and rebuilding it here would hide the fact that the
+    // engine would not have made this map at all. No order in the corpus
+    // reaches this — every size a generated map records is a fixed point.
+    console.warn(`  the engine would lift this order's size: ${MAP_SIZES[requested]} asked,`
+      + ` ${MAP_SIZES[made.size]} is what ${template.name}'s ${template.minMapSize} units require`);
+  }
   phase('createMap');
   const setup = mapSetup(params,
     { monsterStrength: options.monsterStrength ?? 1, water: options.water ?? 0 }, rng);
