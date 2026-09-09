@@ -6099,3 +6099,43 @@ With that, TEN of the twelve game maps are byte-identical in every entry.
 different subsystem: the icon anchor, not the mask) and `ГСК-001` its 14 of 17.
 `tools/test-rmg-minimap.ts` holds both halves of the rule with no game data,
 and reddens when either is undone.
+
+**09.09: the Fairie Tree's icon, narrowed to one object and everything else
+ruled out.** The 72 bytes on `ГСК-007` are one icon, `Object_0` (6x6), drawn at
+left 188 by the engine and 189 by the port — the anchor's x lands on 191 there
+and on 192 here. The object is the `Fairie_Tree` dwelling at (101,101), rot
+3pi/2, whose lists are five blocked, one active and SIX holes covering every
+one of them.
+
+The rule the port has — the mean over blocked and active, ROTATED — is not in
+doubt. `tools/rmg-build.ts` was made to list, per map, every icon whose anchor
+moves when the rotation is dropped: 166 of them over the corpus, 17 on
+`ГСК-007` alone, and the port has 16 of those 17 right — four at the same
+3pi/2 quadrant, a town, three mines and an `OrcishDwelling01`. The Fairie Tree
+is the only one it misses, on any map.
+
+What the engine wants there is the UNROTATED mean, and nothing else fits. The
+window is narrow enough to say so exactly: the blit's `left` and `top` pin
+`mean.x` to [-0.023, 0.5) and `mean.y` to (-0.023, 0.5], and of the four
+quadrant turns only the identity lands in it. Ruled out, each by measurement
+rather than by argument:
+
+  * dropping the rotation for every icon — 2,915 bytes wrong on the surface
+    minimap and 1,101 on the underground one, against 72;
+  * the other turn direction (`mean.x = -0.5`) — left 187, not 188;
+  * a turn by pi — left 188 but top 62, and the top is 61 in both files;
+  * the holes in the mean — tried before, and it moves the mines of every map;
+  * the holes SUBTRACTED, which would empty this object's lists and skip the
+    mean at `cmp edi,1` (0xDD0094) — the `Graveyard` dwelling has the SAME five
+    blocked, one active and six covering holes, and both of the ones on this
+    map (rot 0 on the surface, rot pi below) are drawn where the ROTATED mean
+    puts them, two pixels from where skipping it would;
+  * the icon's own size — `Object_0` is 6x6, so `trunc(w/2)` is 3 either way.
+
+So two dwellings with byte-identical footprints disagree, and the difference is
+not in the document. The next step is not another rule: it is to find which
+SUBOBJECT the icon pass holds when it calls `[eax+0xB4]` / `[eax+0xB8]`
+(0xDCFFF4, 0xDD0049) and read that vtable's slots for the dwelling class —
+`CAdvMapDwelling` has three vtables, and `+0xB4` on the primary one is a lazy
+document getter (0xD0FCD0), which is not what the anchor is walking. A slot
+read without its vtable says nothing.
