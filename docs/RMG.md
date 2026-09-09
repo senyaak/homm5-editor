@@ -6035,6 +6035,28 @@ maps the checkout holds: seven byte-identical in every entry, those three at
 where it already was. The underground
 terrain file is 438,392 bytes against the game's 467,195 and parts at byte 7,
 so the dwarven cave floor is painted from something FillTerrain's port does
-not read yet — the pre-step's coarse grid is the obvious candidate, since it
-is per-floor state (`+0x78`/`+0x7C` of the 0x120-byte floor) that nothing in
-the port consumes. That is where the next session starts.
+not read yet.
+
+
+**09.09: the dwarven underground terrain, closed — and it was not paint.**
+Every plane in the file already matched; `diff-terrain` said so and could only
+report the length, because `parseTerrain` never looks at the trailer. The
+28,803 bytes are the trailer's tag-`0x10` block, which the port always wrote
+empty. The engine fills it exactly once, in the pre-step: `0xEB2A20` sizes a
+`d × d` grid with `d = floor(V/3) + 1` — 60 on a 176-tile map, and the same
+formula gives the 25/33/46 measured on the shipped maps of `TERRAIN_FORMAT.md`
+— zeroes a word per cell and then writes the SAME word into all of them: low
+byte 1, high byte the `8 + below(8)` it just drew. In the file a cell is that
+pair as two one-byte fields, `03 0c 02 02 01 03 02 <v>`, and `v` is 14 on
+`ГСК-011` — the pre-step's own number, which is why the draw had to be kept
+rather than spent (`Chain.coarse`, `TerrainFileInput.coarse`). Only the
+UNDERGROUND file carries it, because the pre-step runs on floor 1.
+
+With that, `UndergroundTerrain.bin` is byte-identical on `ГСК-011`, `ГСК-004`
+and `ГСК-015`, and all three stand at 19 of 20; `ГСК-010` and `ГСК-006` are
+untouched at 20. What is left on the three is `minimap_floor_02.dds`, ~100
+bytes in one 8×8 block of pixels — and it is NOT an icon: the colours are the
+cave floor's own orange at different brightnesses, no shift of the block
+matches, and the block covers about five tiles square around a
+`RandomSancutuary` building at (59,139) on `ГСК-011`. So the minimap's
+treatment of a building footprint underground is the next thing to read.

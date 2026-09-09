@@ -34,6 +34,38 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
+// ------------------------------------------ the trailer's coarse grid
+// The dwarven pre-step's number is the whole of the tag-0x10 block, and the
+// block is the whole of the 28,803 bytes the port's underground file was
+// short of the game's on every dwarven map. No game data needed: the two
+// framings differ by the grid and by the size field widening to its u32 form.
+{
+  const tiles = 176;
+  const V = tiles + 1;
+  const N = V * V;
+  const base = {
+    tiles,
+    layers: [{ path: '/x.(AdvMapTile).xdb#xpointer(/AdvMapTile)', mask: new Uint8Array(N) }],
+    heights: new Float32Array(N),
+    flags: new Uint8Array(N),
+  };
+  const bare = buildTerrainFile(base);
+  const filled = buildTerrainFile({ ...base, coarse: 14 });
+  const d = Math.trunc(V / 3) + 1;
+  check('the coarse grid is 60 x 60 on a large map', d === 60, `${d}`);
+  check('filling it costs the 28,803 bytes the dwarven maps were short',
+    filled.length - bare.length === 28803, `${filled.length - bare.length}`);
+  const at = filled.length - 6 - d * d * 8 - 17;
+  check('the block is framed 10 <u32> 01 08 <d> 02 08 <d>',
+    filled.subarray(at, at + 17).toString('hex')
+      === '10' + '19e10000' + '0108' + '3c000000' + '0208' + '3c000000',
+    filled.subarray(at, at + 17).toString('hex'));
+  const cell = filled.subarray(at + 17, at + 25).toString('hex');
+  check('and every cell carries the drawn number', cell === '030c02020103020e'
+    && filled.subarray(at + 17, filled.length - 6).every((b, i) => b === filled[at + 17 + (i % 8)]),
+    cell);
+}
+
 const dir = dataDir();
 if (!existsSync(join(dir, 'RMG'))) {
   console.log('no unpacked RMG data — skipping');

@@ -330,6 +330,8 @@ export function buildMapFiles(
         heights: run.vertexHeights[1]!.floats,
         flags: run.vertexHeights[1]!.bytes,
         passability: run.passability[1],
+        // The pre-step ran on the SECOND floor, so its grid is this file's.
+        ...(c.coarse === null ? {} : { coarse: c.coarse }),
       }),
     });
   }

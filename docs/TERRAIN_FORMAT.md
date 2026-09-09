@@ -76,7 +76,7 @@ marker `00 00 02 00 05 00`. Measured across all 282 shipped `GroundTerrain.bin`:
 | `0d` | empty on every map but three (two dimension scalars at 0) |
 | `0e` | a single byte — see below |
 | `0f` | **the passability plane**, `V²` u8 — filled on 278 of 282 maps |
-| `10` | a **coarse `d × d` grid**, `d = round((V−1)/3) + 1` (73→25, 97→33, 137→46), of ~8-byte records rather than plain bytes; present on 134 maps, absent on the rest, so the engine fills it rather than reading it as authored data |
+| `10` | a **coarse `d × d` grid**, `d = round((V−1)/3) + 1` (73→25, 97→33, 137→46, 177→60), of 8-byte records rather than plain bytes; present on 134 maps, absent on the rest, so the engine fills it rather than reading it as authored data. **The record is `03 0c 02 02 01 03 02 <v>`** — two one-byte fields, `2` always 1 and `3` a value — which is the word `0xEB2A20` writes per cell: low byte 1, high byte the number the dwarven FillTerrain pre-step drew (`8 + below(8)`). On an RMG map every cell carries the same `v`, and only a dwarven underground has the block filled at all |
 
 A **fresh blank** carries `0d`, `0e`, `0f` and `10` all empty — 51 bytes in
 total. So the passability plane is not missing from a new map so much as left

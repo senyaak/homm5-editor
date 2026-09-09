@@ -219,6 +219,12 @@ export interface Chain {
    * where it is taken.
    */
   gridAtFillTerrain: Int32Array[][];
+  /**
+   * The dwarven pre-step's draw, `8 + below(8)`, or null when the map is not
+   * a two-floor dwarven one and the pre-step never ran. It is the whole of
+   * the underground terrain file's coarse grid — every cell carries it.
+   */
+  coarse: number | null;
   /** Per floor: the zone grid, border table, occupancy and room grid. */
   floors: Array<{ grid: Int32Array[]; border: Int32Array[]; occ: Int32Array; room: Int32Array[] }>;
   /** Floor 0's zone grid, border table and occupancy. */
@@ -330,7 +336,9 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   // grid nothing else in the chain reads. The limit is the literal 8 of
   // `mov ecx,8` at 0xEB2A25 - on the traced map the zone count was 8 too, and
   // the log alone could not tell the two apart.
-  if (setup.dwarvenUnderground && made.twoFloors) dwarvenCoarse(rng);
+  // The value it draws is not thrown away: the underground terrain file's
+  // tag-0x10 block is that number, smeared over every cell of the coarse grid.
+  const coarse = setup.dwarvenUnderground && made.twoFloors ? dwarvenCoarse(rng) : null;
   // FILLTERRAIN RUNS HERE, between CalcBorderTiles and PlaceTowns, so its
   // vertex walk sees the grid as it stands at this moment. Two later passes
   // dent it - FillDistToTowns writes -2 over a zone's unreachable tiles, the
@@ -538,7 +546,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     arith: ar,
     roadField: options.roadField,
     gameBuild: Boolean(options.gameBuild),
-    teleports, floors, grid, border, occ, room, gridAtFillTerrain,
+    teleports, floors, grid, border, occ, room, gridAtFillTerrain, coarse,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, the
       // teleports' stamps, then the shipyard's. The room computations are

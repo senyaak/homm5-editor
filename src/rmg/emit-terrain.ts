@@ -29,6 +29,12 @@ export interface TerrainFileInput {
   water?: Uint8Array;
   /** The passability plane; omit for the RMG's all-ones. */
   passability?: Uint8Array;
+  /**
+   * The dwarven pre-step's number, when the level has one — the whole content
+   * of the trailer's tag-`0x10` grid. Underground floors of a dwarven map only;
+   * every other file leaves the block declared 0 x 0.
+   */
+  coarse?: number;
 }
 
 const u32 = (n: number): Buffer => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0, 0); return b; };
@@ -50,6 +56,26 @@ function pathRecord(path: string): Buffer {
     byte(0x03), byte(2 * (path.length + 2)), byte(0x03), byte(2 * path.length),
     Buffer.from(path, 'latin1'),
   ]);
+}
+
+/**
+ * The trailer's tag-`0x10` grid, FILLED — which only a dwarven underground is.
+ * `0xEB2A20` sizes it `d x d` with `d = floor(V/3) + 1` (73 -> 25, 97 -> 33,
+ * 137 -> 46, 177 -> 60, all four measured), zeroes a word per cell and then
+ * writes the same pair into every one of them: the low byte 1, the high byte
+ * the `8 + below(8)` the pre-step drew. In the file a cell is that pair as two
+ * one-byte fields, and the block's own size takes the four-byte form (odd = the
+ * length is a u32, even = the length is the byte itself, which is why an empty
+ * block's `0x18` reads as 12).
+ */
+function coarseBlock(dim: number, value: number): Buffer {
+  const cell = Buffer.from([0x03, 0x0c, 0x02, 0x02, 0x01, 0x03, 0x02, value & 0xff]);
+  const cells = Buffer.alloc(dim * dim * cell.length);
+  for (let i = 0; i < dim * dim; i++) cell.copy(cells, i * cell.length);
+  const body = Buffer.concat([
+    byte(0x01), byte(0x08), u32(dim), byte(0x02), byte(0x08), u32(dim), cells,
+  ]);
+  return Buffer.concat([byte(0x10), u32(2 * body.length + 1), body]);
 }
 
 /** An empty `<tag>` framed sub-block, as the trailer holds them. */
@@ -100,7 +126,7 @@ export function buildTerrainFile(input: TerrainFileInput): Buffer {
     emptyBlock(0x0d),
     byte(0x0e), byte(0x02), byte(0x00),
     wrapper(0x0f, N), anchor(V, N), input.passability ? Buffer.from(input.passability) : Buffer.alloc(N, 1),
-    emptyBlock(0x10),
+    input.coarse === undefined ? emptyBlock(0x10) : coarseBlock(Math.trunc(V / 3) + 1, input.coarse),
     Buffer.from([0x00, 0x00, 0x02, 0x00, 0x05, 0x00]),
   ]);
 
