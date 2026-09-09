@@ -45,6 +45,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { add24, div24, mul24, sub24 } from '../exe/x87.ts';
 import { decodeDDS } from '../format/dds.ts';
 import { childText, find, findAll, parse } from '../format/xml.ts';
 import { rotateOffsets } from './heights.ts';
@@ -197,7 +198,24 @@ export function loadMinimapIcons(dataRoot: string): Map<string, Bitmap> {
   return out;
 }
 
-/** `0xDCFF70` then `0xDCFB00` — where an object's icon is centred, in pixels. */
+/**
+ * `0xDCFF70` then `0xDCFB00` — where an object's icon is centred, in pixels.
+ *
+ * IN THE MINIMAP'S ARITHMETIC, not in doubles, and that is measured. The mean
+ * is `sum * (1.0f / n)` — a reciprocal and a multiply, never a divide — and
+ * the whole chain runs on a unit that is at single precision and ROUND TOWARD
+ * ZERO (`src/exe/x87.ts`), which is the state a process with a Direct3D device
+ * carries. In doubles `3 * (1/6)` is a half exactly; chopped it is a half less
+ * an ulp, and the anchor comes out one ulp under 101.5 instead of on it.
+ *
+ * That one ulp is worth a whole pixel exactly once in the corpus, and the
+ * engine said so itself: a Fairie Tree on a medium map stands at tile 101 with
+ * five blocked tiles and one active, `(101.5 - 1) * 256 / 134` is exactly
+ * 192.0, and `native/rmg/minimap-probe.c` logged the game's own answer as
+ * 101.499 — so the converter gives 191.99998 and the blit truncates to 191,
+ * a pixel left of where the port had it. Every other icon of the corpus is far
+ * enough from a boundary that the last bit does not reach the picture.
+ */
 export function iconAnchor(obj: IconObject, side: number, border: number): readonly [number, number] {
   const offs = rotateOffsets([...obj.blocked, ...obj.active], obj.rot);
   let sx = 0, sy = 0;
@@ -205,11 +223,15 @@ export function iconAnchor(obj: IconObject, side: number, border: number): reado
     sx += dx;
     sy += dy;
   }
+  // `cmp edi,1 / jle` at 0xDD0094: with one offset or none the engine keeps
+  // the SUM and never divides, which is the same number for one and zero.
   const n = offs.length || 1;
-  const ax = Math.trunc(obj.x) + sx / n;
-  const ay = Math.trunc(obj.y) + sy / n;
+  const inv = div24(1, n);
+  const ax = add24(Math.trunc(obj.x), mul24(sx, inv));
+  const ay = add24(Math.trunc(obj.y), mul24(sy, inv));
   const span = side - 2 * border;
-  return [(ax - border) * MINIMAP_SIDE / span, MINIMAP_SIDE - (ay - border) * MINIMAP_SIDE / span];
+  const to = (v: number): number => div24(mul24(sub24(v, border), MINIMAP_SIDE), span);
+  return [to(ax), sub24(MINIMAP_SIDE, to(ay))];
 }
 
 /** The 256x256 icon layer: zero everywhere the icons do not reach. */

@@ -15,6 +15,7 @@ import { writeDDS } from '../src/format/texture.ts';
 import { drawMinimap, drawTerrainLayer } from '../src/rmg/minimap.ts';
 import { buildMinimapMask } from '../src/rmg/minimap-mask.ts';
 import { drawIconLayer, iconNameFor, loadMinimapIcons, type IconObject } from '../src/rmg/minimap-icons.ts';
+import { iconAnchor } from '../src/rmg/minimap-icons.ts';
 import { readTileInfo } from '../src/rmg/preset-table.ts';
 import {
   fillTerrain, makeRiverPlane, paintLakes, paintRoads, stampZoneLakeRiver,
@@ -54,6 +55,38 @@ function check(name: string, ok: boolean, detail = ''): void {
     pile[at(4, 4)] === 1, `${pile[at(4, 4)]}`);
   check('and the order the two stand in does not decide it', reversed[at(4, 4)] === 0,
     `${reversed[at(4, 4)]}`);
+}
+
+// ------------------------------ the icon anchor chops, and a pixel hangs on it
+// The mean is `sum * (1.0f / n)` on a unit at single precision and ROUND
+// TOWARD ZERO, so `3 * (1/6)` is an ulp UNDER a half where doubles make it
+// exactly a half. Held without game data on the case that showed it: the
+// Fairie Tree of a medium map, five blocked tiles and one active at 3pi/2,
+// standing on tile 101 of a 136-wide map, where `(101.5 - 1) * 256 / 134` is
+// exactly 192.0 and the last bit decides which pixel the blit truncates to.
+// `native/rmg/minimap-probe.c` read the game's own answer for it: 101.499.
+{
+  const tree = {
+    x: 101, y: 101, rot: 3 * (Math.PI / 2), name: 'Object_0',
+    blocked: [[-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]] as ReadonlyArray<readonly [number, number]>,
+    active: [[0, 0]] as ReadonlyArray<readonly [number, number]>,
+  };
+  const [px, py] = iconAnchor(tree, 136, 1);
+  check('the anchor lands UNDER the pixel boundary, not on it', px < 192 && px > 191.9999, `${px}`);
+  check('so the icon is blitted a pixel left', Math.trunc(px) - 3 === 188, `${Math.trunc(px) - 3}`);
+  // The other axis of the same object is nowhere near a boundary, which is why
+  // only one of the two moved: the top is 61 either way.
+  check('and its top is where it already was', Math.trunc(py) - 3 === 61, `${Math.trunc(py) - 3}`);
+  // THE CONTROL, and it lands on the same 101.5: a count that is a power of
+  // two divides exactly in either arithmetic, so this one is 192.0 on the nose
+  // where the six above is an ulp under. Which makes the two checks about the
+  // chop rather than about the footprint or the converter.
+  const quarter = {
+    ...tree,
+    blocked: [[1, 1], [1, 0], [0, 1]] as ReadonlyArray<readonly [number, number]>,
+  };
+  const [qx] = iconAnchor(quarter, 136, 1);
+  check('a power-of-two count still lands ON it', qx === 192, `${qx}`);
 }
 
 const dir = dataDir();

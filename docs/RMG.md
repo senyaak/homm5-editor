@@ -6200,3 +6200,59 @@ One more thing the corpus says about the shape of the search: it holds exactly
 ONE Fairie Tree, and it is the icon that misses — the Preserve race appears on
 one map only. So "this document" is not ruled out either. It is untested, and
 a second map with a Preserve zone would test it.
+
+
+**09.09, CLOSED — and it was the ROUNDING MODE, not the object.** The probe
+went into the game's image too, the map was ordered there, and the anchor
+logged its own answer for the object everything above is about:
+
+    mm anchor tile+point*1000 101 101 101499 101000
+      blocked 5 0 1 0 -1 1 1 1 0 1 -1
+      active  1 0 0
+
+Read it and every hypothesis of the last two entries falls at once. The
+blocked list IS the rotated one — those five pairs are the shared document's
+five turned by 3pi/2, which is what the port turns them into — the active list
+is the one tile, the count is six, and the tile is 101,101. Nothing about the
+lists was ever wrong. What is wrong is the last bit: the point is 101.499, and
+the port had 101.5.
+
+THE MEAN IS `sum * (1.0f / n)` — a reciprocal and a multiply, never a divide
+(`0xDD0099`) — and it runs on a unit at single precision and ROUND TOWARD
+ZERO. That is the state `src/exe/x87.ts` already describes and the minimap
+already speaks: a process with a Direct3D device carries `0x0C7F`, and 6208 of
+6208 calls of the engine's own table sine came out of that module. The icon
+anchor was the one part of the minimap still computing in doubles. Chopped,
+`1/6` is under a sixth, `3 * (1/6)` is a half less an ulp, `101 + that` is one
+ulp under 101.5 — and `(101.5 - 1) * 256 / 134` is EXACTLY 192.0, so the
+converter lands on 191.99998 and the blit truncates it to 191. Left 188, which
+is where the reference has it.
+
+WHY EXACTLY ONE ICON IN THE CORPUS. The last bit only reaches the picture where
+the converted anchor sits on a pixel boundary, and chopping only moves a value
+TOWARD ZERO — so it has to sit on the boundary from ABOVE. The corpus holds
+seven other anchors that land on an integer exactly; six of them have a count
+that is a power of two or a sum of zero, where the chop and the round agree to
+the bit, and the seventh is a `DwarvenDwelling` whose sum is NEGATIVE — chopping
+lifts its mean from -0.5 toward zero, the anchor moves up off the boundary
+rather than down through it, and 64.0 stays 64. Only a positive sum over a
+count that is not a power of two, landing on a boundary, moves; there is one.
+
+WHY THE EDITOR COULD NOT HAVE SAID IT. Seven instrumented editor runs, 277
+icons: every anchor there is the rotated footprint and every point equals the
+port's to a thousandth, because none of them sits on a boundary. The two
+executables do not make the same map from the same order, so the map that does
+was out of the editor's reach entirely — the same order gives an editor map
+whose Fairie Tree stands at 129,27 under a different quarter, and that one is
+drawn where the port draws it. It took the probe in the game's own image.
+
+`iconAnchor` now runs on `mul24`/`div24`/`add24`/`sub24`, `ГСК-007` is 20 of
+20, and `tools/test-rmg-minimap.ts` holds the case without game data: the same
+footprint on the same tile, the anchor under the boundary rather than on it,
+and a power-of-two count landing on it as the control. Undo the chop and the
+first two redden.
+
+**ELEVEN of the twelve game maps are byte-identical in every entry.** What is
+left is `ГСК-001` at 14 of 17, which is a different animal: it parts in
+`map.xdb` at byte 321 and its `GroundTerrain.bin` is a different size, so it
+wants the map re-ordered and a fresh trace on that seed rather than a rule.
