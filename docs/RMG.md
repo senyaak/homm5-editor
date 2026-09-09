@@ -6256,3 +6256,69 @@ first two redden.
 left is `ГСК-001` at 14 of 17, which is a different animal: it parts in
 `map.xdb` at byte 321 and its `GroundTerrain.bin` is a different size, so it
 wants the map re-ordered and a fresh trace on that seed rather than a rule.
+
+
+**09.09, the twelfth map — and the saved file was never the map.** The order
+`ГСК-001` carries is `S3-5P2Z7N2.2`, large, two players, seed 1785534414, and
+the first thing to do with it was the thing the diff has been printing at the
+bottom of every report: order it again. Ordered fresh, the SAME seed comes out
+with `map.xdb` and `GroundTerrain.bin` byte-identical — 2,837,538 bytes of
+objects to the byte — and even the races differ from the saved file's
+(`ACADEMY NECROMANCY` against its `INFERNO ACADEMY`). So the archive in `H5E/`
+was generated and then PAINTED ON: its captions are numbered from 2, which is
+an editor SAVE, and its terrain file is 157 KB smaller than the generator's.
+Three of its seventeen entries were never the generator's answer to compare
+against. **Nothing was wrong with the port on this map at all** — except one
+subsystem, which the fresh order did expose:
+
+    minimap_floor_01.dds     174 bytes differ, first at 11029
+
+**And that closed on the EDITOR'S TEXT-TO-FLOAT, which is not the game's.**
+The 174 bytes are 174 single channels, every one of them GREEN, every one of
+them one step apart, in two blobs. What they are not is a rounding boundary:
+`_tmp/mm-blame-001.ts` reopens the two resample passes and prints how far each
+disagreeing channel's pre-rounding sum sits from the `.5` that decides it, and
+all 174 are a mile from it (0.02 to 0.48, where the Fairie Tree's were 4e-5).
+So the value that came in was already different, and the layer before the
+resample is where to look. `RMG_MINIMAP_LAYERS=<dir>` on any build now writes
+the two pre-resample layers, which is what made the rest arithmetic:
+
+  * raise every source pixel whose green is 196 — the Bog document's, and no
+    other document has that green — to 197, resample, merge: **0 bytes differ**
+    (`_tmp/mm-bog-197.ts`). 68 pixels, all of them Bog tiles the halving spares.
+  * Bog's green text is `0.772549`, and 197/255 is `0.7725490196…` — the text
+    is 2e-8 UNDER the byte the editor draws. No arithmetic on the float nearest
+    that text reaches it: `f32(0.772549) * 255` is 196.99998 under every
+    rounding. The parse has to overshoot, by one ulp exactly.
+  * Which parse? Thirteen shapes were run against all 127 distinct colour texts
+    in the game's tile documents — digits against a power-of-ten table built
+    four ways, the whole fraction as an integer over a power of ten, the
+    accumulation from either end, each under nearest and under chop — with the
+    constraint that `0.772549` come out 197 and the other 126 keep the byte the
+    port already reproduced. **One fits: the fraction accumulated FROM THE
+    RIGHT, `v = (v + d) / 10` over the digits in reverse, rounded to nearest at
+    24 bits** (`parse24Right`). Accumulating from the left misses Bog; the
+    `* 0.1f` variants and the integer-over-power ones take `0.862745` up with
+    it, and that colour is 371 tiles of this very map, which is how they are
+    refuted rather than merely disliked.
+  * It is a DIFFERENT parse from the game's `parse24`, and the two are held
+    apart by the data rather than assumed: eleven of the 127 colours are ones
+    the game lowers a byte and the editor does not — `Water`'s red, the
+    `Dead_Land` red, the `SandRoad` and `SnowRoad` greens among them. A parse
+    that fits one build gets those eleven wrong on the other. Nearest at load
+    time and chopping at draw time is the same argument `POW10_NEAREST` already
+    rests on: the documents are read before there is a Direct3D device to put
+    the process in chop mode, and the minimap's own multiply runs long after.
+
+`tools/test-x87.ts` holds it with no game data — Bog both ways, four of the
+eleven, and two colours just as close to their boundary that must not move —
+and `tools/test-rmg-minimap.ts` is unchanged at 0 bytes on the reference.
+
+**THE SCOREBOARD, re-measured rather than remembered.** Every editor template
+run: **22 of 22 at 15 of 15** (`_tmp/all22`, which the old note had at 20). The
+game-built archives in `H5E/`: twelve at every entry byte-identical —
+`ГСК-002`, `003` and `009` through `016` — plus `ГСК-001`, whose saved copy is
+the painted-on one above and whose ORDER now reproduces at 15 of 15. What is
+left in that folder is `32232.h5m`, a three-player two-level `S6-11P2-8Z8K2.4a`
+at 22 of 23: `minimap_floor_02.dds`, 101 bytes from 101238, on the game's
+build. That is the next one, and the tools above are pointed at it.

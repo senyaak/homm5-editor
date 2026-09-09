@@ -61,7 +61,7 @@
 // because the flags were thought to make it unreachable.
 
 import type { EngineSine } from '../exe/sine-table.ts';
-import { mul24, parse24 } from '../exe/x87.ts';
+import { mul24, parse24, parse24Right } from '../exe/x87.ts';
 import { LANCZOS3_SUPPORT, lanczos3, resampleFiltered, type Bitmap } from './resample.ts';
 import type { TerrainLayer } from './terrain.ts';
 
@@ -189,12 +189,14 @@ export function drawTerrainLayer(floor: MinimapFloor): Bitmap {
       const doc = rock ? null : tileDocument(layers, dim, tx, ty);
       if (doc) {
         const [cr, cg, cb] = doc.minimapColor;
-        // The game parses the tile's colour text its own way (`parse24`) and
-        // multiplies on its chopping machine; `String(c)` is the xdb's decimal
-        // again, since the port holds the nearest double of a short decimal.
-        const byte = floor.gameParse
-          ? (c: number): number => Math.trunc(mul24(parse24(String(c)), 255))
-          : (c: number): number => Math.trunc(Math.fround(Math.fround(c) * 255));
+        // BOTH BUILDS READ THE TEXT, and each reads it its own way: the game
+        // digit by digit on its chopping machine (`parse24`), the editor from
+        // the right under nearest (`parse24Right`). The multiply chops either
+        // way — by then the process has its Direct3D device. `String(c)` is
+        // the xdb's decimal again, since the port holds the nearest double of
+        // a short decimal.
+        const parse = floor.gameParse ? parse24 : parse24Right;
+        const byte = (c: number): number => Math.trunc(mul24(parse(String(c)), 255));
         r = byte(cr);
         g = byte(cg);
         b = byte(cb);

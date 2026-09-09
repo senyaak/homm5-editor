@@ -180,3 +180,37 @@ export function parse24(text: string): number {
   for (let i = 0; i < fp.length && i < POW10_NEAREST.length; i++) v = add24(v, mul24(Number(fp[i]), POW10_NEAREST[i]!));
   return neg ? -v : v;
 }
+
+/**
+ * The same decimal as the EDITOR's process reads it — and it is not the one
+ * above.
+ *
+ * The fraction is accumulated FROM THE RIGHT, `v = (v + d) / 10` over the
+ * digits in reverse, every step rounded to NEAREST at 24 bits, and the integer
+ * part added last. Both halves of that matter: nearest rather than chopping,
+ * and the least significant digit first rather than the most.
+ *
+ * WHY NEAREST HERE AND CHOPPING THERE. Not two machines — two moments. The
+ * documents are read when the data loads; the process only switches its
+ * rounding to chop when a Direct3D device appears, and the minimap's own
+ * multiply, which runs long after, chops. `POW10_NEAREST` above rests on the
+ * same argument for the same reason.
+ *
+ * FITTED, NOT READ, and the fit is narrow: of thirteen shapes tried against
+ * the 127 distinct colour texts in the game's tile documents — the digits
+ * against a power table built four ways, the whole fraction as an integer over
+ * a power of ten, the accumulation from either end, each under nearest and
+ * under chop — this is the ONLY one that puts Bog's `0.772549` over 197/255,
+ * where the editor's own minimap has it, and leaves all 126 other colours on
+ * the byte the port already reproduced. Eleven of those 126 are colours the
+ * GAME lowers by one and the editor does not, so they hold the two parses
+ * apart rather than merely agreeing with both.
+ */
+export function parse24Right(text: string): number {
+  const neg = text.startsWith('-');
+  const [ip, fp = ''] = (neg ? text.slice(1) : text).split('.');
+  let v = 0;
+  for (let i = fp.length - 1; i >= 0; i--) v = Math.fround(Math.fround(v + Number(fp[i])) / 10);
+  const out = Math.fround(Number(ip) + v);
+  return neg ? -out : out;
+}

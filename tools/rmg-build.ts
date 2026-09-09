@@ -13,7 +13,7 @@
 // (`CoCreateGuid` at run time), the map's name (typed into the dialog) and
 // the settings the dialog was set to. docs/RMG.md names them.
 
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { readEngineSine, type EngineSine } from '../src/exe/sine-table.ts';
@@ -25,7 +25,7 @@ import { buildRmgTexts, GAME_CAPTION_TEXT } from '../src/rmg/emit-texts.ts';
 import { tr24 } from '../src/exe/x87.ts';
 import { MAP_SIZES } from '../src/rmg/create-map.ts';
 import { RACE } from '../src/rmg/load-template.ts';
-import { drawMinimap } from '../src/rmg/minimap.ts';
+import { drawMinimap, drawTerrainLayer, type MinimapFloor } from '../src/rmg/minimap.ts';
 import {
   drawIconLayer, iconList, iconNameFor, loadMinimapIcons, type IconObject,
 } from '../src/rmg/minimap-icons.ts';
@@ -211,9 +211,25 @@ function minimapFiles(
     return river.data[(2 * cy + 1) * river.w + (2 * cx + 1)]! > 0x8c
       && !bigWaterCovers(layers, dim, tx, ty);
   };
-  const image = drawMinimap(
-    { side, border, layers, dim, masked: (tx, ty) => mask[ty * side + tx] === 1, spared, flags, gameParse: gameBuild },
-    drawIconLayer(iconObjects, icons, side, border), sine);
+  const floorInput: MinimapFloor = {
+    side, border, layers, dim, masked: (tx, ty) => mask[ty * side + tx] === 1, spared, flags,
+    gameParse: gameBuild,
+  };
+  const iconLayer = drawIconLayer(iconObjects, icons, side, border);
+  // THE TWO LAYERS BEFORE THE RESAMPLE, when somebody asks for them. A pixel
+  // of the finished picture is six by six source pixels through the filter, so
+  // a difference of one byte out there is only ever blamed from in here —
+  // `RMG_MINIMAP_LAYERS=<dir>` writes `terrain-<floor>.bin` and
+  // `icons-<floor>.bin`, each a raw BGRA field of its own side.
+  const dumpTo = process.env.RMG_MINIMAP_LAYERS;
+  if (dumpTo) {
+    const terrainLayer = drawTerrainLayer(floorInput);
+    mkdirSync(dumpTo, { recursive: true });
+    writeFileSync(join(dumpTo, `terrain-${floor}.bin`), terrainLayer.data);
+    writeFileSync(join(dumpTo, `icons-${floor}.bin`), iconLayer.data);
+    console.log(`  minimap layers written to ${dumpTo}: terrain ${terrainLayer.width}, icons ${iconLayer.width}`);
+  }
+  const image = drawMinimap(floorInput, iconLayer, sine);
   // The port keeps the engine's byte order; writeDDS takes RGBA and stores BGRA.
   const rgba = new Uint8Array(image.data.length);
   // THE GAME'S EXTRA STAGE. Every channel of a minimap the game wrote is the

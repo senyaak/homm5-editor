@@ -12,7 +12,7 @@
 // wrong sine and a compensating filter. These ask each function on its own.
 
 import { readEngineSine, engineSin24 } from '../src/exe/sine-table.ts';
-import { add24, div24, mul24, sub24, tr24 } from '../src/exe/x87.ts';
+import { add24, div24, mul24, parse24, parse24Right, sub24, tr24 } from '../src/exe/x87.ts';
 import { lanczos3 } from '../src/rmg/resample.ts';
 import { gameDirIfAny } from './game-dir.ts';
 import { join } from 'node:path';
@@ -41,6 +41,39 @@ console.log('the operations, on their own');
   check('a difference does as well', Math.fround(sub24(1, 0.9999250173568726)) === sub24(1, 0.9999250173568726));
   check('a quotient truncates', div24(-0.8382253646850586, 5.289165496826172) === -0.1584796905517578,
     `${div24(-0.8382253646850586, 5.289165496826172)}`);
+}
+
+console.log('\nthe two builds read a decimal differently');
+{
+  // A tile colour's byte, both ways: parse the xdb's text, multiply by 255 on
+  // the chopping machine, truncate. The texts are the game's own tile
+  // documents, and the numbers on the right are what each build's minimap has.
+  const gameByte = (s: string): number => Math.trunc(mul24(parse24(s), 255));
+  const editorByte = (s: string): number => Math.trunc(mul24(parse24Right(s), 255));
+  // Bog's green is the one colour the EDITOR carries higher than the game, and
+  // the only reason `parse24Right` exists: 0.772549 is 2e-8 under 197/255, and
+  // accumulating the fraction from the right lands over it. Accumulate from
+  // the left instead — under nearest or under chop — and this case reddens.
+  check('the editor lifts Bog\'s green over 197/255', editorByte('0.772549') === 197, `${editorByte('0.772549')}`);
+  check('the game does not', gameByte('0.772549') === 196, `${gameByte('0.772549')}`);
+  // Eleven colours go the other way: the game's parse drops them a byte and
+  // the editor's keeps them. Four of them, one from each ground.
+  const LOWERED: ReadonlyArray<readonly [string, number, number]> = [
+    ['0.00784314', 1, 2],   // Water, red
+    ['0.337255', 85, 86],   // Dead_Land, red
+    ['0.454902', 115, 116], // SandRoad, green
+    ['0.709804', 180, 181], // SnowRoad, green
+  ];
+  const badLowered = LOWERED.filter(([s, g, e]) => gameByte(s) !== g || editorByte(s) !== e);
+  check('the colours the game lowers, the editor keeps', badLowered.length === 0,
+    badLowered.map(([s, g, e]) => `${s}: game ${gameByte(s)} want ${g}, editor ${editorByte(s)} want ${e}`).join('; '));
+  // And the near neighbours that must NOT move, or the fit would be a fudge:
+  // the same 2e-8 shortfall as Bog's on a different pair of digits, and a road
+  // colour whose 371 tiles are on the map that closed Bog.
+  const KEPT: ReadonlyArray<readonly [string, number]> = [['0.572549', 145], ['0.862745', 219]];
+  const badKept = KEPT.filter(([s, want]) => gameByte(s) !== want || editorByte(s) !== want);
+  check('and a colour just as close to its boundary stays where it is', badKept.length === 0,
+    badKept.map(([s, want]) => `${s}: game ${gameByte(s)}, editor ${editorByte(s)}, want ${want}`).join('; '));
 }
 
 const game = gameDirIfAny();
