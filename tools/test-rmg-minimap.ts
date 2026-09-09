@@ -30,6 +30,32 @@ function check(name: string, ok: boolean, detail = ''): void {
   if (!ok) failures++;
 }
 
+// ------------------------------------ one descriptor a tile, not a union
+// The object arm of the darkening mask is a per-tile descriptor the engine
+// overwrites (`0xA4FF00`), so a tile one object blocks and another calls
+// active ends up ACTIVE and is never darkened. Held here without any game
+// data: two one-tile objects standing on the same tile.
+{
+  const side = 8;
+  const plane = new Uint8Array((side + 1) * (side + 1)).fill(1);
+  const at = (x: number, y: number): number => y * side + x;
+  const blocker = { x: 4, y: 4, rot: 0, floor: 0, blocked: [[0, 0]] as const, active: [] };
+  // The claimer BLOCKS somewhere of its own: an object with no blocked list
+  // claims nothing, which is what keeps a torch on an ore pile dark.
+  const claimer = { x: 4, y: 3, rot: 0, floor: 0, blocked: [[0, 0]] as const, active: [[0, 1]] as const };
+  const passer = { x: 4, y: 3, rot: 0, floor: 0, blocked: [] as const, active: [[0, 1]] as const };
+  const alone = buildMinimapMask({ side, plane, dim: side + 1, objects: [blocker] });
+  check('a blocked tile is darkened', alone[at(4, 4)] === 1, `${alone[at(4, 4)]}`);
+  const shared = buildMinimapMask({ side, plane, dim: side + 1, objects: [blocker, claimer] });
+  check("another object's active tile takes it back", shared[at(4, 4)] === 0, `${shared[at(4, 4)]}`);
+  const reversed = buildMinimapMask({ side, plane, dim: side + 1, objects: [claimer, blocker] });
+  const pile = buildMinimapMask({ side, plane, dim: side + 1, objects: [blocker, passer] });
+  check('but an object with no blocked list of its own claims nothing',
+    pile[at(4, 4)] === 1, `${pile[at(4, 4)]}`);
+  check('and the order the two stand in does not decide it', reversed[at(4, 4)] === 0,
+    `${reversed[at(4, 4)]}`);
+}
+
 const dir = dataDir();
 if (!existsSync(join(dir, 'RMG'))) {
   console.log('no unpacked RMG data — skipping');

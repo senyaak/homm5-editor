@@ -6058,5 +6058,44 @@ untouched at 20. What is left on the three is `minimap_floor_02.dds`, ~100
 bytes in one 8×8 block of pixels — and it is NOT an icon: the colours are the
 cave floor's own orange at different brightnesses, no shift of the block
 matches, and the block covers about five tiles square around a
-`RandomSancutuary` building at (59,139) on `ГСК-011`. So the minimap's
-treatment of a building footprint underground is the next thing to read.
+`RandomSancutuary` building at (59,139) on `ГСК-011`.
+
+**09.09, later: the darkening mask is ONE DESCRIPTOR A TILE, and the last two
+minimaps came with it.** The difference on `ГСК-011` was a single SOURCE pixel:
+the field `theirs - ours` over the 8x8 block is a clean lanczos kernel, +86 at
+its peak with negative lobes around it, which is the signature of one tile and
+not of an icon or a shift (all eight shifts of the block score 1-3 of 144
+against 97 for no shift at all).
+
+The tile is (59,140). A `Fakel_01` stands on it, and it is also the ACTIVE tile
+of the `RandomSancutuary` at (59,139) — whose `blockedTiles` are its four
+corners and whose `activeTiles` are its four edges, with its own centre in
+neither list. The engine leaves the tile bright; the port, ORing the two lists
+into a mask, darkened it. The registration is not a union: `0xA55C10` runs
+`0xA4FF00` (walk `+0xB4`, the blocked list, write `+0x10 = 1`) and then
+`0xA500D0` (walk `+0xB8`, the active list, write `+0x10 = 2`) per object, and
+each looks the tile's descriptor up, copies it whole and puts it back — so a
+tile registered twice keeps ONE kind, and only kind 1 darkens.
+
+`ГСК-004` then said the rule was not just "active wins": a torch stands on an
+ore pile's tile at (161,160) and the engine DARKENS that one. The pile's
+`blockedTiles` are empty and its `activeTiles` are its own tile; the sanctuary
+blocks four. So an object that blocks nothing claims nothing — the likely
+reading is the veto at `0xA46E80`, a chain of virtual predicates `0xA55C10`
+runs before either registration, which would leave a pile and a guard out of
+both lists. That chain is not read class by class, so the shape is fitted to
+the maps rather than taken from the predicate.
+
+WHICH REGISTRATION WINS a contested tile is left unmodelled, and deliberately:
+the write is unconditional (`mov dword ptr [esp+28h],1` at 0xA4FFFF), so it is
+the last that stands, and the map's own order puts the sanctuary at #446 long
+before its torch at #8440 — which rules out "objects in order, blocked then
+active for each" and says the registration order is not the file's. Both "all
+the blocked lists, then all the active ones" and "the first write stands" fit
+every map here. What is modelled is what they agree on.
+
+With that, TEN of the twelve game maps are byte-identical in every entry.
+`ГСК-007` keeps its 72 bytes (the Fairie Tree icon, one pixel left — a
+different subsystem: the icon anchor, not the mask) and `ГСК-001` its 14 of 17.
+`tools/test-rmg-minimap.ts` holds both halves of the rule with no game data,
+and reddens when either is undone.

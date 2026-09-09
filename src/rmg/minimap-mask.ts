@@ -51,6 +51,12 @@ export interface MaskObject {
   floor: number;
   /** The shared document's `blockedTiles`, unrotated, in document order. */
   blocked: readonly Offset[];
+  /**
+   * Its `activeTiles`, unrotated — the OTHER registration, and it is not just
+   * a list this mask ignores: see `buildMinimapMask`, where an active tile
+   * takes a blocked one's place in the per-tile descriptor.
+   */
+  active?: readonly Offset[];
 }
 
 /** What the mask is built from, for one floor. */
@@ -123,11 +129,48 @@ export function buildMinimapMask(input: MaskInput): Uint8Array {
       else if (flags && !cornersAgree(flags, dim, x, y)) mask[y * side + x] = 1;
     }
   }
+  // THE OBJECT ARM IS ONE DESCRIPTOR PER TILE, not a union. `0xA4FF00` looks
+  // the tile's descriptor up, copies it whole, writes `+0x10` and puts it back
+  // — so a tile registered twice keeps ONE kind, and only kind 1 (blocked)
+  // darkens; kind 2 (active) reaches the third mask alone. On `ГСК-011` a
+  // Fakel stands on (59,140), which is also the active tile of the
+  // `RandomSancutuary` at (59,139): the engine leaves that tile bright and the
+  // port, ORing the two, darkened it — one source pixel, and a whole lanczos
+  // kernel of it in the finished picture.
+  //
+  // WHICH REGISTRATION WINS is not separated here. The write is unconditional
+  // (`mov dword ptr [esp+28h],1` at 0xA4FFFF), so it is the LAST that stands,
+  // and the map's own order has the sanctuary long before the torch — which
+  // rules out "objects in order, blocked then active for each". Both "all the
+  // blocked lists, then all the active ones" and "the first write stands" fit
+  // every map here, and they differ only where the map orders a conflict the
+  // other way round. What is modelled is what they agree on: an active tile is
+  // never darkened by another object's blocked list.
+  const active = new Uint8Array(side * side);
+  for (const obj of objects) {
+    // AND ONLY AN OBJECT THAT BLOCKS SOMETHING CLAIMS ANYTHING. A pile and a
+    // guard have an active tile and no blocked one, and their tiles ARE
+    // darkened when something else blocks them — `ГСК-004` has a torch on an
+    // ore pile's tile and the engine darkens it, where the sanctuary above
+    // keeps its torch bright. The likely reading is the veto at 0xA46E80,
+    // a chain of virtual predicates the caller runs before either
+    // registration: an object it answers for is registered in neither list.
+    // That chain is not read class by class, so this is the shape fitted to
+    // the maps, not the predicate itself.
+    if (!obj.blocked.length) continue;
+    for (const [dx, dy] of rotateOffsets([...(obj.active ?? [])], obj.rot)) {
+      const tx = Math.trunc(obj.x + dx);
+      const ty = Math.trunc(obj.y + dy);
+      if (tx < 0 || ty < 0 || tx >= side || ty >= side) continue;
+      active[ty * side + tx] = 1;
+    }
+  }
   for (const obj of objects) {
     for (const [dx, dy] of rotateOffsets([...obj.blocked], obj.rot)) {
       const tx = Math.trunc(obj.x + dx);
       const ty = Math.trunc(obj.y + dy);
       if (tx < 0 || ty < 0 || tx >= side || ty >= side) continue;
+      if (active[ty * side + tx]) continue;
       mask[ty * side + tx] = 1;
     }
   }

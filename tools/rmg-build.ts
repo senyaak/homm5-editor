@@ -174,6 +174,9 @@ function minimapFiles(
     objects: run.objects.filter((o) => o.floor === floor).map((o) => ({
       x: o.x, y: o.y, rot: o.rot, floor: o.floor,
       blocked: o.blocked.length || !o.shared ? o.blocked : c.footprint(o.shared).blocked,
+      // The active list too: it is the other half of the per-tile descriptor,
+      // and a tile it claims is one the blocked lists cannot darken.
+      active: o.shared ? c.footprint(o.shared).active : [],
     })),
   });
   const iconObjects: IconObject[] = [];
