@@ -55,6 +55,26 @@ static const BYTE MM_ED_DRAW_HEAD[] = { 0x81, 0xec, 0x64, 0x01, 0x00, 0x00 };
 /** The icon blit — game 0xDCFDE0, `ret 0Ch`. Where each icon actually lands. */
 #define MM_ED_BLIT_RVA 0x4b5580u
 static const BYTE MM_ED_BLIT_HEAD[] = { 0x83, 0xec, 0x1c, 0x89, 0x0c, 0x24 };
+
+/**
+ * The icon ANCHOR — game 0xDCFF70, a plain `ret`: `(out, object)` in ecx/edx.
+ *
+ * Found through the collector rather than by matching bytes, because the two
+ * builds do not agree here: the game's anchor is SSE and the editor's x87, so
+ * the heads differ from the first instruction. The collector is the same
+ * function in both — it dynamic_casts to `SAdvMapBuildingShared` and tests the
+ * `+0xEC` type against 0x63/0x64 — and the editor's copy of that test sits at
+ * 0x8B5DFD, three instructions above `call 0x8B51C0`.
+ *
+ * WHY IT IS HOOKED. docs/RMG.md, 09.09: one icon of the corpus, a Fairie Tree,
+ * is anchored on the UNROTATED footprint while the SAME object's blocked tiles
+ * register from the rotated one. Both readings are of `obj+0x58` / `obj+0x64`,
+ * which one function writes, so the two must be reads at different times. This
+ * prints what the anchor actually gets: the object, the point it comes out
+ * with, and both lists entry by entry.
+ */
+#define MM_ED_ANCHOR_RVA 0x4b51c0u
+static const BYTE MM_ED_ANCHOR_HEAD[] = { 0x83, 0xec, 0x28, 0x53, 0x55, 0x56, 0x8b, 0xe9 };
 /** The resampler — game 0x9743A0, `ret 4`. Its arguments name the filter. */
 #define MM_ED_RESAMPLE_RVA 0x391330u
 static const BYTE MM_ED_RESAMPLE_HEAD[] = { 0x55, 0x8b, 0xec, 0x83, 0xe4, 0xf8 };
@@ -109,6 +129,12 @@ typedef void *(__fastcall *MmIconFn)(void *name, void *edx, void *res, int flag)
 typedef void(__fastcall *MmWriteFn)(void *self, void *images, void *names, void *refs);
 /** `(image, -, x, y, icon)` — `edx` filler again, three on the stack. */
 typedef void(__fastcall *MmBlitFn)(void *image, void *edx, int x, int y, void *icon);
+/** `(out, object)` — both register arguments; the answer is `out`, two floats. */
+typedef void *(__fastcall *MmAnchorFn)(void *out, void *obj);
+/** A footprint list getter, `vtable[+0xB4]` / `[+0xB8]`: `{begin, end}` of byte pairs. */
+typedef void *(__fastcall *MmTilesFn)(void *self);
+/** `(self, -, out)` — the world position, `ret 4`; `edx` is the filler again. */
+typedef float *(__fastcall *MmPosFn)(void *self, void *edx, float *out);
 /** `(dst, src, filter)` — the two are `{buf, rows, w, h}` sixteen-byte images. */
 typedef void(__fastcall *MmResampleFn)(void *dst, void *src, int filter);
 /** `double(double)` — its `ret 8` says stdcall, and the resampler calls it by pointer. */
@@ -124,6 +150,7 @@ static MmSeaFn g_mmSeaOrig = NULL;
 static MmIconFn g_mmIconOrig = NULL;
 static MmWriteFn g_mmWriteOrig = NULL;
 static MmBlitFn g_mmBlitOrig = NULL;
+static MmAnchorFn g_mmAnchorOrig = NULL;
 static MmResampleFn g_mmResampleOrig = NULL;
 static MmCoverFn g_mmCoverOrig = NULL;
 static MmFilterFn g_mmFilterOrig = NULL;
@@ -416,6 +443,62 @@ static void __fastcall mm_blit_hook(void *image, void *edx, int x, int y, void *
 }
 
 /**
+ * One footprint list, entry by entry, as the anchor reads it.
+ *
+ * The list is `{begin, end}` of two signed bytes, so its length is
+ * `(end - begin) / 2` — the same `sar edx,1` the anchor does. Printed as the
+ * pairs themselves and not as a mean: a mean that matches proves nothing about
+ * WHICH list produced it, and the whole question here is which list this is.
+ */
+static void mm_log_tiles(const char *tag, void *list) {
+  int vals[1 + 2 * 24];
+  const signed char *begin;
+  int count, k, n = 0;
+  if (!list) {
+    log_line(tag);
+    log_line("  (null)");
+    return;
+  }
+  begin = (const signed char *)((void **)list)[0];
+  count = (int)((const signed char *)((void **)list)[1] - begin) / 2;
+  if (count < 0) count = 0;
+  vals[n++] = count;
+  for (k = 0; k < count && k < 24; k++) {
+    vals[n++] = begin[2 * k];
+    vals[n++] = begin[2 * k + 1];
+  }
+  mm_log_ints(tag, vals, n);
+}
+
+/**
+ * The icon anchor: which object, where it says the icon goes, and both lists.
+ *
+ * The object's own tile comes out of the same `[+0xA0]` the anchor uses, so
+ * the line names the object the way the port does — by where it stands — and
+ * a run can be lined up with `tools/rmg-run.ts` object for object without
+ * anything being guessed at this end.
+ */
+static void *__fastcall mm_anchor_hook(void *out, void *obj) {
+  void *res = g_mmAnchorOrig(out, obj);
+  if (g_mmInside && obj && res) {
+    void **vt = *(void ***)obj;
+    float world[4];
+    const float *p = ((MmPosFn)vt[0xA0 / 4])(obj, NULL, world);
+    int vals[4];
+    vals[0] = p ? (int)(p[0] * 0.5f) : -1;
+    vals[1] = p ? (int)(p[1] * 0.5f) : -1;
+    // The point in thousandths: the log is integers, and a half-tile mean is
+    // the whole question, so a rounded tile would throw the answer away.
+    vals[2] = (int)(((const float *)res)[0] * 1000.0f);
+    vals[3] = (int)(((const float *)res)[1] * 1000.0f);
+    mm_log_ints("mm anchor tile+point*1000 ", vals, 4);
+    mm_log_tiles("  blocked ", ((MmTilesFn)vt[0xB4 / 4])(obj));
+    mm_log_tiles("  active  ", ((MmTilesFn)vt[0xB8 / 4])(obj));
+  }
+  return res;
+}
+
+/**
  * The x87 control word, as the editor has it when it resamples.
  *
  * Two fields decide what every float instruction in this path does, and
@@ -597,6 +680,9 @@ static int install_minimap_probe(void) {
                                   &mm_draw_hook, "minimap build");
   g_mmBlitOrig = (MmBlitFn)detour(MM_ED_BLIT_RVA, MM_ED_BLIT_HEAD, sizeof(MM_ED_BLIT_HEAD),
                                   &mm_blit_hook, "minimap icon blit");
+  g_mmAnchorOrig = (MmAnchorFn)detour(MM_ED_ANCHOR_RVA, MM_ED_ANCHOR_HEAD,
+                                      sizeof(MM_ED_ANCHOR_HEAD), &mm_anchor_hook,
+                                      "minimap icon anchor");
   g_mmResampleOrig = (MmResampleFn)detour(MM_ED_RESAMPLE_RVA, MM_ED_RESAMPLE_HEAD,
                                           sizeof(MM_ED_RESAMPLE_HEAD), &mm_resample_hook,
                                           "minimap resample");
@@ -613,5 +699,6 @@ static int install_minimap_probe(void) {
   g_mmWriteOrig = (MmWriteFn)detour(MM_ED_WRITE_RVA, MM_ED_WRITE_HEAD, sizeof(MM_ED_WRITE_HEAD),
                                     &mm_write_hook, "minimap write");
   return g_mmTerrainOrig && g_mmSeaOrig && g_mmIconOrig && g_mmDrawOrig && g_mmBlitOrig
-      && g_mmResampleOrig && g_mmCoverOrig && g_mmFilterOrig && g_mmSinOrig && g_mmWriteOrig;
+      && g_mmAnchorOrig && g_mmResampleOrig && g_mmCoverOrig && g_mmFilterOrig && g_mmSinOrig
+      && g_mmWriteOrig;
 }
