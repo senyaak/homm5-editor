@@ -116,6 +116,33 @@ static const BYTE MM_ED_ICON_HEAD[] = { 0x51, 0x89, 0x0c, 0x24, 0x8d, 0x4c, 0x24
 #define MM_ED_COVER_RVA 0x8d73c0u
 static const BYTE MM_ED_COVER_HEAD[] = { 0x83, 0xec, 0x14, 0xd9, 0x44, 0x24, 0x18 };
 
+/**
+ * THE GAME'S IMAGE, five of the same functions — the window and the icons.
+ *
+ * WHY A SECOND SET. The corpus's one open icon is on a map the GAME generated,
+ * and the two executables do not make the same map from the same order: the
+ * port replays one with `--game-build` and the other without, because the
+ * game's generator takes the two coordinate draws into the opposite axes. So
+ * an editor run cannot reach that map at all, however many seeds it is given —
+ * six of them, 270 icons, every one of them anchored on the rotated footprint.
+ *
+ * Only these five. The terrain pass, the resampler, the filter, the sine and
+ * the coverage sampler are the arithmetic half of the probe, they were settled
+ * in the editor, and each of them writes tens of thousands of lines; what is
+ * open here is one icon, so what goes in is the window that keeps the game's
+ * own minimap panel out of the log, and the three that speak about icons.
+ */
+#define MM_GAME_WRITE_RVA 0x9d1bd0u
+static const BYTE MM_GAME_WRITE_HEAD[] = { 0x55, 0x8b, 0xec, 0x83, 0xe4, 0xf8 };
+#define MM_GAME_DRAW_RVA 0x9d0c70u
+static const BYTE MM_GAME_DRAW_HEAD[] = { 0x81, 0xec, 0xa0, 0x01, 0x00, 0x00 };
+#define MM_GAME_BLIT_RVA 0x9cfde0u
+static const BYTE MM_GAME_BLIT_HEAD[] = { 0x83, 0xec, 0x10, 0x89, 0x0c, 0x24 };
+#define MM_GAME_ICON_RVA 0x9d3440u
+static const BYTE MM_GAME_ICON_HEAD[] = { 0x51, 0x53, 0x55, 0x56, 0x89, 0x4c, 0x24, 0x0c };
+#define MM_GAME_ANCHOR_RVA 0x9cff70u
+static const BYTE MM_GAME_ANCHOR_HEAD[] = { 0x83, 0xec, 0x20, 0x53, 0x55, 0x8b, 0xea };
+
 /** `(image, terrainVector, iconVector)` — `edx` is a real argument here. */
 typedef void(__fastcall *MmDrawFn)(void *self, void *terrainVec, void *iconVec);
 /** `(image, terrain, mask, colour, border)` — thiscall plus three on the stack. */
@@ -662,6 +689,29 @@ static void __fastcall mm_draw_hook(void *self, void *terrainVec, void *iconVec)
   g_mmDrawOrig(self, terrainVec, iconVec);
   g_mmInside--;
   log_line("=== minimap build ends");
+}
+
+/**
+ * The icon half of the probe in the GAME, where the open map was generated.
+ *
+ * The hooks themselves are the editor's, unchanged: only one of the two
+ * executables is ever patched in a process, so one set of trampolines serves
+ * either. The window goes in LAST for the same reason it does below — until it
+ * is in, `g_mmInside` is zero and everything above it is inert.
+ */
+static int install_minimap_probe_game(void) {
+  g_mmIconOrig = (MmIconFn)detour(MM_GAME_ICON_RVA, MM_GAME_ICON_HEAD, sizeof(MM_GAME_ICON_HEAD),
+                                  &mm_icon_hook, "minimap icon lookup");
+  g_mmBlitOrig = (MmBlitFn)detour(MM_GAME_BLIT_RVA, MM_GAME_BLIT_HEAD, sizeof(MM_GAME_BLIT_HEAD),
+                                  &mm_blit_hook, "minimap icon blit");
+  g_mmAnchorOrig = (MmAnchorFn)detour(MM_GAME_ANCHOR_RVA, MM_GAME_ANCHOR_HEAD,
+                                      sizeof(MM_GAME_ANCHOR_HEAD), &mm_anchor_hook,
+                                      "minimap icon anchor");
+  g_mmDrawOrig = (MmDrawFn)detour(MM_GAME_DRAW_RVA, MM_GAME_DRAW_HEAD, sizeof(MM_GAME_DRAW_HEAD),
+                                  &mm_draw_hook, "minimap build");
+  g_mmWriteOrig = (MmWriteFn)detour(MM_GAME_WRITE_RVA, MM_GAME_WRITE_HEAD,
+                                    sizeof(MM_GAME_WRITE_HEAD), &mm_write_hook, "minimap write");
+  return g_mmIconOrig && g_mmBlitOrig && g_mmAnchorOrig && g_mmDrawOrig && g_mmWriteOrig;
 }
 
 /**

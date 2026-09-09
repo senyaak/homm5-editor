@@ -340,6 +340,13 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // log, so this line is only for the person reading THIS file.
   load_rmg_config();
   if (g_rmgWanted) log_line(install_rmg_oracle() ? "rmg oracle installed" : "rmg oracle NOT installed");
+  // The icon half of the minimap probe, in the game's own image: the corpus's
+  // one open icon is on a map the GAME generated, and no editor run can reach
+  // that map (native/rmg/minimap-probe.c says why). The same word in the same
+  // file turns it on here as there.
+  if (g_rmgMinimap)
+    log_line(install_minimap_probe_game() ? "minimap icon probe installed"
+                                          : "minimap icon probe NOT installed");
   return TRUE;
 }
 
