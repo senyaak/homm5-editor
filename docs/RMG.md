@@ -1955,16 +1955,20 @@ is ever painted as. The global list in `/RMG/Params/Default.xdb` is thirteen
 entries, DUNGEON's nine followed by NO_TYPE's four, so reading a Dungeon
 underground's colour out of it agrees BY ACCIDENT and a lava one's not at all.
 
-**A DWARVEN underground has no big-statics sweep at all, and the port still
-runs one.** `0xEC7070` is ten instructions — `call [vt+0x40]` (the whole-level
-room recompute and the carve), `0xEC28E0(0x3C, 0)`, `ret` — where Subterra's
-and SubInferno's `+0x34` carry the
-lakes, the preset mountains and the sweep. This is READ and NOT PORTED: no
-template in the corpus has produced a dwarven underground yet, so there is
-nothing to hold a change to, and a wrong guess here would be invisible until one
-does. The flavour is one coin in `LoadTemplate` (`0xEA25D4`) unless
-`map+0x8C`'s parity already said Dwarven, so the first two-level order that
-lands on it will report a large divergence in its underground — start here.
+**A DWARVEN underground has no big-statics sweep at all.** `0xEC7070` is ten
+instructions — `call [vt+0x40]` (the whole-level room recompute and the carve),
+`0xEC28E0(0x3C, 0)`, `ret` — where Subterra's and SubInferno's `+0x34` carry the
+lakes, the preset mountains and the sweep. The flavour is one coin in
+`LoadTemplate` (`0xEA25D4`) unless `map+0x8C`'s parity already said Dwarven.
+
+**MEASURED as of 10.09**, and this paragraph used to say the opposite ("READ and
+NOT PORTED — no template in the corpus has produced a dwarven underground
+yet"): the coin lands on Dwarven often, and eight of the fourteen two-level runs
+now in the corpus are dwarven (`S1P2Z2M1` seeds 33, 44, 77, 88; `S1-2P2-8Z8K2S`
+101; `S2-3P2Z7N2` 202; `S1P2Z3K5.1` 303; `S3-5P2-8Z8K2M` 404) — all
+byte-identical in every entry. Subterra (seed 55) and SubInferno (11, 22, 66,
+505, 606) are covered too, so all three subterranean classes are held by real
+runs rather than by a reading.
 
 **And a connection guard keeps its floor.** It was emitted with the default 0
 because every guarded passage until now was on the surface. The map file records

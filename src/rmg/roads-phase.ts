@@ -11,7 +11,8 @@
 //
 // LOOP 1 — connections, kind 0x08. Each point of `zone+0xC0` — the
 // passage mouths and adopted tiles ZoneConnections pushed, in push order
-// (the teleport placer feeds it too; not ported, no template reaches it)
+// (the teleport placer feeds it too, and that half IS ported — `rmg-run`
+// hands `teleportActives` to this phase's connection points)
 // — is routed to its nearest point of the GROWING 0x08 list: every
 // element is scanned, strict <, best starts at 1000.0f, argmin at 0. A
 // route whose either endpoint truncates outside the map is silently

@@ -27,12 +27,13 @@
 // orthogonal neighbours inside the zone, which is how later phases learn to
 // keep the passage clear.
 //
-// TELEPORTS ARE NOT PORTED. When a connection finds no land passage — a
-// different floor, or a border too thin — the engine's second pass plants a
-// monolith or a subterranean gate pair instead. Every connection on the
-// reference run got a land passage, so that path has never been measured
-// against a real run; rather than invent it, this port reports the
-// connections it could not dig and leaves them alone.
+// TELEPORTS ARE THE SECOND PASS, and they live in `teleports.ts`. When a
+// connection finds no land passage — a different floor, or a border too thin —
+// the engine plants a monolith pair on one floor or a subterranean gate pair
+// across two. The reference run has none (every connection there got a land
+// passage), which is why this note used to say the path was unported; two-level
+// orders reach it constantly and are byte-identical with it, `S2-3P2Z7N2`
+// seed 202 carrying two monoliths and four gates.
 
 import { setMonster } from './armies.ts';
 import type { GuardTables } from './armies.ts';
