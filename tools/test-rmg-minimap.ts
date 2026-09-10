@@ -66,6 +66,9 @@ function check(name: string, ok: boolean, detail = ''): void {
   const cls = (name: string): boolean => vetoesRegistration(`/MapObjects/X.xdb#xpointer(/${name})`);
   check('the treasure and the monster are the measured two',
     cls('AdvMapTreasureShared') && cls('AdvMapMonsterShared'));
+  // Read out of the veto's own vtable slots rather than off a map: the artifact
+  // answers question `+0x20` itself, exactly as the monster answers `+0x1C`.
+  check('and the artifact, which the executable settled', cls('AdvMapArtifactShared'));
   check('the shrine and the building are not',
     !cls('AdvMapShrineShared') && !cls('AdvMapBuildingShared'));
 }

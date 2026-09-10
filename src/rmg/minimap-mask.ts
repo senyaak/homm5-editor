@@ -35,8 +35,13 @@
 // the plane and the objects everywhere, big water wherever a template paints a
 // lake or a sea, and the ground-flag corners on an UNDERGROUND floor, where the
 // flags are the massif carve's bytes rather than the constructor's uniform 16.
-// The border ring and `TT_NONE` stay named and unported: no map here reaches
-// either, and the ring was scored at every width from 0 to 16 and fits at none.
+// The border ring and `TT_NONE` stay named and unported, and the RING is now
+// read rather than scored: `0xA4F769` asks the widget itself for the width
+// (`call [eax+68h]`) and the four bounds tests at `0xA4F76C..0xA4F792` use what
+// it returns, so the ring is not a constant to fit and scoring widths 0 to 16
+// against the maps was never going to land. On this path it is inert — every
+// minimap here is byte-identical without it, so whatever `+0x68` answers for
+// the generator's widget leaves no ring.
 
 import { rotateOffsets } from './heights.ts';
 import type { TerrainLayer } from './terrain.ts';
@@ -86,23 +91,46 @@ export interface MaskObject {
  * proxy, "only an object that blocks something claims anything": the shrines
  * and the Shaman have no blocked list either.
  *
- * WHY A CLASS LIST rather than the predicates themselves: the veto's eight
- * slots are one shared `xor eax,eax; ret` seven times over in every class
- * involved, and the eighth hands back a virtual base's subobject whose state
- * is then asked — so the class is what the engine is reading THROUGH, and the
- * chain that gets there is not ported. What is listed is measured; a pickup
- * class nobody has seen under a torch is named below rather than guessed at.
+ * AND NOW READ, not only measured. `0xA46E80` asks the object EIGHT virtual
+ * questions — `+0x20`, `+0x2C`, `+0x38`, `+0x30`, `+0x34`, `+0x7C`, `+0x1C`,
+ * then `+0x28` — on the one vtable of the eight that is long enough to hold
+ * slot `0x7C` (0x144 bytes; every `CAdvMap*` class has exactly one, and reading
+ * any of its other vtables gives plausible nonsense). Seven of the eight are
+ * adjustor thunks to one shared `xor eax,eax; ret` at `0x4797F0` — a NO — and
+ * whichever a class overrides is its own answer, of the shape
+ * `lea eax,[ecx-N]; cmp ecx,M; cmove eax,edx; ret`: a `dynamic_cast` that hands
+ * back a subobject, so non-zero, so a VETO. Over every `CAdvMap*` class in the
+ * image exactly six override one:
+ *
+ *   CAdvMapArtifact  +0x20      CAdvMapGhost    +0x30
+ *   CAdvMapHero      +0x2C      CAdvMapCaravan  +0x7C
+ *   CAdvMapShip      +0x38      CAdvMapMonster  +0x1C
+ *
+ * The movers and the pickups, which is a rule and not a list. Everything else —
+ * treasure, shrine, building, mine, dwelling, town, teleport, sign, tent, seer
+ * hut, sanctuary — answers NO to all seven, and its verdict comes from the
+ * eighth: `+0x28` (`0xAD0240` in every class) hands back the virtual base's
+ * subobject, and the veto then asks that subobject's `+0x18` and the object
+ * behind its `+0x58`. That chain is NOT ported — it is runtime state, not a
+ * class — so for those the port still goes by what the maps showed, and the
+ * three darkened treasures are the whole of the evidence.
  */
-const VETOED_CLASSES = new Set(['AdvMapTreasureShared', 'AdvMapMonsterShared']);
+const VETOED_CLASSES = new Set([
+  // Read: the class answers one of the seven questions itself.
+  'AdvMapArtifactShared', 'AdvMapMonsterShared',
+  // Measured only: the class answers nothing, and the `+0x28` chain that
+  // decides is unported. Three tiles, all of them a mine's pile.
+  'AdvMapTreasureShared',
+]);
 
 /**
  * The claimant's class, out of the shared document's own xpointer, and whether
  * the veto takes it.
  *
- * `AdvMapArtifactShared` is the one that is NOT decided: an artifact is a
- * pickup like a treasure and would be expected to go the same way, but no map
- * here puts one under a blocked tile, so it is left claiming — which is a
- * statement this function makes on purpose and the first such map will correct.
+ * `AdvMapArtifactShared` used to be named here as the one NOT decided — no map
+ * put an artifact under a blocked tile, so the port left it claiming and said
+ * so. The executable has since answered: `CAdvMapArtifact` overrides `+0x20`,
+ * and an artifact registers nothing.
  */
 export function vetoesRegistration(shared: string | undefined): boolean {
   const cls = /#xpointer\(\/(\w+)\)/.exec(shared ?? '')?.[1] ?? '';
@@ -137,11 +165,15 @@ export interface MaskInput {
  * `0x9EBAE0` — does BIG WATER cover this tile?
  *
  * It walks the tile's texture layers, keeps the ones whose `Type` is 0x0B
- * (`TT_BIG_WATER`) and tests that layer's mask at the tile's FOUR CORNER
- * vertices. `0x9EC570` reaches it and answers kind 2, which sets the mask bit;
- * the halving's own exemption reads it too (see `minimap.ts`). Whether the test
- * is "painted at all" or "painted past a threshold" no map here can separate:
- * on all of them, every corner such a layer touches it touches at 0x80 or more.
+ * (`cmp dword [eax+60h],0Bh` at `0x9EBC22` — `TT_BIG_WATER`) and tests that
+ * layer's mask at the tile's FOUR CORNER vertices. `0x9EC570` reaches it and
+ * answers kind 2, which sets the mask bit; the halving's own exemption reads it
+ * too (see `minimap.ts`).
+ *
+ * PAINTED AT ALL, not past a threshold — read, where the note here used to say
+ * no map could separate the two: `0x9EBC3C..0x9EBC57` is four `cmp byte …,0`
+ * against the corners and `jne` to `mov al,1`. Any non-zero byte covers the
+ * tile, which is the `> 0` below.
  */
 export function bigWaterCovers(
   layers: readonly TerrainLayer[], dim: number, tx: number, ty: number,

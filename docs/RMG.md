@@ -6613,3 +6613,86 @@ unchanged — every game archive, 22 of 22 editor templates, the size and mask
 probes — plus eight seeds of `S1P2Z2M1` at 18 of 18 and the six new orders
 (`S1-2P2-8Z8K2S`, `S2-3P2Z7N2`, `S1P2Z3K5.1`, `S3-5P2-8Z8K2M`, `S3-6P2-4Z9B3`,
 `S1-3P2Z7V3`, small through large) at 18 of 18.
+
+**10.09, THE UNMEASURED LIST, READ.** Every claim the port made about itself
+being fitted, unported or undecided was collected and taken to the executable.
+Six of them come back with an answer, one is unreachable by construction, and
+what is left is named at the end.
+
+1. **The room grid with no points is 10000, and that is an initialisation.**
+   The note said "stale xmm0, unmeasured". `0xEC29AE` writes the register per
+   tile before the point loops — `movss xmm0,[0xFAA664]`, and that dword is
+   10000.0f — and each loop's tail leaves the running minimum in the same
+   register, so an empty list leaves the initialisation standing for the
+   `cvttss2si` at `0xEC2E26`. The port already answered 10000.
+
+2. **All three point-light name lists are read, not fitted.** One predicate per
+   class, each a chain of `find` (`0x987790`) over the shared's own resource
+   path at `+0x20`: `0xEB2EF0` "Crystal", `0xEB2FB0`/`0xEB3010` "Fakel" or
+   "FireColumn", `0xEB3070` "Crater" or "Lavacrack" or "Hellpikes" — and the
+   same shape as `0xEB3120` "Mountain" and `0xEB3180` "Crater" already read for
+   the cone and the spacing. The lava list's fit agrees exactly.
+
+3. **THE MASK'S VETO IS A RULE, and an artifact registers nothing.** `0xA46E80`
+   asks eight virtual questions — `+0x20`, `+0x2C`, `+0x38`, `+0x30`, `+0x34`,
+   `+0x7C`, `+0x1C`, then `+0x28` — on the one vtable of the eight a class has
+   that is long enough to hold slot `0x7C` (0x144 bytes; every other vtable of
+   the same class answers plausible nonsense, which is the trap here). Seven are
+   adjustor thunks to a single `xor eax,eax; ret` at `0x4797F0`; whichever a
+   class overrides is its own answer, shaped
+   `lea eax,[ecx-N]; cmp ecx,M; cmove eax,edx; ret` — a cast that hands back a
+   subobject, so non-zero, so a veto. Over every `CAdvMap*` class in the image
+   exactly six override one: **Artifact `+0x20`, Hero `+0x2C`, Ship `+0x38`,
+   Ghost `+0x30`, Caravan `+0x7C`, Monster `+0x1C`** — the movers and the
+   pickups. Everything else (treasure, shrine, building, mine, dwelling, town,
+   teleport, sign, tent, seer hut, sanctuary…) answers NO to all seven and is
+   decided by the eighth: `+0x28` (`0xAD0240` in every class) hands back the
+   virtual base's subobject and the veto asks its `+0x18` and the object behind
+   its `+0x58`. That chain is runtime state, not a class, and stays unported.
+
+   So `AdvMapArtifactShared` — named in the port as the one NOT decided — is
+   VETOED, and has been added. The three darkened treasures remain the only
+   evidence for treasures, whose class says nothing; the note in
+   [`minimap-mask.ts`](../src/rmg/minimap-mask.ts) now separates the two.
+
+4. **Big water is "painted at all".** `0x9EBC22` gates the layer on
+   `Type == 0x0B`, and `0x9EBC3C..0x9EBC57` compares the tile's four corner
+   bytes against 0, any non-zero jumping to `mov al,1`. The port's `> 0` is the
+   rule, and the "no map here can separate the two" note is retired.
+
+5. **The border ring's width is virtual.** `0xA4F769` asks the widget for it
+   (`call [eax+68h]`) and the four bounds tests at `0xA4F76C..0xA4F792` use what
+   comes back — so it was never a constant to score, and fitting widths 0 to 16
+   against the maps could not have landed. Inert on this path either way.
+
+6. **A guardless mine's piles measure from a defined tile.** The seat walk
+   writes each candidate to one pair of locals and copies that pair into the
+   slot the piles read only ON SUCCESS (`0xEB67EC..0xEB67FE`); an exhausted walk
+   jumps past the copy (`0xEB64EB`). What the slot still holds is not rubbish:
+   it is the temp the candidate collector pushes tiles through
+   (`0xEB5E55`/`0xEB5E62` into `0x584970`), so it is the last tile appended to
+   the first distance band's list. A pile needs 2.0 of it, so a mine anywhere
+   else makes none — the port still skips them, and now says what it skips.
+   (Counted with `net-probe --frame`, whose 2 KB window this function outgrew:
+   `--bytes` now raises it, and the walk stopping mid-function used to look like
+   a decode failure.)
+
+7. **`fmtRot`'s large-exponent throw is dead code.** Every Rot the generator
+   writes is a quadrant multiple, a mine's facing or the map angle, so
+   |Rot| < 10 and the exponent cannot reach 6. The other `%g` form — exponent
+   under -4 — is reachable and measured, digit count included.
+
+**AND THE ONE A USER CAN REACH TODAY.** The dwellings worker is two-moded on
+`generator+0xA5`, which the field table says is the **Grail checkbox**. Mode 1
+(the seven `RandomDwellingN` stand-ins, `RndSource=2`, `LinkToTown`) is
+therefore one tick away in the dialog, and the console order has no word for it
+— so `rmg-batch` cannot produce one and nothing has ever measured it. Ordering
+a map with Grail on is the shortest path to a divergence this port knows about
+and does not reproduce (it places no grail either). Random towns (`+0x95`) is
+the same shape of gap.
+
+**Still open, and each needs a map rather than a reading:** the `+0x28` chain
+that decides treasure against shrine, the halving exemption's own field
+identities (`0x9EC3C0` reads three level planes — `+0x28` bytes, `+0x48` at
+half-grid against 0x8C, `+0x58` floats against 0.0f — and which is which is
+unread), the mask's `TT_NONE` arm, and blocks D, E and F of the test matrix.

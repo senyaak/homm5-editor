@@ -17,15 +17,23 @@
 //               "Can't place dwelling %s at zone #%d" has no edge back into
 //               either loop (0xEB9647)
 //
-// The worker is two-moded on `generator+0xA5`. Every traced editor run has it
-// zero: descriptors come from the race preset, and a tier below 3 sets no
-// properties at all — which is exactly the reference map's dwellings, all
-// PLAYER_NONE with empty RndSource/LinkToTown. What is NOT ported, said
-// rather than hidden: mode 1 (the seven /MapObjects/Random/RandomDwellingN
-// stand-ins, RndSource=2 and LinkToTown set when the zone has a town), and
-// mode 0 with tier >= 3, which reuses descriptor 3 and switches the creature
-// on via `creaturesEnabled[tier-3]`. Neither spends draws differently up to
-// the properties, but neither has ever been measured.
+// The worker is two-moded on `generator+0xA5`, and `+0xA5` IS THE GRAIL
+// CHECKBOX — the dialog pokes it to 1 and the map records `<Grail>true`
+// (docs/RMG.md's generator-field table). So mode 1 is not an unreachable
+// branch: it is what a user gets by ticking one box, and the console order has
+// no word for it, which is why `tools/rmg-batch.ts` cannot produce one and no
+// traced run has it set.
+//
+// Every traced editor run has it zero: descriptors come from the race preset,
+// and a tier below 3 sets no properties at all — which is exactly the reference
+// map's dwellings, all PLAYER_NONE with empty RndSource/LinkToTown. What is NOT
+// ported, said rather than hidden: mode 1 (the seven
+// /MapObjects/Random/RandomDwellingN stand-ins, RndSource=2 and LinkToTown set
+// when the zone has a town), and mode 0 with tier >= 3, which reuses descriptor
+// 3 and switches the creature on via `creaturesEnabled[tier-3]`. Neither spends
+// draws differently up to the properties, but neither has ever been measured —
+// and a Grail-ticked order is the one thing a user can ask for today that this
+// port does not reproduce (it places no grail either).
 
 import { mintName } from './armies.ts';
 import type { DrawSource } from './armies.ts';

@@ -242,7 +242,12 @@ if (wanted[0] === '--func' || wanted[0] === '--frame') {
   const walk = (start: number) => {
     const section = pe.sections.find((s) => start - pe.imageBase >= s.va && start - pe.imageBase < s.va + s.virtualSize)!;
     const code = pe.bytesOf(section).subarray(start - (pe.imageBase + section.va));
-    const body = functionBody(code, start, 0x800);
+    // 2 KB was the whole window until a function longer than that had to be
+    // read: the walk simply STOPPED mid-function, and the last thing it printed
+    // looked like a decode failure rather than the end of a budget. `--bytes N`
+    // raises it; the default stays what every earlier reading used.
+    const budget = Number(process.argv[process.argv.indexOf('--bytes') + 1]) || 0x800;
+    const body = functionBody(code, start, budget);
     // What an indirect call is assumed to clean up: the run of pushes that leads into
     // it, four bytes each — unless the caller cleans them itself right afterwards
     // (`add esp,N`), which is the cdecl case and counting it twice would be worse.

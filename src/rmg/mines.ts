@@ -243,11 +243,22 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
       // failing either test spends nothing. Under 0.8 lands; two is the
       // ceiling, counted after a successful creation.
       //
-      // With NO guard the engine still runs this block, and its distance test
-      // reads a guard position nothing initialised (`0xEB64EB` jumps past the
-      // only writes to that slot). That is stale stack, not a rule; the
-      // reference run never reaches it, and this port skips the piles instead
-      // — said here so the divergence is findable if a template hits it.
+      // With NO guard the engine still runs this block, and WHAT it measures
+      // against is read rather than guessed at now. The seat walk writes each
+      // candidate it tries to one pair of locals and, on success only, copies
+      // that pair into the slot the piles read (`0xEB67EC..0xEB67FE`, frame
+      // counted with `net-probe --frame` rather than by eye). An exhausted walk
+      // jumps straight past the copy (`0xEB64EB`), so the piles measure from
+      // whatever that slot still holds — and it is not garbage: the same pair
+      // is the temp the candidate collector pushes tiles through
+      // (`0xEB5E55`/`0xEB5E62`, into the vector at `0x584970`), so it holds the
+      // LAST tile appended to the first distance band's candidate list.
+      //
+      // A defined value, then, but one from an unrelated loop, and a pile needs
+      // it within 2.0 — which for a mine anywhere else on the map creates
+      // nothing. This port still skips the piles; the difference only shows for
+      // a guardless mine that happens to sit two tiles from that leftover, and
+      // that is now a statement about a tile rather than about stack rubbish.
       const piles: PlacedMine['piles'] = [];
       if (guardAt) {
         const g = guardAt;

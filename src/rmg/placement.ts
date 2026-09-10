@@ -18,12 +18,14 @@ export type Tile = readonly [number, number];
  * The room grid — 0xEC28E0 with mask 4: per tile of the zone, the truncated
  * distance to the nearest stamped point.
  *
- * With NO points the engine's answer is stale xmm0 — the conversion reads the
- * register, and nothing wrote it for this tile (docs/RMG.md). That path is
- * unmeasured: every zone of the reference run has at least one point by the
- * time mines are placed. This port answers 10000 — the engine's own "min
- * never beaten" start — which keeps every candidate, and says so here so the
- * divergence is findable if a template ever reaches it.
+ * With NO points the answer is 10000, and that is READ rather than assumed.
+ * The note here used to call it "stale xmm0, unmeasured": the conversion at
+ * `0xEC2E26` does read the register (`cvttss2si ecx,xmm0`), but `0xEC29AE`
+ * writes it per tile before the point loops — `movss xmm0,[0xFAA664]`, and that
+ * dword is 10000.0f. Each loop's tail leaves the running minimum in xmm0
+ * (`minss xmm0,[running]; movss [running],xmm0`), so an empty list leaves the
+ * initialisation standing. Every candidate is kept, which is what this port
+ * already answered — for the right reason now.
  */
 export function roomGrid(size: number, grid: Int32Array[], zoneIndex: number, points: Tile[]): Int32Array[] {
   const out = Array.from({ length: size }, () => new Int32Array(size).fill(-1));
