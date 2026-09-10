@@ -692,6 +692,256 @@ static void __fastcall mm_draw_hook(void *self, void *terrainVec, void *iconVec)
 }
 
 /**
+ * OBJECT REGISTRATION — editor 0xD52770, game 0xA55C10, `ret 4`: the world in
+ * ecx, the object on the stack. `CWorld`'s vtable slot `+0x14C`, which is why
+ * a search for its callers finds none and why the ORDER it runs in cannot be
+ * read out of the image at all.
+ *
+ * WHY IT IS WATCHED. Three tiles in the whole corpus have one object claiming
+ * them with its ACTIVE list while another BLOCKS them, and the engine darkens
+ * exactly one of the three. Two readings closed off the easy answers: the veto
+ * (editor 0xD4B050, game 0xA46E80) cannot be telling the objects apart by
+ * class — seven of its eight predicates are one shared `xor eax,eax; ret` for
+ * the shrine, the treasure and the static alike — and the descriptor's
+ * write-back (0xAD1F10) is an unconditional field-by-field copy, which rules
+ * out "the first write stands". What is left is the order these calls arrive
+ * in and the veto's own answer, and both are one line each from in here.
+ *
+ * The lists come off the object's OWN getters, the same three `0xA4FF00` uses:
+ * `+0xA4` hands back a holder whose first dword is the packed tile key (x in
+ * bits 0..9, y in 10..19, the floor in 20..23), `+0xB4` the blocked list and
+ * `+0xB8` the active one, each a `{begin, end}` over signed (dx, dy) byte
+ * pairs already in world orientation.
+ *
+ * The veto is ASKED rather than inferred from what the registration then does
+ * — asking it twice is safe, it is a chain of getters and boolean predicates
+ * with nothing to write — and it is asked BEFORE the original call, because
+ * that is where the engine asks it.
+ */
+#define MM_ED_REG_RVA 0x952770u
+static const BYTE MM_ED_REG_HEAD[] = { 0x56, 0x8b, 0x74, 0x24, 0x08, 0x85, 0xf6, 0x57 };
+/** The veto itself — editor 0xD4B050, game 0xA46E80, thiscall, `al` back. */
+#define MM_ED_VETO_VA 0xd4b050u
+/**
+ * THE TWO WRITES THEMSELVES — editor 0xD50310 (blocked, kind 1) and 0xD4F880
+ * (active, kind 2); game 0xA4FF00 and 0xA500D0. Same shape as the caller
+ * above: the world in ecx, the object on the stack.
+ *
+ * They are hooked BESIDE the caller and not instead of it, because the caller
+ * turned out not to be the door a generated map goes through: with the hook on
+ * `0xD52770` in and its own log line printed, a full run of a two-level map
+ * registered NOTHING. So whatever places objects during generation reaches
+ * these two some other way, and the only honest place to watch a write is at
+ * the write.
+ */
+#define MM_ED_BLOCKED_RVA 0x950310u
+#define MM_ED_ACTIVE_RVA 0x94f880u
+/**
+ * THE SAME THREE IN THE GAME — 0xA55C10, 0xA4FF00, 0xA500D0.
+ *
+ * They are here because the editor could not answer. A full console-ordered
+ * run with all three editor hooks in — and the minimap probe's own window on
+ * top — logged NOTHING: not one registration, not one stamp, and not one
+ * `minimap build begins`. So the editor's "generate and save" path reaches
+ * neither the registration nor the minimap build through the functions those
+ * addresses name, exactly the way the icon question turned out: what the
+ * corpus asks about lives in the GAME's image, and the reading has to be taken
+ * there. The blocked stamp needs EIGHT bytes here and five there — the game's
+ * copy loads its argument three instructions in, and cutting `mov ebx,[esp+34h]`
+ * in half is what killed the editor twice.
+ */
+#define MM_GAME_REG_RVA 0x655c10u
+static const BYTE MM_GAME_REG_HEAD[] = { 0x56, 0x8b, 0x74, 0x24, 0x08 };
+#define MM_GAME_BLOCKED_RVA 0x64ff00u
+static const BYTE MM_GAME_BLOCKED_HEAD[] = { 0x83, 0xec, 0x2c, 0x53, 0x8b, 0x5c, 0x24, 0x34 };
+#define MM_GAME_ACTIVE_RVA 0x6500d0u
+static const BYTE MM_GAME_ACTIVE_HEAD[] = { 0x83, 0xec, 0x2c, 0x53, 0x55 };
+/** The veto in the game — 0xA46E80, the twin of the editor's 0xD4B050. */
+#define MM_GAME_VETO_VA 0xa46e80u
+/** The veto's address in whichever image this is. */
+static DWORD g_mmVetoVa = MM_ED_VETO_VA;
+/**
+ * FIVE bytes, and the reason is the same one the sine hook above carries.
+ * `83 ec 2c 53 55` is `sub esp,2Ch; push ebx; push ebp` — three whole
+ * instructions, exactly the five a jump needs. Eight bytes looked like a
+ * stronger signature and cut `mov esi,[esp+3Ch]` in half: the trampoline ran
+ * two bytes of it and jumped into the rest, the body read its object argument
+ * out of a stack slot that was never written, and the editor died with `esi`
+ * holding 0xB2 and a heap address in `eip` — twice, before any hook of ours
+ * had logged a line, which is what made it look like the reads were at fault.
+ */
+static const BYTE MM_ED_STAMP_HEAD[] = { 0x83, 0xec, 0x2c, 0x53, 0x55 };
+
+typedef void(__fastcall *MmRegFn)(void *world, void *edx, void *obj);
+typedef char(__fastcall *MmVetoFn)(void *obj, void *edx);
+typedef void *(__fastcall *MmGetFn)(void *obj, void *edx);
+static MmRegFn g_mmRegOrig;
+static MmRegFn g_mmBlockedOrig;
+static MmRegFn g_mmActiveOrig;
+static int g_mmRegSeq;
+
+/**
+ * Is this a code address in the EXECUTABLE itself?
+ *
+ * A vtable slot is; a heap word that happens to sit where a vtable pointer was
+ * looked for is not. The first version of this probe called `vt[0xA4/4]`
+ * behind nothing but a readability check and the editor died on an access
+ * violation at `0x02390006` — a heap address, called as a function. So every
+ * slot is checked against the image's own range before it is called, and a
+ * pointer that fails says so in the log rather than taking the process down.
+ */
+static int mm_is_exe_code(const void *p) {
+  static DWORD base = 0, span = 0;
+  DWORD a = (DWORD)(size_t)p;
+  if (!span) {
+    HMODULE self = GetModuleHandleA(NULL);
+    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)self;
+    const IMAGE_NT_HEADERS *nt;
+    if (!self || !rmg_readable(self, sizeof(*dos))) return 0;
+    nt = (const IMAGE_NT_HEADERS *)((const BYTE *)self + dos->e_lfanew);
+    if (!rmg_readable(nt, sizeof(*nt))) return 0;
+    base = (DWORD)(size_t)self;
+    span = nt->OptionalHeader.SizeOfImage;
+  }
+  return a > base && a < base + span;
+}
+
+/** One list of (dx, dy) pairs as absolute tiles, or a note when it cannot be read. */
+static void mm_log_foot(const char *tag, int seq, void *obj, unsigned slot, int keyX, int keyY) {
+  void **vt;
+  MmGetFn get;
+  signed char **vec;
+  signed char *begin, *end;
+  int vals[64];
+  int n = 0, i;
+  if (!obj || !rmg_readable(obj, 4)) return;
+  vt = *(void ***)obj;
+  if (!vt || !rmg_readable(vt, slot + 4)) return;
+  if (!mm_is_exe_code(vt[slot / 4])) return;
+  get = (MmGetFn)vt[slot / 4];
+  vec = (signed char **)get(obj, 0);
+  if (!vec || !rmg_readable(vec, 8)) return;
+  begin = vec[0];
+  end = vec[1];
+  if (!begin || end < begin || !rmg_readable(begin, (unsigned)(end - begin))) return;
+  vals[n++] = seq;
+  for (i = 0; begin + 2 * i + 1 < end && n < 62; i++) {
+    vals[n++] = keyX + begin[2 * i];
+    vals[n++] = keyY + begin[2 * i + 1];
+  }
+  if (n > 1) mm_log_ints(tag, vals, n);
+}
+
+/**
+ * ONE WRITE: which list it is, whose object, where it stands and which tiles
+ * it stamps. The vtable goes in raw — RTTI turns it into a class name offline,
+ * which keeps the hook to getters the engine already has.
+ */
+static void mm_log_stamp(int kind, void *obj) {
+  int vals[4];
+  void **vt;
+  if (!obj || !rmg_readable(obj, 4)) { log_line("mmw object unreadable"); return; }
+  vt = *(void ***)obj;
+  // NOTHING IS CALLED FROM HERE. The first two versions of this hook asked the
+  // object for its tile key and its lists through `vt+0xA4`/`+0xB4`, the way
+  // the stamp itself does two instructions later, and the editor died the same
+  // way both times: an access violation at a HEAP address, before a single line
+  // of ours reached the log, with the stamp on the stack and its own `esi`
+  // holding 0xB2 rather than an object. Adding an image-range check on the slot
+  // changed nothing, which says the fault is not a bad slot — calling ANYTHING
+  // from in front of this function is what the process does not survive. So the
+  // probe now only READS: the object pointer, and the vtable word behind it.
+  // The tiles come from matching this sequence against the port's own object
+  // list offline, which is the reading this was for anyway.
+  vals[0] = ++g_mmRegSeq;
+  vals[1] = kind;
+  vals[2] = (int)(size_t)obj;
+  vals[3] = (int)(size_t)(rmg_readable(vt, 4) ? vt : 0);
+  mm_log_ints("mmw ", vals, 4);
+}
+
+static void __fastcall mm_reg_hook(void *world, void *edx, void *obj) {
+  int seq = ++g_mmRegSeq;
+  int vals[8];
+  int keyX = -1, keyY = -1;
+  if (obj && rmg_readable(obj, 4)) {
+    void **vt = *(void ***)obj;
+    if (vt && rmg_readable(vt, 0xbc)) {
+      MmGetFn getKey = (MmGetFn)vt[0xa4 / 4];
+      const DWORD *holder = (const DWORD *)getKey(obj, 0);
+      DWORD key = (holder && rmg_readable(holder, 4)) ? *holder : 0xffffffffu;
+      MmVetoFn veto = (MmVetoFn)g_mmVetoVa;
+      if (key != 0xffffffffu) {
+        keyX = (int)(key & 0x3ffu);
+        keyY = (int)((key >> 10) & 0x3ffu);
+      }
+      vals[0] = seq;
+      vals[1] = (int)(size_t)vt;              /* the class, offline through RTTI */
+      vals[2] = veto(obj, 0) ? 1 : 0;
+      vals[3] = keyX;
+      vals[4] = keyY;
+      vals[5] = (int)((key >> 20) & 0xfu);
+      mm_log_ints("mmr ", vals, 6);
+      mm_log_foot("mmrb ", seq, obj, 0xb4, keyX, keyY);
+      mm_log_foot("mmra ", seq, obj, 0xb8, keyX, keyY);
+    }
+  }
+  g_mmRegOrig(world, edx, obj);
+}
+
+/** The blocked list going in — kind 1, the one that darkens. */
+static void __fastcall mm_blocked_hook(void *world, void *edx, void *obj) {
+  mm_log_stamp(1, obj);
+  g_mmBlockedOrig(world, edx, obj);
+}
+
+/** The active list going in — kind 2, which takes a tile back. */
+static void __fastcall mm_active_hook(void *world, void *edx, void *obj) {
+  mm_log_stamp(2, obj);
+  g_mmActiveOrig(world, edx, obj);
+}
+
+/**
+ * The mask probe: the caller and both writes, and nothing to nest inside.
+ *
+ * It is NOT under the minimap probe's window — the stamping happens while the
+ * generator places objects, long before the minimap is drawn — so it has its
+ * own word in the config (`mask`) and logs every write the process makes. A
+ * launch that only generates makes no others.
+ */
+static int install_mask_probe(void) {
+  g_mmVetoVa = MM_ED_VETO_VA;
+  g_mmRegOrig = (MmRegFn)detour(MM_ED_REG_RVA, MM_ED_REG_HEAD, sizeof(MM_ED_REG_HEAD),
+                                &mm_reg_hook, "object registration");
+  g_mmBlockedOrig = (MmRegFn)detour(MM_ED_BLOCKED_RVA, MM_ED_STAMP_HEAD, sizeof(MM_ED_STAMP_HEAD),
+                                    &mm_blocked_hook, "blocked list stamp");
+  g_mmActiveOrig = (MmRegFn)detour(MM_ED_ACTIVE_RVA, MM_ED_STAMP_HEAD, sizeof(MM_ED_STAMP_HEAD),
+                                   &mm_active_hook, "active list stamp");
+  return g_mmRegOrig && g_mmBlockedOrig && g_mmActiveOrig;
+}
+
+/**
+ * The same three in the GAME, which is where the reading has to be taken.
+ *
+ * The editor's copies are installed by the function above and stayed silent
+ * through a whole ordered run; the maps the question is about — a torch over a
+ * shrine's active tile, and a torch over a GUARDED ore pile's — were generated
+ * by the game. So this goes in beside the icon half, under the same word.
+ */
+static int install_mask_probe_game(void) {
+  g_mmVetoVa = MM_GAME_VETO_VA;
+  g_mmRegOrig = (MmRegFn)detour(MM_GAME_REG_RVA, MM_GAME_REG_HEAD, sizeof(MM_GAME_REG_HEAD),
+                                &mm_reg_hook, "object registration");
+  g_mmBlockedOrig = (MmRegFn)detour(MM_GAME_BLOCKED_RVA, MM_GAME_BLOCKED_HEAD,
+                                    sizeof(MM_GAME_BLOCKED_HEAD), &mm_blocked_hook,
+                                    "blocked list stamp");
+  g_mmActiveOrig = (MmRegFn)detour(MM_GAME_ACTIVE_RVA, MM_GAME_ACTIVE_HEAD,
+                                   sizeof(MM_GAME_ACTIVE_HEAD), &mm_active_hook,
+                                   "active list stamp");
+  return g_mmRegOrig && g_mmBlockedOrig && g_mmActiveOrig;
+}
+
+/**
  * The icon half of the probe in the GAME, where the open map was generated.
  *
  * The hooks themselves are the editor's, unchanged: only one of the two

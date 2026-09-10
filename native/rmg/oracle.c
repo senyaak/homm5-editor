@@ -493,6 +493,14 @@ static int g_rmgField = 0;
  * for one more word.
  */
 static int g_rmgMinimap = 0;
+/**
+ * `mask` in the config: watch OBJECT REGISTRATION, the mask's other half.
+ *
+ * Its own word rather than a rider on `minimap`, because it logs a line per
+ * object placed — thousands on a large map — and it fires during the run
+ * rather than inside the minimap's window.
+ */
+static int g_rmgMask = 0;
 /** `zones` — dump every zone as FillZones is handed it, in either host. */
 static int g_rmgZonesDump = 0;
 
@@ -674,6 +682,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "points")) g_rmgPoints = 1;
     if (take_word(&q, stop, "field")) g_rmgField = 1;
     if (take_word(&q, stop, "minimap")) g_rmgMinimap = 1;
+    if (take_word(&q, stop, "mask")) g_rmgMask = 1;
     if (take_word(&q, stop, "zones")) g_rmgZonesDump = 1;
   }
   VirtualFree(buf, 0, MEM_RELEASE);

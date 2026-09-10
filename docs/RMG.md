@@ -6408,3 +6408,74 @@ other conflict of that shape anywhere — three cases in all — which is why th
 port's proxy ("no blocked list, claims nothing") has survived this long.
 `0xA46E80` is the veto and `0xA55C10` skips both registrations when it answers,
 which is now read; which classes it answers for is not.
+
+
+**09.09, THE VETO AND THE ORDER, READ — and both easy answers are gone.** Two
+readings, both negative, and a negative that closes a hypothesis is worth the
+same as a positive one:
+
+  * THE VETO CANNOT SEE THE CLASS. Its eight predicates are slots `+0x1C`,
+    `+0x20`, `+0x28`, `+0x2C`, `+0x30`, `+0x34`, `+0x38` and `+0x7C` of the
+    object's own interface vtable — the long one, the same table whose `+0xB4`
+    thunk lands on `0xAD06F0`, so it is the right table and not one of the
+    class's other seven. Seven of those eight are the SAME function in the
+    shrine, the treasure and the static: `0x4797F0`, which is `xor eax,eax;
+    ret`. The eighth (`0xAD0240`) is not a predicate at all — it hands back a
+    subobject of a VIRTUAL BASE (`this + [[this-0xD8]+0x10] - 0xD8`, reached
+    through `sub ecx,[ecx-4]` thunks), which the shrine and the treasure have
+    and the static does not, and the veto then asks THAT for its `+0x18` and a
+    chain through `+0x58`. So what the veto reads is STATE, and a rule keyed on
+    the class is refuted rather than merely unsupported.
+  * "THE FIRST WRITE STANDS" IS REFUTED. `0xAD12A0` unpacks the tile key (x in
+    bits 0..9, y in 10..19, the floor in 20..23), bounds-checks it, addresses a
+    36-byte record in the floor's grid and calls `0xAD1F10` — which is an
+    unconditional field-by-field copy with refcount bookkeeping around the two
+    pointer members. No insert-if-absent, no test of the kind already there.
+    Of the two shapes this document called equally admissible, that leaves one:
+    ALL the blocked lists, then ALL the active ones.
+
+And the order is not the port's placement order either, which the port's own
+numbers say plainly: on both BRIGHT tiles the claimant is placed first and the
+torch last (a shrine at #113 against #1590 on a two-level `S1P2Z2M1`, the
+`ГСК-011` sanctuary at #446 against #8440), and on the DARK one exactly the
+same way round (an ore pile at #414 against a torch at #6557 on `ГСК-004`). The
+one thing that differs between them is in the data rather than in the code: the
+pile has a GUARD standing next to it, placed by the same step (#413, a Demon on
+the adjacent tile), and neither shrine has one. That is a correlation on three
+cases and it is not being ported as a rule: the veto skips BOTH registrations,
+so "guarded claims nothing" would also stop a guarded object's blocked list
+from darkening — and the corpus cannot test that, because almost every guarded
+object with a blocked list has impassable tiles that the plane arm darkens
+anyway. A rule the corpus is blind to is exactly the kind this port does not
+take.
+
+**THE PROBE THAT WOULD SETTLE IT, and what it cost to find out where to put
+it.** `native/rmg/minimap-probe.c` now carries a `mask` word of its own: hooks
+on the registration (`0xA55C10`) and on both stamps (`0xA4FF00` blocked,
+`0xA500D0` active), logging a line per write. Three things were learned before
+it logged anything:
+
+  * the editor's twins are `0xD52770`, `0xD50310` and `0xD4F880`, found by the
+    shape of the guard the register runs before the veto — the game tests
+    `[eax+esi+8] < 0`, the editor `test byte ptr [ecx+esi+0Bh],80h`, which is
+    the same sign bit;
+  * A DETOUR'S HEAD IS ITS LENGTH. Eight bytes looked like a stronger
+    signature for `0x83 0xec 0x2c 0x53 0x55 0x56 0x8b 0x74` and cut
+    `mov esi,[esp+3Ch]` in half; the trampoline ran two bytes of it and jumped
+    into the rest, the body read its object out of a stack slot nobody wrote,
+    and the editor died twice with `esi` holding 0xB2 and a heap address in
+    `eip` — before any line of ours reached the log, which made it look as
+    though the probe's own reads were at fault. They were not. Five whole
+    instructions in the editor, EIGHT in the game (its copy loads the argument
+    three instructions in): the head is measured per image, never copied.
+  * AND THE EDITOR CANNOT ANSWER THIS AT ALL. With all three hooks in and the
+    minimap probe's window on top, a whole console-ordered two-level run logged
+    NOTHING — not a registration, not a stamp, and not one `minimap build
+    begins`. So the editor's generate-and-save path reaches neither the
+    registration nor the minimap build through the functions those addresses
+    name. The reading has to be taken in the GAME's image, the same way the
+    Fairie Tree's anchor had to be, and both maps the question is about were
+    generated there: `32232.h5m` (the shrine, LEFT BRIGHT) is seed 1788789832
+    on `S6-11P2-8Z8K2.4a`, large, 3 players, underground, weak monsters, and
+    `ГСК-004` (the guarded pile, DARKENED) is seed 1788799357 on
+    `S6-11P2-8Z8K2XL`, large, 2 players, underground, weak monsters.
