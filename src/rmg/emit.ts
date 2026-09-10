@@ -638,9 +638,17 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
     text = patch(text, '<Kind>OBJECTIVE_KIND_DEFEAT_ALL</Kind>', '<Kind>OBJECTIVE_KIND_BUILD_GRAAL</Kind>');
     // And the order's own record, which the skeleton writes false.
     text = patch(text, '			<Grail>false</Grail>', '			<Grail>true</Grail>');
-    const head = `		<Secondary>${NL}			<Common>${NL}`;
-    text = patch(text, `${head}${T4}<Objectives/>`,
-      `${head}${T4}<Objectives>${NL}${secondary}${T4}</Objectives>`);
+    // THE DISPLACED DEFEAT-ALL IS THE EDITOR'S ONLY. A grail map from the
+    // EDITOR keeps it as a hidden secondary; one from the GAME leaves the
+    // secondary empty and the map has the grail goal alone. One map per build
+    // says so, and the objectives are not seed-dependent — they are a fixed
+    // consequence of the checkbox — so one each is the whole of the evidence
+    // and enough of it.
+    if (!input.truncateFloats) {
+      const head = `		<Secondary>${NL}			<Common>${NL}`;
+      text = patch(text, `${head}${T4}<Objectives/>`,
+        `${head}${T4}<Objectives>${NL}${secondary}${T4}</Objectives>`);
+    }
   }
 
   // The scenario-info refs: the first N players get generated texts, the rest

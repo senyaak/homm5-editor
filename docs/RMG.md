@@ -6762,12 +6762,18 @@ set — `DefaultGrailObjective`, `ObjectiveRMGCaption`, `ObjectiveRMGDescription
 dwellings are ordinary preset ones with `RndSource=RND_NONE`, which is mode 0.
 Random towns is now the only dialog-only gap left.
 
-**ONE THING THE GRAIL MAP DID NOT SETTLE.** The map the user ordered THROUGH THE
-DIALOG and the console map with a byte-identical order record are two different
-maps: the dialog one carries one terrain layer fewer
-(`/RMG/Tiles/Preserve/Sand-Dunes.xdb` is absent), so its ZONES resolved to
-different terrain races and the streams parted inside `LoadTemplate`. Every
-earlier dialog-ordered map in the corpus replays exactly, so this is not the
-dialog path as such — the likeliest reading is that a race was PICKED in the
-dialog rather than left random, which the record cannot distinguish from a drawn
-one. Unread, and named here rather than guessed at.
+**AND THE SAME ORDER FROM THE GAME, 17 OF 17.** The grail map that started this
+was made in the GAME, not the editor, and the two came out different maps from a
+byte-identical order record — the game's carrying one terrain layer fewer, so
+its zones had resolved to different terrain races and the streams had parted
+inside `LoadTemplate`. What said which was which is a line the oracle writes at
+every run and the log keeps: **`x87 control word 3199`** — 0x0C7F, single
+precision toward zero — against `639` (0x27F) for the editor's console run. Two
+runs of one seed in one log file, and the word told them apart before anything
+else did. With `--game-build` the same archive is byte-identical in every entry.
+
+The one thing the two builds do NOT agree on is the objective block: the
+EDITOR keeps the displaced defeat-all as a hidden secondary, and the GAME leaves
+the secondary empty, the grail goal standing alone. One map per build is the
+whole of the evidence, and enough of it — the objectives are a fixed consequence
+of the checkbox and no part of them is drawn.
