@@ -14,7 +14,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { Tile } from '../src/rmg/placement.ts';
+import { createVertexHeights } from '../src/rmg/massif-carve.ts';
+import type { Footprint, Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
 import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import type { PlacedStatic } from '../src/rmg/statics-big.ts';
@@ -140,6 +141,68 @@ check('and the reference count, 1325 statics', allStatics.length === 1325, `${al
     }
     check('every static stands where its minted name stands in the map', bad === 0, `${bad} astray`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// A SUBTERRANEAN ZONE REFRESHES THE WHOLE LEVEL'S ROOM GRID, and the reference
+// seed cannot say so: it has one zone underground, and with one zone the pass
+// writes what the sweep's own recompute writes anyway. So this half is built
+// rather than replayed — the smallest floor on which the difference shows.
+//
+// `vt+0x40` (`0xEC4A50`) is `recomputeRoom(0x3C, all=1)` and then the carve;
+// `all=1` skips the zone test, so a FOREIGN zone's cell is left holding a fresh
+// distance from OUR points. The sweep's `recomputeRoom(0x3C, 0)` after it
+// refreshes our own cells only, and the fit reads room with no zone test — so
+// what a footprint spilling over the border sees is that fresh value.
+//
+// The floor: one tile of zone 2 at 13,15 and everything else zone 3, the room
+// grid stale at 1 everywhere, and zone 2's one point at 5,5. A full 5x5 on the
+// one candidate spills into zone 3 on all four sides. Stale, its corners read 1
+// and the fit fails; refreshed, they read ten and up and the engine places.
+{
+  const SZ = 30;
+  const zoneTile: Tile = [13, 15];
+  const grid = Array.from({ length: SZ }, () => new Int32Array(SZ).fill(3));
+  grid[zoneTile[1]]![zoneTile[0]] = 2;
+  const border = Array.from({ length: SZ }, () => new Int32Array(SZ).fill(10));
+  const room = Array.from({ length: SZ }, () => new Int32Array(SZ).fill(1));
+  const occupancy = new Int32Array(SZ * SZ);
+  // Nine pebbles that keep the CARVE out: every one of its 9x9 windows holds
+  // one, so its dirty test fires everywhere and it flattens nothing. Without
+  // them an empty floor is carved wall to wall and no footprint fits anywhere.
+  for (const px of [8, 17, 26]) for (const py of [8, 17, 26]) occupancy[py * SZ + px] = 2;
+  const full5x5: Footprint = {
+    path: '/MapObjects/Subterra/Columns/Column_5x5_05.xdb',
+    blocked: [], active: [], marker: [0, 0],
+  };
+  for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) full5x5.blocked.push([dx, dy]);
+  const stub = { below: () => 0, betweenFloat: () => 0 };
+
+  const out = placeZoneBigStatics({
+    size: SZ, grid, border, occupancy, room,
+    points: [[5, 5]], zoneIndex: 2, floor: 1, settingRace: 0,
+    roads: [], bigPositions: [], blockedList: [],
+    bigStatics: [full5x5], mountains: [], overLakeCenterObjects: [], overLakeOneTileRandomObjects: [],
+    mapAngle: 0, subterranean: true, zoneClass: 'subterra',
+    vertexHeights: createVertexHeights(SZ, 1),
+    tiles: [zoneTile],
+  }, stub);
+
+  check('the 5x5 spilling into the neighbour zone is placed', out.placed.length === 1,
+    `${out.placed.length} placed`);
+  check('and it stands on the one candidate', out.placed[0]?.x === 13 && out.placed[0]?.y === 15,
+    out.placed[0] ? `${out.placed[0].x},${out.placed[0].y}` : 'nothing placed');
+  // The refresh itself, named: a zone-3 cell the footprint reaches now carries
+  // its distance from 5,5 and not the 1 it was seeded with.
+  check('the foreign zone\'s cells carry the fresh distance, not the stale 1',
+    room[13]![11] === 10 && room[17]![15] === 15,
+    `11,13 -> ${room[13]![11]} (10), 15,17 -> ${room[17]![15]} (15)`);
+  // And the guard against reading this as "refresh everything": a cell OUTSIDE
+  // this zone's own tiles is refreshed by the all=1 pass, but the all=0 pass
+  // after it must leave it alone — a zoneless cell, by contrast, is 1000 in
+  // both. Nothing here is zoneless, so the whole grid is distances.
+  check('no cell is left at 1000 on a floor with no zoneless tile',
+    !room.some((r) => r.some((v) => v === 1000)), 'a 1000 leaked in');
 }
 
 console.log(failures ? `\n${failures} failed` : '\nall good');

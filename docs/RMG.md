@@ -1956,8 +1956,9 @@ entries, DUNGEON's nine followed by NO_TYPE's four, so reading a Dungeon
 underground's colour out of it agrees BY ACCIDENT and a lava one's not at all.
 
 **A DWARVEN underground has no big-statics sweep at all, and the port still
-runs one.** `0xEC7070` is ten instructions — `call [vt+0x40]` (the carve),
-`0xEC28E0(0x3C, 0)`, `ret` — where Subterra's and SubInferno's `+0x34` carry the
+runs one.** `0xEC7070` is ten instructions — `call [vt+0x40]` (the whole-level
+room recompute and the carve), `0xEC28E0(0x3C, 0)`, `ret` — where Subterra's
+and SubInferno's `+0x34` carry the
 lakes, the preset mountains and the sweep. This is READ and NOT PORTED: no
 template in the corpus has produced a dwarven underground yet, so there is
 nothing to hold a change to, and a wrong guess here would be invisible until one
@@ -5509,7 +5510,11 @@ the underground run drives it in lockstep.
 
 **The carve** (`0xED11D0`, reached from vt+0x40 = `0xEC4A50`/`0xEC7050`/
 `0xEC92B0` — Subterra, Dwarven and SubInferno share it; SubInferno's
-`+0x34` lacks the vt+0x40 call, unexplained): DRAWLESS, floor 1
+`+0x34` lacks the vt+0x40 call, unexplained). The slot is not the carve
+alone: it is `recomputeRoom(0x3C, all=1)` over EVERY cell of the level
+and then the carve as a tail jump, and the `all=1` half is what a
+second zone on the floor reads through the fit — see "A subterranean
+zone refreshes the whole level's room grid" at the end. DRAWLESS, floor 1
 hardcoded. The underground level carries two VERTEX grids `(dim+1)^2`
 (`level+0x24` bytes, `level+0x14` floats; floor 1 starts 0x10/18.0 with
 a rock frame — the low edges ramp 36/30/24 over bytes 32/26/21, the far
@@ -6536,3 +6541,66 @@ and both minimaps follow from those. Its races are `TOWN_STRONGHOLD` and
 `TOWN_DUNGEON`, and the seven other seeds of the same order are byte-identical
 — so it is one seed's worth of something the port does not do, with the whole
 apparatus above pointed at it. `_tmp/ug/5` is the run.
+
+**10.09, CLOSED — A SUBTERRANEAN ZONE REFRESHES THE WHOLE LEVEL'S ROOM GRID,
+and the note that dismissed the pass had a premise instead of a measurement.**
+Seed 55 is byte-identical in all eighteen entries, and so are six brand-new
+two-level orders across five other templates.
+
+WHAT IT IS. `vt+0x40` is five instructions, duplicated per class — `0xEC4A50`
+for Subterra, `0xEC7050` for Dwarven:
+
+    push 1        ; all = 1
+    push 3Ch      ; mask 0x3C
+    call 0xEC28E0 ; the room recompute
+    jmp  0xED11D0 ; the massif carve
+
+`all = 1` is the flag that makes `0xEC28E0` skip its zone test (`0xEC299C`:
+`cmp byte [ebp+0Ch],0; jne` past `cmp eax,[ebx+0ECh]`), so every cell of the
+level takes a fresh distance from THIS zone's points — a foreign zone's cells
+included. The sweep's own `recomputeRoom(0x3C, 0)` right after it refreshes
+this zone's cells only, so the foreign ones are still holding what the `all = 1`
+pass left; and the fit `0xEC39D0` reads room with no zone test at all. That is
+the whole mechanism: a footprint spilling over a zone border reads a value the
+NEIGHBOUR's zone never wrote and this zone's `all = 1` pass did.
+
+WHY THE CORPUS COULD NOT SAY SO. The note here used to read "with one zone on
+the floor both recomputes write what the sweep's own recompute writes, and
+neither is materialised" — true, and every underground map measured until now
+had exactly one zone per floor. `S1P2Z2M1` with `-underground 1` has TWO, and
+seed 55 is the seed where the difference reaches a decision: zone 2's
+`Column_5x5_05` is a FULL 5x5, its candidate at 27,71 puts a corner on the
+zone-3 cell (29,73), the stale value there is 1 and the fresh one 2, and the
+fit's `room >= 2` turns on exactly that. One tile, and the whole underground
+parted from it — 1,972 objects against our 1,906, a lake moved from the bottom
+of the map to the left edge, 2,382 height vertices and both minimaps.
+
+HOW IT WAS FOUND, because the route is the lesson. The draw diff named draw
+53561: the engine spends two floats where the port mints a name. Reading back
+from there — the roll at 53560 is 0.06075, the port's entry is `Crater4x3_1`
+with 12 blocked tiles and a threshold of 1/13, and the engine REFUSED it. Since
+`0xEBBFAB..0xEBBFF0` is `1/(n+1)` and nothing else, and since the creator
+`0xEB3990` cannot fail after it (its one refusal, `find("Shared")` on the
+resource path, is a property of the entry and not of the candidate), the
+engine's `n` there had to be 16 or more — so the engine was still on an EARLIER
+entry, and our per-entry candidate counts had drifted invisibly. They can:
+every fit pass costs exactly one float whether it is accepted or not, so a
+redistribution among entries moves nothing in the stream.
+
+THE INSTRUMENT THAT SETTLED IT is new and stays: `presweep` in the oracle
+config dumps the same four grids `grids` does, but at the boundary that ENDS
+zone 1's one-tile statics — the last one before a second zone's sweep begins.
+All four matched on both floors, road lists included, at the engine's own 53,362
+draws; and since the state going in matched and the fit is the port's fit, what
+was left between them was `vt+0x40`. Then the executable said it in five
+instructions.
+
+WHAT HOLDS IT NOW. `tools/test-rmg-statics.ts` builds the smallest floor that
+can tell: one tile of zone 2, everything else zone 3, the room grid seeded
+stale at 1, nine pebbles that keep the carve out, and a full 5x5 on the single
+candidate. With the pass the static is placed and the foreign cells read their
+distances; without it nothing is placed and they read 1. The measured corpus is
+unchanged — every game archive, 22 of 22 editor templates, the size and mask
+probes — plus eight seeds of `S1P2Z2M1` at 18 of 18 and the six new orders
+(`S1-2P2-8Z8K2S`, `S2-3P2Z7N2`, `S1P2Z3K5.1`, `S3-5P2-8Z8K2M`, `S3-6P2-4Z9B3`,
+`S1-3P2Z7V3`, small through large) at 18 of 18.

@@ -12,6 +12,15 @@ its section by version number, so this heading is inert until it is renamed to
 one. A version with a `-` in it (`-alpha.1`, `-rc.1`) is published as a GitHub
 pre-release.
 
+## Unreleased
+
+**The random map generator, ported.** The editor can generate a map the way the
+game's own dialog does, and the port is held to the strictest standard we have:
+for the same order and seed it writes an archive byte-identical to the one the
+engine writes — every game-built map in the corpus, all twenty-two shipped
+templates, and two-level orders across six of them. There is no new button for
+it yet; this is the engine work the button will sit on.
+
 ## 0.10.0-alpha.1 — 2026-08-16
 
 **An alpha, and the reason is multiplayer.** The online half below works and has

@@ -479,14 +479,25 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
   let lakeBorder: Int32Array = new Int32Array(0);
 
   if (input.subterranean) {
-    // vt+0x40: recomputeRoom(0x3C, all=1) then the carve, then
-    // recomputeRoom(0x3C, 0) — all drawless. The all=1 flavour walks the
-    // ZONE'S OWN LEVEL against the zone's own lists (`0xEC28E0` reads
-    // `ecx`'s vectors throughout), so with one zone on the floor both
-    // recomputes write what the sweep's own recompute below writes, and
-    // neither is materialised here. The carve is called by EVERY
-    // subterranean zone and no-ops after the first (its conversion pass
-    // turns the clean patches to blocked).
+    // vt+0x40 (`0xEC4A50` for Subterra, `0xEC7050` for Dwarven — the same five
+    // instructions twice): `recomputeRoom(0x3C, all=1)` and then the carve as a
+    // tail jump. The sweep's own `recomputeRoom(0x3C, 0)` follows below, and all
+    // three are drawless.
+    //
+    // THE all=1 FLAVOUR IS LOAD-BEARING WHEN THE FLOOR HOLDS MORE THAN ONE
+    // ZONE, which is what the note here used to miss: it walks every cell of
+    // the level against THIS zone's lists, so a FOREIGN zone's cell is left
+    // holding a fresh distance from our points — and the all=0 recompute after
+    // it refreshes our own cells only, so those foreign cells still hold it
+    // when the fit reads them (the fit has no zone test). With one underground
+    // zone there is no foreign cell and the pass is invisible, which is why
+    // every earlier corpus map agreed without it. Seed 55 of `S1P2Z2M1` has two
+    // underground zones and one 5x5 column whose corner lands on a zone-3 cell:
+    // stale it reads 1 and the fit fails, fresh it reads 2 and the engine
+    // placed there, and from that one tile the whole underground parted.
+    //
+    // The carve is called by EVERY subterranean zone and no-ops after the first
+    // (its conversion pass turns the clean patches to blocked).
     // A DWARVEN ZONE HAS NO SWEEP AT ALL, and this function still runs one:
     // `0xEC7070` is `call [vt+0x40]`, `recomputeRoom(0x3C, 0)`, `ret`, where
     // Subterra's and SubInferno's `+0x34` carry the lakes, the mountains and
@@ -506,6 +517,7 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
     // 121 lattice cells raised against the engine's none, and its
     // `UndergroundTerrain.bin` carrying only the initial frame.
     if (input.zoneClass === 'subterra' || input.zoneClass === 'dwarven') {
+      recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads], true);
       carveMassif(size, occupancy, input.vertexHeights!, input.arith ?? DOUBLES);
     }
   } else if (input.floor !== 1) {

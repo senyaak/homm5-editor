@@ -307,6 +307,13 @@ static int g_rmgRunActive = 0;
 /** `grids` in the config: dump the road lists and level grids at the roads boundary. */
 static int g_rmgGrids = 0;
 /**
+ * `presweep` in the config: the same four grids, at the boundary that ENDS zone
+ * 1's one-tile statics — the state zone 2's big-statics sweep reads. The roads
+ * boundary is too early to say anything about a sweep that a massif carve and a
+ * whole zone of placements run before.
+ */
+static int g_rmgPresweep = 0;
+/**
  * `heights` in the config: the FLOAT height plane, at the last boundary before
  * the late pass runs.
  *
@@ -674,6 +681,7 @@ static void load_rmg_config(void) {
     if (take_word(&q, stop, "seed") && read_int(&q, stop, &g_rmgSeed)) g_rmgForceSeed = 1;
     if (take_word(&q, stop, "trace")) g_rmgTrace = 1;
     if (take_word(&q, stop, "grids")) g_rmgGrids = 1;
+    if (take_word(&q, stop, "presweep")) g_rmgPresweep = 1;
     if (take_word(&q, stop, "blocks")) g_rmgBlocks = 1;
     if (take_word(&q, stop, "heights")) g_rmgHeights = 1;
     if (take_word(&q, stop, "stages")) g_rmgStages = 1;
@@ -1660,6 +1668,11 @@ static void rmg_dump_slot38(void) {
 
 static char *__cdecl rmg_step_zone(const char *fmt, double secs, int zone) {
   rmg_log_step(zone, fmt);
+  // The boundary a SWEEP reads: zone 1's one-tile statics are over and zone 2's
+  // big statics have not begun, so the occupancy carries the massif carve and
+  // every placement before it, and the room grid carries whatever recomputed it
+  // last — which is what the fit reads at a tile the sweep's own zone disowns.
+  if (g_rmgPresweep && zone == 1 && rmg_fmt_says(fmt, "one tile statics")) rmg_dump_grids();
   return g_rmgStepFmt ? ((StepZoneFn)g_rmgStepFmt)(fmt, secs, zone) : NULL;
 }
 
@@ -1965,7 +1978,7 @@ static int install_rmg_oracle(void) {
   // detour now fills (`rmg_harvest_zones`). The prologue is `push ebp; mov
   // ebp,esp; and esp,-8` in BOTH builds — six bytes, three whole instructions,
   // no relocation — so one head serves either host.
-  if (g_rmgZonesDump || g_rmgGrids || g_rmgBlocks || g_rmgHeights || g_rmgPoints) {
+  if (g_rmgZonesDump || g_rmgGrids || g_rmgPresweep || g_rmgBlocks || g_rmgHeights || g_rmgPoints) {
     static const BYTE fillHead[6] = { 0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8 };
     DWORD rva = rmg_host_is_editor() ? 0x8f2ee0u : 0xaa94c0u;
     g_rmgFillZonesOrig = (FillZonesFn)detour(rva, fillHead, 6, &rmg_fill_zones_hook, "rmg zone table");
