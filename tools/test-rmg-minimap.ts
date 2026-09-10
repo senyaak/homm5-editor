@@ -13,7 +13,7 @@ import { join } from 'node:path';
 import { readEngineSine } from '../src/exe/sine-table.ts';
 import { writeDDS } from '../src/format/texture.ts';
 import { drawMinimap, drawTerrainLayer } from '../src/rmg/minimap.ts';
-import { buildMinimapMask } from '../src/rmg/minimap-mask.ts';
+import { buildMinimapMask, vetoesRegistration } from '../src/rmg/minimap-mask.ts';
 import { drawIconLayer, iconNameFor, loadMinimapIcons, type IconObject } from '../src/rmg/minimap-icons.ts';
 import { iconAnchor } from '../src/rmg/minimap-icons.ts';
 import { readTileInfo } from '../src/rmg/preset-table.ts';
@@ -41,20 +41,33 @@ function check(name: string, ok: boolean, detail = ''): void {
   const plane = new Uint8Array((side + 1) * (side + 1)).fill(1);
   const at = (x: number, y: number): number => y * side + x;
   const blocker = { x: 4, y: 4, rot: 0, floor: 0, blocked: [[0, 0]] as const, active: [] };
-  // The claimer BLOCKS somewhere of its own: an object with no blocked list
-  // claims nothing, which is what keeps a torch on an ore pile dark.
-  const claimer = { x: 4, y: 3, rot: 0, floor: 0, blocked: [[0, 0]] as const, active: [[0, 1]] as const };
-  const passer = { x: 4, y: 3, rot: 0, floor: 0, blocked: [] as const, active: [[0, 1]] as const };
+  // Two claimants with the SAME shape — no blocked list, one active tile, the
+  // blocker's — and opposite answers, because the veto goes by class. A shrine
+  // keeps its tile bright; a pile or a guard never claimed it. That is the
+  // measurement of ten contested tiles, and the reading it replaced was "an
+  // object with no blocked list claims nothing", which got the shrines wrong.
+  const claimer = { x: 4, y: 3, rot: 0, floor: 0, blocked: [] as const, active: [[0, 1]] as const };
+  const vetoed = { ...claimer, vetoed: true };
   const alone = buildMinimapMask({ side, plane, dim: side + 1, objects: [blocker] });
   check('a blocked tile is darkened', alone[at(4, 4)] === 1, `${alone[at(4, 4)]}`);
   const shared = buildMinimapMask({ side, plane, dim: side + 1, objects: [blocker, claimer] });
   check("another object's active tile takes it back", shared[at(4, 4)] === 0, `${shared[at(4, 4)]}`);
   const reversed = buildMinimapMask({ side, plane, dim: side + 1, objects: [claimer, blocker] });
-  const pile = buildMinimapMask({ side, plane, dim: side + 1, objects: [blocker, passer] });
-  check('but an object with no blocked list of its own claims nothing',
-    pile[at(4, 4)] === 1, `${pile[at(4, 4)]}`);
   check('and the order the two stand in does not decide it', reversed[at(4, 4)] === 0,
     `${reversed[at(4, 4)]}`);
+  const pile = buildMinimapMask({ side, plane, dim: side + 1, objects: [blocker, vetoed] });
+  check('but a class the veto takes never claimed it', pile[at(4, 4)] === 1, `${pile[at(4, 4)]}`);
+  // And the veto takes BOTH lists, not just the active one: an object it
+  // answers for does not darken with its blocked list either.
+  const vetoedBlocker = { x: 4, y: 4, rot: 0, floor: 0, blocked: [[0, 0]] as const, active: [], vetoed: true };
+  const none = buildMinimapMask({ side, plane, dim: side + 1, objects: [vetoedBlocker] });
+  check('and its blocked list darkens nothing', none[at(4, 4)] === 0, `${none[at(4, 4)]}`);
+  // The classes themselves, off the shared document's own xpointer.
+  const cls = (name: string): boolean => vetoesRegistration(`/MapObjects/X.xdb#xpointer(/${name})`);
+  check('the treasure and the monster are the measured two',
+    cls('AdvMapTreasureShared') && cls('AdvMapMonsterShared'));
+  check('the shrine and the building are not',
+    !cls('AdvMapShrineShared') && !cls('AdvMapBuildingShared'));
 }
 
 // ------------------------------ the icon anchor chops, and a pixel hangs on it
@@ -131,6 +144,10 @@ const mask = buildMinimapMask({
   objects: r.objects.filter((o) => o.floor === 0).map((o) => ({
     x: o.x, y: o.y, rot: o.rot, floor: o.floor,
     blocked: o.blocked.length || !o.shared ? o.blocked : c.footprint(o.shared).blocked,
+    // The same two fields `rmg-build` passes, or this suite would be checking
+    // a mask nothing else builds: the active list and the veto's answer.
+    active: o.shared ? c.footprint(o.shared).active : [],
+    vetoed: vetoesRegistration(o.shared),
   })),
 });
 // WHAT THIS SUITE CANNOT SEE, said out loud so the green is not read as more

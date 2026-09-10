@@ -6479,3 +6479,60 @@ it logged anything:
     on `S6-11P2-8Z8K2.4a`, large, 3 players, underground, weak monsters, and
     `ГСК-004` (the guarded pile, DARKENED) is seed 1788799357 on
     `S6-11P2-8Z8K2XL`, large, 2 players, underground, weak monsters.
+
+
+**09.09, CLOSED — THE VETO GOES BY CLASS, and a guard's own tile is what said
+so.** The probe never logged a line, and it did not have to: what it ruled out
+sent the search back to the maps, and the maps had the answer as soon as the
+right ones were ordered.
+
+THE RUN THAT BROKE THE TIE. Every conflict in the corpus was on a dwarven
+underground — a `Subterra/Fakel_*` torch standing on something — and the
+twenty-two template runs are all single-floor, which is why the sweep of them
+found nothing. Eight two-level orders of `S1P2Z2M1` later, seed 44 had TWO
+contested tiles at once and one of each answer:
+
+    tile 90,9    claimed by AdvMapBuildingShared (ShamanOfNommads)  BRIGHT
+    tile 14,30   claimed by AdvMapMonsterShared  (a Footman guard)  DARK
+
+A guard is not guarded by anything, and its own tile is darkened. That kills
+the reading nine cases had fitted — "an object with a guard beside it claims
+nothing" — which had looked inevitable because every darkened treasure in the
+corpus is a MINE's pile with its guard on the next tile. And the Shaman kills
+the port's old proxy too: no blocked list, and it claims.
+
+THE MEASURED SPLIT, eleven contested tiles over five maps:
+
+    AdvMapShrineShared     4   BRIGHT     AdvMapTreasureShared   3   DARK
+    AdvMapBuildingShared   2   BRIGHT     AdvMapMonsterShared    1   DARK
+
+So `0xA46E80` answers for the pickups and the monsters, and `0xA55C10` then
+registers NEITHER list — which is `vetoesRegistration` in
+[`minimap-mask.ts`](../src/rmg/minimap-mask.ts), a list of classes read off the
+shared document's own xpointer. `AdvMapArtifactShared` is named there as the
+one NOT decided: an artifact is a pickup and would be expected to go with the
+treasures, but no map here puts one under a blocked tile, so the port leaves it
+claiming and says so rather than guessing.
+
+The object arm is now two passes — all the blocked lists, then all the active
+ones — which is the one shape of the two that survived the reading above, and
+the vetoed classes take part in neither.
+
+**WHAT THAT CLOSED, re-measured end to end.** Every game-built archive in
+`H5E/` is byte-identical in every entry: `ГСК-002`, `003`, `006`, `007`,
+`009` through `017`, `3223` at 23 of 23, `0123456` at 26 of 26, and
+`32232` — the map this whole thread started from — at **23 of 23**. The only
+one that is not is `ГСК-001`, whose archive is the painted-on one. The editor
+side is 22 of 22 at 15 of 15, the nine probe maps of the size work are clean,
+and `tools/test-rmg-minimap.ts` holds the rule without game data: the same
+footprint claims or does not by its class alone, a vetoed object darkens
+nothing with its blocked list either, and the reference minimap is still 0
+bytes.
+
+**A NEW ONE, and it is not the mask.** Of the eight two-level orders, seed 55
+comes out 13 of 18: `map.xdb` parts at byte 476357 (ours 1,107,686 against
+1,143,488), `GroundTerrain.bin` by 8,301 bytes, `UndergroundTerrain.bin` by 12,
+and both minimaps follow from those. Its races are `TOWN_STRONGHOLD` and
+`TOWN_DUNGEON`, and the seven other seeds of the same order are byte-identical
+— so it is one seed's worth of something the port does not do, with the whole
+apparatus above pointed at it. `_tmp/ug/5` is the run.

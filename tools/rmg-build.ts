@@ -29,7 +29,7 @@ import { drawMinimap, drawTerrainLayer, type MinimapFloor } from '../src/rmg/min
 import {
   drawIconLayer, iconList, iconNameFor, loadMinimapIcons, type IconObject,
 } from '../src/rmg/minimap-icons.ts';
-import { bigWaterCovers, buildMinimapMask } from '../src/rmg/minimap-mask.ts';
+import { bigWaterCovers, buildMinimapMask, vetoesRegistration } from '../src/rmg/minimap-mask.ts';
 import { readTileInfo } from '../src/rmg/preset-table.ts';
 import {
   fillTerrain, makeRiverPlane, paintLakes, paintRoads, paintSeaCorners, paintWaterMarks, stampZoneLakeRiver,
@@ -177,6 +177,9 @@ function minimapFiles(
       // The active list too: it is the other half of the per-tile descriptor,
       // and a tile it claims is one the blocked lists cannot darken.
       active: o.shared ? c.footprint(o.shared).active : [],
+      // And whether the veto takes this class at all, in which case neither
+      // list is registered — `vetoesRegistration` names the measured ones.
+      vetoed: vetoesRegistration(o.shared),
     })),
   });
   const iconObjects: IconObject[] = [];

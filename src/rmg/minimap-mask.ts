@@ -57,6 +57,56 @@ export interface MaskObject {
    * takes a blocked one's place in the per-tile descriptor.
    */
   active?: readonly Offset[];
+  /**
+   * Does the veto at `0xA46E80` answer for this object? Then `0xA55C10`
+   * registers NEITHER of its lists — see `buildMinimapMask`.
+   */
+  vetoed?: boolean;
+}
+
+/**
+ * WHICH CLASSES THE VETO TAKES — measured on ten contested tiles.
+ *
+ * A tile one object claims with its ACTIVE list while another BLOCKS it is
+ * rare: eleven in the whole corpus, all of them on a dwarven underground where
+ * a `Subterra/Fakel_*` torch stands on something. The engine's answer splits by
+ * the claimant's CLASS and by nothing else:
+ *
+ *   AdvMapShrineShared    4 tiles   left BRIGHT — the claim stands
+ *   AdvMapBuildingShared  2 tiles   left BRIGHT
+ *   AdvMapTreasureShared  3 tiles   DARKENED — the claim never happened
+ *   AdvMapMonsterShared   1 tile    DARKENED
+ *
+ * The monster is what settles it, and it took a two-level editor map to find
+ * one: a guard's own tile with a torch on it is DARK, and a guard is not
+ * guarded by anything — which kills the reading that had fitted the first nine
+ * cases, "an object with a guard beside it claims nothing" (every darkened
+ * treasure here is a mine's pile with its guard next to it, which is what made
+ * that reading look inevitable). The reading it also kills is the port's old
+ * proxy, "only an object that blocks something claims anything": the shrines
+ * and the Shaman have no blocked list either.
+ *
+ * WHY A CLASS LIST rather than the predicates themselves: the veto's eight
+ * slots are one shared `xor eax,eax; ret` seven times over in every class
+ * involved, and the eighth hands back a virtual base's subobject whose state
+ * is then asked — so the class is what the engine is reading THROUGH, and the
+ * chain that gets there is not ported. What is listed is measured; a pickup
+ * class nobody has seen under a torch is named below rather than guessed at.
+ */
+const VETOED_CLASSES = new Set(['AdvMapTreasureShared', 'AdvMapMonsterShared']);
+
+/**
+ * The claimant's class, out of the shared document's own xpointer, and whether
+ * the veto takes it.
+ *
+ * `AdvMapArtifactShared` is the one that is NOT decided: an artifact is a
+ * pickup like a treasure and would be expected to go the same way, but no map
+ * here puts one under a blocked tile, so it is left claiming — which is a
+ * statement this function makes on purpose and the first such map will correct.
+ */
+export function vetoesRegistration(shared: string | undefined): boolean {
+  const cls = /#xpointer\(\/(\w+)\)/.exec(shared ?? '')?.[1] ?? '';
+  return VETOED_CLASSES.has(cls);
 }
 
 /** What the mask is built from, for one floor. */
@@ -138,41 +188,31 @@ export function buildMinimapMask(input: MaskInput): Uint8Array {
   // port, ORing the two, darkened it — one source pixel, and a whole lanczos
   // kernel of it in the finished picture.
   //
-  // WHICH REGISTRATION WINS is not separated here. The write is unconditional
-  // (`mov dword ptr [esp+28h],1` at 0xA4FFFF), so it is the LAST that stands,
-  // and the map's own order has the sanctuary long before the torch — which
-  // rules out "objects in order, blocked then active for each". Both "all the
-  // blocked lists, then all the active ones" and "the first write stands" fit
-  // every map here, and they differ only where the map orders a conflict the
-  // other way round. What is modelled is what they agree on: an active tile is
-  // never darkened by another object's blocked list.
-  const active = new Uint8Array(side * side);
-  for (const obj of objects) {
-    // AND ONLY AN OBJECT THAT BLOCKS SOMETHING CLAIMS ANYTHING. A pile and a
-    // guard have an active tile and no blocked one, and their tiles ARE
-    // darkened when something else blocks them — `ГСК-004` has a torch on an
-    // ore pile's tile and the engine darkens it, where the sanctuary above
-    // keeps its torch bright. The likely reading is the veto at 0xA46E80,
-    // a chain of virtual predicates the caller runs before either
-    // registration: an object it answers for is registered in neither list.
-    // That chain is not read class by class, so this is the shape fitted to
-    // the maps, not the predicate itself.
-    if (!obj.blocked.length) continue;
-    for (const [dx, dy] of rotateOffsets([...(obj.active ?? [])], obj.rot)) {
+  // WHICH REGISTRATION WINS: the ACTIVE one, and the port models it as two
+  // passes — all the blocked lists, then all the active ones.
+  //
+  // Of the two shapes this used to hold as equally admissible, the other one
+  // is read out of the way: "the first write stands" would need the put-back
+  // to refuse an occupied tile, and `0xAD12A0` addresses the record and calls
+  // `0xAD1F10`, which is an unconditional field-by-field copy. Nor is it
+  // "objects in order, each one's blocked then its active": the placement
+  // order has the claimant FIRST on every tile here, bright and dark alike.
+  //
+  // A VETOED object registers neither list — `0xA55C10` calls `0xA46E80`
+  // first and returns without touching the grid when it answers. Which classes
+  // it answers for is `VETOED_CLASSES` above, measured rather than fitted.
+  const kind = new Uint8Array(side * side);
+  const stamp = (obj: MaskObject, list: readonly Offset[], value: number): void => {
+    for (const [dx, dy] of rotateOffsets([...list], obj.rot)) {
       const tx = Math.trunc(obj.x + dx);
       const ty = Math.trunc(obj.y + dy);
       if (tx < 0 || ty < 0 || tx >= side || ty >= side) continue;
-      active[ty * side + tx] = 1;
+      kind[ty * side + tx] = value;
     }
-  }
-  for (const obj of objects) {
-    for (const [dx, dy] of rotateOffsets([...obj.blocked], obj.rot)) {
-      const tx = Math.trunc(obj.x + dx);
-      const ty = Math.trunc(obj.y + dy);
-      if (tx < 0 || ty < 0 || tx >= side || ty >= side) continue;
-      if (active[ty * side + tx]) continue;
-      mask[ty * side + tx] = 1;
-    }
-  }
+  };
+  for (const obj of objects) if (!obj.vetoed) stamp(obj, obj.blocked, 1);
+  for (const obj of objects) if (!obj.vetoed) stamp(obj, obj.active ?? [], 2);
+  // Only kind 1 darkens: kind 2 reaches the THIRD mask, and this is the first.
+  for (let i = 0; i < mask.length; i++) if (kind[i] === 1) mask[i] = 1;
   return mask;
 }
