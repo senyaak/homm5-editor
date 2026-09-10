@@ -59,6 +59,8 @@ import { carveWaterBorder, placeWaterTreasures, waterDepth } from '../src/rmg/wa
 import type { PlacedWaterTreasure, WaterMark } from '../src/rmg/water-border.ts';
 import { SHIPYARD_HREF, placeShipyard } from '../src/rmg/shipyards.ts';
 import type { PlacedShipyard } from '../src/rmg/shipyards.ts';
+import { placeZoneGraal, placeZoneObelisks } from '../src/rmg/obelisks.ts';
+import type { PlacedObelisk } from '../src/rmg/obelisks.ts';
 import { placeZoneUpgradeBuildings } from '../src/rmg/upgrade-buildings.ts';
 import type { PlacedUpgradeBuilding } from '../src/rmg/upgrade-buildings.ts';
 import { floorIterationOrder, generateGameZones } from '../src/rmg/zones.ts';
@@ -94,6 +96,14 @@ export interface ChainOptions {
   monsterStrength?: number;
   /** WaterAmount (0/1/2); the water reference supplies 2 — see map-setup.ts. */
   water?: number;
+  /**
+   * The dialog's GRAIL checkbox (`request+0xA5`, and `-pokeb 165 1` says it
+   * through the console). It changes the stream from the FIRST draw of
+   * MainObjects: without it that draw is a bare `next()` nobody has explained,
+   * with it a `below(zoneCount)` — the zone the Graal goes into. See
+   * `rmg-run.ts`, where the draw is spent.
+   */
+  grail?: boolean;
   /**
    * `ResourceMultiplier` and `ExpMultiplier` as the enum counts them —
    * 0 MISERABLE, 1 LITTLE, 2 NORMAL, 3 LOTS, 4 MUCH. They are NOT labels:
@@ -178,6 +188,8 @@ export interface Chain {
   roadField?: ChainOptions['roadField'];
   /** Whether this is the game's build — the later phases toss their own coins. */
   gameBuild: boolean;
+  /** The order's GRAIL checkbox — see `ChainOptions.grail`. */
+  grail: boolean;
   loaded: LoadedTemplate;
   townResult: TownsResult;
   /**
@@ -562,6 +574,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     arith: ar,
     roadField: options.roadField,
     gameBuild: Boolean(options.gameBuild),
+    grail: Boolean(options.grail),
     teleports, floors, grid, border, occ, room, gridAtFillTerrain, coarse,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, the
@@ -697,6 +710,33 @@ export class ZoneFill {
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, counts: this.zone.dwellings,
       descriptors: this.preset.dwellings.map((href) => c.footprint(href)),
+    }, c.rng);
+  }
+
+  /**
+   * `0xEBFFC0` — the obelisks the GRAIL checkbox adds, this zone's share.
+   * The room grid is recomputed with mask 4 first, which is the worker's own
+   * (`0xEC1500` calls `0xEC28E0(4, 0)` before every obelisk); the pass sits
+   * between the dwellings and the upgrade buildings.
+   */
+  /** `0xEC00F0` — the Graal, in the drawn zone and before its obelisks. */
+  graal(): PlacedObelisk | null {
+    const { c } = this;
+    return placeZoneGraal({
+      size: c.size, sizeIndex: (MAP_SIZES as readonly number[]).indexOf(c.size),
+      grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      obelisk: c.footprint(c.params.obelisk), graal: c.footprint(c.params.grail),
+    }, c.rng);
+  }
+
+  obelisks(): PlacedObelisk[] {
+    const { c } = this;
+    return placeZoneObelisks({
+      size: c.size, sizeIndex: (MAP_SIZES as readonly number[]).indexOf(c.size), grid: this.f.grid, border: this.f.border,
+      occupancy: this.f.occ, room: this.f.room, points: this.points,
+      zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      obelisk: c.footprint(c.params.obelisk),
     }, c.rng);
   }
 

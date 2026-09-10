@@ -284,6 +284,7 @@ export function buildMapFiles(
         truncateFloats: order.gameBuild ?? false,
         birds: order.birds,
         twoLevel,
+        grail: c.grail,
         resourceMultiplier: c.multipliers.resource,
         expMultiplier: c.multipliers.exp,
         objects: run.objects,
@@ -316,6 +317,7 @@ export function buildMapFiles(
   ];
   files.push(...buildRmgTexts(dataRoot, {
     mapName: order.mapName,
+    grail: c.grail,
     captionText: order.gameBuild ? GAME_CAPTION_TEXT : undefined,
     template: order.template,
     sizeIndex,

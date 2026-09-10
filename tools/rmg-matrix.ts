@@ -107,7 +107,7 @@ function tables(): void {
     ['resource', '-resource', `0..4 = ${MULTIPLIERS.join(', ')}`],
     ['exp', '-exp', `0..4 = ${MULTIPLIERS.join(', ')}`],
     ['random towns', 'dialog only', 'on/off — the port takes each player\'s race from the template'],
-    ['grail', 'dialog only', 'on/off — the port places none'],
+    ['grail', 'dialog, or -pokeb 165 1', 'on/off — a Graal and one obelisk pass per zone; ported, byte-exact'],
   ];
   const ph = ['parameter', 'how an order says it', 'values'];
   const pw = ph.map((h, i) => Math.max(h.length, ...p.map((r) => r[i]!.length)));

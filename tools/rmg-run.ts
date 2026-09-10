@@ -251,7 +251,13 @@ export function runFull(
   }
 
   // --- The first loop of MainObjects, template order, the engine's steps.
-  c.rng.next(); // the phase's prologue draw
+  //
+  // THE PROLOGUE DRAW IS THE GRAIL'S ZONE when the order asked for one, and a
+  // bare discarded `next()` when it did not — which is what this draw had
+  // always been, unexplained. Both traces say so at the same index: the
+  // reference's is `tn`, and a grail run's is `tb 2 of 7` on a seven-zone
+  // template, so the bound is the ZONE COUNT and not a constant.
+  const grailZone = c.grail ? c.rng.below(c.template.zones.length) : (c.rng.next(), -1);
   const fills = new Map<number, ZoneFill>();
   const mineActives = new Map<number, Tile[]>();
   const roads = new Map<number, Tile[]>();
@@ -311,6 +317,27 @@ export function runFull(
       });
     }
     step(`zone ${zone} dwellings`);
+
+    // THE GRAIL'S ARM, straight after the dwellings (`0xEA463B`): the drawn
+    // zone gets the Graal, and then every zone gets its obelisks. The engine
+    // prints no boundary of its own for either, so their draws land under the
+    // NEXT one it prints — "upgrade buildings" — and the port's own labels are
+    // kept separate so a divergence still names the right pass.
+    if (c.grail) {
+      // `0xEA464D` — the drawn zone gets the Graal, before its obelisks.
+      if (zone === c.template.zones[grailZone]?.index) {
+        const g = fill.graal();
+        if (g) {
+          object('artifact', g.name, g.x, g.y, g.angle, c.footprint(c.params.grail), floor,
+            { shared: pointered(c.params.grail, 'AdvMapArtifactShared') });
+        }
+      }
+      for (const o of fill.obelisks()) {
+        object('building', o.name, o.x, o.y, o.angle, c.footprint(c.params.obelisk), floor,
+          { shared: pointered(c.params.obelisk, 'AdvMapBuildingShared') });
+      }
+      step(`zone ${zone} obelisks`);
+    }
 
     const priced = (p: { name: string; x: number; y: number; q: number; type: string }): void => {
       object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor,

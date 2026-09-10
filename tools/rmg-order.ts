@@ -98,7 +98,6 @@ export function unreplayable(o: MapOrder): string[] {
     out.push('one of the two multipliers is not a value this enum has');
   }
   if (randomTowns) out.push('RandomTowns is on; the port takes each player\'s race from the template');
-  if (grail) out.push('Grail is on; the port does not place one');
   if (startHeroes.length) {
     out.push(`a starting hero was chosen (${startHeroes.join(', ')}); the port leaves that to the generator`);
   }

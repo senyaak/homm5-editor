@@ -21,6 +21,8 @@ import { div24, mul24, parse24 } from '../exe/x87.ts';
 import { buildBlankMap } from '../map/blank-map.ts';
 
 const NL = '\r\n';
+/** Four tabs — the depth an `<Objectives>` block sits at in AdvMapDesc. */
+const T4 = '\t\t\t\t';
 
 /**
  * `%g` with MSVC's default 6 significant digits, of the stored f32.
@@ -250,7 +252,11 @@ export function renderObject(o: EmitObject, truncate = false): string[] {
           '\t\t\t\t<armySlots/>',
           '\t\t\t\t<MessageFileRef href=""/>',
           '\t\t\t\t<spellID>SPELL_NONE</spellID>',
-          '\t\t\t\t<RandomShiftRadius>0</RandomShiftRadius>',
+          // THE GRAAL IS THE ONE ARTIFACT WITH A SHIFT. Every treasure-block
+          // artifact records 0; the Graal the grail order plants records 5, and
+          // the two are told apart by the shared document — nothing else in the
+          // record differs, which is what the byte diff of a grail map says.
+          `\t\t\t\t<RandomShiftRadius>${o.shared?.includes('/Artifacts/Graal.') ? 5 : 0}</RandomShiftRadius>`,
           '\t\t\t\t<untransferable>false</untransferable>',
         ];
       case 'AdvMapShrine':
@@ -459,6 +465,14 @@ export interface RmgMapInput {
   resourceMultiplier?: number;
   expMultiplier?: number;
   twoLevel: boolean;
+  /**
+   * The order's GRAIL checkbox. It moves the map's OBJECTIVES: the primary
+   * becomes `OBJECTIVE_KIND_BUILD_GRAAL` and keeps the two text refs, and the
+   * defeat-all it displaced reappears as a hidden SECONDARY. Read off a grail
+   * map: its secondary item is the primary's own, with the refs emptied, the
+   * kind put back and `IsInitialyVisible`/`IsHidden` flipped.
+   */
+  grail?: boolean;
   objects: readonly EmitObject[];
   /** The drawn surface ambient light href (params list at setup's index). */
   groundAmbientLight: string;
@@ -606,6 +620,28 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
   text = patch(text, '\t<CustomGoal href=""/>', '\t<CustomGoal href="mapobjective-text-0.txt"/>');
   text = patch(text, 'href="objective-caption-text.txt"', 'href="objective-caption-text-0.txt"');
   text = patch(text, 'href="objective-desc-text.txt"', 'href="objective-desc-text-0.txt"');
+
+  // THE GRAIL'S OBJECTIVES, derived from the document's own primary item
+  // rather than pasted: the engine's secondary IS that item with the refs
+  // emptied, the kind put back to defeat-all and the two visibility flags
+  // turned over. `<Objectives/>` appears seventeen times in the document, so
+  // the anchor is the Secondary's own Common and not the tag alone.
+  if (input.grail) {
+    const OPEN = `${T4}<Objectives>${NL}`;
+    const from = text.indexOf(OPEN);
+    const item = text.slice(from + OPEN.length, text.indexOf(`${T4}</Objectives>`, from));
+    const secondary = item
+      .replace('<CaptionFileRef href="objective-caption-text-0.txt"/>', '<CaptionFileRef href=""/>')
+      .replace('<DescriptionFileRef href="objective-desc-text-0.txt"/>', '<DescriptionFileRef href=""/>')
+      .replace('<IsInitialyVisible>true</IsInitialyVisible>', '<IsInitialyVisible>false</IsInitialyVisible>')
+      .replace('<IsHidden>false</IsHidden>', '<IsHidden>true</IsHidden>');
+    text = patch(text, '<Kind>OBJECTIVE_KIND_DEFEAT_ALL</Kind>', '<Kind>OBJECTIVE_KIND_BUILD_GRAAL</Kind>');
+    // And the order's own record, which the skeleton writes false.
+    text = patch(text, '			<Grail>false</Grail>', '			<Grail>true</Grail>');
+    const head = `		<Secondary>${NL}			<Common>${NL}`;
+    text = patch(text, `${head}${T4}<Objectives/>`,
+      `${head}${T4}<Objectives>${NL}${secondary}${T4}</Objectives>`);
+  }
 
   // The scenario-info refs: the first N players get generated texts, the rest
   // empty out. WHERE THE NUMBERING STARTS depends on how the map was written,

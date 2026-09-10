@@ -6696,3 +6696,78 @@ that decides treasure against shrine, the halving exemption's own field
 identities (`0x9EC3C0` reads three level planes — `+0x28` bytes, `+0x48` at
 half-grid against 0x8C, `+0x58` floats against 0.0f — and which is which is
 unread), the mask's `TT_NONE` arm, and blocks D, E and F of the test matrix.
+
+**10.09, THE GRAIL, PORTED — the one gap a user could reach, closed the day it
+was reached.** A grail-ordered map now comes out byte-identical in all fifteen
+entries. The order that proves it: `S1-2P2Z7V2 -seed 1789069784 -size 2
+-players 2 -monsters 0 -resource 0 -exp 0 -pokeb 165 1`.
+
+**THE CONSOLE CAN ORDER ONE, with no new code.** The dialog's checkbox is
+`request+0xA5` and `cli.c`'s `-pokeb <decimal offset> <value>` says any field of
+the request outright — `-pokeb 165 1` turns the grail on, and the map's own
+record comes back `<Grail>true</Grail>`. The instrument that had been built to
+identify the fields is what makes the feature orderable, and therefore
+traceable.
+
+**WHAT THE CHECKBOX DOES.** `generator+0xB5` is read twice by MainObjects:
+
+1. `0xEA3FB4` — the phase's PROLOGUE DRAW. With the grail on it is
+   `below(zoneCount)` (`0xEB13E0`, the bound taken from the zone vector's own
+   element count) and the result is the zone the Graal goes into; with it off it
+   is a bare `next()` (`0xEB13A0`). That draw had been in the port since the
+   first day, spent and unexplained — this is what it is, and the two traces say
+   so at the same index: the reference's is `tn`, a grail run's `tb 2 of 7`.
+2. `0xEA463B` — inside the zone loop, right after the DWELLINGS step. The drawn
+   zone gets the Graal (`0xEC00F0`), and then EVERY zone gets obelisks
+   (`0xEBFFC0`). Neither prints a boundary, so their draws land under the next
+   one the engine prints — "upgrade buildings" — which is why the divergence
+   first showed up there.
+
+**HOW MANY OBELISKS**, from `0xEA4652..0xEA468E`: a per-size numerator — 10 at
+size index 0, 18 at index 1, 26 above — times the zone's tile count, over the
+map's tile area, plus TWO. Both increments are in the code (`inc eax` in the
+caller, `lea ebp,[eax+1]` in the callee), and both are needed: the measured
+seven-zone medium comes to 5+5+5+5+5+5+8 = **38**, which is the archive's count,
+where one increment short gives 31.
+
+**WHERE EACH GOES** (`0xEBFCF0`, candidates from `0xEC1500`): the room grid is
+recomputed with mask 4 — the zone's actives alone — INSIDE the builder, so every
+obelisk filters on the last one's stamp; a zone tile is a candidate when
+`room > trunc(2 * max / 3)` and `border >= 1`; then at most ONE HUNDRED attempts
+(`cmp ebx,64h`), `below(candidates)` for the tile and `below(4)` for the
+quadrant, a refusal striking the candidate. The Graal uses the SAME builder.
+
+**THE GRAAL STAMPS ITSELF, and that is the reading the stream insisted on.** Its
+shared document's blocked, active, hole and passable lists are ALL empty, so an
+ordinary footprint stamp writes nothing — and then the next obelisk's candidate
+list would be the same list twice, where the engine's grows from 259 to 294.
+`0xEC03F5` pushes its tile into the zone's points and `0xEC0425` writes
+occupancy 4 for it, by hand. With that the port matches all **199,823** draws.
+
+**AND THE RECORD**, four value-level differences found by diffing the archive
+once the draws agreed: the Graal artifact is the one artifact whose
+`RandomShiftRadius` is 5 rather than 0; the primary objective becomes
+`OBJECTIVE_KIND_BUILD_GRAAL` and keeps the two text refs; the defeat-all it
+displaced reappears as a hidden SECONDARY (the primary's own item with the refs
+emptied and `IsInitialyVisible`/`IsHidden` turned over); and `<Grail>` in
+`sRMGProps` goes true. The three objective TEXTS switch to the parameters' other
+set — `DefaultGrailObjective`, `ObjectiveRMGCaption`, `ObjectiveRMGDescription`
+— whose names suggest the opposite pairing and whose contents settle it
+("Найти слезу Асхи" against "Побей всех!").
+
+**A CORRECTION THIS TURNED UP.** The dwellings worker's second mode hangs on
+`generator+0xA5`, and the note calling that the grail was wrong: the request's
+`+0xA5` is the generator's `+0xB5`, so the dwellings' flag is the one at request
+`+0x95` — RANDOM TOWNS. The grail map proves it from the other side: its
+dwellings are ordinary preset ones with `RndSource=RND_NONE`, which is mode 0.
+Random towns is now the only dialog-only gap left.
+
+**ONE THING THE GRAIL MAP DID NOT SETTLE.** The map the user ordered THROUGH THE
+DIALOG and the console map with a byte-identical order record are two different
+maps: the dialog one carries one terrain layer fewer
+(`/RMG/Tiles/Preserve/Sand-Dunes.xdb` is absent), so its ZONES resolved to
+different terrain races and the streams parted inside `LoadTemplate`. Every
+earlier dialog-ordered map in the corpus replays exactly, so this is not the
+dialog path as such — the likeliest reading is that a race was PICKED in the
+dialog rather than left random, which the record cannot distinguish from a drawn
+one. Unread, and named here rather than guessed at.

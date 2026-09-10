@@ -57,19 +57,19 @@ generosity.
 
 ### The parameters, and the values each takes
 
-| parameter    | how an order says it   | values                                                                                                         |
-|--------------|------------------------|----------------------------------------------------------------------------------------------------------------|
-| template     | the order's first word | 22 shipped, as a path under RMG/Templates                                                                      |
-| seed         | -seed                  | any int32 but 0 — the dialog draws it, the console may name it                                                 |
-| size         | -size                  | 0..6 = 72, 96, 136, 176, 216, 256, 320 (TINY/SMALL/MEDIUM/LARGE/EXTRALARGE/HUGE/IMPOSSIBLE), lifted by the fit |
-| players      | -players               | the template's MinPlayers..MaxPlayers, clamped again by the map                                                |
-| underground  | -underground           | 0 or 1 — the ORDER decides the second floor, never the template                                                |
-| water        | -water                 | 0..2 = WATER_NONE, WATER_PRESENT, WATER_ISLAND_MAP                                                             |
-| monsters     | -monsters              | 0..4 = WEAK, MEDIUM, STRONG, VERY_STRONG, IMPOSSIBLE                                                           |
-| resource     | -resource              | 0..4 = MISERABLE, LITTLE, NORMAL, LOTS, MUCH                                                                   |
-| exp          | -exp                   | 0..4 = MISERABLE, LITTLE, NORMAL, LOTS, MUCH                                                                   |
-| random towns | dialog only            | on/off — the port takes each player's race from the template                                                   |
-| grail        | dialog only            | on/off — the port places none                                                                                  |
+| parameter    | how an order says it    | values                                                                                                         |
+|--------------|-------------------------|----------------------------------------------------------------------------------------------------------------|
+| template     | the order's first word  | 22 shipped, as a path under RMG/Templates                                                                      |
+| seed         | -seed                   | any int32 but 0 — the dialog draws it, the console may name it                                                 |
+| size         | -size                   | 0..6 = 72, 96, 136, 176, 216, 256, 320 (TINY/SMALL/MEDIUM/LARGE/EXTRALARGE/HUGE/IMPOSSIBLE), lifted by the fit |
+| players      | -players                | the template's MinPlayers..MaxPlayers, clamped again by the map                                                |
+| underground  | -underground            | 0 or 1 — the ORDER decides the second floor, never the template                                                |
+| water        | -water                  | 0..2 = WATER_NONE, WATER_PRESENT, WATER_ISLAND_MAP                                                             |
+| monsters     | -monsters               | 0..4 = WEAK, MEDIUM, STRONG, VERY_STRONG, IMPOSSIBLE                                                           |
+| resource     | -resource               | 0..4 = MISERABLE, LITTLE, NORMAL, LOTS, MUCH                                                                   |
+| exp          | -exp                    | 0..4 = MISERABLE, LITTLE, NORMAL, LOTS, MUCH                                                                   |
+| random towns | dialog only             | on/off — the port takes each player's race from the template                                                   |
+| grail        | dialog, or -pokeb 165 1 | on/off — a Graal and one obelisk pass per zone; ported, byte-exact                                             |
 
 ### The blocks, and what each costs
 
@@ -80,7 +80,6 @@ generosity.
   E    36 runs — players min and max, where the range is wider than one
   F    72 runs — monsters, resource and exp across all five rungs, two templates
   =    486 runs in all (rows x 3 seeds), one editor launch each
-
 ## Running a block
 
 ```

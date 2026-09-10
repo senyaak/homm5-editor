@@ -21,6 +21,8 @@ import { find, findAll, parse } from '../format/xml.ts';
 export const GAME_CAPTION_TEXT = 'Это название карты';
 
 export interface RmgTextsInput {
+  /** The order's GRAIL checkbox — it swaps all three objective texts. */
+  grail?: boolean;
   /** The typed map name. */
   mapName: string;
   /** The template file stem — S1P2Z2M1, S0-1P2Z2K3.1T, … */
@@ -121,8 +123,18 @@ export function buildRmgTexts(dataRoot: string, input: RmgTextsInput): Array<{ n
     files.push({ name: `caption-text-${i}.txt`, data: i < captionBase ? placeholder : name });
   }
   for (let i = 0; i < input.players; i++) files.push({ name: `desc-text-${i}.txt`, data: description });
-  files.push({ name: 'mapobjective-text-0.txt', data: encode(paramText(dataRoot, href('DefaultRMGObjective'))) });
-  files.push({ name: 'objective-caption-text-0.txt', data: encode(paramText(dataRoot, href('ObjectiveCaption'))) });
-  files.push({ name: 'objective-desc-text-0.txt', data: encode(paramText(dataRoot, href('ObjectiveDescription'))) });
+  // THE GRAIL HAS ITS OWN THREE, and the parameters keep both sets side by
+  // side: `DefaultGrailObjective` ("Найти слезу Асхи") against
+  // `DefaultRMGObjective` ("Побей всех!"), and `ObjectiveRMGCaption` /
+  // `ObjectiveRMGDescription` against `ObjectiveCaption` /
+  // `ObjectiveDescription`. Which set is which was read off a grail map's own
+  // three files rather than from the names, whose RMG/not-RMG spelling suggests
+  // the opposite pairing.
+  const goal = input.grail ? 'DefaultGrailObjective' : 'DefaultRMGObjective';
+  const caption = input.grail ? 'ObjectiveRMGCaption' : 'ObjectiveCaption';
+  const descRef = input.grail ? 'ObjectiveRMGDescription' : 'ObjectiveDescription';
+  files.push({ name: 'mapobjective-text-0.txt', data: encode(paramText(dataRoot, href(goal))) });
+  files.push({ name: 'objective-caption-text-0.txt', data: encode(paramText(dataRoot, href(caption))) });
+  files.push({ name: 'objective-desc-text-0.txt', data: encode(paramText(dataRoot, href(descRef))) });
   return files;
 }

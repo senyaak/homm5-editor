@@ -58,10 +58,19 @@ if (order.extras.races.length) console.log(`  races: ${order.extras.races.join('
 // next hour into a phase that is fine.
 const cannot = unreplayable(order);
 if (cannot.length) {
-  console.log(`  THIS ORDER IS NOT ONE THE PORT REPLAYS, so the comparison is not run:`);
+  // `--anyway` runs it regardless, which is how a missing feature gets PORTED:
+  // the first differing byte of an order the port cannot replay is exactly the
+  // measurement that says where the feature starts. Refusing by default keeps
+  // the next hour out of a phase that is fine; refusing always would leave the
+  // grail unportable.
+  const anyway = args.includes('--anyway');
+  console.log(`  THIS ORDER IS NOT ONE THE PORT REPLAYS${anyway ? ', and --anyway says compare it regardless' : ', so the comparison is not run'}:`);
   for (const line of cannot) console.log(`    - ${line}`);
-  console.log(`  Order it again with those at the values above and the diff means something.`);
-  process.exit(3);
+  if (!anyway) {
+    console.log(`  Order it again with those at the values above and the diff means something,`);
+    console.log(`  or pass --anyway to see where the port and the engine first part.`);
+    process.exit(3);
+  }
 }
 // The monster level the map was ordered with is the level the chain replays.
 // It reaches `mapSetup` as a fixed value, so it costs the same discarded draw
@@ -98,6 +107,10 @@ const run = runFull(dir, {
   seed, template, size, underground, water: water || undefined, monsterStrength,
   resourceMultiplier: order.extras.resourceIndex,
   expMultiplier: order.extras.expIndex,
+  // Said even for an order the port cannot finish — see `--anyway`: the grail
+  // moves the FIRST draw of MainObjects, so without it the replay parts from
+  // the engine long before it reaches anything to do with a grail.
+  grail: order.extras.grail,
 });
 console.log(`  replayed: ${run.c.rng.draws} draws, ${run.objects.length} objects`);
 // WHICH CAPTION NUMBERING TO EXPECT is not the generator's to say: the console

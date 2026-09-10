@@ -21,6 +21,11 @@ engine writes — every game-built map in the corpus, all twenty-two shipped
 templates, and two-level orders across six of them. There is no new button for
 it yet; this is the engine work the button will sit on.
 
+**The Grail too.** Tick that box in the generator's dialog and the port
+reproduces what it makes: the Tear of Asha in one zone, obelisks in every
+zone, and "find the Tear of Asha" as the map's goal with the defeat-all it
+displaces kept as a hidden second objective.
+
 ## 0.10.0-alpha.1 — 2026-08-16
 
 **An alpha, and the reason is multiplayer.** The online half below works and has
