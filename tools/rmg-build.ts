@@ -285,6 +285,7 @@ export function buildMapFiles(
         birds: order.birds,
         twoLevel,
         grail: c.grail,
+        randomTowns: c.randomTowns,
         resourceMultiplier: c.multipliers.resource,
         expMultiplier: c.multipliers.exp,
         objects: run.objects,

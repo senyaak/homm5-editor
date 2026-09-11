@@ -65,6 +65,7 @@ if (mapPath) {
     underground: order.underground, water: order.water || undefined,
     monsterStrength: Math.max(0, MONSTER_LEVELS.indexOf(order.monster)),
     resourceMultiplier: order.extras.resourceIndex, expMultiplier: order.extras.expIndex,
+    grail: order.extras.grail, randomTowns: order.extras.randomTowns,
   };
 } else {
   size = Number(flag('size') ?? 96);

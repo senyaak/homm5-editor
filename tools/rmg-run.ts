@@ -76,6 +76,8 @@ export interface RunObject extends HeightObject {
   shipTile?: readonly [number, number];
   /** Dwellings of tier >= 3: the enabled-creature switch. */
   creaturesEnabled?: number[];
+  /** Random-towns dwellings in a zone with a town: the town's name (`RndSource` RND_TOWN). */
+  linkToTown?: string;
 }
 
 export interface FullRun {
@@ -184,14 +186,23 @@ export function runFull(
       let lights: RunObject['lights'];
       if (t.pointLights) {
         const race = TOWN_RACES[docType];
-        const rc = race === undefined ? undefined : c.presets.get(race)?.raceColor;
-        if (!rc) throw new Error(`no preset RaceColor for ${docType}`);
+        // The engine's colour is NOT the preset's: `0xEC6780` indexes a
+        // per-town-type table (`[0x1207D04] + 8 + type*0x1E8`, the colour at
+        // `+0x1AC`) by the Shared document's `Type`. For the eight factions the
+        // preset's RaceColor has matched it on every map measured; the row for
+        // TOWN_RANDOM_TYPE is BLACK — measured on an underground random-towns
+        // order (`S0-1P2Z2K3.1T -seed 7 -pokeb 149 1`), four lights of (0,0,0).
+        const rc = docType === 'TOWN_RANDOM_TYPE'
+          ? { x: 0, y: 0, z: 0 }
+          : race === undefined ? undefined : c.presets.get(race)?.raceColor;
+        if (!rc) throw new Error(`no measured light colour for a ${docType} town underground`);
         const color: readonly [number, number, number] = [rc.x, rc.y, rc.z];
         lights = ([[0, -5], [0, 5], [-5, 0], [5, 0]] as const).map(([lx, ly]) => ({
           x: lx, y: ly, z: t.pointLights!.z, color, radius: t.pointLights!.radius,
         }));
       }
-      object('town', t.name, t.pos.x, t.pos.y, t.rot, c.footprint(t.shared), floor, {
+      // RandomTown.xdb carries no tag in its name, so the pointered href.
+      object('town', t.name, t.pos.x, t.pos.y, t.rot, c.footprint(pointered(t.shared, 'AdvMapTownShared')), floor, {
         craterTown: docType === 'TOWN_INFERNO' || t.shared.includes('Inferno'),
         skipFlattenTown: docType === 'TOWN_ACADEMY' || t.shared.includes('Academy'),
         shared: pointered(t.shared, 'AdvMapTownShared'),
@@ -303,17 +314,21 @@ export function runFull(
     step(`zone ${zone} mines`);
 
     for (const d of fill.dwellings()) {
-      const href = pricePreset.dwellings.concat(c.presets.get(lz.race)!.dwellings)
+      // The href as the engine spells it: a preset's entry for mode 0, the
+      // tier's stand-in for mode 1 (`Chain.randomDwellings`).
+      const href = (c.randomTowns ? c.randomDwellings : pricePreset.dwellings.concat(c.presets.get(lz.race)!.dwellings))
         .find((h) => c.footprint(h).path === d.type)!;
       const docType = /<Type>(\w+)<\/Type>/.exec(readFileSync(join(dir, d.type.replace(/^\//, '')), 'utf8'))?.[1] ?? '';
       object('dwelling', d.name, d.x, d.y, d.q * HALF_PI, c.footprint(href), floor, {
         craterDwelling: CRATER_DWELLING_TYPES.has(docType),
         skipFlattenDwelling: SKIP_FLATTEN_DWELLING_TYPES.has(docType),
         shared: pointered(href, 'AdvMapDwellingShared'),
-        // Tier >= 3 reuses descriptor 3 and switches its creature on.
-        creaturesEnabled: d.tier >= 3
+        // Tier >= 3 reuses descriptor 3 and switches its creature on — mode 0
+        // only; mode 1 skips the tier test (0xEB904A) and links to the town.
+        creaturesEnabled: d.tier >= 3 && !c.randomTowns
           ? Array.from({ length: 4 }, (_, k) => (k === d.tier - 3 ? 1 : 0))
           : undefined,
+        linkToTown: d.linkToTown,
       });
     }
     step(`zone ${zone} dwellings`);

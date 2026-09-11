@@ -46,6 +46,30 @@
 // them at three depths — blockedTiles and activeTiles at 1, the possession
 // marker at 3 — and holeTiles, despite being the largest list, is not
 // checked at all.
+//
+// RANDOM TOWNS — the dialog's checkbox, `request+0x95`, handed to PlaceTown
+// as its second argument (`0xEA5FBE` reads `generator+0xA5` and pushes it).
+// PlaceTown reads it twice, and both reads are read off `0xEB4CB0`:
+//
+//   0xEB4E0D  the PROTOTYPE. With the flag the document is the global
+//             `/MapObjects/RandomTown.xdb#xpointer(/AdvMapTownShared)`
+//             (`0x121C544`, filled at start-up next to the seven random
+//             dwellings) and the race preset's `TownProto` is never looked
+//             at; without it the preset's, as before. The retry loop, the
+//             three gates and the stamp are the same code either way — only
+//             the footprint they measure changes, and RandomTown's is its own
+//             (a 1..-5 entry, a (1,0) marker).
+//   0xEB57E5  straight after the garrison: `jne 0xEB5A8A`, the epilogue. The
+//             decoration over the entrance AND the specialisation are skipped
+//             whole, draws included — which is the 40 draws (8 towns × 5: two
+//             for the decoration's quadrant and pick, two for its name, one
+//             for the specialisation) the game's "towns placed" boundary sat
+//             short of the port's on the first random-towns map.
+//
+// What the flag does NOT change, and the same map shows it: the garrison is
+// still the ZONE RACE's — `0xED2330` runs before the test, so an Inferno
+// zone's random town is held by imps — and an owned town still gets its
+// tavern.
 
 import type { CreatureInfo } from './creatures.ts';
 import { setTownGuard } from './town-guard.ts';
@@ -133,6 +157,12 @@ export interface TownsResult {
    * stamped-blocked ledger, the extra bit of the lakes' 0x3E room mask.
    */
   stampedBlocked: Map<number, Array<[number, number]>>;
+  /**
+   * Per zone index, the minted name of the town it got — the string PlaceTown
+   * leaves at `zone+0xFC` (and the `zone+0xF8` flag that says one is there).
+   * The random-towns dwellings link to it by this name.
+   */
+  townNames: Map<number, string>;
 }
 
 export interface TownsInput {
@@ -156,6 +186,14 @@ export interface TownsInput {
   basicLeverGuardPower: number;
   /** The map's monster level, 0..4 — the garrison scales by its own two cases. */
   monsterStrength: number;
+  /**
+   * The RANDOM TOWNS checkbox (`request+0x95`), PlaceTown's second argument.
+   * With it every town is built from `randomTown` and neither the decoration
+   * nor the specialisation is drawn — see the header.
+   */
+  randomTowns?: boolean;
+  /** `/MapObjects/RandomTown.xdb`, resolved — required when `randomTowns` is on. */
+  randomTown?: TownShared;
 }
 
 const HALF_PI = Math.PI / 2;
@@ -196,8 +234,11 @@ function centroid(tiles: Array<[number, number]>): { a: number; b: number } {
 export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
   const { size, template, zones, floors, distances, radii, presets, towns, specializations } = input;
   const { creatures, basicLeverGuardPower, monsterStrength } = input;
+  const randomTowns = Boolean(input.randomTowns);
+  if (randomTowns && !input.randomTown) throw new Error('random towns ordered, but no RandomTown document was given');
   const objects: PlacedObject[] = [];
   const centres = new Map<number, { a: number; b: number }>();
+  const townNames = new Map<number, string>();
   // A DWORD PER TILE, as the engine has it (`or dword ptr [eax+ebx*4],400h`
   // in the dwarven one-tile pass, `cmp dword ptr [eax+ecx*4],40h` in the
   // massif carve). A byte would fit every bit the surface phases use, and it
@@ -230,7 +271,11 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
     // entrance is Haven's LeafDownBig.
     const preset = presets.get(zone.race);
     const paintPreset = presets.get(zone.terrainRace);
-    const proto = preset?.townProto ? towns.get(preset.townProto.replace(/#xpointer\(.*\)$/, '')) : undefined;
+    // With random towns on, the prototype is the one global stand-in and the
+    // preset's `TownProto` is never consulted (0xEB4E0D jumps past it).
+    const proto = randomTowns
+      ? input.randomTown
+      : preset?.townProto ? towns.get(preset.townProto.replace(/#xpointer\(.*\)$/, '')) : undefined;
     if (!proto) continue; // no prototype, no town — the engine bails the same way
 
     const dist = distances[zone.floor]!;
@@ -341,12 +386,14 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
         ...(army.length ? { army } : {}),
       });
       const town = objects[objects.length - 1]!;
+      townNames.set(zone.index, name);
       // The wave the next phase runs starts at the ENTRY, not at the town.
       centres.set(zone.index, { a: na, b: nb });
 
       // The decoration over the entrance — skipped WHOLE, draws included,
-      // when the race lists none.
-      const decorations = paintPreset?.overTownCenterObjects ?? [];
+      // when the race lists none — and, with random towns on, skipped along
+      // with the specialisation: 0xEB57E5 goes straight to the epilogue.
+      const decorations = randomTowns ? [] : (paintPreset?.overTownCenterObjects ?? []);
       if (decorations.length) {
         const dq = rng.below(4);
         const dpick = rng.below(decorations.length);
@@ -362,7 +409,7 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
       }
 
       // The specialisation comes last, and only if the pool has one.
-      if (specs.length) town.specialization = specs[rng.below(specs.length)]!.path;
+      if (specs.length && !randomTowns) town.specialization = specs[rng.below(specs.length)]!.path;
 
       // The underground subclasses' wrapper — after 0xEB4CB0 returns true
       // it hangs four point lights on the town for two draws (0xEC6570);
@@ -376,5 +423,5 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
     }
   }
 
-  return { objects, centres, occupancy, stamped, stampedBlocked };
+  return { objects, centres, occupancy, stamped, stampedBlocked, townNames };
 }

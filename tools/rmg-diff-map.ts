@@ -111,6 +111,8 @@ const run = runFull(dir, {
   // moves the FIRST draw of MainObjects, so without it the replay parts from
   // the engine long before it reaches anything to do with a grail.
   grail: order.extras.grail,
+  // And the other checkbox — it moves the towns phase, and the map after it.
+  randomTowns: order.extras.randomTowns,
 });
 console.log(`  replayed: ${run.c.rng.draws} draws, ${run.objects.length} objects`);
 // WHICH CAPTION NUMBERING TO EXPECT is not the generator's to say: the console
@@ -187,7 +189,9 @@ if (same < theirs.size) {
   // compared a different map and read the difference as a fix that had worked.
   const again = `RMG/Templates/${template}.xdb -seed ${seed} -size ${MAP_SIZES.indexOf(size as never)}`
     + ` -players ${players}${underground ? ' -underground 1' : ''}${water ? ` -water ${water}` : ''}`
-    + ` -monsters ${monsterStrength} -resource ${order.extras.resourceIndex} -exp ${order.extras.expIndex}`;
+    + ` -monsters ${monsterStrength} -resource ${order.extras.resourceIndex} -exp ${order.extras.expIndex}`
+    // The two checkboxes have no word of their own; `-pokeb` writes the field.
+    + `${order.extras.randomTowns ? ' -pokeb 149 1' : ''}${order.extras.grail ? ' -pokeb 165 1' : ''}`;
   console.log('  Before reading this as a divergence: a saved map may have been EDITED after');
   console.log('  it was generated, and only the engine can tell you. Order it again —');
   console.log(`    node tools/rmg-batch.ts --game <dir> --order "${again}"`);

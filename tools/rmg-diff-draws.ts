@@ -112,6 +112,7 @@ if (from) {
   options.monsterStrength = Math.max(0, MONSTER_LEVELS.indexOf(order.monster));
   options.resourceMultiplier = order.extras.resourceIndex;
   options.grail = order.extras.grail;
+  options.randomTowns = order.extras.randomTowns;
   options.expMultiplier = order.extras.expIndex;
   // A map from the GAME replays as the game's build — see `ChainOptions.gameBuild`.
   if (args.includes('--game-build')) options.gameBuild = true;

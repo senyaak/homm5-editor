@@ -26,6 +26,13 @@ reproduces what it makes: the Tear of Asha in one zone, obelisks in every
 zone, and "find the Tear of Asha" as the map's goal with the defeat-all it
 displaces kept as a hidden second objective.
 
+**And random towns.** The other checkbox: every town is the random-town
+placeholder, no specialisation and no decoration over the gate, and every
+dwelling a random one bound to its zone's town — the map record is
+byte-identical to the game's and the editor's. The minimap of such a map is
+still off by a few pixels around two or three of those objects: the engine's
+own picture places them a tile off their record, and which ones is being read.
+
 ## 0.10.0-alpha.1 — 2026-08-16
 
 **An alpha, and the reason is multiplayer.** The online half below works and has

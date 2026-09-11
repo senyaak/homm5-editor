@@ -83,21 +83,20 @@ export interface MapOrder {
 /**
  * What in this order the port cannot replay, one line each — empty when it can.
  *
- * Each of these is a real generator input: the two multipliers are the
- * `+0x98`/`+0xA0` the reference pinned to LITTLE and they move the draw count,
- * random towns is `+0x95` and the grail `+0xA5`. The port is written for the
- * reference's values and has no option for the others, so the honest answer to
- * a map that carries them is to say so rather than to diff it.
+ * Each of these is a real generator input. The two multipliers
+ * (`+0x98`/`+0xA0`), the grail (`+0xA5`) and random towns (`+0x95`) are all
+ * replayed now — `ChainOptions` takes each — so what is left is a value
+ * outside its enum and a chosen starting hero, and the honest answer to a map
+ * that carries one is to say so rather than to diff it.
  */
 export function unreplayable(o: MapOrder): string[] {
   const out: string[] = [];
-  const { randomTowns, grail, startHeroes, resourceIndex, expIndex } = o.extras;
+  const { startHeroes, resourceIndex, expIndex } = o.extras;
   // The two multipliers ARE replayed now — the treasures step takes its ladder
   // index from them. Only a value outside the enum would stop the comparison.
   if (resourceIndex < 0 || expIndex < 0) {
     out.push('one of the two multipliers is not a value this enum has');
   }
-  if (randomTowns) out.push('RandomTowns is on; the port takes each player\'s race from the template');
   if (startHeroes.length) {
     out.push(`a starting hero was chosen (${startHeroes.join(', ')}); the port leaves that to the generator`);
   }

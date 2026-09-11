@@ -17,23 +17,24 @@
 //               "Can't place dwelling %s at zone #%d" has no edge back into
 //               either loop (0xEB9647)
 //
-// The worker is two-moded on `generator+0xA5`, and `+0xA5` IS THE GRAIL
-// CHECKBOX — the dialog pokes it to 1 and the map records `<Grail>true`
-// (docs/RMG.md's generator-field table). So mode 1 is not an unreachable
-// branch: it is what a user gets by ticking one box, and the console order has
-// no word for it, which is why `tools/rmg-batch.ts` cannot produce one and no
-// traced run has it set.
+// The worker is two-moded on `generator+0xA5`, which is the request's `+0x95`
+// — the dialog's RANDOM TOWNS checkbox (the map records `<RandomTowns>true`;
+// `-pokeb 149 1` says it through the console). Both modes are read off
+// `0xEB8C10` and both are now held to a map from the engine:
 //
-// Every traced editor run has it zero: descriptors come from the race preset,
-// and a tier below 3 sets no properties at all — which is exactly the reference
-// map's dwellings, all PLAYER_NONE with empty RndSource/LinkToTown. What is NOT
-// ported, said rather than hidden: mode 1 (the seven
-// /MapObjects/Random/RandomDwellingN stand-ins, RndSource=2 and LinkToTown set
-// when the zone has a town), and mode 0 with tier >= 3, which reuses descriptor
-// 3 and switches the creature on via `creaturesEnabled[tier-3]`. Neither spends
-// draws differently up to the properties, but neither has ever been measured —
-// and a Grail-ticked order is the one thing a user can ask for today that this
-// port does not reproduce (it places no grail either).
+//   mode 0  descriptors come from the race preset, index min(tier, 3)
+//           (0xEB8E03); a tier below 3 sets no properties at all, and a tier
+//           of 3 or more reuses descriptor 3 and switches its creature on
+//           through `creaturesEnabled[tier-3]` (0xEB90CF).
+//   mode 1  the descriptor is the tier's OWN stand-in, `RandomDwelling<tier+1>`
+//           — `0x121C570 + tier*0x20` at 0xEB8DF8, seven of them, filled at
+//           start-up by 0x4D5A60 — and the tier test is skipped (0xEB904A):
+//           whatever the tier, when the zone has a town (`zone+0xF8`, 0xEB935E)
+//           the instance gets `RndSource = 2` (RND_TOWN) and `LinkToTown` = the
+//           town's minted name (`zone+0xFC`); a zone without one sets nothing.
+//
+// Neither mode spends draws differently — the properties come after the fit —
+// so the draw stream tells them apart only through the footprints they measure.
 
 import { mintName } from './armies.ts';
 import type { DrawSource } from './armies.ts';
@@ -53,6 +54,11 @@ export interface PlacedDwelling {
   q: number;
   /** The requested tier — tier >= 3 reuses descriptor 3 and writes `creaturesEnabled[tier-3]`. */
   tier: number;
+  /**
+   * Mode 1 only, and only in a zone with a town: the town's name, which the
+   * record links to (`RndSource` RND_TOWN, `LinkToTown` the town's id).
+   */
+  linkToTown?: string;
 }
 
 export interface DwellingStepInput {
@@ -83,6 +89,14 @@ export interface DwellingStepInput {
    * four are ever reached (`min(tier, 3)` at 0xEB8E0C).
    */
   descriptors: Footprint[];
+  /**
+   * Mode 1 — the RANDOM TOWNS flag (`generator+0xA5`). `randomDescriptors`
+   * are the seven `RandomDwellingN` stand-ins in tier order, and `townName`
+   * the zone's town when it has one (`zone+0xF8`/`+0xFC`).
+   */
+  randomTowns?: boolean;
+  randomDescriptors?: Footprint[];
+  townName?: string;
 }
 
 /** One zone's dwellings — the loops of `0xEB8C10`, draws and all. */
@@ -90,6 +104,8 @@ export function placeZoneDwellings(input: DwellingStepInput, rng: DrawSource): P
   const { size, grid, border, occupancy, zoneIndex } = input;
   const candidates = input.tiles ?? zoneTiles(size, grid, zoneIndex);
   const placed: PlacedDwelling[] = [];
+  const randomTowns = Boolean(input.randomTowns);
+  if (randomTowns && !input.randomDescriptors) throw new Error('random towns ordered, but no RandomDwelling documents were given');
 
   for (let tier = 0; tier < input.counts.length; tier++) {
     const count = input.counts[tier] ?? 0;
@@ -103,8 +119,9 @@ export function placeZoneDwellings(input: DwellingStepInput, rng: DrawSource): P
       );
 
       // The descriptor resolves AFTER the filter and before any draw; a hole
-      // in the preset skips the instance with nothing spent (0xEB9602).
-      const foot = input.descriptors[Math.min(tier, 3)];
+      // in the preset skips the instance with nothing spent (0xEB9602). Mode 1
+      // indexes the stand-ins by the tier itself, not by min(tier, 3).
+      const foot = randomTowns ? input.randomDescriptors![tier] : input.descriptors[Math.min(tier, 3)];
       if (!foot) continue;
 
       // The exhausted list is terminal for the STEP, not the instance —
@@ -115,7 +132,10 @@ export function placeZoneDwellings(input: DwellingStepInput, rng: DrawSource): P
 
       const name = mintName(rng);
       stampFootprint(input, foot, tile, q);
-      placed.push({ type: foot.path, name, x: tile[0], y: tile[1], q, tier });
+      placed.push({
+        type: foot.path, name, x: tile[0], y: tile[1], q, tier,
+        ...(randomTowns && input.townName ? { linkToTown: input.townName } : {}),
+      });
     }
   }
   return placed;

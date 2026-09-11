@@ -67,6 +67,8 @@ import { floorIterationOrder, generateGameZones } from '../src/rmg/zones.ts';
 
 export const SEED = 1785351845;
 export const SIZE = 96;
+/** The random-towns town prototype — the global `0x121C544`, PlaceTown's other document. */
+export const RANDOM_TOWN_HREF = '/MapObjects/RandomTown.xdb#xpointer(/AdvMapTownShared)';
 
 /** The knobs the ordered reference runs differ by. */
 export interface ChainOptions {
@@ -104,6 +106,17 @@ export interface ChainOptions {
    * `rmg-run.ts`, where the draw is spent.
    */
   grail?: boolean;
+  /**
+   * The dialog's RANDOM TOWNS checkbox (`request+0x95`; `-pokeb 149 1`
+   * through the console). Two readers, both in the towns' code: PlaceTown
+   * builds every town from `/MapObjects/RandomTown.xdb` and draws neither a
+   * decoration nor a specialisation (`towns.ts`), and the dwellings step
+   * places the seven `RandomDwellingN` stand-ins linked to the zone's town
+   * (`dwellings.ts`). The zone races, the terrain and the garrisons are
+   * untouched — the first random-towns map from the game agreed with the
+   * port to the draw until "towns placed".
+   */
+  randomTowns?: boolean;
   /**
    * `ResourceMultiplier` and `ExpMultiplier` as the enum counts them —
    * 0 MISERABLE, 1 LITTLE, 2 NORMAL, 3 LOTS, 4 MUCH. They are NOT labels:
@@ -190,6 +203,10 @@ export interface Chain {
   gameBuild: boolean;
   /** The order's GRAIL checkbox — see `ChainOptions.grail`. */
   grail: boolean;
+  /** The order's RANDOM TOWNS checkbox — see `ChainOptions.randomTowns`. */
+  randomTowns: boolean;
+  /** The seven `RandomDwellingN` stand-ins, tier order — mode 1's descriptors. */
+  randomDwellings: string[];
   loaded: LoadedTemplate;
   townResult: TownsResult;
   /**
@@ -286,6 +303,12 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
       towns.set(shared.path, shared);
     }
   }
+  // The random-towns stand-ins: one town, seven dwellings — the globals
+  // 0x4D5A60 fills at start-up, spelled the way the engine spells them.
+  const randomTowns = Boolean(options.randomTowns);
+  const randomTown = randomTowns ? readTownShared(dir, RANDOM_TOWN_HREF) : undefined;
+  const randomDwellings = Array.from({ length: 7 }, (_, i) =>
+    `/MapObjects/Random/RandomDwelling${i + 1}.xdb#xpointer(/AdvMapDwellingShared)`);
   const creatures = readCreatures(dir);
   const tables: GuardTables = {
     templates: readArmyTemplates(dir),
@@ -383,6 +406,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     presets, towns, specializations: readTownSpecializations(dir),
     creatures, basicLeverGuardPower: params.basicLeverGuardPower,
     monsterStrength: setup.monsterStrength,
+    randomTowns, randomTown,
   }, rng);
   phase('towns');
   // The water border — the engine runs it between "towns placed" and the
@@ -575,6 +599,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     roadField: options.roadField,
     gameBuild: Boolean(options.gameBuild),
     grail: Boolean(options.grail),
+    randomTowns, randomDwellings,
     teleports, floors, grid, border, occ, room, gridAtFillTerrain, coarse,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, the
@@ -710,6 +735,10 @@ export class ZoneFill {
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, counts: this.zone.dwellings,
       descriptors: this.preset.dwellings.map((href) => c.footprint(href)),
+      // Mode 1 — the stand-ins, and the town the zone got (`zone+0xFC`).
+      randomTowns: c.randomTowns,
+      randomDescriptors: c.randomTowns ? c.randomDwellings.map((href) => c.footprint(href)) : undefined,
+      townName: c.townResult.townNames.get(this.zoneIndex),
     }, c.rng);
   }
 

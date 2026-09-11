@@ -155,6 +155,8 @@ export interface EmitObject {
   shipTile?: readonly [number, number];
   /** Dwellings of tier >= 3: the enabled-creature switch. */
   creaturesEnabled?: number[];
+  /** Random-towns dwellings: the id of the zone's town they are linked to. */
+  linkToTown?: string;
 }
 
 const MOODS: Record<number, string> = {
@@ -314,9 +316,13 @@ export function renderObject(o: EmitObject, truncate = false): string[] {
                 '\t\t\t\t</creaturesEnabled>',
               ]
             : ['\t\t\t\t<creaturesEnabled/>']),
-          '\t\t\t\t<RndSource>RND_NONE</RndSource>',
+          // A random-towns dwelling in a zone with a town is that town's:
+          // `RndSource` 2 and the town's id (dwellings.ts, 0xEB935E).
+          `\t\t\t\t<RndSource>${o.linkToTown ? 'RND_TOWN' : 'RND_NONE'}</RndSource>`,
           '\t\t\t\t<LinkToPlayer>PLAYER_NONE</LinkToPlayer>',
-          '\t\t\t\t<LinkToTown/>',
+          o.linkToTown
+            ? `\t\t\t\t<LinkToTown href="#xpointer(id(${o.linkToTown})/AdvMapTown)"/>`
+            : '\t\t\t\t<LinkToTown/>',
         ];
       case 'AdvMapMonster': {
         const army = o.army!;
@@ -370,11 +376,14 @@ export function renderObject(o: EmitObject, truncate = false): string[] {
           '\t\t\t\t\t<x>0</x>',
           '\t\t\t\t\t<y>0</y>',
           '\t\t\t\t</ShipTile>',
-          `\t\t\t\t<Specialization href="${t.specialization
-            ? t.specialization.includes('#xpointer')
+          // A town that drew no specialisation — every random town — carries
+          // the empty element, not an empty href: the engine map says so, and
+          // no engine map holds a `<Specialization href=""/>`.
+          t.specialization
+            ? `\t\t\t\t<Specialization href="${t.specialization.includes('#xpointer')
               ? t.specialization
-              : `${t.specialization}#xpointer(/TownSpecialization)`
-            : ''}"/>`,
+              : `${t.specialization}#xpointer(/TownSpecialization)`}"/>`
+            : '\t\t\t\t<Specialization/>',
           '\t\t\t\t<buildings>',
           '\t\t\t\t\t<Item>',
           '\t\t\t\t\t\t<Type>TB_TOWN_HALL</Type>',
@@ -473,6 +482,8 @@ export interface RmgMapInput {
    * kind put back and `IsInitialyVisible`/`IsHidden` flipped.
    */
   grail?: boolean;
+  /** The order's RANDOM TOWNS checkbox — recorded in `sRMGProps`; the objects carry the rest. */
+  randomTowns?: boolean;
   objects: readonly EmitObject[];
   /** The drawn surface ambient light href (params list at setup's index). */
   groundAmbientLight: string;
@@ -744,6 +755,11 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
     `\t\t\t<ResourceMultiplier>RESOURCE_${rung(input.resourceMultiplier ?? 1)}</ResourceMultiplier>`);
   text = patch(text, '\t\t\t<ExpMultiplier>EXP_MISERABLE</ExpMultiplier>',
     `\t\t\t<ExpMultiplier>EXP_${rung(input.expMultiplier ?? 1)}</ExpMultiplier>`);
+  // The order's own record of the checkbox (`0xEA744F` writes it from
+  // `generator+0xA5`); the skeleton carries false.
+  if (input.randomTowns) {
+    text = patch(text, '\t\t\t<RandomTowns>false</RandomTowns>', '\t\t\t<RandomTowns>true</RandomTowns>');
+  }
 
   if (input.birds) text = patch(text, '\t<Birds/>', `\t<Birds href="${input.birds}"/>`);
 

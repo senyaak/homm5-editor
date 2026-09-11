@@ -3677,7 +3677,8 @@ saying so:
 | **map size** | **not orderable.** The dialog's size reaches `createMap` in the TEMPLATE's own units and the conversion is `vt+0x18`, unread. The chain orders the references' 8; `--size` lays out the grid only, and `rmg-pack` refuses a size the references never used unless `--unchecked` says to do it anyway |
 | **ResourceMultiplier, ExpMultiplier** | **ordered** (`-resource`, `-exp`) — and they are not cosmetic: see below |
 | monster level | **ordered** (`-monsters`) — and replayed: `rmg-diff-map` takes the level out of the map's own `sRMGProps` and hands it to the chain, so a map ordered at any of the five is compared at that one |
-| RandomTowns, Grail, StartHero | not ordered — `map.xdb` carries the references' fixed values |
+| RandomTowns, Grail | **ordered** (`-pokeb 149 1`, `-pokeb 165 1`) and replayed — `rmg-diff-map` reads both off the map's `sRMGProps`; see the 10.09 and 11.09 entries at the end |
+| StartHero | not ordered — `map.xdb` carries the references' fixed values |
 
 And the settings that ARE ordered are ordered, not checked: only the three
 reference orders have a map from the engine to be compared against. `npm run
@@ -6777,3 +6778,59 @@ EDITOR keeps the displaced defeat-all as a hidden secondary, and the GAME leaves
 the secondary empty, the grail goal standing alone. One map per build is the
 whole of the evidence, and enough of it — the objectives are a fixed consequence
 of the checkbox and no part of them is drawn.
+
+**11.09, RANDOM TOWNS — the last dialog-only gap, ported to the record.** The
+map that reached it was made in the GAME (`S1-2P2-8Z8K2S -seed 1789118387
+-size 2 -players 3 -monsters 0 -resource 0 -exp 0`, `<RandomTowns>true`), and
+`--anyway` put the first divergence at the towns phase: the game's "towns
+placed" boundary at 65900 draws against the port's 65940 — forty draws, eight
+towns, five each. With the flag ported the replay lands on the engine's
+210803 and `map.xdb`, `GroundTerrain.bin` and every text are byte-identical;
+three more orders through the editor (the same seed; the reference template;
+a two-level tiny one with a townless zone) come out the same way, record and
+terrain whole. What the checkbox does is two readers of `generator+0xA5`, the
+request's `+0x95`, and both are in the towns' code:
+
+- **PlaceTown, `0xEB4CB0`, twice.** At `0xEB4E0D` the prototype: with the flag
+  it is the global `/MapObjects/RandomTown.xdb` (`0x121C544`, filled at
+  start-up beside the seven random dwellings, 0x4D5A60) and the race preset's
+  `TownProto` is never read; the retry loop, the three gates and the stamp are
+  the same code over a different footprint (a (1,-5) entry, a (1,0) marker).
+  At `0xEB57E5`, right after the garrison, `jne` to the epilogue: the
+  decoration over the entrance and the specialisation are skipped whole,
+  draws included — the five per town. The garrison is still the ZONE RACE's
+  (`0xED2330` runs before the test; an Inferno zone's random town is held by
+  imps), an owned town still gets its tavern, and the record writes
+  `<Specialization/>` — the empty element, which no engine map spells as an
+  empty href.
+- **The dwellings step, `0xEB8C10` — mode 1 is this flag, not the grail's.**
+  The descriptor is the tier's own stand-in, `RandomDwelling<tier+1>`
+  (`0x121C570 + tier*0x20` at 0xEB8DF8), the tier test is skipped (0xEB904A),
+  and when the zone has a town (`zone+0xF8`, 0xEB935E) the instance gets
+  `RndSource = 2` and `LinkToTown` = the town's minted name (`zone+0xFC`); a
+  zone without one sets nothing, which the two-level order's third zone shows.
+  No draw moves: the properties come after the fit.
+- **An underground random town's lights are BLACK.** `0xEC6780` indexes a
+  per-town-type table (`[0x1207D04] + 8 + type*0x1E8`, the colour at `+0x1AC`)
+  by the document's `Type`, and the TOWN_RANDOM_TYPE row gives (0,0,0) — four
+  lights of it on the two-level order, z and radius drawn as before.
+
+**WHAT IS LEFT IS THE MINIMAP, and it is the engine's world objects, not its
+generator.** On every random-towns map a few hundred bytes of the picture
+differ, and each cluster is one of two things. An `Object` icon two pixels off
+— the first random dwelling of every map so far, and one more on the game's —
+whose anchor and darkening both fit the SAME footprint shifted by (+1, 0) in
+the document's axes (which happens to be the Dwarven tier-1 dwelling's list,
+`RandomDwelling1`'s plus one in x; every other race's tier-1 list IS
+`RandomDwelling1`'s, so a substitution would be invisible on the rest). And a
+town whose darkening lacks exactly one tile — document (5,-3), entry four of
+RandomTown's list — which on one map moves the icon a pixel and on another
+leaves it where it is. Neither is in the record: `map.xdb`'s positions and
+the passability plane agree with the port, so the shift lives in the world
+object's own `+0xB4`/`+0xB8` vectors or its `+0xA0` position, which is what
+the minimap reads and the file does not. Two editor runs of one order agree
+with each other, so it is deterministic; the game's picture of the same seed
+puts the clusters elsewhere, but that is a different map. The reading that
+settles it is the `mask` probe's `mmr`/`mmrb`/`mmra` lines on a GAME run —
+the registration hook logs each object's tile key and both lists — and the
+config under `game/bin` now asks for it.
