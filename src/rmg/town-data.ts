@@ -33,6 +33,14 @@ export interface TownShared {
    * towns.ts for how that was settled, and for what is still open about it.
    */
   possessionMarker: Offset;
+  /**
+   * `FitRandomTownMaskPositionShift` — where this town STANDS when it takes a
+   * random town's place: the world object is created at the random town's
+   * tile plus this offset (rotated with it), so that the real footprint
+   * covers the random mask. (0,1) for the six castles, (1,0) for the
+   * Stronghold, (0,0) for Necropolis, Sylvan and the random town itself.
+   */
+  fitShift: Offset;
 }
 
 export interface TownSpecialization {
@@ -62,6 +70,7 @@ export function readTownShared(dataRoot: string, href: string): TownShared {
   const town = find(readDoc(dataRoot, path), 'AdvMapTownShared');
   if (!town) throw new Error(`${path}: not an AdvMapTownShared`);
   const marker = find(town, 'PossessionMarkerTile');
+  const shift = find(town, 'FitRandomTownMaskPositionShift');
   return {
     path,
     // `Type` on the building, `TownType` on a specialisation — the two
@@ -73,6 +82,9 @@ export function readTownShared(dataRoot: string, href: string): TownShared {
     activeTiles: offsets(town, 'activeTiles'),
     possessionMarker: marker
       ? [Number.parseInt(childText(marker, 'x'), 10) || 0, Number.parseInt(childText(marker, 'y'), 10) || 0]
+      : [0, 0],
+    fitShift: shift
+      ? [Number.parseInt(childText(shift, 'x'), 10) || 0, Number.parseInt(childText(shift, 'y'), 10) || 0]
       : [0, 0],
   };
 }

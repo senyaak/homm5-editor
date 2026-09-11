@@ -6834,3 +6834,35 @@ puts the clusters elsewhere, but that is a different map. The reading that
 settles it is the `mask` probe's `mmr`/`mmrb`/`mmra` lines on a GAME run —
 the registration hook logs each object's tile key and both lists — and the
 config under `game/bin` now asks for it.
+
+**11.09, LATER — THE MINIMAP'S RESIDUE IS THE WORLD, READ.** The `mask`
+probe's registration hooks stayed silent in the game as they had in the
+editor, but the game's anchor hook spoke (the installed DLL had been built
+with the probe's unit compiled out — `--log rmg/minimap-probe` is what makes
+it speak), and three lines settled it. A random town is written to the map
+as the placeholder, but the object the engine BUILDS for it is a real town of
+one race — the lists logged were Fortress's (active (1,-6), not RandomTown's
+(1,-5)) and Heaven's — standing at the record's tile plus that document's
+`FitRandomTownMaskPositionShift`, rotated with the town: (0,1) for the six
+castles, (1,0) for the Stronghold, (0,0) for Necropolis and Sylvan, whose
+lists ARE the placeholder's. The shift and the real list's mean cancel, which
+is why no town icon ever moved and only a mask tile or two did. Every dwelling
+bound to the town is that race's dwelling of its tier at the same tile — the
+first list logged was the Dwarven tier-1, the one tier-1 footprint that is not
+RandomDwelling1's — and a dwelling in a townless zone resolves the same way.
+
+The port carries it as `RunObject.world` (the document and its shift) off a
+per-zone race, `ChainOptions.randomTownRaces`; the mask and the icon pass use
+the world object where there is one. With the race FITTED per zone from the
+picture (`_tmp/fit-races.ts`, one zone at a time, their pixels do not
+overlap), all six random-towns maps come out byte-identical in every entry —
+three from the game (ГСК-019/020/021), three console orders. Zone 1 is
+Fortress on all six; the rest vary, and the same seed in the two builds
+(different maps) picks differently, so the choice is a draw from something
+the objects' creation order feeds. The candidate is `NWorld::CRandomGenerator`
+(0xC30080 `below(n)`: a two-step MSVC LCG, `(a >> 7) ^ (b << 6)` mod n, seeded
+123456789 by its constructor unless 0xC2FE60 says otherwise) — its default
+sequence does not fit the objects' ordinals under any subset of kinds, so the
+probe now logs its every draw (`wr`: sequence, generator, state before, bound,
+answer) and its seeding (`wrs`), game only, under `mask`. One more game run
+lines the draws up with the objects.

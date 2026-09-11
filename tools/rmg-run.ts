@@ -43,6 +43,7 @@ import type { LakePaint } from '../src/rmg/terrain.ts';
 import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
 import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
 import { RACE } from '../src/rmg/load-template.ts';
+import { readTownShared } from '../src/rmg/town-data.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import type { Chain, ChainOptions } from './rmg-chain.ts';
 import { runChain, ZoneFill } from './rmg-chain.ts';
@@ -78,6 +79,18 @@ export interface RunObject extends HeightObject {
   creaturesEnabled?: number[];
   /** Random-towns dwellings in a zone with a town: the town's name (`RndSource` RND_TOWN). */
   linkToTown?: string;
+  /**
+   * THE WORLD OBJECT, when it is not the record's. A random town is written
+   * to the map as the placeholder, but the object the engine builds for it —
+   * the one the minimap's mask registers and the icon anchors on — is a real
+   * town of one race, standing at the placeholder's tile plus the real
+   * document's `FitRandomTownMaskPositionShift` (rotated with it), and every
+   * dwelling linked to it is that race's dwelling of its tier at the same
+   * tile. Read off the game's own anchor probe: the lists it logged were
+   * Fortress's and Heaven's, one tile from the record, and a Dwarven
+   * dwelling's. `dx`/`dy` are in the document's axes.
+   */
+  world?: { shared: string; dx: number; dy: number };
 }
 
 export interface FullRun {
@@ -201,6 +214,11 @@ export function runFull(
           x: lx, y: ly, z: t.pointLights!.z, color, radius: t.pointLights!.radius,
         }));
       }
+      // The race it stands as in the world, when the order says which.
+      const townZone = c.loaded.zones.find((z) => c.townResult.townNames.get(z.index) === t.name);
+      const worldRace = c.randomTowns && townZone ? c.randomTownRaces.get(townZone.index) : undefined;
+      const worldTown = worldRace === undefined ? undefined : c.presets.get(worldRace)?.townProto ?? undefined;
+      const worldShift = worldTown ? readTownShared(dir, worldTown).fitShift : undefined;
       // RandomTown.xdb carries no tag in its name, so the pointered href.
       object('town', t.name, t.pos.x, t.pos.y, t.rot, c.footprint(pointered(t.shared, 'AdvMapTownShared')), floor, {
         craterTown: docType === 'TOWN_INFERNO' || t.shared.includes('Inferno'),
@@ -208,6 +226,7 @@ export function runFull(
         shared: pointered(t.shared, 'AdvMapTownShared'),
         town: { playerId: t.playerId ?? 0, hasTavern: t.hasTavern ?? false, specialization: t.specialization, army: t.army },
         lights,
+        world: worldTown && worldShift ? { shared: pointered(worldTown, 'AdvMapTownShared'), dx: worldShift[0], dy: worldShift[1] } : undefined,
       });
     } else {
       // Decorations are AdvMapStatic instances — the flatten skips them.
@@ -329,6 +348,12 @@ export function runFull(
           ? Array.from({ length: 4 }, (_, k) => (k === d.tier - 3 ? 1 : 0))
           : undefined,
         linkToTown: d.linkToTown,
+        // The world's dwelling: the zone's race's, by tier, at the same tile.
+        world: (() => {
+          const race = c.randomTowns ? c.randomTownRaces.get(zone) : undefined;
+          const own = race === undefined ? undefined : c.presets.get(race)?.dwellings[Math.min(d.tier, 3)];
+          return own ? { shared: pointered(own, 'AdvMapDwellingShared'), dx: 0, dy: 0 } : undefined;
+        })(),
       });
     }
     step(`zone ${zone} dwellings`);

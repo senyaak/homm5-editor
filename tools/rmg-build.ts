@@ -18,7 +18,7 @@ import { join } from 'node:path';
 
 import { readEngineSine, type EngineSine } from '../src/exe/sine-table.ts';
 import { writeDDS } from '../src/format/texture.ts';
-import { heightsToFile, latePass } from '../src/rmg/heights.ts';
+import { heightsToFile, latePass, rotateOffsets } from '../src/rmg/heights.ts';
 import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
 import { buildTerrainFile } from '../src/rmg/emit-terrain.ts';
 import { buildRmgTexts, GAME_CAPTION_TEXT } from '../src/rmg/emit-texts.ts';
@@ -155,6 +155,17 @@ export function replayTerrain(dataRoot: string, run: FullRun): {
   return { layers, river };
 }
 
+/**
+ * Where the WORLD object stands: the record's tile, or a random town's real
+ * stand-in a document-shift away — the shift turned by the object's own
+ * rotation the way every footprint offset is.
+ */
+function worldTile(o: FullRun['objects'][number]): { x: number; y: number } {
+  if (!o.world || (!o.world.dx && !o.world.dy)) return { x: o.x, y: o.y };
+  const [[dx, dy]] = rotateOffsets([[o.world.dx, o.world.dy]], o.rot) as Array<readonly [number, number]>;
+  return { x: o.x + dx, y: o.y + dy };
+}
+
 /** One floor's minimap, both files. */
 function minimapFiles(
   dataRoot: string, run: FullRun, floor: number, layers: readonly TerrainLayer[],
@@ -172,11 +183,15 @@ function minimapFiles(
   const mask = buildMinimapMask({
     side, plane: run.passability[floor]!, dim, layers, flags,
     objects: run.objects.filter((o) => o.floor === floor).map((o) => ({
-      x: o.x, y: o.y, rot: o.rot, floor: o.floor,
-      blocked: o.blocked.length || !o.shared ? o.blocked : c.footprint(o.shared).blocked,
+      // The WORLD object where it is not the record's — a random town's real
+      // stand-in, a tile off and with its own lists. See `RunObject.world`.
+      ...worldTile(o),
+      rot: o.rot, floor: o.floor,
+      blocked: o.world ? c.footprint(o.world.shared).blocked
+        : o.blocked.length || !o.shared ? o.blocked : c.footprint(o.shared).blocked,
       // The active list too: it is the other half of the per-tile descriptor,
       // and a tile it claims is one the blocked lists cannot darken.
-      active: o.shared ? c.footprint(o.shared).active : [],
+      active: o.world ? c.footprint(o.world.shared).active : o.shared ? c.footprint(o.shared).active : [],
       // And whether the veto takes this class at all, in which case neither
       // list is registered — `vetoesRegistration` names the measured ones.
       vetoed: vetoesRegistration(o.shared),
@@ -190,11 +205,11 @@ function minimapFiles(
     const docType = /<Type>(\w+)<\/Type>/.exec(docText)?.[1] ?? '';
     const name = iconNameFor(o.shared, o.town?.playerId ?? 0, docType);
     if (!name) continue;
-    const foot = c.footprint(o.shared);
+    const foot = c.footprint(o.world?.shared ?? o.shared);
     // The hole tiles too — the anchor's mean runs over them (`IconObject.holes`).
     const holes = [...(/<holeTiles>([\s\S]*?)<\/holeTiles>/.exec(docText)?.[1] ?? '')
       .matchAll(/<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/g)].map((m) => [Number(m[1]), Number(m[2])] as const);
-    iconObjects.push({ x: o.x, y: o.y, rot: o.rot, blocked: foot.blocked, active: foot.active, holes, name });
+    iconObjects.push({ ...worldTile(o), rot: o.rot, blocked: foot.blocked, active: foot.active, holes, name });
   }
   // The drawer drains its three lists one after another, so the gates go over
   // the flaggable ones wherever they share a pixel. `sort` is stable, which

@@ -928,8 +928,58 @@ static int install_mask_probe(void) {
  * shrine's active tile, and a torch over a GUARDED ore pile's — were generated
  * by the game. So this goes in beside the icon half, under the same word.
  */
+/**
+ * THE WORLD'S OWN GENERATOR — game 0xC30080, `NWorld::CRandomGenerator`'s
+ * `below(n)`, thiscall, `ret 4`. NOT the RMG's counted one: a two-step 32-bit
+ * LCG on the MSVC constants (0x343FD / 0x269EC3, `(a >> 7) ^ (b << 6)` mod n),
+ * its state at `this+8`, seeded 123456789 by the constructor (0xC30063) unless
+ * the setter (0xC2FE60, `mov [ecx+8],eax`) is told otherwise.
+ *
+ * WHY. With random towns on, the record keeps the placeholders, but the world
+ * the minimap draws holds a REAL town of some race in each one's place (a tile
+ * off, by `FitRandomTownMaskPositionShift`) and real dwellings of a race — the
+ * anchor probe logged Fortress's lists, Heaven's and a Dwarven dwelling's on
+ * one map. Which race is not in the record and not in the RMG's stream, so
+ * this logs every draw of the world's generator — the sequence number, the
+ * generator, its state BEFORE the draw, the bound and the answer — to be
+ * lined up with the objects offline. The seed setter logs beside it.
+ */
+#define MM_GAME_WRAND_RVA 0x830080u
+static const BYTE MM_GAME_WRAND_HEAD[] = { 0x83, 0x7c, 0x24, 0x04, 0x00 }; /* cmp dword ptr [esp+4],0 */
+#define MM_GAME_WSEED_RVA 0x82fe60u
+static const BYTE MM_GAME_WSEED_HEAD[] = { 0x8b, 0x44, 0x24, 0x04, 0x89, 0x41, 0x08 }; /* mov eax,[esp+4]; mov [ecx+8],eax */
+typedef unsigned(__fastcall *MmWrandFn)(void *self, void *edx, unsigned n);
+typedef void(__fastcall *MmWseedFn)(void *self, void *edx, unsigned seed);
+static MmWrandFn g_mmWrandOrig;
+static MmWseedFn g_mmWseedOrig;
+static LONG g_mmWrandSeq;
+
+static unsigned __fastcall mm_wrand_hook(void *self, void *edx, unsigned n) {
+  int vals[5];
+  vals[0] = (int)InterlockedIncrement(&g_mmWrandSeq);
+  vals[1] = (int)(size_t)self;
+  vals[2] = rmg_readable((const char *)self + 8, 4) ? *(const int *)((const char *)self + 8) : 0;
+  vals[3] = (int)n;
+  unsigned r = g_mmWrandOrig(self, edx, n);
+  vals[4] = (int)r;
+  mm_log_ints("wr ", vals, 5);
+  return r;
+}
+
+static void __fastcall mm_wseed_hook(void *self, void *edx, unsigned seed) {
+  int vals[2];
+  vals[0] = (int)(size_t)self;
+  vals[1] = (int)seed;
+  mm_log_ints("wrs ", vals, 2);
+  g_mmWseedOrig(self, edx, seed);
+}
+
 static int install_mask_probe_game(void) {
   g_mmVetoVa = MM_GAME_VETO_VA;
+  g_mmWrandOrig = (MmWrandFn)detour(MM_GAME_WRAND_RVA, MM_GAME_WRAND_HEAD, sizeof(MM_GAME_WRAND_HEAD),
+                                    &mm_wrand_hook, "world generator draw");
+  g_mmWseedOrig = (MmWseedFn)detour(MM_GAME_WSEED_RVA, MM_GAME_WSEED_HEAD, sizeof(MM_GAME_WSEED_HEAD),
+                                    &mm_wseed_hook, "world generator seed");
   g_mmRegOrig = (MmRegFn)detour(MM_GAME_REG_RVA, MM_GAME_REG_HEAD, sizeof(MM_GAME_REG_HEAD),
                                 &mm_reg_hook, "object registration");
   g_mmBlockedOrig = (MmRegFn)detour(MM_GAME_BLOCKED_RVA, MM_GAME_BLOCKED_HEAD,
@@ -938,7 +988,7 @@ static int install_mask_probe_game(void) {
   g_mmActiveOrig = (MmRegFn)detour(MM_GAME_ACTIVE_RVA, MM_GAME_ACTIVE_HEAD,
                                    sizeof(MM_GAME_ACTIVE_HEAD), &mm_active_hook,
                                    "active list stamp");
-  return g_mmRegOrig && g_mmBlockedOrig && g_mmActiveOrig;
+  return g_mmRegOrig && g_mmBlockedOrig && g_mmActiveOrig && g_mmWrandOrig && g_mmWseedOrig;
 }
 
 /**

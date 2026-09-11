@@ -118,6 +118,14 @@ export interface ChainOptions {
    */
   randomTowns?: boolean;
   /**
+   * With random towns on: the race each zone's random town STANDS AS in the
+   * engine's world, by zone index. The record keeps the placeholders, but the
+   * world objects the minimap draws are a real town and real dwellings of one
+   * race per zone — see `RunObject.world`. A zone left out keeps the
+   * placeholder's own footprint.
+   */
+  randomTownRaces?: ReadonlyMap<number, number>;
+  /**
    * `ResourceMultiplier` and `ExpMultiplier` as the enum counts them —
    * 0 MISERABLE, 1 LITTLE, 2 NORMAL, 3 LOTS, 4 MUCH. They are NOT labels:
    * the treasures step scales its count by the `{0.2, 0.5, 1, 2, 4}` ladder,
@@ -207,6 +215,8 @@ export interface Chain {
   randomTowns: boolean;
   /** The seven `RandomDwellingN` stand-ins, tier order — mode 1's descriptors. */
   randomDwellings: string[];
+  /** The race each random town stands as in the world — see `ChainOptions.randomTownRaces`. */
+  randomTownRaces: ReadonlyMap<number, number>;
   loaded: LoadedTemplate;
   townResult: TownsResult;
   /**
@@ -600,6 +610,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     gameBuild: Boolean(options.gameBuild),
     grail: Boolean(options.grail),
     randomTowns, randomDwellings,
+    randomTownRaces: options.randomTownRaces ?? new Map(),
     teleports, floors, grid, border, occ, room, gridAtFillTerrain, coarse,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, the
