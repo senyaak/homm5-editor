@@ -6866,3 +6866,54 @@ sequence does not fit the objects' ordinals under any subset of kinds, so the
 probe now logs its every draw (`wr`: sequence, generator, state before, bound,
 answer) and its seeding (`wrs`), game only, under `mask`. One more game run
 lines the draws up with the objects.
+
+**11.09, EVENING — RANDOM TOWNS CLOSED: THE RACE IS A HASH, and eight maps are
+byte-identical in every entry.** Two more game runs, the second with every hook
+that could be wanted at once (the anchor lists, the world's generator, the race
+chooser with its record, the seed vector, the seeded draw, the hash table and a
+dump of the world object), and the whole mechanism read out of `0xB543E0`:
+
+- the world's object factory (0xB51F40) builds a REAL town for a record whose
+  shared is `TOWN_RANDOM_TYPE`, at the record's tile plus the real document's
+  `FitRandomTownMaskPositionShift` rotated with it, from the least-used town
+  document of the race among the players' towns;
+- the race is `0xB553A0 (world, record)`: the OWNER's race when the record has
+  a PlayerID, else the linked player's or town's (`RndSource`), else — every
+  neutral town of a generated map — a draw with NO state behind it:
+  `h = hash("/RMGTemp/CurrentMap/map.xdb#xpointer(id(<name>)/AdvMapTown)")`
+  (0x983915, `h*5 + c` over the case-folded bytes; the record's own path in the
+  generator's temp world), `seed = adler32(0x12345678, [FIRST, x, y, h]) + 16`
+  (0xB4E4C0 through zlib's adler32), `race = between(seed, 0, 7) + TOWN_HEAVEN`
+  (0xB4E610: one two-step MSVC LCG whose state IS the seed; 0xB4E730). The
+  game's log agreed with the port's arithmetic on twelve draws, four seeds and
+  four hashes — `tools/test-rmg-world-race.ts` holds those numbers;
+- dwellings resolve in `0xB53D30` with the same three arms, a bound dwelling
+  taking its town's race, a townless one drawing on TWO ints
+  (`adler32(0x12345678, [FIRST, h]) + 8`, 0xB4E2D0, the path ending in
+  `/AdvMapDwelling)`, no position) — four townless dwellings of one map, one of
+  them Dwarven, said which of the candidate seeds it was;
+- `FIRST` is the world's `+0x50` (`vt+0x124`), 0x89E3D3BD in the game across two
+  sessions and two maps, and the editor's five neutral towns come out right
+  with it too — a constant of the build, measured;
+- the players' races are the one thing the record does not hold: player 1 is
+  Fortress, player 2 Heaven, player 4 Dungeon on every map, players 3 and 5
+  one of the six the picture cannot tell apart (Necropolis and Sylvan ARE the
+  placeholder's lists; Heaven, Academy, Fortress, Inferno and Stronghold cover
+  the same tiles after their shift). Where the temp world's players get them is
+  not read; `ChainOptions.randomTownPlayerRaces` takes them, the measured ones
+  are the default, and `src/rmg/world-race.ts` says exactly that.
+
+With the rule in, all eight random-towns maps — five from the game (ГСК-019,
+020, 021, 023, 024), three console orders (the same seed as 019, the reference
+template, a two-level tiny one with a townless zone) — are byte-identical in
+every entry, minimaps included. `tools/rmg-fit-races.ts` is the instrument that
+found the model before the code was read (a race per zone, fitted from the
+picture); it stays, on `ChainOptions.randomTownRaceOverride`.
+
+Two things the probes said on the way, kept for the next reader: the game's
+`mmw` stamps and the anchor lists appear when the game LOADS the saved map
+into the lobby world as well as when it generates — the log holds one minimap
+window per build, and a session in which the map was generated twice holds
+two of the first kind; and the `wr`/`wrs` lines (the world's CRandomGenerator)
+are the lobby's own generators, seeded per player after the objects exist —
+nothing about a town's race passes through them.

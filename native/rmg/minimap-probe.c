@@ -974,8 +974,153 @@ static void __fastcall mm_wseed_hook(void *self, void *edx, unsigned seed) {
   g_mmWseedOrig(self, edx, seed);
 }
 
+/**
+ * WHERE A RANDOM TOWN'S RACE IS DECIDED — read, and hooked to be checked.
+ *
+ * The world's object factory (0xB51F40) builds a real town for a record
+ * whose shared is TOWN_RANDOM_TYPE through 0xB543E0, and the race comes from
+ * 0xB553A0 `(world, record)`: the owning player's race, else the linked
+ * player's or town's, and when that is still RANDOM/NO_TYPE — every town of a
+ * generated map, whose players are NO_TYPE — a seeded draw: a four-int vector
+ * `[world->vt+0x124(...), trunc(pos.x), 6, 7]` goes through zlib's adler32 with
+ * 0x12345678 as the running sum (0xB4E4C0, +16 for the length), the sum seeds
+ * one two-step LCG `between(0, 7)` (0xB4E610), and 0xB4E730 turns 0..7 into
+ * TOWN_HEAVEN..TOWN_STRONGHOLD. No generator state anywhere — which is why two
+ * builds agree on a town and disagree across maps. What the vector's first
+ * word is has not been read; the three hooks below print each stage so the
+ * arithmetic is checked against the engine's own numbers, once.
+ */
+#define MM_GAME_RACE_RVA 0x7553a0u
+static const BYTE MM_GAME_RACE_HEAD[] = { 0x83, 0x3d, 0xd0, 0x6b, 0x20, 0x01, 0x64 }; /* cmp dword ptr [1206BD0h],64h */
+static const BYTE MM_GAME_RACE_SKIP[] = { 0, 0, 1, 1, 1, 1, 0 };
+#define MM_GAME_SEEDVEC_RVA 0x74e4c0u
+static const BYTE MM_GAME_SEEDVEC_HEAD[] = { 0x83, 0xec, 0x18, 0x56, 0x57 }; /* sub esp,18h; push esi; push edi */
+#define MM_GAME_SEEDED_RVA 0x74e610u
+static const BYTE MM_GAME_SEEDED_HEAD[] = { 0x56, 0x8b, 0x74, 0x24, 0x08 }; /* push esi; mov esi,[esp+8] */
+typedef int(__fastcall *MmRaceFn)(void *world, void *record, void *arg);
+typedef unsigned(__fastcall *MmSeedVecFn)(unsigned first, unsigned x, unsigned a, unsigned b);
+typedef int(__fastcall *MmSeededFn)(unsigned seed, int lo, int hi);
+static MmRaceFn g_mmRaceOrig;
+static MmSeedVecFn g_mmSeedVecOrig;
+static MmSeededFn g_mmSeededOrig;
+static int g_mmWorldDumped;
+
+static int __fastcall mm_race_hook(void *world, void *record, void *arg) {
+  int race = g_mmRaceOrig(world, record, arg);
+  int vals[4];
+  vals[0] = (int)(size_t)record;
+  vals[1] = rmg_readable((const char *)record + 0x44, 8) ? (int)*(const float *)((const char *)record + 0x44) : -1;
+  vals[2] = rmg_readable((const char *)record + 0x48, 4) ? (int)*(const float *)((const char *)record + 0x48) : -1;
+  vals[3] = race;
+  mm_log_ints("rt race record/x/y/race ", vals, 4);
+  // EVERYTHING ELSE THE DECISION COULD HAVE READ, in the same line-set, so one
+  // run answers the whole question rather than posing the next one: the owner
+  // (+0x84), the RndSource (+0x11C) and the linked town's name (+0x124), the
+  // world's vtable and its slot 0x124 (the seed vector's first word comes from
+  // it), and the world object itself, 0x400 bytes as dwords, dumped once.
+  if (rmg_readable((const char *)record + 0x84, 4) && rmg_readable((const char *)record + 0x11c, 4)) {
+    int more[3];
+    more[0] = *(const int *)((const char *)record + 0x84);
+    more[1] = *(const int *)((const char *)record + 0x11c);
+    more[2] = (int)(size_t)world;
+    mm_log_ints("rt owner/rndsource/world ", more, 3);
+  }
+  if (rmg_readable((const char *)record + 0x124 + 0x14, 8)) {
+    const char *lb = *(const char *const *)((const char *)record + 0x124 + 0x14);
+    const char *le = *(const char *const *)((const char *)record + 0x124 + 0x18);
+    int llen = (int)(le - lb);
+    if (lb && llen > 0 && llen < 64 && rmg_readable(lb, (unsigned)llen)) {
+      char ltext[80];
+      int li;
+      for (li = 0; li < llen; li++) ltext[li] = lb[li];
+      ltext[llen] = 0;
+      log_text("rt link ", ltext);
+    }
+  }
+  if (world && rmg_readable(world, 4)) {
+    void **wvt = *(void ***)world;
+    int wv[3];
+    wv[0] = (int)(size_t)wvt;
+    wv[1] = rmg_readable(wvt, 0x128) ? (int)(size_t)wvt[0x124 / 4] : 0;
+    wv[2] = rmg_readable(wvt, 0x128) ? (int)(size_t)wvt[0x98 / 4] : 0;
+    mm_log_ints("rt world vtable/slot124/slot98 ", wv, 3);
+    if (!g_mmWorldDumped && rmg_readable(world, 0x400)) {
+      int row, k, dv[9];
+      g_mmWorldDumped = 1;
+      for (row = 0; row < 0x400 / 32; row++) {
+        dv[0] = row * 32;
+        for (k = 0; k < 8; k++) dv[1 + k] = ((const int *)world)[row * 8 + k];
+        mm_log_ints("rt world ", dv, 9);
+      }
+    }
+  }
+  // The record's name — the string at +0xC, begin/end at its +0x14/+0x18.
+  if (rmg_readable((const char *)record + 0xC + 0x14, 8)) {
+    const char *b = *(const char *const *)((const char *)record + 0xC + 0x14);
+    const char *e = *(const char *const *)((const char *)record + 0xC + 0x18);
+    int len = (int)(e - b);
+    if (b && len > 0 && len < 64 && rmg_readable(b, (unsigned)len)) {
+      char text[80];
+      int i;
+      for (i = 0; i < len; i++) text[i] = b[i];
+      text[len] = 0;
+      log_text("rt name ", text);
+    }
+  }
+  return race;
+}
+
+/**
+ * The name hash's character table — `h = h * 5 + table[c]` over the record's
+ * name (0x983915), and the table at 0x1182300 is filled at run time, so the
+ * image does not carry it. Dumped once, 16 bytes a line, the first time the
+ * seed vector is built.
+ */
+static int g_mmTableDumped;
+static void mm_dump_hash_table(void) {
+  const signed char *t = (const signed char *)((BYTE *)GetModuleHandleW(NULL) + 0xd82300u);
+  int row, k, vals[17];
+  if (g_mmTableDumped || !rmg_readable(t, 256)) return;
+  g_mmTableDumped = 1;
+  for (row = 0; row < 16; row++) {
+    vals[0] = row * 16;
+    for (k = 0; k < 16; k++) vals[1 + k] = t[row * 16 + k];
+    mm_log_ints("rt table ", vals, 17);
+  }
+}
+
+static unsigned __fastcall mm_seedvec_hook(unsigned first, unsigned x, unsigned a, unsigned b) {
+  unsigned r = g_mmSeedVecOrig(first, x, a, b);
+  mm_dump_hash_table();
+  int vals[5];
+  vals[0] = (int)first;
+  vals[1] = (int)x;
+  vals[2] = (int)a;
+  vals[3] = (int)b;
+  vals[4] = (int)r;
+  mm_log_ints("rt seed first/x/a/b/seed ", vals, 5);
+  return r;
+}
+
+static int __fastcall mm_seeded_hook(unsigned seed, int lo, int hi) {
+  int r = g_mmSeededOrig(seed, lo, hi);
+  int vals[4];
+  vals[0] = (int)seed;
+  vals[1] = lo;
+  vals[2] = hi;
+  vals[3] = r;
+  mm_log_ints("rt draw seed/lo/hi/result ", vals, 4);
+  return r;
+}
+
 static int install_mask_probe_game(void) {
   g_mmVetoVa = MM_GAME_VETO_VA;
+  g_mmRaceOrig = (MmRaceFn)detour_relocated(MM_GAME_RACE_RVA, MM_GAME_RACE_HEAD, MM_GAME_RACE_SKIP,
+                                            sizeof(MM_GAME_RACE_HEAD), &mm_race_hook, "random town race");
+  g_mmSeedVecOrig = (MmSeedVecFn)detour(MM_GAME_SEEDVEC_RVA, MM_GAME_SEEDVEC_HEAD, sizeof(MM_GAME_SEEDVEC_HEAD),
+                                        &mm_seedvec_hook, "random town seed vector");
+  g_mmSeededOrig = (MmSeededFn)detour(MM_GAME_SEEDED_RVA, MM_GAME_SEEDED_HEAD, sizeof(MM_GAME_SEEDED_HEAD),
+                                      &mm_seeded_hook, "random town seeded draw");
   g_mmWrandOrig = (MmWrandFn)detour(MM_GAME_WRAND_RVA, MM_GAME_WRAND_HEAD, sizeof(MM_GAME_WRAND_HEAD),
                                     &mm_wrand_hook, "world generator draw");
   g_mmWseedOrig = (MmWseedFn)detour(MM_GAME_WSEED_RVA, MM_GAME_WSEED_HEAD, sizeof(MM_GAME_WSEED_HEAD),
@@ -988,7 +1133,8 @@ static int install_mask_probe_game(void) {
   g_mmActiveOrig = (MmRegFn)detour(MM_GAME_ACTIVE_RVA, MM_GAME_ACTIVE_HEAD,
                                    sizeof(MM_GAME_ACTIVE_HEAD), &mm_active_hook,
                                    "active list stamp");
-  return g_mmRegOrig && g_mmBlockedOrig && g_mmActiveOrig && g_mmWrandOrig && g_mmWseedOrig;
+  return g_mmRegOrig && g_mmBlockedOrig && g_mmActiveOrig && g_mmWrandOrig && g_mmWseedOrig
+      && g_mmRaceOrig && g_mmSeedVecOrig && g_mmSeededOrig;
 }
 
 /**

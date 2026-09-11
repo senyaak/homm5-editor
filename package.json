@@ -138,6 +138,7 @@
     "test-rmg-connections": "node tools/test-rmg-connections.ts",
     "test-rmg-mines": "node tools/test-rmg-mines.ts",
     "test-rmg-dwellings": "node tools/test-rmg-dwellings.ts",
+    "test-rmg-world-race": "node tools/test-rmg-world-race.ts",
     "test-rmg-upgrade-shrines": "node tools/test-rmg-upgrade-shrines.ts",
     "test-rmg-price-lists": "node tools/test-rmg-price-lists.ts",
     "test-rmg-treasures": "node tools/test-rmg-treasures.ts",

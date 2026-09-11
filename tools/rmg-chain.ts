@@ -65,6 +65,8 @@ import { placeZoneUpgradeBuildings } from '../src/rmg/upgrade-buildings.ts';
 import type { PlacedUpgradeBuilding } from '../src/rmg/upgrade-buildings.ts';
 import { floorIterationOrder, generateGameZones } from '../src/rmg/zones.ts';
 
+import { MEASURED_PLAYER_RACES } from '../src/rmg/world-race.ts';
+
 export const SEED = 1785351845;
 export const SIZE = 96;
 /** The random-towns town prototype — the global `0x121C544`, PlaceTown's other document. */
@@ -118,13 +120,18 @@ export interface ChainOptions {
    */
   randomTowns?: boolean;
   /**
-   * With random towns on: the race each zone's random town STANDS AS in the
-   * engine's world, by zone index. The record keeps the placeholders, but the
-   * world objects the minimap draws are a real town and real dwellings of one
-   * race per zone — see `RunObject.world`. A zone left out keeps the
-   * placeholder's own footprint.
+   * With random towns on: the races of the world's PLAYERS, by 1-based slot —
+   * what an owned random town stands as in the engine's world (see
+   * `src/rmg/world-race.ts`; neutral ones are a seeded draw the port makes
+   * itself). The record does not hold them; the measured ones are the default.
    */
-  randomTownRaces?: ReadonlyMap<number, number>;
+  randomTownPlayerRaces?: ReadonlyMap<number, number>;
+  /**
+   * Per zone index, a race to stand the zone's random town (and its
+   * dwellings) as INSTEAD of the rule's answer — what `rmg-fit-races` tries
+   * one zone at a time. Not an order field: a measuring instrument.
+   */
+  randomTownRaceOverride?: ReadonlyMap<number, number>;
   /**
    * `ResourceMultiplier` and `ExpMultiplier` as the enum counts them —
    * 0 MISERABLE, 1 LITTLE, 2 NORMAL, 3 LOTS, 4 MUCH. They are NOT labels:
@@ -215,8 +222,10 @@ export interface Chain {
   randomTowns: boolean;
   /** The seven `RandomDwellingN` stand-ins, tier order — mode 1's descriptors. */
   randomDwellings: string[];
-  /** The race each random town stands as in the world — see `ChainOptions.randomTownRaces`. */
-  randomTownRaces: ReadonlyMap<number, number>;
+  /** The world's players' races — see `ChainOptions.randomTownPlayerRaces`. */
+  randomTownPlayerRaces: ReadonlyMap<number, number>;
+  /** The fit's per-zone override — see `ChainOptions.randomTownRaceOverride`. */
+  randomTownRaceOverride: ReadonlyMap<number, number>;
   loaded: LoadedTemplate;
   townResult: TownsResult;
   /**
@@ -610,7 +619,8 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
     gameBuild: Boolean(options.gameBuild),
     grail: Boolean(options.grail),
     randomTowns, randomDwellings,
-    randomTownRaces: options.randomTownRaces ?? new Map(),
+    randomTownPlayerRaces: options.randomTownPlayerRaces ?? MEASURED_PLAYER_RACES,
+    randomTownRaceOverride: options.randomTownRaceOverride ?? new Map(),
     teleports, floors, grid, border, occ, room, gridAtFillTerrain, coarse,
     roomPoints(zoneIndex: number): Tile[] {
       // The engine's PUSH order — the town's stamp, the passages, the

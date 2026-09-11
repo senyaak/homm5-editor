@@ -44,6 +44,7 @@ import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blo
 import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import { readTownShared } from '../src/rmg/town-data.ts';
+import { dwellingWorldRace, townWorldRace } from '../src/rmg/world-race.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import type { Chain, ChainOptions } from './rmg-chain.ts';
 import { runChain, ZoneFill } from './rmg-chain.ts';
@@ -186,6 +187,9 @@ export function runFull(
     });
   };
 
+  // Per zone, the race its random town stands as in the world (its dwellings
+  // take it); a townless zone's dwellings draw their own.
+  const worldRaces = new Map<number, number>();
   // Towns and their decorations, in placement order.
   for (const t of c.townResult.objects) {
     const floor = t.floor;
@@ -214,9 +218,13 @@ export function runFull(
           x: lx, y: ly, z: t.pointLights!.z, color, radius: t.pointLights!.radius,
         }));
       }
-      // The race it stands as in the world, when the order says which.
+      // The race it stands as in the world — `world-race.ts`.
       const townZone = c.loaded.zones.find((z) => c.townResult.townNames.get(z.index) === t.name);
-      const worldRace = c.randomTowns && townZone ? c.randomTownRaces.get(townZone.index) : undefined;
+      const worldRace = c.randomTowns && townZone
+        ? c.randomTownRaceOverride.get(townZone.index)
+          ?? townWorldRace({ name: t.name, x: t.pos.x, y: t.pos.y, playerNo: townZone.playerNo, playerRaces: c.randomTownPlayerRaces })
+        : undefined;
+      if (townZone && worldRace !== undefined) worldRaces.set(townZone.index, worldRace);
       const worldTown = worldRace === undefined ? undefined : c.presets.get(worldRace)?.townProto ?? undefined;
       const worldShift = worldTown ? readTownShared(dir, worldTown).fitShift : undefined;
       // RandomTown.xdb carries no tag in its name, so the pointered href.
@@ -348,10 +356,12 @@ export function runFull(
           ? Array.from({ length: 4 }, (_, k) => (k === d.tier - 3 ? 1 : 0))
           : undefined,
         linkToTown: d.linkToTown,
-        // The world's dwelling: the zone's race's, by tier, at the same tile.
+        // The world's dwelling: its town's race's, by tier, at the same tile —
+        // or its own draw when the zone has no town (`world-race.ts`).
         world: (() => {
-          const race = c.randomTowns ? c.randomTownRaces.get(zone) : undefined;
-          const own = race === undefined ? undefined : c.presets.get(race)?.dwellings[Math.min(d.tier, 3)];
+          if (!c.randomTowns) return undefined;
+          const race = c.randomTownRaceOverride.get(zone) ?? dwellingWorldRace({ name: d.name }, worldRaces.get(zone));
+          const own = c.presets.get(race)?.dwellings[Math.min(d.tier, 3)];
           return own ? { shared: pointered(own, 'AdvMapDwellingShared'), dx: 0, dy: 0 } : undefined;
         })(),
       });

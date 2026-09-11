@@ -28,10 +28,11 @@ displaces kept as a hidden second objective.
 
 **And random towns.** The other checkbox: every town is the random-town
 placeholder, no specialisation and no decoration over the gate, and every
-dwelling a random one bound to its zone's town — the map record is
-byte-identical to the game's and the editor's. The minimap of such a map is
-still off by a few pixels around two or three of those objects: the engine's
-own picture places them a tile off their record, and which ones is being read.
+dwelling a random one bound to its zone's town. The minimap too: the engine
+draws such a map with real towns standing in for the placeholders, and which
+race each one is turned out to be a hash of the record's name and tile — read
+out of the game and reproduced, so a random-towns map comes out byte-identical
+in every entry, eight of them so far.
 
 ## 0.10.0-alpha.1 — 2026-08-16
 
