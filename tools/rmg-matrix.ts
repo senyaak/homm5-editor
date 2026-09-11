@@ -21,7 +21,7 @@
 //   A  every template, its smallest reachable size, one floor      — the floor
 //   B  every template, two floors                                  — the carve, two zones a floor
 //   C  every template, one size up and the largest                  — the size fit
-//   D  every template, water 1 and water 2                          — the sea and the islands
+//   D  every template, water 2                                      — the islands (run in full: two seeds, 22 of 22)
 //   E  players: min and max, on the templates whose range is wider than one
 //   F  monsters 0..4, resource 0..4, exp 0..4 on two templates      — the multipliers
 //
@@ -76,6 +76,13 @@ function smallestSize(t: RmgTemplate, floors: number): number {
  * the setup picks, and the water reference is an ordinary template ordered with
  * `-water 2`. Block D therefore sweeps water over every template, and this is
  * kept as the record of why there is nothing to filter on.
+ *
+ * And it sweeps `-water 2` ONLY. The dialog's checkbox orders 0 or 2; the
+ * middle `WATER_PRESENT` arises when the amount is left to the `below(2)`
+ * coin, which no ordered run does — so a `-water 1` row would measure a
+ * request no dialog makes. Block D is also the one block already run in
+ * full: all 22 templates on two seeds, byte for byte (`RMG.md`, "The water
+ * sweep, first run").
  */
 const holdsWater = (_t: RmgTemplate): boolean => true;
 
@@ -102,11 +109,11 @@ function tables(): void {
     ['size', '-size', `0..6 = ${MAP_SIZES.join(', ')} (${SIZE_NAMES.map((s) => s.replace('MAP_SIZE_', '')).join('/')}), lifted by the fit`],
     ['players', '-players', 'the template\'s MinPlayers..MaxPlayers, clamped again by the map'],
     ['underground', '-underground', '0 or 1 — the ORDER decides the second floor, never the template'],
-    ['water', '-water', `0..2 = ${WATER_NAMES.join(', ')}`],
+    ['water', '-water', `0..2 = ${WATER_NAMES.join(', ')} — the dialog orders 0 or 2; 1 comes only from the coin`],
     ['monsters', '-monsters', `0..4 = ${MONSTER_NAMES.join(', ')}`],
     ['resource', '-resource', `0..4 = ${MULTIPLIERS.join(', ')}`],
     ['exp', '-exp', `0..4 = ${MULTIPLIERS.join(', ')}`],
-    ['random towns', 'dialog only', 'on/off — the port takes each player\'s race from the template'],
+    ['random towns', 'dialog, or -pokeb 149 1', 'on/off — a race per town, hashed from its name; ported, byte-exact. The players\' races are an input'],
     ['grail', 'dialog, or -pokeb 165 1', 'on/off — a Graal and one obelisk pass per zone; ported, byte-exact'],
   ];
   const ph = ['parameter', 'how an order says it', 'values'];
@@ -139,7 +146,7 @@ const BLOCKS = [
   { key: 'A', what: 'every template, smallest size, one floor' },
   { key: 'B', what: 'every template, two floors' },
   { key: 'C', what: 'every template, one size up and the largest' },
-  { key: 'D', what: 'water 1 and 2, every template' },
+  { key: 'D', what: 'water 2, every template — already run on two seeds' },
   { key: 'E', what: 'players min and max, where the range is wider than one' },
   { key: 'F', what: 'monsters, resource and exp across all five rungs, two templates' },
 ] as const;
@@ -155,7 +162,6 @@ function rows_of(key: string, list: Entry[]): Row[] {
       if (smallest + 1 < MAP_SIZES.length - 1) out.push({ ...base(name, t, 1), size: MAP_SIZES.length - 1 });
     }
     if (key === 'D' && holdsWater(t)) {
-      out.push({ ...base(name, t, 1), water: 1 });
       out.push({ ...base(name, t, 1), water: 2 });
     }
     if (key === 'E' && t.maxPlayers > t.minPlayers) {

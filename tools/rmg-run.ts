@@ -74,7 +74,7 @@ export interface RunObject extends HeightObject {
   lights?: Array<{ x: number; y: number; z: number; color: readonly [number, number, number]; radius: number }>;
   /** Monoliths: the pair's GroupID. */
   groupId?: number;
-  /** Shipyards: the engine-computed ShipTile (derivation unread). */
+  /** Shipyards: the ShipTile — `shipyards.ts`'s `shipTile`, the engine's own search. */
   shipTile?: readonly [number, number];
   /** Dwellings of tier >= 3: the enabled-creature switch. */
   creaturesEnabled?: number[];

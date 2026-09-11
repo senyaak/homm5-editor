@@ -3673,16 +3673,16 @@ saying so:
 | water | ordered (`--water`, 0/1/2) |
 | players | ordered (`--players`) — a DRAWN value, and it feeds zone loading |
 | monster level | ordered (`--monsters`) — it scales every guard, by one table in the guard setter and another in the town setter |
-| water | **not orderable from the command** — the setting is not in the record the command fills; see below |
-| **map size** | **not orderable.** The dialog's size reaches `createMap` in the TEMPLATE's own units and the conversion is `vt+0x18`, unread. The chain orders the references' 8; `--size` lays out the grid only, and `rmg-pack` refuses a size the references never used unless `--unchecked` says to do it anyway |
+| water | **ordered from the command too** (`-water`) — it took two fields, `+0x48` and `+0x96`; see "The water is two fields, and the handler zeroes both" and "The water sweep, first run" below. Swept over all 22 templates on two seeds, byte for byte |
+| **map size** | **ordered** (`--size`; `-size` takes the index) — the tile count goes back through the engine's own table (`0xEADE20`/`0xEADE90`, both read; `create-map.ts`) and the chain warns when a template's units would lift it. The nine size probes and block C's sample are what it was read from |
 | **ResourceMultiplier, ExpMultiplier** | **ordered** (`-resource`, `-exp`) — and they are not cosmetic: see below |
 | monster level | **ordered** (`-monsters`) — and replayed: `rmg-diff-map` takes the level out of the map's own `sRMGProps` and hands it to the chain, so a map ordered at any of the five is compared at that one |
 | RandomTowns, Grail | **ordered** (`-pokeb 149 1`, `-pokeb 165 1`) and replayed — `rmg-diff-map` reads both off the map's `sRMGProps`; see the 10.09 and 11.09 entries at the end |
 | StartHero | not ordered — `map.xdb` carries the references' fixed values |
 
-And the settings that ARE ordered are ordered, not checked: only the three
-reference orders have a map from the engine to be compared against. `npm run
-rmg-diff-map` is what turns any other order into a check — order it in the
+And an ordered setting is checked only where a map from the engine stands
+against it — the corpus in `RMG_TEST_MATRIX.md`'s "What has been measured so
+far". `npm run rmg-diff-map` is what turns any other order into a check — order it in the
 editor, save it, point the tool at the file.
 
 ## Which fields the engine actually reads
@@ -6696,7 +6696,9 @@ the same shape of gap.
 that decides treasure against shrine, the halving exemption's own field
 identities (`0x9EC3C0` reads three level planes — `+0x28` bytes, `+0x48` at
 half-grid against 0x8C, `+0x58` floats against 0.0f — and which is which is
-unread), the mask's `TT_NONE` arm, and blocks D, E and F of the test matrix.
+unread), the mask's `TT_NONE` arm, and blocks E and F of the test matrix. (D
+was named here too, wrongly: the water sweep above IS block D, run in full on
+two seeds before the matrix was drawn up.)
 
 **10.09, THE GRAIL, PORTED — the one gap a user could reach, closed the day it
 was reached.** A grail-ordered map now comes out byte-identical in all fifteen

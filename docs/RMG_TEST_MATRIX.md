@@ -64,11 +64,11 @@ generosity.
 | size         | -size                   | 0..6 = 72, 96, 136, 176, 216, 256, 320 (TINY/SMALL/MEDIUM/LARGE/EXTRALARGE/HUGE/IMPOSSIBLE), lifted by the fit |
 | players      | -players                | the template's MinPlayers..MaxPlayers, clamped again by the map                                                |
 | underground  | -underground            | 0 or 1 — the ORDER decides the second floor, never the template                                                |
-| water        | -water                  | 0..2 = WATER_NONE, WATER_PRESENT, WATER_ISLAND_MAP                                                             |
+| water        | -water                  | 0..2 = WATER_NONE, WATER_PRESENT, WATER_ISLAND_MAP — the dialog orders 0 or 2; 1 comes only from the coin      |
 | monsters     | -monsters               | 0..4 = WEAK, MEDIUM, STRONG, VERY_STRONG, IMPOSSIBLE                                                           |
 | resource     | -resource               | 0..4 = MISERABLE, LITTLE, NORMAL, LOTS, MUCH                                                                   |
 | exp          | -exp                    | 0..4 = MISERABLE, LITTLE, NORMAL, LOTS, MUCH                                                                   |
-| random towns | dialog only             | on/off — the port takes each player's race from the template                                                   |
+| random towns | dialog, or -pokeb 149 1 | on/off — a race per town, hashed from its name; ported, byte-exact. The players' races are an input            |
 | grail        | dialog, or -pokeb 165 1 | on/off — a Graal and one obelisk pass per zone; ported, byte-exact                                             |
 
 ### The blocks, and what each costs
@@ -76,10 +76,11 @@ generosity.
   A    66 runs — every template, smallest size, one floor
   B    66 runs — every template, two floors
   C   114 runs — every template, one size up and the largest
-  D   132 runs — water 1 and 2, every template
+  D    66 runs — water 2, every template — already run on two seeds
   E    36 runs — players min and max, where the range is wider than one
   F    72 runs — monsters, resource and exp across all five rungs, two templates
-  =    486 runs in all (rows x 3 seeds), one editor launch each
+  =    420 runs in all (rows x 3 seeds), one editor launch each
+
 ## Running a block
 
 ```
@@ -107,9 +108,13 @@ is meant to replace with something systematic:
   and `S1-3P2Z7V3` from small to large — block B's shape;
 - nine size probes across the fit's rungs and both floor counts — block C's
   shape, and what the fit was read from;
-- water: the reference order (`-water 2`) and a `-water 2` sea, plus a lava
-  lake — nothing like block D.
+- water: all 22 templates with `-water 2`, on TWO seeds (`bin/rmg-water/`,
+  `bin/rmg-water2/`), 44 of 44 byte-identical — block D in full, two seeds of
+  its three; the second seed is what found the `%g` exponent padding, the
+  editor's x87 `betweenFloat` and the shipyard's ship test (`RMG.md`, "The
+  water sweep, first run"). `-water 1` is not a
+  row: the dialog cannot order it.
 
-So the untouched ground is D (water at scale), E (player counts above the
-minimum) and F (the four multiplier rungs nobody has ordered), and the ordered
-part of B and C is a sample rather than a sweep.
+So the untouched ground is E (player counts above the minimum) and F (the four
+multiplier rungs nobody has ordered), and the ordered part of B and C is a
+sample rather than a sweep.

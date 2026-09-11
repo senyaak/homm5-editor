@@ -72,20 +72,10 @@ const players = num('players') ?? 2;
 const monsters = num('monsters') ?? 1;
 const mapName = flag('name') ?? `RMG ${seed}`;
 
-// WHAT THIS TOOL CAN HONESTLY ORDER. The dialog's map size reaches the
-// generator as a number in the TEMPLATE's own units, and that conversion is
-// `vt+0x18` — unread. So the chain always orders the references' 8, and
-// `--size` only lays out the grid: at any other size the draws are one
-// order's and the grid is another's, which is a map no engine would make. It
-// stays available because a grid is sometimes what you want, and it says so
-// rather than looking checked.
-const CHECKED_SIZES = underground ? [72] : [96];
-if (!CHECKED_SIZES.includes(size) && !args.includes('--unchecked')) {
-  console.error(`--size ${size} is not an order this port can make: the dialog's size reaches the`);
-  console.error('generator through a conversion nobody has read, so the draws would be the');
-  console.error(`references' (${CHECKED_SIZES.join('/')}) while the grid is yours. --unchecked does it anyway.`);
-  process.exit(2);
-}
+// The size is an order like the rest: the tile count goes back through the
+// engine's own table into the request (`create-map.ts`, both conversions
+// read), and the chain warns when a template's units would lift it. Nothing
+// here to refuse.
 
 const options: ChainOptions = {
   seed, template, size, underground, water: water || undefined, players, monsterStrength: monsters,

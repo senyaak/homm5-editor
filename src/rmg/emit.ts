@@ -151,7 +151,7 @@ export interface EmitObject {
   lights?: Array<{ x: number; y: number; z: number; color: readonly [number, number, number]; radius: number }>;
   /** Monoliths: the pair's GroupID (a plain AdvMapBuilding field). */
   groupId?: number;
-  /** Shipyards: the ShipTile the engine computed (derivation unread). */
+  /** Shipyards: the ShipTile — `shipyards.ts`'s `shipTile`, the engine's own search. */
   shipTile?: readonly [number, number];
   /** Dwellings of tier >= 3: the enabled-creature switch. */
   creaturesEnabled?: number[];

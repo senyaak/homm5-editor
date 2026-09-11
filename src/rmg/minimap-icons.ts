@@ -16,11 +16,10 @@
 // exactly the engine's list: 2 towns, 18 mines and the 2 dwellings, and none of
 // the 39 buildings, none of which is one of the two.
 //
-// The SECOND list was named here and not ported, on the reasoning that the
-// reference's list was complete. It is complete for a ONE-LEVEL map: the
-// subterranean gates are what a second level adds, and a two-level order puts
-// two of them on the surface and two below. Left out, they cost two icon-sized
-// holes per floor — which is what they cost, until a two-level map was diffed.
+// The SECOND list is ported too (`iconNameFor` below). It was first left out on
+// the reasoning that the reference's list was complete — which it is for a
+// ONE-LEVEL map; the subterranean gates are what a second level adds, two on
+// the surface and two below, and the two-level diff found the four holes.
 //
 // The NAME is `sprintf`ed and looked up by string in the `SWindowRelated`
 // resource `UI/AdventureScreen-FPP-2/MinimapTextures.(WindowRelatedTextures)
