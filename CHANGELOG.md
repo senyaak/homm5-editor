@@ -18,7 +18,9 @@ pre-release.
 game's own dialog does, and the port is held to the strictest standard we have:
 for the same order and seed it writes an archive byte-identical to the one the
 engine writes — every game-built map in the corpus, all twenty-two shipped
-templates dry and with water, and two-level orders across six of them. There is no new button for
+templates dry and with water, two-level orders across six of them, every
+template at its full player count, and every monster, resource and experience
+setting. There is no new button for
 it yet; this is the engine work the button will sit on.
 
 **The Grail too.** Tick that box in the generator's dialog and the port

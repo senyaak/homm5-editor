@@ -113,8 +113,18 @@ is meant to replace with something systematic:
   its three; the second seed is what found the `%g` exponent padding, the
   editor's x87 `betweenFloat` and the shipyard's ship test (`RMG.md`, "The
   water sweep, first run"). `-water 1` is not a
-  row: the dialog cannot order it.
+  row: the dialog cannot order it;
+- **block E, run as written (12.09.2026)**: 36 of 36, after two of them were
+  not — `S7-15P2-8Z9K2.4b` at seed 1001 (two objects minted one name; the
+  engine's second creation replaces the first's document) and
+  `S7-22P2-8Z15K2.4c` at seed 2002 (`Math.hypot` an ulp under the engine's
+  `sqrtss`, one room candidate short). Both in `RMG.md`'s 12.09 entry; the
+  orders are `tools/rmg-matrix.ts orders E`, the maps in `_tmp/matrix/E/`;
+- **block F, run as written (12.09.2026)**: 72 of 72, first time — the four
+  multiplier rungs nobody had ordered, on both templates, three seeds.
 
-So the untouched ground is E (player counts above the minimum) and F (the four
-multiplier rungs nobody has ordered), and the ordered part of B and C is a
-sample rather than a sweep.
+So every block has been run: A, D, E and F in full, B and C as a sample rather
+than a sweep. What the runs found is in `RMG.md` under the dates; the matrix
+itself has no red cell left, and the next divergence will come from an order
+nobody has typed — a two-level order on a template B did not reach, a size C
+did not.

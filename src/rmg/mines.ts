@@ -29,7 +29,7 @@
 
 import { mintName, setMonster } from './armies.ts';
 import type { DrawSource, Guard, GuardTables } from './armies.ts';
-import { EIGHT, FOUR, ensureRoom, filterByRoom, isFree, readFootprint, stampFootprint, tryPlace } from './placement.ts';
+import { EIGHT, FOUR, ensureRoom, filterByRoom, isFree, readFootprint, stampFootprint, tileDistance, tryPlace } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 
 export type { Tile } from './placement.ts';
@@ -71,7 +71,7 @@ export function mineLists(input: MineListsInput): MineLists {
         far.push([x, y]);
         continue;
       }
-      const d = Math.hypot(town.x - x, town.y - y);
+      const d = tileDistance(town.x - x, town.y - y);
       if (input.farMax > d && d > input.farMin) far.push([x, y]);
       if (input.nearMax > d && d > input.nearMin) near.push([x, y]);
     }
@@ -268,7 +268,7 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
           const y = base[1] + dy;
           if (x < 0 || x >= size || y < 0 || y >= size) continue;
           if (!isFree(occupancy[y * size + x]!)) continue;
-          if (Math.hypot(x - g[0], y - g[1]) >= 2.0) continue;
+          if (tileDistance(x - g[0], y - g[1]) >= 2.0) continue;
           const roll = rng.betweenFloat(0, 1);
           if (roll >= Math.fround(0.8)) continue;
           piles.push({ name: mintName(rng), x, y });
@@ -343,7 +343,7 @@ export function placeZoneAbandonedMines(input: AbandonedMinesInput, rng: DrawSou
       if (x < 1 || x >= size - 1 || y < 1 || y >= size - 1) continue;
       if (border[y]![x]! <= 1) continue;
       if (input.town) {
-        const d = Math.hypot(input.town.x - x, input.town.y - y);
+        const d = tileDistance(input.town.x - x, input.town.y - y);
         if (!(d < input.ringMax) || !(d > input.ringMin)) continue;
       }
       cand.push([x, y]);

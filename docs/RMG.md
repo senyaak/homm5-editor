@@ -6919,3 +6919,54 @@ window per build, and a session in which the map was generated twice holds
 two of the first kind; and the `wr`/`wrs` lines (the world's CRandomGenerator)
 are the lobby's own generators, seeded per player after the objects exist —
 nothing about a town's race passes through them.
+
+**12.09, BLOCKS E AND F OF THE MATRIX, RUN — and the two things E found.**
+Block E (players at their maximum, 12 templates, three seeds: 36 orders) came
+back 34 of 36; block F (monsters, resource and exp across all five rungs on two
+templates, 72 orders) 72 of 72 first time. The two of E were both on
+`IMPOSSIBLE` 320-tile maps with eight players, and neither was about players.
+
+- **`S7-15P2-8Z9K2.4b` at seed 1001 — a name minted twice.** The terrain and
+  the minimap were identical; `map.xdb` had one static more than the engine's,
+  and the engine's list carried the SAME id twice: a lava zone's
+  `StickOfDeath_02` at (140,315) and a snow zone's `Snowhommock03` at (26,166)
+  had both drawn `item_1746477870` from their two `below(65535)`. Where the
+  port wrote the stick, the engine wrote the hommock — and where the port
+  wrote the hommock, the engine wrote
+  `<Item href="#xpointer(id(item_1746477870)/AdvMapStatic)"/>`. Read in
+  `0xEB3990` (the game): the name is a document PATH, and after composing it
+  the creation goes to the document manager — find-by-path (`vt+0x58`, and an
+  addref on a hit), unload of what it found (`vt+0x60`), create (`vt+0x44`).
+  A second creation under an existing name replaces the first's document; the
+  world's list keeps both slots and both hold the one document, and the
+  serializer inlines it at the first slot and references it at the second.
+  The chance is two draws over 65535², about n²/2^33 a map — one in a hundred
+  at 8,700 objects, so the corpus was due one. `runFull`'s `add` keeps a
+  name index and replaces in place, pushing an `alias` slot; the emitter
+  writes the reference for it; the height pass, the mask and the icons skip
+  it — on the evidence of this map (statics reach none of the three), not on
+  a reading of what `vt+0x60` does to the world's registrations.
+
+- **`S7-22P2-8Z15K2.4c` at seed 2002 — `Math.hypot` is not `sqrtss`.** The
+  first teleport of zone 8 stood on (209,21) against the engine's (221,7),
+  with the same name and the same rotation — the same draws, a different
+  candidate list. The oracle's `points` said the room points were the engine's
+  (the two town tiles), `areas` said every zone's tile count was, and the
+  trace said what the port could not: `tb 636970 413 821` — the engine had
+  821 candidates to the port's 820, and index 413 was its tile where the
+  port's 412 was. One tile short, before (221,7) in scan order. It was
+  (196,28): 99² + 20² = 10201 = 101², an exact distance, and V8's
+  `Math.hypot(99, 20)` is 100.99999999999999 — it scales before squaring and
+  loses the ulp — where the engine sums the squares and `sqrtss`es them to
+  exactly 101.0. Truncated to the room grid that is 100 against 101, and the
+  filter's `> threshold` at threshold 100 dropped it. `tileDistance` in
+  `placement.ts` is `fround(sqrt(dx² + dy²))` now, and every `hypot` in the
+  port (the room, and the mines' three ring tests against integer bounds) goes
+  through it.
+
+With both in, block E is 36 of 36, and the whole corpus was re-run because
+the distance feeds every room grid: 138 engine folders (`rmg-batch`, `seed2`,
+`water`, `water2`, `monsters-sweep`, `monsters`, `mm`, `xl`) and the 24 RMG
+archives in `game/H5E/` — every one byte-identical, `ГСК-001` at its known 14
+of 17. The unit suites all pass. The matrix has no red cell left; what B and
+C did not sweep is what remains.

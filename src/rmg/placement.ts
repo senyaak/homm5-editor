@@ -15,6 +15,22 @@ import { rotate } from './towns.ts';
 export type Tile = readonly [number, number];
 
 /**
+ * The distance between two tiles, the way the engine takes it: the squares
+ * summed and `sqrtss`'d in single precision (`0xEC28E0` ends in
+ * `cvttss2si` over that register). NOT `Math.hypot`, which scales before it
+ * squares and is off by an ulp on exact answers — `Math.hypot(99, 20)` is
+ * 100.99999999999999 where the engine has 101.0 — and every consumer of a
+ * distance here truncates it or compares it against an integer bound, so
+ * that ulp is the difference between a candidate and none. Block E's
+ * `S7-22P2-8Z15K2.4c` at seed 2002 is where it showed: one tile at room
+ * 100 against the engine's 101, one candidate short of the engine's 821,
+ * and the first teleport of zone 8 on a different tile.
+ */
+export function tileDistance(dx: number, dy: number): number {
+  return Math.fround(Math.sqrt(dx * dx + dy * dy));
+}
+
+/**
  * The room grid — 0xEC28E0 with mask 4: per tile of the zone, the truncated
  * distance to the nearest stamped point.
  *
@@ -81,7 +97,7 @@ export function recomputeRoom(
       if (!all && grid[y]![x] !== zoneIndex) continue;
       let m = 10000;
       for (const [px, py] of points) {
-        const d = Math.hypot(px - x, py - y);
+        const d = tileDistance(px - x, py - y);
         if (d < m) m = d;
       }
       room[y]![x] = Math.trunc(m);
