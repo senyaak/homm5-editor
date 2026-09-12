@@ -131,6 +131,12 @@ export const RMG_CAMERA_GAME = {
 
 export interface EmitObject {
   name: string;
+  /**
+   * The second slot of a name minted twice: the same document as an earlier
+   * item, which the serializer has already inlined, so this slot is written
+   * as a reference to it — see `add` in `tools/rmg-run.ts`.
+   */
+  alias?: true;
   x: number;
   y: number;
   z: number;
@@ -194,6 +200,7 @@ function typeOf(o: EmitObject): string {
 /** One object's `<Item>` block, exactly as the engine's serializer writes it. */
 export function renderObject(o: EmitObject, truncate = false): string[] {
   const type = typeOf(o);
+  if (o.alias) return [`\t\t<Item href="#xpointer(id(${o.name})/${type})"/>`];
   const lights = o.lights?.length
     ? [
         '\t\t\t\t<pointLights>',

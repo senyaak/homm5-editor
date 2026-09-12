@@ -62,6 +62,8 @@ const TOWN_RACES: Record<string, number> = {
 export interface RunObject extends HeightObject {
   name: string;
   kind: string;
+  /** The second slot of a name minted twice — see `add` in `runFull`. */
+  alias?: true;
   /** The `Shared` href as the map file records it (with its xpointer). */
   shared?: string;
   /** Monsters: the army behind the object; `Shared` is stacks[0]'s document. */
@@ -144,6 +146,31 @@ export function runFull(
 
   const objects: RunObject[] = [];
   /**
+   * A NAME IS A KEY. Every object is a document created by its minted path
+   * (`0xEB3990`: "item_%d" from two `below(65535)` draws, then the document
+   * manager's find-by-path (`vt+0x58`), unload (`vt+0x60`) of whatever that
+   * finds, and create (`vt+0x44`)), so a second object minted with the name
+   * of a first REPLACES it. The list keeps both slots and both hold the one
+   * document, so the writer inlines the second object's data in the FIRST
+   * slot and puts a reference — `<Item href="#xpointer(id(name)/Class)"/>`
+   * — in the second. Two draws over 65535² leave a collision a chance of
+   * about n²/2^33 per map — one in a hundred at 8,700 objects — and block
+   * E's `S7-15P2-8Z9K2.4b` at seed 1001 was that one: a lava zone's
+   * StickOfDeath and a snow zone's Snowhommock minted `item_1746477870`, the
+   * engine wrote the hommock in the stick's slot and a reference in the
+   * hommock's, and the port wrote both objects. The stick's occupancy stays
+   * stamped — the replaced document is not the grid — and the map's terrain
+   * and minimap came out identical either way; the alias is skipped by the
+   * height pass, the mask and the icons on that evidence (one-tile statics
+   * reach none of the three), not on a reading.
+   */
+  const byName = new Map<string, number>();
+  const add = (o: RunObject): void => {
+    const at = byName.get(o.name);
+    if (at !== undefined) { objects[at] = o; objects.push({ ...o, alias: true }); }
+    else { byName.set(o.name, objects.length); objects.push(o); }
+  };
+  /**
    * `Shared` hrefs are written with their xpointer; when the source lacks
    * one, the tag comes from the path's own `.(Tag).xdb` (the abandoned
    * mine is an AdvMapAbanMineShared, whatever list it came from), with
@@ -162,7 +189,7 @@ export function runFull(
     kind: string, name: string, x: number, y: number, floor = 0, rot = 0,
     extra: Partial<RunObject> = {},
   ): void => {
-    objects.push({
+    add({
       kind, name, x, y, z: 0, rot, floor, isStatic: false, blocked: [], firstActive: [0, 0],
       ...extra,
     });
@@ -171,7 +198,7 @@ export function runFull(
     kind: string, name: string, x: number, y: number, rot: number, foot: Footprint,
     floor = 0, extra: Partial<RunObject> = {},
   ): void => {
-    objects.push({
+    add({
       kind, name, x, y, z: 0, rot, floor, isStatic: false,
       blocked: foot.blocked, firstActive: foot.active[0],
       ...extra,
@@ -238,7 +265,7 @@ export function runFull(
       });
     } else {
       // Decorations are AdvMapStatic instances — the flatten skips them.
-      objects.push({
+      add({
         kind: 'decoration', name: t.name, x: t.pos.x, y: t.pos.y, z: 0, rot: t.rot,
         floor, isStatic: true, blocked: [],
         shared: pointered(t.shared, 'AdvMapStaticShared'),
@@ -529,7 +556,7 @@ export function runFull(
       });
     }
     statics.push(...big.placed);
-    for (const s of big.placed) objects.push(staticRecord(s));
+    for (const s of big.placed) add(staticRecord(s));
     step(`zone ${tz.index} big statics`);
 
     const oneInput = {
@@ -551,7 +578,7 @@ export function runFull(
         ? placeWaterOneTileStatics(oneInput, c.rng)
         : placeZoneOneTileStatics(oneInput, c.rng);
     statics.push(...one);
-    for (const s of one) objects.push(staticRecord(s));
+    for (const s of one) add(staticRecord(s));
     step(`zone ${tz.index} one-tile statics`);
   }
   step('statics');
@@ -641,6 +668,6 @@ export function heightsInput(run: FullRun): HeightsInput {
     border: run.c.border,
     grid: run.c.grid,
     raceOf: (zoneIndex) => byIndex.get(zoneIndex),
-    objects: run.objects,
+    objects: run.objects.filter((o) => !o.alias),
   };
 }

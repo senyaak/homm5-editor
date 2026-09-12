@@ -182,7 +182,7 @@ function minimapFiles(
     : run.vertexHeights[floor]!.bytes;
   const mask = buildMinimapMask({
     side, plane: run.passability[floor]!, dim, layers, flags,
-    objects: run.objects.filter((o) => o.floor === floor).map((o) => ({
+    objects: run.objects.filter((o) => o.floor === floor && !o.alias).map((o) => ({
       // The WORLD object where it is not the record's — a random town's real
       // stand-in, a tile off and with its own lists. See `RunObject.world`.
       ...worldTile(o),
@@ -199,7 +199,7 @@ function minimapFiles(
   });
   const iconObjects: IconObject[] = [];
   for (const o of run.objects) {
-    if (o.floor !== floor || !o.shared) continue;
+    if (o.floor !== floor || !o.shared || o.alias) continue;
     const docPath = o.shared.split('#')[0]!.replace(/^\//, '');
     const docText = readFileSync(join(dataRoot, docPath), 'utf8');
     const docType = /<Type>(\w+)<\/Type>/.exec(docText)?.[1] ?? '';

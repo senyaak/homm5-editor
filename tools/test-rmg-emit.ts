@@ -4,15 +4,13 @@
 //   node tools/test-rmg-emit.ts
 //
 // Inputs that are not the generator's own are read back from each
-// reference: the GUID (CoCreateGuid at run time), the MapName (typed into
-// the order dialog) and the shipyards' ShipTile
-// (their derivations are unread — docs/RMG.md names the holes).
-// Everything else is the run's.
+// reference: the GUID (CoCreateGuid at run time) and the MapName (typed
+// into the order dialog). Everything else is the run's.
 
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
+import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag, renderObject } from '../src/rmg/emit.ts';
 import { buildTerrainFile } from '../src/rmg/emit-terrain.ts';
 import { buildRmgTexts } from '../src/rmg/emit-texts.ts';
 import { heightsToFile, latePass } from '../src/rmg/heights.ts';
@@ -64,6 +62,22 @@ function check(name: string, ok: boolean, detail = ''): void {
   check('and every cell carries the drawn number', cell === '030c02020103020e'
     && filled.subarray(at + 17, filled.length - 6).every((b, i) => b === filled[at + 17 + (i % 8)]),
     cell);
+}
+
+// ------------------------------------------ a name minted twice
+// Block E's `S7-15P2-8Z9K2.4b` at seed 1001: two objects drew the same
+// `item_%d`, the engine's second creation replaced the first's document, and
+// the writer inlined the second object's data in the FIRST slot and a
+// reference in the second. The rule lives in `runFull`'s `add`; this is the
+// writer's half, and the alias must not become a second inlined item.
+{
+  const shared = '/MapObjects/Snow/Snowhommocks/Snowhommock03.xdb#xpointer(/AdvMapStaticShared)';
+  const alias = renderObject({ name: 'item_1746477870', x: 26, y: 166, z: 0, rot: Math.PI, floor: 0, shared, alias: true });
+  check('the alias slot is one reference line',
+    alias.length === 1 && alias[0] === '\t\t<Item href="#xpointer(id(item_1746477870)/AdvMapStatic)"/>', alias.join('|'));
+  const inlined = renderObject({ name: 'item_1746477870', x: 26, y: 166, z: 0, rot: Math.PI, floor: 0, shared });
+  check('and the same object without the flag is the inlined item',
+    inlined[0] === '\t\t<Item href="#n:inline(AdvMapStatic)" id="item_1746477870">' && inlined.length > 1, inlined[0]);
 }
 
 const dir = dataDir();
