@@ -12,12 +12,23 @@
 //
 // Per half, in draw order:
 //
-//   below(candidates)     the tile — candidates are the zone's tiles at
-//                         border 3..9 (the 2 and 10 are LITERALS in the
+//   below(candidates)     the tile — candidates are the zone's tile LIST
+//                         (`+0xCC`, walked at 0xEB8050 with no grid test)
+//                         at border 3..9 (the 2 and 10 are LITERALS in the
 //                         code; the Teleport*BorderDistance params exist
 //                         and are never read), filtered by room > 2max/3
 //                         after a (4,0) recompute; a fit refusal strikes
 //                         the tile and draws again
+//
+// THE LIST, NOT THE GRID — and the difference is a whole zone's worth of
+// draws. Dist-to-towns disowns a zone's unreachable tiles in the GRID (-2)
+// and never touches the list, so a zone no passage reached — exactly the
+// zone that needs a teleport — still offers every list tile at border 3..9,
+// and the fit (which DOES test the grid) refuses each one: one draw per
+// candidate, 4,709 of them on `S0-1P2Z2K3.2T` at 320 tiles, then "cant find
+// empty tiles" and the zone's links are lost. Scanning the grid gave that
+// zone no candidates at all, a drawless return, and a map 4,700 draws out
+// of step from the first mine on.
 //   below(65535) twice    the name, once the fit passes
 //   SetMonster            the guard — 4 or 5 draws, at the connection's
 //                         power over sqrt(2), rounded to nearest
@@ -81,6 +92,11 @@ export interface ZoneTeleportsInput {
   unconnected: ReadonlySet<RmgConnection>;
   /** `zone+0x0C/0x10` — the town entry, or the townless centroid. */
   centre: { x: number; y: number };
+  /**
+   * The zone's `+0xCC` tile list as this pass finds it — FillZones', or the
+   * water carve's — the candidates are drawn from it, grid or no grid.
+   */
+  tiles: Tile[];
   floorOf(zoneIndex: number): number;
   footprint(href: string): Footprint;
   /** `BasicLeverGuardPower * ConnectionGuardLevel`. */
@@ -108,14 +124,12 @@ export function placeZoneTeleports(input: ZoneTeleportsInput, rng: DrawSource): 
     else continue;
     if (!input.unconnected.has(conn)) continue; // the land digger served it
 
-    // Candidates: the zone's tiles at border 3..9, then the room filter.
+    // Candidates: the zone's LIST tiles at border 3..9 — no grid test, see
+    // the header — then the room filter.
     const ring: Tile[] = [];
-    for (let x = 0; x < size; x++) {
-      for (let y = 0; y < size; y++) {
-        if (grid[y]![x] !== zoneIndex) continue;
-        const bd = border[y]![x]!;
-        if (bd > 2 && bd < 10) ring.push([x, y]);
-      }
+    for (const [x, y] of input.tiles) {
+      const bd = border[y]![x]!;
+      if (bd > 2 && bd < 10) ring.push([x, y]);
     }
     const cand = input.roomKept(ring);
     if (!cand.length) return placed; // no log, no draw, the zone is done

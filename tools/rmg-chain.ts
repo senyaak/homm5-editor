@@ -542,6 +542,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
           points: grew, blocked: blockedList(z.index), connectionPoints: actives, guardSeats: seats,
           connections: template.connections, unconnected: unconnectedSet,
           centre: { x: centre.b, y: centre.a },
+          tiles: water?.kept.get(z.index) ?? zoneLists.get(z.index) ?? [],
           floorOf: (zi) => loaded.zones.find((zz) => zz.index === zi)!.floor,
           footprint: chainFootprint,
           guardPowerUnit: params.basicLeverGuardPower * params.connectionGuardLevel,
