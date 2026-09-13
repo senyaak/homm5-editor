@@ -3678,7 +3678,7 @@ saying so:
 | **ResourceMultiplier, ExpMultiplier** | **ordered** (`-resource`, `-exp`) — and they are not cosmetic: see below |
 | monster level | **ordered** (`-monsters`) — and replayed: `rmg-diff-map` takes the level out of the map's own `sRMGProps` and hands it to the chain, so a map ordered at any of the five is compared at that one |
 | RandomTowns, Grail | **ordered** (`-pokeb 149 1`, `-pokeb 165 1`) and replayed — `rmg-diff-map` reads both off the map's `sRMGProps`; see the 10.09 and 11.09 entries at the end |
-| StartHero | not ordered — `map.xdb` carries the references' fixed values |
+| StartHero | **not the generator's** — no dialog of the game's offers it; `<StartHero>` is a map property any map can carry, the generator writes it empty, and `rmg-order` treats a map with one as edited after generation, which is what it is |
 
 And an ordered setting is checked only where a map from the engine stands
 against it — the corpus in `RMG_TEST_MATRIX.md`'s "What has been measured so
