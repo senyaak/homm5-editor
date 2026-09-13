@@ -281,14 +281,18 @@ const SHIP_RING: ReadonlyArray<readonly [number, number, number, number]> = [
  * (`0x9EBAE0`) answers NO, and so does a river half-grid centre cell
  * (`+0x48`, `(2y+1, 2x+1)`) at or under 0x8C; the tail refuses when the sea's
  * float plane (`+0x58`) reads above 0.0. Here the river arm is the whole of
- * it: the flags are never zero on a floor this port makes, the float plane is
- * never dug, and the big-water arm — which the minimap DOES see on the same
- * sea, halving every tile of it — evidently reads nothing at the moment the
- * shipyards are placed, since 44 sea maps place theirs exactly on the river
- * alone and every sea tile would fail the ring otherwise. Why it reads
- * nothing then (the layer's document not yet resolved, most likely — the
- * walk skips a layer whose `+0x10` is null) is not read; the search's answer
- * is measured, not derived.
+ * it, and the reason is READ (13.09.2026), not measured: the flags are never
+ * zero on a floor this port makes, the float plane is never dug, and the sea
+ * is NOT big water — `RMG/Tiles/Water/Water.xdb`, the params' DeepWaterTile,
+ * is `TT_SMALL_WATER`, priority 253, so `0x9EBAE0` skips its layer by type at
+ * `0x9EBC22`. The generator's only `TT_BIG_WATER` document is the lava lake's
+ * `LavaFlow.xdb`, and the lakes are grown and painted in the statics sweep,
+ * phases after this search runs. (Had the sea been big water no shipyard
+ * could ever stand: every river-wet tile shares a corner with a painted sea
+ * tile.) The `this` here is the same floor terrain the minimap draws from
+ * (`[[zone+0x134]+0x34]`, pushed at `0xECC52B`), and the ring runs after
+ * FillTerrain and the carve's sea paint — so the layers are there; it is the
+ * type that never matches.
  */
 export function shipTile(
   at: readonly [number, number],

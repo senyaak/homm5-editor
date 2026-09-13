@@ -48,10 +48,14 @@
 // live arm exactly, with the big-water layer forcing FALSE, as guessed.
 //
 // The reference cannot test it: its river plane is empty on all 9,216 tiles.
-// Maps that do show both halves — a lava LAKE and a `-water 2` sea are
-// `TT_BIG_WATER` and the engine halves every one of their tiles; a
-// `TT_SMALL_WATER` lake has river cells over the threshold too and the engine
-// halves NONE of them.
+// Maps that do show both halves. The generator has exactly ONE big-water
+// document, `RMG/Tiles/Water/LavaFlow.xdb` — the lava lake — and the engine
+// halves every tile of such a lake; the sea (`RMG/Tiles/Water/Water.xdb`,
+// priority 253) and an ordinary lake are `TT_SMALL_WATER`, their river cells
+// are over the threshold, and the engine halves NONE of them — the water
+// reference's 1,906 sea pixels are the UNHALVED `027cf9`. (The note here used
+// to call the sea big water; it was a lava lake on a sea map that had put
+// 26 tiles into the mask.)
 
 import type { EngineSine } from '../exe/sine-table.ts';
 import { mul24, parse24, parse53 } from '../exe/x87.ts';
@@ -168,9 +172,9 @@ export interface WaterTileInput {
  * says, not what a generated floor happens to make of it.
  *
  * The shipyard's ring asks the same question (`0xCB19C9`) — see `shipTile` in
- * `shipyards.ts`, which keeps only the river arm: when the shipyards are placed
- * no texture layer has been painted yet, so the big-water arm has nothing to
- * read there, and 44 sea maps place theirs byte-identically without it.
+ * `shipyards.ts`, which keeps only the river arm, exactly: the sea is small
+ * water, and the one big-water document the generator owns, the lava lake's
+ * `LavaFlow.xdb`, is painted by the statics sweep, phases after the ring.
  */
 export function waterTile(input: WaterTileInput, x: number, y: number): boolean {
   const dim = input.side + 1;

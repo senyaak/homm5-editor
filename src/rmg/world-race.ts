@@ -141,16 +141,21 @@ export function makeVersionTracker(seed: number): () => number {
  * slot at 1, RANDOM, with the eight-entry list above, and a RANDOM slot
  * takes `list[draw % 8]` from a `CRMVersionTracker` seeded with `setup+0x30`
  * — which was 0. The first draw of that sequence is spent before the
- * players (between the seeding at 0x845172 and the loop, `0xD57C90` runs on
- * the tracker — unread, but the count is measured): from seed 0 the
- * sequence reads 5, 9, 3, 5, 6, 3, 8, 3 and the players took 9, 3, 5, 6, 3
+ * players, and by WHOM is read (13.09.2026): between the seeding at
+ * 0x845172 and the loop the builder calls `0xD57C90`, which is
+ * `CWorld::Create` — the world's factory — and the world's CONSTRUCTOR
+ * (`0xD56590`, at 0xD568A9) draws once from the tracker it was handed and
+ * keeps the value in `world+0x50`, unconditionally, one draw per world; no
+ * reader of that field was found in either build. The game does the same
+ * (`0xA46DE0` → `0xA51570`, the draw at 0xA519AC). So from seed 0 the
+ * sequence reads 5, 9, 3, 5, 6, 3, 8, 3 and the players take 9, 3, 5, 6, 3
  * — Dwarf, Heaven, Academy, Dungeon, Heaven, the "constant" races nine
  * game maps and three lobbies had shown. The lobby's own slots are NOT what
  * the builder sees (`ГСК-029`); this is.
  */
 export function worldPlayerRaces(players: number): ReadonlyMap<number, number> {
   const draw = makeVersionTracker(0);
-  draw();
+  draw(); // the CWorld constructor's own, into `world+0x50`
   const out = new Map<number, number>();
   for (let slot = 1; slot <= players; slot++) out.set(slot, SLOT_RACE_LIST[draw() % 8]!);
   return out;

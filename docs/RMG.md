@@ -7093,9 +7093,8 @@ what the code is entitled to say.
   flags, `+0x48` river, `+0x58` sea. `0xDD0784` halves when the bit is set AND
   the answer is NO. The fitted rule ("wet and not under big water") was the
   live arm exactly. The shipyard's ring asks the same function (`0xCB19C9`) and
-  the port keeps only the river there, because 44 sea maps place their yards
-  on the river alone and every sea tile would fail the ring if the layer arm
-  read anything at that moment; why it reads nothing then is not read.
+  the port keeps only the river there — see the last item below for why that
+  is exact.
 - **The veto's eighth question is three constants, not state.** `+0x28`
   (`0xAD0240`) is `AsInteractive()`; the chain asks `IAdvMapInteractive::+0x18`
   — `mov al,1` for `CAdvMapTreasure` and `CAdvMapArtifact`, `xor al,al` for
@@ -7146,3 +7145,61 @@ what the code is entitled to say.
 `test-x87` and the minimap reference are unchanged at 0 bytes; the corpus
 regression (`_tmp/matrix/regress-all.sh`) ran after the four: 458 of 458, the
 known `ГСК-001` 14/17 among them.
+
+### Next: what the generator reads from the DATA and what it carries in the CODE
+
+The question the port answers next is not "does it match" — it does — but
+"what can be fed to it". A mod adds creatures, artifacts, dwellings, obstacle
+sets, and one day a ninth race; which of those the generator picks up by
+itself, and which it cannot see because the list lives in the executable, is
+what decides whether the button can generate for a modded game. The port
+already knows some of both sides, and the survey should start from what is
+written down rather than from the exe:
+
+- **Read from data** (and so open to a mod): the artifact table
+  (`GameMechanics/RefTables/Artifacts.xdb`, `artifacts.ts` — every record that
+  says it may be generated, by id), the creature and army lists by their
+  hardcoded PATH (`armies.ts`), the RMG preset table per race
+  (`RMGPresetTable.xdb`: tiles, statics, mines, dwellings, town prototypes,
+  `preset-table.ts`), the templates and the tile documents.
+- **Carried in the code** (and so closed to a mod until the extension patches
+  it): the shrine table at `0x121CA90` (`shrines.ts`), the size ladder
+  (`create-map.ts`), the surface/underground draw lists of
+  `load-template.ts`, the eight races as a dimension — `SLOT_RACE_LIST` in
+  `world-race.ts` is the exe's `[3 8 7 4 6 5 9 10]`, the preset table is
+  looked up BY RACE ENUM, and every `__RACE_COUNT`-sized table in the engine
+  (`docs/…` — the ninth-faction survey) is a place the generator would have
+  to be widened.
+- **To find out**: for each list the generator walks, whether the port reads
+  the file or holds a copy; for each one held, whether the ENGINE holds it in
+  code too (then the port is right to, and the extension is where a mod would
+  reach it) or reads a file the port shortcut (then the port should read the
+  file). The obstacle sets are the open one: how the statics steps choose
+  their documents (`statics-big.ts`, `statics-one-tile.ts`, the subterranean
+  columns) — preset vectors, and what a preset may name.
+
+**The two readings that were owed, taken (13.09, later still).**
+
+- **The sea is not big water.** The shipyard's ring and the minimap see the
+  same terrain (`[[zone+0x134]+0x34]`, pushed at `0xECC52B`; FillTerrain and
+  the carve's sea paint both precede the ring), the layer's document is a
+  real pointer from the first paint (`0x9EAD90` writes `rec+0x10`), and the
+  gate `0x1182704` is a constant zero — none of the candidates. What the
+  port had wrong was the premise: the params' DeepWaterTile,
+  `RMG/Tiles/Water/Water.xdb`, is `TT_SMALL_WATER` (priority 253), and
+  `0x9EBAE0` tests `[doc+0x60] == 0x0B` only, so the sea's layer is skipped by
+  TYPE — at ring time, at minimap time, always. The generator's one
+  `TT_BIG_WATER` document is the lava lake's `LavaFlow.xdb`, grown and
+  painted in the statics sweep, phases after the ring; the "26 sea tiles" the
+  mask note had blamed on the sea were a lava lake on a sea map, and the water
+  reference's 1,906 sea pixels are the unhalved colour, as the note two
+  sections up had always said. `shipTile`'s river-only rule is exact by
+  construction, not by measurement; the notes in `minimap.ts`,
+  `minimap-mask.ts` and `shipyards.ts` say so now.
+- **The draw before the players is the world's own.** `0xD57C90` is
+  `CWorld::Create`; the builder makes the world on the tracker it just seeded,
+  and the world's constructor (`0xD56590`, at 0xD568A9) draws once —
+  unconditionally, straight-line — into `world+0x50`, a field no reader was
+  found for in either build. The game is the same three instructions
+  (`0xA51570`, 0xA519AC). One draw per world, then one per RANDOM slot;
+  `worldPlayerRaces` had the count and now has the cause.

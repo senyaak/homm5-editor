@@ -26,10 +26,12 @@
 // tile. A generated floor's flags are a uniform 16 everywhere, so the flag
 // arms cannot fire — but the big-water one can, and does: it was called
 // inactive because the reference template paints no water layer at all, which
-// is a fact about one template and not about the arm. Two maps that do have
-// one — a lava LAKE, which the generator paints as `TT_BIG_WATER` with a lava
-// texture, and an ordinary `-water 2` sea — put 8 and 26 tiles outside the
-// plane-and-objects mask, and the engine's own mask dump has every one of them.
+// is a fact about one template and not about the arm. The generator's ONE
+// big-water document is the lava lake's `RMG/Tiles/Water/LavaFlow.xdb` (the
+// sea's `Water.xdb` is `TT_SMALL_WATER`, priority 253); two maps with such a
+// lake — one dry, one a `-water 2` sea whose Inferno zone grew one — put 8
+// and 26 tiles outside the plane-and-objects mask, and the engine's own mask
+// dump has every one of them.
 //
 // So FIVE kinds speak, and which of them can fire is a fact about the floor:
 // the plane and the objects everywhere, big water wherever a template paints a
