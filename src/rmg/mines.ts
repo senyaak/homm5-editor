@@ -23,9 +23,9 @@
 // The room, filter, fit and stamp are the machinery every placement worker
 // shares — src/rmg/placement.ts; this file keeps what is the mines' own.
 //
-// The engine computes distances in single precision and this port in double;
-// every measured draw lands regardless, and if a future template diverges by
-// one tile at a threshold boundary, this is the first place to look.
+// Distances are the engine's single-precision `sqrtss` — `tileDistance` in
+// placement.ts, since the day `Math.hypot` cost one candidate at a threshold
+// (`S7-22P2-8Z15K2.4c`, seed 2002; the note here had named this very place).
 
 import { mintName, setMonster } from './armies.ts';
 import type { DrawSource, Guard, GuardTables } from './armies.ts';
