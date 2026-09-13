@@ -89,9 +89,15 @@ node tools/rmg-batch.ts --game <dir> --orders _tmp/matrix-A.txt --keep _tmp/matr
 for i in $(seq 1 66); do node tools/rmg-diff-map.ts --game <dir> _tmp/matrix-A/$i; done
 ```
 
-A run takes about a minute at 96 tiles and about two at 256, so a block is
-measured in hours and the whole matrix in most of a day. The editor holds the
-display while it runs; nothing else should be using it.
+A run takes about a minute at 96 tiles, two at 256 and four at 320, so a
+block is measured in hours and the whole matrix in most of a day. The editor
+holds the display while it runs; nothing else should be using it — and
+nothing should be REPLAYING beside it: with the port's diffs of 320-tile maps
+running next to the editor, five launches in a row died in the generator's
+`abort()`. Diff after the batch, not during. `--resume` picks a list up where
+it stopped (a slot holding a map is not ordered again), each slot's oracle
+log lands beside it as `<keep>/<n>.log`, and a launch whose top window is the
+CRT's abort box is killed on sight rather than at the timeout.
 
 ## What has been measured so far
 
@@ -121,10 +127,16 @@ is meant to replace with something systematic:
   `sqrtss`, one room candidate short). Both in `RMG.md`'s 12.09 entry; the
   orders are `tools/rmg-matrix.ts orders E`, the maps in `_tmp/matrix/E/`;
 - **block F, run as written (12.09.2026)**: 72 of 72, first time — the four
-  multiplier rungs nobody had ordered, on both templates, three seeds.
+  multiplier rungs nobody had ordered, on both templates, three seeds;
+- **block C, run as written (13.09.2026)**: 114 of 114 after one was not —
+  `S0-1P2Z2K3.2T` at 320 tiles, seed 1001: the teleport's candidates are the
+  zone's tile LIST, which dist-to-towns never dents, not its grid;
+- **block B, run as written (13.09.2026)**: 66 of 66 after four were not —
+  the town's footprint gate is the shared fit `0xEC3510`, five-tile margin
+  on floor 1 and all. Both in `RMG.md`'s 13.09 entry; the maps and the
+  oracle's log for each are in `_tmp/matrix/{C,B}/`.
 
-So every block has been run: A, D, E and F in full, B and C as a sample rather
-than a sweep. What the runs found is in `RMG.md` under the dates; the matrix
-itself has no red cell left, and the next divergence will come from an order
-nobody has typed — a two-level order on a template B did not reach, a size C
-did not.
+So every block has been run in full. What the runs found is in `RMG.md`
+under the dates; the matrix has no red cell left, and the next divergence
+will come from an order it does not hold — a seed it did not draw, water on a
+two-level map, three or more players with random towns on.

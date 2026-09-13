@@ -10,9 +10,17 @@ import { join } from 'node:path';
 
 import { childText, find, findAll, parse } from '../format/xml.ts';
 import type { Offset } from './town-data.ts';
-import { rotate } from './towns.ts';
 
 export type Tile = readonly [number, number];
+
+/** A quarter-turn of a document offset, the engine's own four cases. */
+export function rotate(q: number, off: Offset): Offset {
+  const [x, y] = off;
+  if (q === 1) return [-y, x];
+  if (q === 2) return [-x, -y];
+  if (q === 3) return [y, -x];
+  return [x, y];
+}
 
 /**
  * The distance between two tiles, the way the engine takes it: the squares

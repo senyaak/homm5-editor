@@ -6970,3 +6970,49 @@ the distance feeds every room grid: 138 engine folders (`rmg-batch`, `seed2`,
 archives in `game/H5E/` — every one byte-identical, `ГСК-001` at its known 14
 of 17. The unit suites all pass. The matrix has no red cell left; what B and
 C did not sweep is what remains.
+
+**13.09, BLOCKS C AND B — THE MATRIX RUN IN FULL, and two more readings.**
+Block C (every template one size up and at its largest: 114 orders) came back
+113 of 114; block B (every template with two floors: 66) 62 of 66. Five maps,
+two causes, neither a draw.
+
+- **The teleport's candidates are the zone's tile LIST, not its grid.**
+  `S0-1P2Z2K3.2T` at 320 tiles, seed 1001: the counters agreed through "dist
+  to towns" and then the engine spent 4,735 draws in ZoneConnections to the
+  port's 26. The trace showed one zone's teleport drawing `below(4709)`,
+  `below(4708)`, … down to nothing — every candidate refused by the fit — and
+  then "cant find empty tiles". `0xEB8050` walks `zone+0xCC` to `+0xD0` (eight
+  bytes an entry, `cvttss2si` on each half) against the border grid alone, 2 <
+  d < 10, and never asks the zone grid; the fit does. That zone had no passage
+  dug to it — which is what a teleport is for — so dist-to-towns had written
+  -2 over all of it in the grid, and the list still held every tile. The port
+  scanned the grid, found nothing, and left without a draw. `teleports.ts`
+  takes the list now (`ZoneTeleportsInput.tiles`: FillZones' list, or the
+  water carve's).
+
+- **The town's footprint gate is the shared fit, `0xEC3510`.** Four two-level
+  maps (`S1-3P2-4Z5V` seed 1001, `S2-3P2Z7N2` 3003, `S2-4P2Z7B2` 2002,
+  `S7-22P2-8Z15K2.4c` 1001) parted in PlaceTowns: at the third attempt on
+  the first of them the engine refused a tile (the pool fell from 281 to 280)
+  that the port accepted. `towns.ts` had its own three-list gate — blocked
+  and active at depth 1, the marker at 3, no margin — fitted to the
+  reference, which it passed. PlaceTown calls `0xEC3510` at 0xEB51A7 with
+  the prototype's blocked, active and marker lists, the same call the mines
+  and dwellings make: active at depth THREE, the marker at 1, and on floor 1
+  the five-tile margin from the map edge. All four were underground towns
+  near an edge. `towns.ts` calls `fits` now, and `rotate` moved to
+  `placement.ts` so the import points one way.
+
+Block C's tenth order is also where the batch grew its eyes: the oracle's log
+kept beside each slot (`<keep>/<n>.log`, the log emptied before each launch —
+it appends, and the first copies were 167 MB apiece), `--resume`, and a
+watcher that kills the editor the moment its top window is the CRT's abort
+box — five launches in a row had sat on that box for fifteen minutes each
+while the port's replays ran beside the editor, and a second batch driver that
+survived a botched stop had two editors racing for one slot. The frame is not
+hidden: with it hidden the extension's "waiting for the editor to come up"
+never ends.
+
+With both readings in, C is 114 of 114 and B 66 of 66, and every earlier map
+is being re-run against the port, since a town gate and a candidate list reach
+every order.

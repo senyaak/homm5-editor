@@ -17,8 +17,11 @@
 //   then three gates, none of which draws:
 //     * the town's own tile must sit inside the 1 .. size-1 frame
 //     * the ENTRANCE — tile + rot_q(1,-1) — must be at least (2*R)/3 deep
-//     * the footprint, rotated with it, must stay inside the zone, on free
-//       tiles, none of them right against the zone border
+//     * the footprint, rotated with it, passes the SHARED fit `0xEC3510`
+//       (`fits` in placement.ts) — the same call the mines and dwellings
+//       make (`call 0xEC3510` at 0xEB51A7, with the prototype's three
+//       lists): blocked and marker at border depth 1, ACTIVE at 3, and on
+//       floor 1 the five-tile margin from the map edge
 //
 // A frame or depth refusal keeps the tile in the pool (it can be drawn
 // again); a footprint refusal drops it. Past a hundred retries the depth gate
@@ -42,10 +45,15 @@
 //
 // The offsets were pinned through the document's generated reader, the way
 // the template's were: +0x54 blockedTiles, +0x60 holeTiles, +0x6C
-// activeTiles, +0x84 PossessionMarkerTile. The footprint checks three of
-// them at three depths — blockedTiles and activeTiles at 1, the possession
-// marker at 3 — and holeTiles, despite being the largest list, is not
-// checked at all.
+// activeTiles, +0x84 PossessionMarkerTile — and holeTiles, despite being
+// the largest list, is not checked at all.
+//
+// THE FOOTPRINT GATE WAS ONCE THIS FILE'S OWN — blocked and active at depth
+// 1, the marker at 3, no margin — fitted to the reference, which it passed.
+// Block B's `S1-3P2-4Z5V` at seed 1001 did not: the engine refused a town
+// the port took, on floor 1 with a footprint tile inside the five-tile
+// margin, and the draws parted at the third attempt. The call is `0xEC3510`,
+// read at 0xEB51A7, so the gate is the shared one now.
 //
 // RANDOM TOWNS — the dialog's checkbox, `request+0x95`, handed to PlaceTown
 // as its second argument (`0xEA5FBE` reads `generator+0xA5` and pushes it).
@@ -77,6 +85,7 @@ import type { TownGuardStack } from './town-guard.ts';
 import type { RmgRandom } from './random.ts';
 import type { RacePreset } from './preset-table.ts';
 import type { Offset, TownShared, TownSpecialization } from './town-data.ts';
+import { fits, rotate } from './placement.ts';
 import type { LoadedZone } from './load-template.ts';
 import type { RmgTemplate } from './template.ts';
 
@@ -94,14 +103,7 @@ export interface MapPos {
 
 const toMapPos = (a: number, b: number): MapPos => ({ x: b, y: a });
 
-/** A quarter-turn of a document offset, the engine's own four cases. */
-export function rotate(q: number, off: Offset): Offset {
-  const [x, y] = off;
-  if (q === 1) return [-y, x];
-  if (q === 2) return [-x, -y];
-  if (q === 3) return [y, -x];
-  return [x, y];
-}
+export { rotate } from './placement.ts';
 
 export interface PlacedObject {
   kind: 'town' | 'decoration';
@@ -283,12 +285,11 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
     const r = radii.get(zone.index) ?? 0;
     const pool = tiles.filter(([a, b]) => dist[a]![b]! > Math.trunc(r / 2));
     const depthGate = Math.trunc((2 * r) / 3);
-    // Three lists, three depths — and holeTiles is in none of them.
-    const footprint: Array<{ offs: readonly Offset[]; minDepth: number }> = [
-      { offs: proto.blockedTiles, minDepth: 1 },
-      { offs: proto.activeTiles, minDepth: 1 },
-      { offs: [proto.possessionMarker], minDepth: 3 },
-    ];
+    // The shared fit's view of the prototype: three lists, holeTiles absent.
+    const foot = {
+      path: '', blocked: proto.blockedTiles, active: proto.activeTiles, marker: proto.possessionMarker,
+    };
+    const fitCtx = { size, grid, border: dist, occupancy: occ, zoneIndex: zone.index, floor: zone.floor };
 
     let retries = 0;
     while (pool.length) {
@@ -309,21 +310,8 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
       const deepEnough = retries >= 100 || (inFrame && dist[na]![nb]! >= depthGate);
       if (!inFrame || !deepEnough) { retries++; continue; } // the tile stays in the pool
 
-      let fits = true;
-      for (const { offs, minDepth } of footprint) {
-        for (const off of offs) {
-          const [dx, dy] = rotate(q, off);
-          const fa = ta + dy;
-          const fb = tb + dx;
-          if (fa < 0 || fa >= size || fb < 0 || fb >= size
-            || grid[fa]![fb] !== zone.index || occ[fa * size + fb] !== 0 || dist[fa]![fb]! < minDepth) {
-            fits = false;
-            break;
-          }
-        }
-        if (!fits) break;
-      }
-      if (!fits) { pool.splice(pick, 1); retries++; continue; } // this tile is done for
+      // `fits` takes map (x, y) — the port's (b, a).
+      if (!fits(fitCtx, foot, [tb, ta], q)) { pool.splice(pick, 1); retries++; continue; } // this tile is done for
 
       const rot = q * HALF_PI;
       const name = mintName(rng);
