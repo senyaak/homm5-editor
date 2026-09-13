@@ -93,6 +93,20 @@ export interface ChainOptions {
    */
   players?: number;
   /**
+   * THE LOBBY'S SLOTS — `gen+0x64` as the operator left it: a race per
+   * player slot (`RACE.*`), `RACE.RANDOM` where the slot said random. The
+   * generator draws a race for every player-start zone regardless, and a
+   * concrete slot WINS over the draw (`load-template.ts`); a console order
+   * has no lobby and an empty vector, so every slot takes its draw.
+   *
+   * A map generated in the GAME records the outcome in `PlayersInfo`, and
+   * feeding that back as concrete slots replays it whichever slots were
+   * concrete: a slot that was random recorded its own draw. `ГСК-025` is
+   * the map that needed this — three lobby slots set by hand, the fourth
+   * random, and the port had drawn all four.
+   */
+  playerRaces?: number[];
+  /**
    * MonsterLevel, 0 weak .. 4 impossible. Defaults to the references' 1
    * (MEDIUM). It multiplies every connection guard, so it is not a label
    * either.
@@ -371,6 +385,7 @@ export function runChain(dir: string, options: ChainOptions = {}): Chain {
   const loaded = loadTemplate(template, {
     twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
     playerCount: made.players, mapSize: size, pointLightZoneRadius: params.pointLightParams.zoneRadius,
+    players: options.playerRaces ? [...options.playerRaces] : undefined,
   }, rng);
   phase('loadTemplate');
   const placed = generateGameZones(size, size,

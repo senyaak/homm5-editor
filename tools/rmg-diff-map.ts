@@ -27,6 +27,7 @@ import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
 import { buildMapFiles, MAP_SIZES } from './rmg-build.ts';
 import { describeOrder, readOrder, unreplayable } from './rmg-order.ts';
 import { runFull } from './rmg-run.ts';
+import { RACE } from '../src/rmg/load-template.ts';
 import { dataDir, gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
@@ -52,6 +53,18 @@ const { seed, guid, mapName, template, size, players, water, monster, undergroun
 console.log(`${archive}`);
 console.log(`  ordered: ${describeOrder(order)}`);
 if (order.extras.races.length) console.log(`  races: ${order.extras.races.join(' ')}`);
+// THE RACES ARE AN INPUT AS WELL AS AN OUTCOME. `PlayersInfo` records what
+// each player slot ended up with, and a slot the LOBBY had set to a concrete
+// race wins over the generator's draw (`ChainOptions.playerRaces`). A console
+// order has no lobby and draws them all, so for the corpus this is a no-op;
+// for a map from the game it is the difference between its towns and
+// somebody else's.
+const TOWN_TO_RACE: Record<string, number> = {
+  TOWN_HEAVEN: RACE.HEAVEN, TOWN_PRESERVE: RACE.PRESERVE, TOWN_ACADEMY: RACE.ACADEMY,
+  TOWN_DUNGEON: RACE.DUNGEON, TOWN_NECROMANCY: RACE.NECROMANCY, TOWN_INFERNO: RACE.INFERNO,
+  TOWN_FORTRESS: RACE.DWARF, TOWN_STRONGHOLD: RACE.STRONGHOLD,
+};
+const playerRaces = order.extras.races.map((r) => TOWN_TO_RACE[r] ?? RACE.RANDOM);
 // SAY IT BEFORE DIFFING. A dialog can set generator inputs the console cannot,
 // and a map carrying one is not a map the port got wrong — it is an order the
 // port was never given. Reporting seventeen red entries for that would send the
@@ -104,6 +117,7 @@ const run = runFull(dir, {
   // asked for player 3's race threw. The order records it; nothing here should
   // be guessing it.
   players,
+  playerRaces,
   seed, template, size, underground, water: water || undefined, monsterStrength,
   resourceMultiplier: order.extras.resourceIndex,
   expMultiplier: order.extras.expIndex,

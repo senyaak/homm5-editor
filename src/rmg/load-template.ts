@@ -36,8 +36,10 @@
 // Named holes: the tie order of the Size sort is exact by construction but
 // no oracle has held a two-floor run to it yet; the concrete-race branch
 // appends a player entry without checking the operator's (nothing shipped
-// exercises it — port copies the reading); who pre-fills the player vector
-// upstream is unread.
+// exercises it — port copies the reading). Who pre-fills the player vector
+// upstream is the LOBBY: a map the game generated with three slots set by
+// hand (`ГСК-025`) came out with those three races and the fourth slot's
+// draw, on the same draw count — the concrete-slot arm above, measured.
 
 import type { RmgRandom } from './random.ts';
 import type { RmgTemplate, RmgZone } from './template.ts';

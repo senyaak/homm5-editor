@@ -7016,3 +7016,16 @@ never ends.
 With both readings in, C is 114 of 114 and B 66 of 66, and every earlier map
 is being re-run against the port, since a town gate and a candidate list reach
 every order.
+
+**13.09, LATER — THE LOBBY'S RACES ARE AN INPUT, and a map records them.**
+`ГСК-025`, generated in the game with three player slots set by hand
+(Inferno, Necromancy, Preserve) and the fourth random, came out with those
+three and a drawn Fortress; the port had drawn all four, and the first town's
+name still agreed — the draws are spent either way, the concrete slot wins.
+`load-template.ts` had held that arm since the reading; the chain had never
+filled the vector. `ChainOptions.playerRaces` is the lobby's vector now, and
+`rmg-diff-map` hands the map's `PlayersInfo` back as it: a random slot
+recorded its own draw, so the outcome replays whichever slots were set.
+Console orders have no lobby and change nothing. What the temp world's
+PLAYERS carry for random towns is still another source — `ГСК-019`'s
+`PlayersInfo` says Necromancy for player 1 and its town stood as Fortress.
