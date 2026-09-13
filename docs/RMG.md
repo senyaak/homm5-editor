@@ -7045,3 +7045,36 @@ comes from — the profile's last game is the guess — is unread, and for a map
 made by the editor's button it is cosmetic: the game's own world decides an
 owned random town's race when it loads the map, and the file carries only
 the minimap.
+
+**13.09, NIGHT — THE WORLD'S PLAYER RACES, READ.** Not the lobby, not the
+map: a draw. The reading went through the objects rather than the writers —
+`0xB553A0`'s owner arm is `CWorld::GetPlayer` (vt+0x68, `0xA535E0`, a scan
+of the pointer vector at world+0x24 for the entry whose vt+0x2C is the id)
+and that entry's vt+0x34; the entries are `CPlayer` by its second vtable
+(`0xFC515C`, the subobject at +0x1C), vt+0x2C `[this+0x78]`, vt+0x34
+`[this+0x17C]` — the race at CPlayer+0x198, written by the constructor
+`0xC02BA0` from its fourth argument. Its three factories pass what THEIR
+callers hand them, and the return address of the one that matters landed in
+`.data` in the game; so the probe moved to the EDITOR, where the same class
+lives at `0x84D270` / `0x84DA20` and the batch can order random towns
+(`-pokeb 149 1`) without a screen. There the factory's caller is `0x8450E0`,
+the builder of the world's players, `(this, setup)`: it walks the setup's
+`CPlayersStartInfo` (vt+0x1C count, vt+0x20 item, 0x8C bytes an item: +0
+kind, +4 number, +0x18 race, +0x50/+0x54 the races a RANDOM slot may take)
+and hands each slot's race to the factory as it stands — unless it is 1,
+RANDOM, when it takes `list[draw % count]` from a `CRMVersionTracker`
+(`0x9A3F00` makes it; vt+0x28 seeds it with `setup+0x30`; vt+0x20 is two
+MSVC LCG steps and `(s2 << 6) ^ (s1 >> 7)`, `0x9A36D0`).
+
+The probe's readings: every slot at 1 with the list [3 8 7 4 6 5 9 10],
+`setup+0x30` = 0, and the factory then got 9 and 3. From seed 0 the tracker
+reads 5, 9, 3, 5, 6, 3, 8, 3 — one draw is spent before the players
+(`0xD57C90` runs on the tracker between the seeding and the loop; unread,
+the count is the measurement) — so the players are Dwarf, Heaven, Academy,
+Dungeon, Heaven: the "constant" nine maps had shown, player 3's Academy
+where the fitted table had guessed Heaven. `worldPlayerRaces(n)` in
+`world-race.ts` is the rule now, `test-rmg-world-race` pins it, and all six
+random-towns game maps and the batch's probe map are byte-identical with
+it. `randomTownPlayerRaces` stays as an override. The lobby's own slot
+choices never reach this builder (`ГСК-029`) — why, is a question about the
+lobby, not the generator.

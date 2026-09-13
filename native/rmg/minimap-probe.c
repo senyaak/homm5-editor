@@ -909,6 +909,104 @@ static void __fastcall mm_active_hook(void *world, void *edx, void *obj) {
  * own word in the config (`mask`) and logs every write the process makes. A
  * launch that only generates makes no others.
  */
+#define MM_ED_PLAYER_CTOR_RVA 0x44d270u
+static const BYTE MM_ED_PLAYER_CTOR_HEAD[] = { 0x83, 0xec, 0x10, 0x53, 0x33, 0xdb };
+static void *__fastcall mm_player_ctor_hook(void *self, void *edx, void *world, int id, int a1, int race,
+                                            int a3, int a4, void *names, int flag);
+typedef void *(__fastcall *MmPlayerCtorFn0)(void *self, void *edx, void *world, int id, int a1, int race,
+                                             int a3, int a4, void *names, int flag);
+static MmPlayerCtorFn0 g_mmPlayerCtorOrig;
+/**
+ * The FACTORY above the constructor — 0x84DA20 in the editor, 0xC01940 in the
+ * game: `(world, id)` in ecx/edx, five stack arguments (a1, race, a3, a4,
+ * names), `ret 14h`, returns the player's interface subobject (`+0x1C`). The
+ * constructor's return address only ever names this factory; the factory's
+ * names the flow that decided the race, and it has sixteen call sites in
+ * the editor and fourteen in the game.
+ */
+#define MM_ED_PLAYER_FACTORY_RVA 0x44da20u
+static const BYTE MM_ED_PLAYER_FACTORY_HEAD[] = { 0x56, 0x8b, 0xf2, 0x83, 0xfe, 0x09 }; /* push esi; mov esi,edx; cmp esi,9 */
+#define MM_GAME_PLAYER_FACTORY_RVA 0x801940u
+static const BYTE MM_GAME_PLAYER_FACTORY_HEAD[] = { 0x56, 0x8b, 0xf2, 0x57, 0x8b, 0xf9 }; /* push esi; mov esi,edx; push edi; mov edi,ecx */
+typedef void *(__fastcall *MmPlayerFactoryFn)(void *world, int id, int a1, int race, int a3, int a4, void *names);
+static MmPlayerFactoryFn g_mmPlayerFactoryOrig;
+
+static void *__fastcall mm_player_factory_hook(void *world, int id, int a1, int race, int a3, int a4, void *names) {
+  int vals[7];
+  void *r = g_mmPlayerFactoryOrig(world, id, a1, race, a3, a4, names);
+  vals[0] = (int)(size_t)world;
+  vals[1] = id;
+  vals[2] = a1;
+  vals[3] = race;
+  vals[4] = a3;
+  vals[5] = a4;
+  vals[6] = (int)(size_t)((void **)__builtin_frame_address(0))[1];
+  mm_log_ints("rt pfactory w/id/a1/race/a3/a4/ret ", vals, 7);
+  return r;
+}
+
+/**
+ * The builder of the world's players — 0x8450E0 in the editor: `(this, setup)`
+ * in ecx/edx, one stack argument, `ret 4`. Read out of it: the setup's `[edx]`
+ * is a `CPlayersStartInfo` (vt+0x1C count, vt+0x20 item, items 0x8C bytes:
+ * +0 kind — 3 is "no player" —, +4 number, +0x18 race, +0x21 a flag, +0x50/
+ * +0x54 the vector of races a RANDOM slot may take); a slot's race is taken
+ * as it stands unless it is 1, RANDOM, in which case one of the +0x50 list is
+ * drawn by the generator at `[esp+3Ch]`. So the state that decides the owned
+ * random towns' races is these items, and this hook logs every one of them
+ * before the builder runs, with the builder's own return address.
+ */
+#define MM_ED_WPLAYERS_RVA 0x4450e0u
+static const BYTE MM_ED_WPLAYERS_HEAD[] = { 0x81, 0xec, 0xa8, 0x00, 0x00, 0x00 }; /* sub esp,0A8h */
+typedef int(__fastcall *MmWPlayersFn)(void *self, void *setup, int arg);
+static MmWPlayersFn g_mmWPlayersOrig;
+
+static int __fastcall mm_wplayers_hook(void *self, void *setup, int arg) {
+  int hv[3];
+  hv[0] = (int)(size_t)self;
+  hv[1] = (int)(size_t)setup;
+  hv[2] = (int)(size_t)((void **)__builtin_frame_address(0))[1];
+  mm_log_ints("rt wplayers self/setup/ret ", hv, 3);
+  if (rmg_readable(setup, 0x40)) {
+    /* The draw for a RANDOM slot comes from a CRMVersionTracker (0x9A3F00
+     * makes one) seeded with setup+0x30 — vt+0x28 stores the seed at +0x64,
+     * vt+0x20 is two MSVC LCG steps and `(s2 << 6) ^ (s1 >> 7)`. */
+    mm_log_ints("rt wplayers setup dwords ", (const int *)setup, 16);
+  }
+  if (rmg_readable(setup, 4)) {
+    const char *info = *(const char *const *)setup;
+    if (info && rmg_readable(info, 0x18)) {
+      void **vt = *(void ***)info;
+      int count = rmg_readable(vt, 0x24) ? ((int(__fastcall *)(const void *, void *))vt[0x1c / 4])(info, NULL) : -1;
+      int i;
+      int cv[2];
+      cv[0] = (int)(size_t)vt;
+      cv[1] = count;
+      mm_log_ints("rt wplayers info vt/count ", cv, 2);
+      for (i = 0; i >= 0 && i < count && i < 16; i++) {
+        const char *it = ((const char *(__fastcall *)(const void *, void *, int))vt[0x20 / 4])(info, NULL, i);
+        int iv[8];
+        const int *lb, *le;
+        if (!it || !rmg_readable(it, 0x8c)) continue;
+        iv[0] = i;
+        iv[1] = *(const int *)(it + 0);
+        iv[2] = *(const int *)(it + 4);
+        iv[3] = *(const int *)(it + 0x18);
+        iv[4] = *(const int *)(it + 0x1c);
+        iv[5] = *(const unsigned char *)(it + 0x21);
+        iv[6] = *(const int *)(it + 0x8);
+        iv[7] = *(const int *)(it + 0xc);
+        mm_log_ints("rt wplayers item i/kind/num/race/+1c/+21/+8/+c ", iv, 8);
+        lb = *(const int *const *)(it + 0x50);
+        le = *(const int *const *)(it + 0x54);
+        if (lb && le && le > lb && le - lb <= 16 && rmg_readable(lb, (unsigned)((le - lb) * 4)))
+          mm_log_ints("rt wplayers item races ", lb, (int)(le - lb));
+      }
+    }
+  }
+  return g_mmWPlayersOrig(self, setup, arg);
+}
+
 static int install_mask_probe(void) {
   g_mmVetoVa = MM_ED_VETO_VA;
   g_mmRegOrig = (MmRegFn)detour(MM_ED_REG_RVA, MM_ED_REG_HEAD, sizeof(MM_ED_REG_HEAD),
@@ -917,6 +1015,14 @@ static int install_mask_probe(void) {
                                     &mm_blocked_hook, "blocked list stamp");
   g_mmActiveOrig = (MmRegFn)detour(MM_ED_ACTIVE_RVA, MM_ED_STAMP_HEAD, sizeof(MM_ED_STAMP_HEAD),
                                    &mm_active_hook, "active list stamp");
+  g_mmPlayerCtorOrig = (MmPlayerCtorFn0)detour(MM_ED_PLAYER_CTOR_RVA, MM_ED_PLAYER_CTOR_HEAD,
+                                               sizeof(MM_ED_PLAYER_CTOR_HEAD), &mm_player_ctor_hook,
+                                               "player constructor");
+  g_mmPlayerFactoryOrig = (MmPlayerFactoryFn)detour(MM_ED_PLAYER_FACTORY_RVA, MM_ED_PLAYER_FACTORY_HEAD,
+                                                    sizeof(MM_ED_PLAYER_FACTORY_HEAD), &mm_player_factory_hook,
+                                                    "player factory");
+  g_mmWPlayersOrig = (MmWPlayersFn)detour(MM_ED_WPLAYERS_RVA, MM_ED_WPLAYERS_HEAD, sizeof(MM_ED_WPLAYERS_HEAD),
+                                          &mm_wplayers_hook, "world players builder");
   return g_mmRegOrig && g_mmBlockedOrig && g_mmActiveOrig;
 }
 
@@ -1004,6 +1110,7 @@ static MmRaceFn g_mmRaceOrig;
 static MmSeedVecFn g_mmSeedVecOrig;
 static MmSeededFn g_mmSeededOrig;
 static int g_mmWorldDumped;
+static void mm_log_world_players(const void *world);
 
 static int __fastcall mm_race_hook(void *world, void *record, void *arg) {
   int race = g_mmRaceOrig(world, record, arg);
@@ -1024,6 +1131,7 @@ static int __fastcall mm_race_hook(void *world, void *record, void *arg) {
     more[1] = *(const int *)((const char *)record + 0x11c);
     more[2] = (int)(size_t)world;
     mm_log_ints("rt owner/rndsource/world ", more, 3);
+    if (more[0]) mm_log_world_players(world);
   }
   if (rmg_readable((const char *)record + 0x124 + 0x14, 8)) {
     const char *lb = *(const char *const *)((const char *)record + 0x124 + 0x14);
@@ -1113,12 +1221,129 @@ static int __fastcall mm_seeded_hook(unsigned seed, int lo, int hi) {
   return r;
 }
 
+/**
+ * WHERE THE WORLD'S PLAYERS GET THEIR RACE — the one input of the random
+ * towns the record does not hold. `0xB553A0`'s owner arm is
+ * `world->GetPlayer(id)` (`CWorld` vt+0x68, 0xA535E0: a scan of the pointer
+ * vector at world+0x24 for the entry whose vt+0x2C says `id`) and then that
+ * entry's vt+0x34. The entries are `CPlayer` (RTTI `.?AVCPlayer@NWorld@@`)
+ * by their SECOND vtable, 0xFC515C at +0x1C — vt+0x2C is `[this+0x78]`
+ * (0x8F46A0, the id) and vt+0x34 is `[this+0x17C]` (0xBB1B80, the race) —
+ * so the race lives at CPlayer+0x198, and the constructor 0xC02BA0 writes it
+ * from its fourth stack argument (`mov [ebx+198h],eax` at 0xC02E76 with
+ * `eax = [esp+2Ch]`). Three factories call the constructor: 0xC01940 with a
+ * literal 3 (two combat test worlds), 0xC019B0 with 3, and 0xC01A70 with 2 —
+ * NO_TYPE, the map-loading world builder 0xB90140 — after which SOMETHING
+ * writes the race the resolver later reads. Nine random-towns maps, two
+ * sessions and three different lobbies gave the same races, so it is neither
+ * the lobby's slots nor the map's PlayersInfo.
+ *
+ * Two hooks answer it from the running game: the constructor logs every
+ * player it makes — id, the race argument, and the return address, which
+ * names the factory and through it the flow — and the race resolver, on an
+ * owned record, walks the world's vector and logs every player's id and race
+ * as they stand at that moment, plus the two wide strings at CPlayer+0x170
+ * and +0x17C (the constructor copies them from its name argument), narrowed
+ * to ASCII: whose players these are is written in their names.
+ */
+/* The EDITOR's constructor is 0x84D270 (found the same way: the second
+ * vtable 0x1127448 is stored at 0x84D319), called by the same factory shape
+ * (0x84DA20, `add eax,1Ch`) with the same eight arguments. Its head is
+ * `sub esp,10h; push ebx; xor ebx,ebx` — six bytes, three instructions. */
+#define MM_GAME_PLAYER_CTOR_RVA 0x802ba0u
+static const BYTE MM_GAME_PLAYER_CTOR_HEAD[] = { 0x83, 0xec, 0x0c, 0x83, 0x7c, 0x24, 0x2c, 0x00 }; /* sub esp,0Ch; cmp dword ptr [esp+2Ch],0 */
+
+static void mm_log_wide(const char *prefix, const void *vec) {
+  const wchar_t *b, *e;
+  char text[80];
+  int n, i;
+  if (!rmg_readable(vec, 8)) return;
+  b = *(const wchar_t *const *)vec;
+  e = *(const wchar_t *const *)((const char *)vec + 4);
+  n = (int)(e - b);
+  if (!b || n <= 0 || n >= 64 || !rmg_readable(b, (unsigned)n * 2)) return;
+  for (i = 0; i < n; i++) text[i] = (b[i] < 0x80) ? (char)b[i] : '?';
+  text[n] = 0;
+  log_text(prefix, text);
+}
+
+static void *__fastcall mm_player_ctor_hook(void *self, void *edx, void *world, int id, int a1, int race,
+                                            int a3, int a4, void *names, int flag) {
+  int vals[7];
+  void *r = g_mmPlayerCtorOrig(self, edx, world, id, a1, race, a3, a4, names, flag);
+  vals[0] = (int)(size_t)world;
+  vals[1] = id;
+  vals[2] = a1;
+  vals[3] = race;
+  vals[4] = a3;
+  vals[5] = a4;
+  /* The frame pointer is forced by asking for it, and the return address
+   * sits one word above it; __builtin_return_address(0) came back with a
+   * .data address here, which is nobody's call site. */
+  vals[6] = (int)(size_t)((void **)__builtin_frame_address(0))[1];
+  mm_log_ints("rt pctor w/id/a1/race/a3/a4/ret ", vals, 7);
+  {
+    /* The return address is in .data twice over — the same two values in two
+     * runs and by two readings — so the call site is code that lives there
+     * at run time. Dump what is around it, and walk the frame chain up. */
+    const int *code = (const int *)(vals[6] - 0x40);
+    void **fp = (void **)__builtin_frame_address(0);
+    int row, k, dv[9], chain[6], n = 0;
+    if (rmg_readable(code, 0x60)) {
+      for (row = 0; row < 3; row++) {
+        dv[0] = vals[6] - 0x40 + row * 32;
+        for (k = 0; k < 8; k++) dv[1 + k] = code[row * 8 + k];
+        mm_log_ints("rt pctor code ", dv, 9);
+      }
+    }
+    while (n < 6 && fp && rmg_readable(fp, 8) && fp[0] > (void *)fp) {
+      fp = (void **)fp[0];
+      if (!rmg_readable(fp, 8)) break;
+      chain[n++] = (int)(size_t)fp[1];
+    }
+    if (n) mm_log_ints("rt pctor frames ", chain, n);
+  }
+  if (rmg_readable(names, 0x18)) {
+    mm_log_wide("rt pctor name1 ", names);
+    mm_log_wide("rt pctor name2 ", (const char *)names + 0xC);
+  }
+  return r;
+}
+
+static void mm_log_world_players(const void *world) {
+  const char *const *b, *const *e;
+  int i;
+  if (!rmg_readable((const char *)world + 0x24, 8)) return;
+  b = *(const char *const *const *)((const char *)world + 0x24);
+  e = *(const char *const *const *)((const char *)world + 0x28);
+  if (!b || !e || e < b || e - b > 16 || !rmg_readable(b, (unsigned)((e - b) * 4))) return;
+  for (i = 0; i < e - b; i++) {
+    const char *sub = b[i];
+    int pv[4];
+    if (!sub || !rmg_readable(sub, 0x180)) continue;
+    pv[0] = i;
+    pv[1] = *(const int *)(sub + 0x78);
+    pv[2] = *(const int *)(sub + 0x17c);
+    pv[3] = (int)(size_t)*(const void *const *)sub;
+    mm_log_ints("rt wplayer idx/id/race/vt ", pv, 4);
+    /* The subobject sits at CPlayer+0x1C; the names are at CPlayer+0x170 and +0x17C. */
+    mm_log_wide("rt world player name1 ", sub - 0x1c + 0x170);
+    mm_log_wide("rt world player name2 ", sub - 0x1c + 0x17c);
+  }
+}
+
 static int install_mask_probe_game(void) {
   g_mmVetoVa = MM_GAME_VETO_VA;
   g_mmRaceOrig = (MmRaceFn)detour_relocated(MM_GAME_RACE_RVA, MM_GAME_RACE_HEAD, MM_GAME_RACE_SKIP,
                                             sizeof(MM_GAME_RACE_HEAD), &mm_race_hook, "random town race");
   g_mmSeedVecOrig = (MmSeedVecFn)detour(MM_GAME_SEEDVEC_RVA, MM_GAME_SEEDVEC_HEAD, sizeof(MM_GAME_SEEDVEC_HEAD),
                                         &mm_seedvec_hook, "random town seed vector");
+  g_mmPlayerCtorOrig = (MmPlayerCtorFn0)detour(MM_GAME_PLAYER_CTOR_RVA, MM_GAME_PLAYER_CTOR_HEAD,
+                                              sizeof(MM_GAME_PLAYER_CTOR_HEAD), &mm_player_ctor_hook,
+                                              "player constructor");
+  g_mmPlayerFactoryOrig = (MmPlayerFactoryFn)detour(MM_GAME_PLAYER_FACTORY_RVA, MM_GAME_PLAYER_FACTORY_HEAD,
+                                                    sizeof(MM_GAME_PLAYER_FACTORY_HEAD), &mm_player_factory_hook,
+                                                    "player factory");
   g_mmSeededOrig = (MmSeededFn)detour(MM_GAME_SEEDED_RVA, MM_GAME_SEEDED_HEAD, sizeof(MM_GAME_SEEDED_HEAD),
                                       &mm_seeded_hook, "random town seeded draw");
   g_mmWrandOrig = (MmWrandFn)detour(MM_GAME_WRAND_RVA, MM_GAME_WRAND_HEAD, sizeof(MM_GAME_WRAND_HEAD),

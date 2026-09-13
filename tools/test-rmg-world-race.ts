@@ -8,7 +8,7 @@
 import { RACE } from '../src/rmg/load-template.ts';
 import {
   adler32, drawnDwellingRace, drawnTownRace, dwellingWorldRace, nameHash, seededBetween, townWorldRace,
-  WORLD_SEED_FIRST,
+  WORLD_SEED_FIRST, makeVersionTracker, worldPlayerRaces,
 } from '../src/rmg/world-race.ts';
 
 let failed = 0;
@@ -45,6 +45,21 @@ for (const [name, x, y, want] of [
   ['item_-1337514376', 117, 55, RACE.DUNGEON], ['item_2057967587', 101, 29, RACE.PRESERVE],
   ['item_104202003', 48, 56, RACE.INFERNO], ['item_1506628804', 111, 93, RACE.PRESERVE],
 ] as const) check(`neutral town ${name} at ${x},${y}`, drawnTownRace(name, x, y), want);
+
+// THE WORLD'S PLAYERS' RACES — the probe on the editor's 0x8450E0 (13.09):
+// every slot RANDOM, the list [3 8 7 4 6 5 9 10], a CRMVersionTracker
+// seeded with setup+0x30 = 0, one draw spent before the players, and the
+// factory then got 9 and 3 (`rt pfactory ... race`); the game's own
+// constructor showed 9, 3, 5 on a three-player map and the ГСК maps' minimaps
+// stand Dungeon for player 4 and a Heaven-class race for player 5.
+{
+  const first = makeVersionTracker(0)();
+  check("the tracker's first draw from seed 0 lands on index 5", first % 8, 5);
+  const races = worldPlayerRaces(5);
+  check('players 1..5 from seed 0, first draw spent',
+    [1, 2, 3, 4, 5].map((p) => races.get(p)).join(' '),
+    [RACE.DWARF, RACE.HEAVEN, RACE.ACADEMY, RACE.DUNGEON, RACE.HEAVEN].join(' '));
+}
 
 // Owned towns take the player's race, no draw (`rt race` with owner 1 -> 9, 2 -> 3).
 check('player 1 town', townWorldRace({ name: 'item_-549808217', x: 60, y: 103, playerNo: 1 }), RACE.DWARF);

@@ -45,14 +45,13 @@
 // two maps disagree, because the name and the tile are in the seed. Which is
 // exactly what the fits had shown before the code was read.
 //
-// THE PLAYERS' RACES are the part the record does not hold either: in the
-// worlds measured so far player 1 is Fortress, player 2 Heaven and player 4
-// Dungeon on every map, players 3 and 5 one of the six the picture cannot
-// tell apart. Where they come from is not read — they are an INPUT here
-// (`WorldRaceInput.playerRaces`), with the measured ones as the default.
-// NOT the lobby's slots: `ГСК-029` was generated with the lobby at Heaven /
-// Preserve / Academy / Dungeon / Necromancy and its minimap is the measured
-// races', Preserve and Necromancy being two the picture would have shown.
+// THE PLAYERS' RACES are the part the record does not hold either, and they
+// are READ now — see `worldPlayerRaces`: every slot of the builder's start
+// info is RANDOM, and a RANDOM slot draws from an eight-entry list with a
+// generator seeded with 0, which is why nine game maps, two sessions and
+// three lobbies all stood their owned random towns as Dwarf, Heaven,
+// Academy, Dungeon, Heaven. `WorldRaceInput.playerRaces` stays as an
+// override for a world whose slots were not that.
 
 import { RACE } from './load-template.ts';
 
@@ -112,13 +111,53 @@ export function drawnDwellingRace(name: string, first = WORLD_SEED_FIRST): numbe
 }
 
 /**
- * The players' races in the world, 1-based slot — measured, see the header.
- * Players 3 and 5 are Heaven only because the picture cannot tell the six
- * apart; the other slots have never had a random town on a measured map.
+ * The list a RANDOM player slot draws from — `CPlayersStartInfo` item +0x50,
+ * eight entries in this order on every slot the probe saw.
  */
-export const MEASURED_PLAYER_RACES: ReadonlyMap<number, number> = new Map([
-  [1, RACE.DWARF], [2, RACE.HEAVEN], [3, RACE.HEAVEN], [4, RACE.DUNGEON], [5, RACE.HEAVEN],
-]);
+export const SLOT_RACE_LIST: readonly number[] = [
+  RACE.HEAVEN, RACE.INFERNO, RACE.NECROMANCY, RACE.PRESERVE, RACE.DUNGEON, RACE.ACADEMY, RACE.DWARF, RACE.STRONGHOLD,
+];
+
+/**
+ * One draw of `NWorld::CRMVersionTracker` — the world builder's generator
+ * (`0x9A36D0` in the editor): two MSVC LCG steps over the state at +0x64,
+ * and the result is `(s2 << 6) ^ (s1 >> 7)`, taken unsigned by the caller's
+ * `div`. `vt+0x28` stores the seed.
+ */
+export function makeVersionTracker(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    const s1 = (Math.imul(s, 0x343FD) + 0x269EC3) | 0;
+    const s2 = (Math.imul(s1, 0x343FD) + 0x269EC3) | 0;
+    s = s2;
+    return ((s2 << 6) ^ (s1 >> 7)) >>> 0;
+  };
+}
+
+/**
+ * THE PLAYERS' RACES IN THE WORLD, 1-based slot — read, at last, out of the
+ * editor with the probe on `0x8450E0`, the builder of the world's players
+ * (`(this, setup)`, one stack argument): its `CPlayersStartInfo` held every
+ * slot at 1, RANDOM, with the eight-entry list above, and a RANDOM slot
+ * takes `list[draw % 8]` from a `CRMVersionTracker` seeded with `setup+0x30`
+ * — which was 0. The first draw of that sequence is spent before the
+ * players (between the seeding at 0x845172 and the loop, `0xD57C90` runs on
+ * the tracker — unread, but the count is measured): from seed 0 the
+ * sequence reads 5, 9, 3, 5, 6, 3, 8, 3 and the players took 9, 3, 5, 6, 3
+ * — Dwarf, Heaven, Academy, Dungeon, Heaven, the "constant" races nine
+ * game maps and three lobbies had shown. The lobby's own slots are NOT what
+ * the builder sees (`ГСК-029`); this is.
+ */
+export function worldPlayerRaces(players: number): ReadonlyMap<number, number> {
+  const draw = makeVersionTracker(0);
+  draw();
+  const out = new Map<number, number>();
+  for (let slot = 1; slot <= players; slot++) out.set(slot, SLOT_RACE_LIST[draw() % 8]!);
+  return out;
+}
+
+/** The first eight, for the callers that do not know their count. */
+export const MEASURED_PLAYER_RACES: ReadonlyMap<number, number> = worldPlayerRaces(8);
 
 export interface WorldRaceInput {
   /** The town's minted name and record position, and its owner (0 neutral). */
