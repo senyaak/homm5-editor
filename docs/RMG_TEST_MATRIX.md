@@ -137,6 +137,10 @@ is meant to replace with something systematic:
   oracle's log for each are in `_tmp/matrix/{C,B}/`.
 
 So every block has been run in full. What the runs found is in `RMG.md`
-under the dates; the matrix has no red cell left, and the next divergence
-will come from an order it does not hold — a seed it did not draw, water on a
-two-level map, three or more players with random towns on.
+under the dates; the matrix has no red cell left. The combinations it does
+not hold are held by the game-built corpus instead: water on a two-level map
+(`ГСК-006`, `007`, `021`, `031`), three and five players with random towns on
+(`ГСК-019`, `022`, `023`, `029`), the Grail with water (`ГСК-024`), and all of
+it at once — `ГСК-022` is large, two-level, watered, five players, random
+towns and the Grail, byte-identical. What is left for the next divergence is
+a seed nobody has drawn.
