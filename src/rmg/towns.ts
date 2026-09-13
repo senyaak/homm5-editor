@@ -287,7 +287,7 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
     const depthGate = Math.trunc((2 * r) / 3);
     // The shared fit's view of the prototype: three lists, holeTiles absent.
     const foot = {
-      path: '', blocked: proto.blockedTiles, active: proto.activeTiles, marker: proto.possessionMarker,
+      path: '', blocked: proto.blockedTiles, active: proto.activeTiles, passable: [], marker: proto.possessionMarker,
     };
     const fitCtx = { size, grid, border: dist, occupancy: occ, zoneIndex: zone.index, floor: zone.floor };
 

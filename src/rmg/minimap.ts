@@ -39,30 +39,24 @@
 // THE DARKENING MASK is the passability plane, the tiles the map's objects
 // occupy and the tiles big water covers — see [`minimap-mask.ts`](minimap-mask.ts).
 //
-// THE WATER EXEMPTION, and what it actually spares. The pass was ported with a
-// second condition — `and not 0x9EC3C0(tx, ty)`, the shipyard's water test,
-// which on a generated surface is the river half-grid's centre cell above 0x8C.
-// The reference cannot test it: its river plane is empty on all 9,216 tiles, so
-// the term is a constant false there and any value of it keeps the file
-// byte-identical. Maps that DO test it show the term as written is wrong in one
-// direction and right in the other, and the difference is BIG WATER:
+// THE WATER EXEMPTION is `0x9EC3C0`, the terrain's "is this tile water", and
+// the halving site reads its answer the plain way round: bit set AND the
+// predicate FALSE halves (`0xDD0784` calls it, `jne` past the shifts on a
+// non-zero `al`). `waterTile` below is the predicate, every branch read; the
+// rule it held before that reading — "spared when wet by the river half-grid
+// and NOT under big water" — was fitted to four maps and turned out to be the
+// live arm exactly, with the big-water layer forcing FALSE, as guessed.
 //
-//   - a lava LAKE and a `-water 2` sea are `TT_BIG_WATER`, their river cells are
-//     over the threshold, and the engine halves every one of those tiles;
-//   - a `TT_SMALL_WATER` lake has river cells over the threshold too, and the
-//     engine halves NONE of them.
-//
-// So what is spared is a wet tile that big water does not cover. Four maps agree
-// on that rule and on no other tried against them — the two above, the reference
-// where it cannot fire, and a two-level map whose surface lake is small water.
-// It is FITTED to those four, not read out of `0x9EC3C0`: what the executable
-// most likely says is that the layer arm the disassembly notes inside that
-// predicate returns "not water" rather than "water", which nobody checked
-// because the flags were thought to make it unreachable.
+// The reference cannot test it: its river plane is empty on all 9,216 tiles.
+// Maps that do show both halves — a lava LAKE and a `-water 2` sea are
+// `TT_BIG_WATER` and the engine halves every one of their tiles; a
+// `TT_SMALL_WATER` lake has river cells over the threshold too and the engine
+// halves NONE of them.
 
 import type { EngineSine } from '../exe/sine-table.ts';
-import { mul24, parse24, parse24Right } from '../exe/x87.ts';
+import { mul24, parse24, parse53 } from '../exe/x87.ts';
 import { LANCZOS3_SUPPORT, lanczos3, resampleFiltered, type Bitmap } from './resample.ts';
+import { bigWaterCovers } from './minimap-mask.ts';
 import type { TerrainLayer } from './terrain.ts';
 
 /** The side of the picture the `.dds` carries, both axes. */
@@ -136,6 +130,66 @@ export function tileDocument(
   return dominant(layers, dim, tx, ty, false).layer;
 }
 
+/** The planes `0x9EC3C0` reads, all of them the floor's own. */
+export interface WaterTileInput {
+  /** The map's TileX; every plane below is on `(side + 1)^2` vertices. */
+  side: number;
+  /** The texture layers — only the `TT_BIG_WATER` ones are looked at. */
+  layers: readonly TerrainLayer[];
+  /**
+   * The ground flags on the vertex grid, `terrain[+0x28]`. Never 0 on a
+   * generated floor (the constructor's 16, the carve's 32/26/21/16), so its
+   * arm cannot fire here; it is kept because the predicate has it.
+   */
+  flags?: Uint8Array;
+  /**
+   * The river half-grid, `terrain[+0x48]`, `(2 * side + 1)` wide. An
+   * underground floor has none of its own — the generator stamps only the
+   * surface's — so the field is left out there and every cell reads 0.
+   */
+  river?: { w: number; data: Uint8Array };
+}
+
+/**
+ * `0x9EC3C0` — is this tile WATER? READ, all four arms (13.09.2026):
+ *
+ *   xc = clamp(x, 0, W - 2), yc = clamp(y, 0, H - 2)       ; W, H = the vertex dims
+ *   if flags[yc][xc], [yc][xc+1], [yc+1][xc], [yc+1][xc+1] all 0:  -> tail
+ *   elif 0x9EBAE0(xc, yc):                    return false   ; big water covers a corner
+ *   elif river[2*yc+1][2*xc+1] <= 0x8C:       return false   ; unsigned, STRICTLY above goes on
+ *   tail: if the float plane at +0x58 covers the tile and reads > 0.0f: return false
+ *   return true
+ *
+ * The float plane is the sea's (`0x9EC480` reads it the same way, against the
+ * same zero); a generated map never digs one and the arm never fires — the
+ * spared tiles of three lake maps are the measurement, each of them ≤ 0 there.
+ * The flags arm is dead the same way, and both are written here because the
+ * port carries the planes and the transcript should say what the executable
+ * says, not what a generated floor happens to make of it.
+ *
+ * The shipyard's ring asks the same question (`0xCB19C9`) — see `shipTile` in
+ * `shipyards.ts`, which keeps only the river arm: when the shipyards are placed
+ * no texture layer has been painted yet, so the big-water arm has nothing to
+ * read there, and 44 sea maps place theirs byte-identically without it.
+ */
+export function waterTile(input: WaterTileInput, x: number, y: number): boolean {
+  const dim = input.side + 1;
+  const clamp = (v: number): number => (v < 0 ? 0 : v > dim - 2 ? dim - 2 : v);
+  const xc = clamp(x), yc = clamp(y);
+  const flags = input.flags;
+  const cornersZero = flags !== undefined
+    && flags[yc * dim + xc] === 0 && flags[yc * dim + xc + 1] === 0
+    && flags[(yc + 1) * dim + xc] === 0 && flags[(yc + 1) * dim + xc + 1] === 0;
+  if (!cornersZero) {
+    if (bigWaterCovers(input.layers, dim, xc, yc)) return false;
+    const river = input.river;
+    const cell = river ? river.data[(2 * yc + 1) * river.w + (2 * xc + 1)]! : 0;
+    if (cell <= 0x8c) return false;
+  }
+  // The float plane's arm: a generated floor has no sea, so nothing to test.
+  return true;
+}
+
 /** What one floor's terrain layer is drawn from. */
 export interface MinimapFloor {
   /** The map's TileX — `desc[+0x4C]`. */
@@ -149,8 +203,9 @@ export interface MinimapFloor {
   /** Is this tile darkened? The mask of [`minimap-mask.ts`](minimap-mask.ts). */
   masked: (tx: number, ty: number) => boolean;
   /**
-   * A masked tile the halving spares: wet by the river half-grid and NOT under
-   * big water. See the note above — no map without water needs to pass it.
+   * A masked tile the halving spares — `waterTile` over the floor's planes.
+   * Left out, nothing is spared, which is what an underground floor gets: its
+   * river plane is empty and its flags are never zero.
    */
   spared?: (tx: number, ty: number) => boolean;
   /**
@@ -189,13 +244,14 @@ export function drawTerrainLayer(floor: MinimapFloor): Bitmap {
       const doc = rock ? null : tileDocument(layers, dim, tx, ty);
       if (doc) {
         const [cr, cg, cb] = doc.minimapColor;
-        // BOTH BUILDS READ THE TEXT, and each reads it its own way: the game
-        // digit by digit on its chopping machine (`parse24`), the editor from
-        // the right under nearest (`parse24Right`). The multiply chops either
-        // way — by then the process has its Direct3D device. `String(c)` is
-        // the xdb's decimal again, since the port holds the nearest double of
-        // a short decimal.
-        const parse = floor.gameParse ? parse24 : parse24Right;
+        // BOTH BUILDS READ THE TEXT with the same loop, at different
+        // precisions: the game's SSE build rounds every step to a chopped
+        // single (`parse24`), the editor's x87 build runs at 53 bits and
+        // stores a single once (`parse53`) — see `x87.ts`. The multiply chops
+        // either way; by then the process has its Direct3D device. `String(c)`
+        // is the xdb's decimal again, since the port holds the nearest double
+        // of a short decimal.
+        const parse = floor.gameParse ? parse24 : parse53;
         const byte = (c: number): number => Math.trunc(mul24(parse(String(c)), 255));
         r = byte(cr);
         g = byte(cg);

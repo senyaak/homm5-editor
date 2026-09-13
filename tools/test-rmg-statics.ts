@@ -173,7 +173,7 @@ check('and the reference count, 1325 statics', allStatics.length === 1325, `${al
   for (const px of [8, 17, 26]) for (const py of [8, 17, 26]) occupancy[py * SZ + px] = 2;
   const full5x5: Footprint = {
     path: '/MapObjects/Subterra/Columns/Column_5x5_05.xdb',
-    blocked: [], active: [], marker: [0, 0],
+    blocked: [], active: [], passable: [], marker: [0, 0],
   };
   for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) full5x5.blocked.push([dx, dy]);
   const stub = { below: () => 0, betweenFloat: () => 0 };

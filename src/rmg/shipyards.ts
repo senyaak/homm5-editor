@@ -275,23 +275,20 @@ const SHIP_RING: ReadonlyArray<readonly [number, number, number, number]> = [
  * inner tile is neither water nor a transition. Finding nothing drops the
  * shipyard candidate entirely, so a placed yard always has one.
  *
- * "Water" is `0x9EC3C0`, and on a generated surface it collapses to one
- * test. The predicate first reads the four corner vertices of the GROUND
- * FLAGS plane (`+0x24`, clamped to `[0, dim-2]`): all zero takes an early
- * exit, otherwise it asks whether they DIFFER (`0x9EB9E0`, the same four
- * bytes) and whether a texture layer of the right class covers the vertex
- * (`0x9EBAE0`). A surface floor's flags are the constructor's uniform 16
- * forever — so they are never all zero, never differ, and the layer arm is
- * unreachable. What is left is the river half-grid, sampled at the tile's
- * CENTRE cell (2y+1, 2x+1) and compared against 0x8C — 140.
- *
- * The float plane at `+0x54` guards the tail (`> 0.0` refuses), but its
- * dims gate the read and no generated map allocates it; that arm is
- * untested here and named rather than guessed at. Same for the two flag
- * arms above: they are dead on every floor this port produces, and a
- * dwarven underground — whose flags are the massif carve's byte grid, not
- * a uniform — would be where they wake up. No shipyard has ever been
- * placed there, and none can be: shipyards are water-bordered zones only.
+ * "Water" is `0x9EC3C0`, read whole in `minimap.ts` (`waterTile`): four
+ * ground-flag corners all zero (`+0x28`, clamped to `[0, dim-2]`) takes an
+ * early exit to the tail; otherwise a `TT_BIG_WATER` layer over any corner
+ * (`0x9EBAE0`) answers NO, and so does a river half-grid centre cell
+ * (`+0x48`, `(2y+1, 2x+1)`) at or under 0x8C; the tail refuses when the sea's
+ * float plane (`+0x58`) reads above 0.0. Here the river arm is the whole of
+ * it: the flags are never zero on a floor this port makes, the float plane is
+ * never dug, and the big-water arm — which the minimap DOES see on the same
+ * sea, halving every tile of it — evidently reads nothing at the moment the
+ * shipyards are placed, since 44 sea maps place theirs exactly on the river
+ * alone and every sea tile would fail the ring otherwise. Why it reads
+ * nothing then (the layer's document not yet resolved, most likely — the
+ * walk skips a layer whose `+0x10` is null) is not read; the search's answer
+ * is measured, not derived.
  */
 export function shipTile(
   at: readonly [number, number],

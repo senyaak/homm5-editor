@@ -31,17 +31,16 @@
 // texture, and an ordinary `-water 2` sea — put 8 and 26 tiles outside the
 // plane-and-objects mask, and the engine's own mask dump has every one of them.
 //
-// So FOUR arms speak, and which of them can fire is a fact about the floor:
+// So FIVE kinds speak, and which of them can fire is a fact about the floor:
 // the plane and the objects everywhere, big water wherever a template paints a
-// lake or a sea, and the ground-flag corners on an UNDERGROUND floor, where the
-// flags are the massif carve's bytes rather than the constructor's uniform 16.
-// The border ring and `TT_NONE` stay named and unported, and the RING is now
-// read rather than scored: `0xA4F769` asks the widget itself for the width
-// (`call [eax+68h]`) and the four bounds tests at `0xA4F76C..0xA4F792` use what
-// it returns, so the ring is not a constant to fit and scoring widths 0 to 16
-// against the maps was never going to land. On this path it is inert — every
-// minimap here is byte-identical without it, so whatever `+0x68` answers for
-// the generator's widget leaves no ring.
+// lake or a sea, a river centre wherever there is a lake at all (kind 2, and
+// the halving spares exactly those tiles, so the bit is invisible), and on an
+// UNDERGROUND floor the flags — rock at or over 0x20 (kind 5) and corners that
+// differ (kind 3) — where the flags are the massif carve's bytes rather than
+// the constructor's uniform 16. The BorderSize ring is kind 5 on both floors
+// and outside the drawn picture; the passable-tiles arm (kind 4, CLEAR) has
+// no object to stand on. Every arm of the tile pass is read and written down
+// in `buildMinimapMask`; see its note for the order they are asked in.
 
 import { rotateOffsets } from './heights.ts';
 import type { TerrainLayer } from './terrain.ts';
@@ -62,6 +61,16 @@ export interface MaskObject {
    * takes a blocked one's place in the per-tile descriptor.
    */
   active?: readonly Offset[];
+  /**
+   * Its `passableTiles` (`vt+0xBC`, `obj+0x88`, read from the shared document
+   * at `+0x78` and rotated like the others) — the THIRD list, and the one the
+   * tile pass itself reads: a tile on it is kind 4 and comes out CLEAR. Fifteen
+   * documents in the whole data have one (the bridges, an outpost, the
+   * MagmaShrine), and the generator places none of them: the shrines step
+   * reads a hardcoded table, not the preset's NewShrines (`shrines.ts`). The
+   * arm is here as the transcript, with nothing to stand on.
+   */
+  passable?: readonly Offset[];
   /**
    * Does the veto at `0xA46E80` answer for this object? Then `0xA55C10`
    * registers NEITHER of its lists — see `buildMinimapMask`.
@@ -106,20 +115,40 @@ export interface MaskObject {
  *   CAdvMapHero      +0x2C      CAdvMapCaravan  +0x7C
  *   CAdvMapShip      +0x38      CAdvMapMonster  +0x1C
  *
- * The movers and the pickups, which is a rule and not a list. Everything else —
- * treasure, shrine, building, mine, dwelling, town, teleport, sign, tent, seer
- * hut, sanctuary — answers NO to all seven, and its verdict comes from the
- * eighth: `+0x28` (`0xAD0240` in every class) hands back the virtual base's
- * subobject, and the veto then asks that subobject's `+0x18` and the object
- * behind its `+0x58`. That chain is NOT ported — it is runtime state, not a
- * class — so for those the port still goes by what the maps showed, and the
- * three darkened treasures are the whole of the evidence.
+ * The movers and the pickups, which is a rule and not a list. Everything else
+ * answers NO to all seven, and its verdict comes from the eighth — AND THAT
+ * IS READ TOO (13.09.2026). `+0x28` (`0xAD0240` in every class) is
+ * `AsInteractive()`: it hands back the `IAdvMapInteractive` virtual base, and
+ * the veto asks three more things, none of them state:
+ *
+ *   - `IAdvMapInteractive::+0x18` — a virtual CONSTANT, "visited by stepping
+ *     onto its tile": `mov al,1` (`0x5313E0`) for `CAdvMapTreasure` and
+ *     `CAdvMapArtifact`, `xor al,al` (`0x479800`) for every other class
+ *     (shrine, building, mine, dwelling, town, teleport, sign, sanctuary…),
+ *     pure virtual on the base. TRUE vetoes — which is the whole of why a
+ *     mine's pile is dark: it is a treasure, and the guard beside it was
+ *     never part of the answer.
+ *   - `IAdvMapObject::+0x58` — a dynamic_cast to `IAdvMapTent`, NULL in every
+ *     class but `CAdvMapTent`, whose slot 0 reads `Tent+0xD8` = "is a
+ *     keymaster's tent" (the shared document's `Type == 37`,
+ *     `BUILDING_KEYMASTER_TENT`); a border guard vetoes, a keymaster does not.
+ *   - the object's own slot 0 — a dynamic_cast to `IAdvMapStatic`, NULL for
+ *     everything but `CAdvMapStatic`, whose slot 0 is the placement record's
+ *     `IsRemovable` byte (`Static+0xB4`, copied in `0xC99516`); a removable
+ *     static vetoes.
+ *
+ * The generator places no tent and writes `IsRemovable` false on every static
+ * (4,637 of 4,637 on one map, `emit.ts`), so for a generated map the rule is
+ * the class list below and nothing else. The three darkened treasures that
+ * used to be its only evidence are now one line of one function.
  */
 const VETOED_CLASSES = new Set([
-  // Read: the class answers one of the seven questions itself.
+  // The seven class questions: the class answers one itself. Hero, Ship,
+  // Ghost and Caravan answer too, and the generator places none of them.
   'AdvMapArtifactShared', 'AdvMapMonsterShared',
-  // Measured only: the class answers nothing, and the `+0x28` chain that
-  // decides is unported. Three tiles, all of them a mine's pile.
+  // The eighth: `IAdvMapInteractive::+0x18` is `mov al,1` for this one (and
+  // for the artifact again). A border-guard tent and a removable static would
+  // join it, and the generator makes neither.
   'AdvMapTreasureShared',
 ]);
 
@@ -159,6 +188,26 @@ export interface MaskInput {
    * the field can be left out. Underground they are the massif carve's bytes.
    */
   flags?: Uint8Array;
+  /**
+   * The map's BorderSize (`SAdvMapDesc+0x1DC`, clamped to `[1, side]`): the
+   * ring of tiles inside it is kind 5, set before any tile function runs.
+   * The generator writes 1, and the terrain pass never draws that ring.
+   */
+  border?: number;
+  /**
+   * Is this the underground floor? `terrain[+0x64]`, set from the floor index
+   * by the loader, gates the two flag arms: the rock arm (`0x9EBAC0`, a vertex
+   * at or over 0x20) and the corners arm (`0x9EB9E0`). Off, neither reads.
+   */
+  underground?: boolean;
+  /**
+   * The river half-grid, `(2 * side + 1)` wide — `0x9EC570`'s third test: a
+   * centre cell over 0x8C with no big water over the tile is kind 2, and kind
+   * 2 SETS this mask. Every such tile is one the halving then spares
+   * (`waterTile` asks the same question), so the picture cannot show the bit;
+   * the mask dump can. The underground has no river and leaves it out.
+   */
+  river?: { w: number; data: Uint8Array };
 }
 
 /**
@@ -193,22 +242,62 @@ function cornersAgree(flags: Uint8Array, dim: number, tx: number, ty: number): b
     && flags[(ty + 1) * dim + tx + 1] === a;
 }
 
-/** The darkening mask: one byte a tile, `[y * side + x]`, 1 = darkened. */
+/**
+ * The darkening mask: one byte a tile, `[y * side + x]`, 1 = darkened.
+ *
+ * THE TILE PASS is `0xA4F6D0`, run once per floor by `CWorld`'s `+0x148`
+ * (`0xA55A50`) when the loader has created every object of the document —
+ * so the object arm sees the placed objects, and nothing recomputes it after
+ * a move. Per tile it builds a descriptor (`0xAD0E60`: +0 = 1, +4 = 9,
+ * +8 = kind 1) and `0xAD0F50` SETS this mask when `+0x10 == 1 || kind 3 ||
+ * kind 5 || desc[+0] == 9`, sets it for kind 2 as well, and CLEARS it for
+ * kinds 1 and 4. The arms, in the order the pass asks them (13.09.2026, all
+ * read):
+ *
+ *   kind 4   the tile is on some object's `passableTiles` (the floor keeps a
+ *            vector of exactly the objects whose list is non-empty) —
+ *            `desc[+0]` becomes the winning land layer's Type (`0x9EB690`),
+ *            9 only when no land layer covers the tile at all
+ *   kind 5   the BorderSize ring, or — underground only — the flags vertex at
+ *            the tile's own corner at or over 0x20 (`0x9EBAC0`: rock)
+ *   kind 3   big water over a corner (`0x9EBAE0`), or the passability plane
+ *            reads 0 (`0x9EBCB0`), or — underground — the four flag corners
+ *            differ (`0x9EB9E0`)
+ *   kind 2   `0x9EC570`: the four flag corners all zero, or a river centre
+ *            cell over 0x8C with no big water over the tile
+ *   kind 1   everything else
+ *
+ * The `desc[+0] == 9` case cannot happen on a generated floor: the base layer
+ * is live at 255 on every vertex, so the land walk always has a winner.
+ */
 export function buildMinimapMask(input: MaskInput): Uint8Array {
   const { side, plane, dim, objects } = input;
   const mask = new Uint8Array(side * side);
   const layers = input.layers ?? [];
-  const flags = input.flags;
+  const flags = input.underground ? input.flags : undefined;
+  const border = input.border ?? 1;
+  const river = input.river;
+  // Kind 4's set: every passable tile of every object, in world orientation.
+  const passable = new Uint8Array(side * side);
+  for (const obj of objects) {
+    for (const [dx, dy] of rotateOffsets([...(obj.passable ?? [])], obj.rot)) {
+      const tx = Math.trunc(obj.x + dx);
+      const ty = Math.trunc(obj.y + dy);
+      if (tx >= 0 && ty >= 0 && tx < side && ty < side) passable[ty * side + tx] = 1;
+    }
+  }
   for (let y = 0; y < side; y++) {
     for (let x = 0; x < side; x++) {
-      // `0x9EBCB0`: the plane reads 0 -> kind 3 -> the bit is set.
-      if (plane[y * dim + x] === 0) mask[y * side + x] = 1;
-      else if (bigWaterCovers(layers, dim, x, y)) mask[y * side + x] = 1;
-      // `0x9EB9E0` — do the tile's four ground-flag corners DIFFER? Kind 3
-      // again. Uniform 16 makes it dead on a surface floor; underground the
-      // carve's bytes change at every rock edge and ramp, and the arm draws the
-      // shading around every cave wall.
-      else if (flags && !cornersAgree(flags, dim, x, y)) mask[y * side + x] = 1;
+      const at = y * side + x;
+      if (passable[at]) mask[at] = 0;
+      else if (x < border || y < border || x >= side - border || y >= side - border) mask[at] = 1;
+      else if (flags && flags[y * dim + x]! >= 0x20) mask[at] = 1;
+      else if (bigWaterCovers(layers, dim, x, y)) mask[at] = 1;
+      else if (plane[y * dim + x] === 0) mask[at] = 1;
+      else if (flags && !cornersAgree(flags, dim, x, y)) mask[at] = 1;
+      // Kind 2's river arm; its corners-zero arm needs a flag byte of 0,
+      // which no generated floor has.
+      else if (river && river.data[(2 * y + 1) * river.w + (2 * x + 1)]! > 0x8c) mask[at] = 1;
     }
   }
   // THE OBJECT ARM IS ONE DESCRIPTOR PER TILE, not a union. `0xA4FF00` looks
@@ -232,7 +321,7 @@ export function buildMinimapMask(input: MaskInput): Uint8Array {
   //
   // A VETOED object registers neither list — `0xA55C10` calls `0xA46E80`
   // first and returns without touching the grid when it answers. Which classes
-  // it answers for is `VETOED_CLASSES` above, measured rather than fitted.
+  // it answers for is `VETOED_CLASSES` above, read out of the eight questions.
   const kind = new Uint8Array(side * side);
   const stamp = (obj: MaskObject, list: readonly Offset[], value: number): void => {
     for (const [dx, dy] of rotateOffsets([...list], obj.rot)) {

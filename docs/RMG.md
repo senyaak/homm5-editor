@@ -7078,3 +7078,71 @@ random-towns game maps and the batch's probe map are byte-identical with
 it. `randomTownPlayerRaces` stays as an override. The lobby's own slot
 choices never reach this builder (`ГСК-029`) — why, is a question about the
 lobby, not the generator.
+
+**13.09, LATE — THE MINIMAP'S LAST THREE BRANCHES, AND THE PARSER, READ.** Four
+readings in one sitting, each a place where the port had said "fitted" or
+"unported"; none of them changed a byte of the corpus, and all four changed
+what the code is entitled to say.
+
+- **The halving's exemption is `0x9EC3C0`, whole** (`waterTile` in
+  `minimap.ts`): clamp to `[0, dim-2]`; the four ground-flag corners all zero
+  goes straight to the tail; otherwise a `TT_BIG_WATER` layer over any corner
+  (`0x9EBAE0`) answers NO and so does a river centre cell `(2y+1, 2x+1)` at or
+  under 0x8C (unsigned, strictly above goes on); the tail refuses when the sea's
+  float plane (`+0x58`) reads above 0.0. The planes are named at last — `+0x28`
+  flags, `+0x48` river, `+0x58` sea. `0xDD0784` halves when the bit is set AND
+  the answer is NO. The fitted rule ("wet and not under big water") was the
+  live arm exactly. The shipyard's ring asks the same function (`0xCB19C9`) and
+  the port keeps only the river there, because 44 sea maps place their yards
+  on the river alone and every sea tile would fail the ring if the layer arm
+  read anything at that moment; why it reads nothing then is not read.
+- **The veto's eighth question is three constants, not state.** `+0x28`
+  (`0xAD0240`) is `AsInteractive()`; the chain asks `IAdvMapInteractive::+0x18`
+  — `mov al,1` for `CAdvMapTreasure` and `CAdvMapArtifact`, `xor al,al` for
+  every other class ("visited by stepping on it"; its other caller is the
+  hero's interaction handler) — then `IAdvMapObject::+0x58`, a dynamic_cast to
+  `IAdvMapTent` whose slot 0 is "keymaster" (`Type == 37`; a border guard
+  vetoes), then the object's own slot 0, a dynamic_cast to `IAdvMapStatic`
+  whose slot 0 is the placement's `IsRemovable`. The generator places no tent
+  and writes `IsRemovable` false everywhere, so `VETOED_CLASSES` stands as it
+  was — Artifact, Monster, Treasure — read rather than measured on three
+  tiles. The guard beside a mine's pile was never in the answer.
+- **The tile pass `0xA4F6D0`, all five kinds** (`buildMinimapMask`). It runs
+  once per floor from `CWorld+0x148` (`0xA55A50`, called by the loader
+  `0xB514C0` after every object exists; nothing recomputes it later). In order:
+  kind 4 — the tile is on some object's `passableTiles` (`vt+0xBC`, `obj+0x88`,
+  the shared document's `+0x78`; the floor keeps a vector of exactly the
+  objects whose list is non-empty), CLEAR, with `desc[+0]` the winning land
+  layer's Type from `0x9EB690` and set only when that is 9 — which is the
+  `TT_NONE` arm as it really is, a sub-case of kind 4 on `desc[+0]`, not the
+  type `0x9EB4D0` writes to `+4` (which `0xAD0F50` never reads); kind 5 — the
+  BorderSize ring (`floor+0x38` ← `SAdvMapDesc+0x1DC`, 1 here, outside the
+  drawn picture) or, underground only, the flags vertex at the tile's corner
+  at or over 0x20 (`0x9EBAC0`, rock; `terrain[+0x64]` is "this floor is the
+  underground", set by the loader from the floor index, and gates the corners
+  arm `0x9EB9E0` too); kind 3 — big water, the plane at 0, corners that differ;
+  kind 2 — `0x9EC570`, whose live arm is a river centre over 0x8C with no big
+  water, and kind 2 SETS the mask (every such tile is one the halving spares,
+  so the picture cannot show it); kind 1 — clear. Fifteen documents in the data
+  carry `passableTiles` (bridges, an outpost, `MagmaShrine`) and the generator
+  places none — the shrines step reads a hardcoded table, not the preset's
+  NewShrines — so kind 4 and its `TT_NONE` are transcribed with nothing to
+  stand on. The rock arm underground had been covered by the plane and the
+  corners; it is its own line now.
+- **The text-to-float is one loop, compiled twice.** `0x4DF4A0` (game) and
+  `0x56B060` (editor): `v = v*10 + d` over the integer digits, then
+  `p = p * 0.1f; v = v + d * p` over the fraction, left to right, no table and
+  no division; an exponent arm no tile document uses. The game is compiled to
+  SSE scalar single — every step a chopped 24-bit result under MXCSR, which
+  `_controlfp(_RC_CHOP)` set with the x87 word — and the editor to x87, where
+  `v` and `p` sit on the stack at the CRT's 53-bit nearest and are stored to a
+  single once, by the caller's `fstp dword`. Run under those two machines the
+  read loop gives the game's byte on all 124 colour texts and the editor's on
+  all 124 — which is what `parse24` (digits against a nearest power table,
+  chopping) and `parse24Right` (the fraction from the right, nearest) had each
+  been fitted to. Two shapes were one algorithm at two precisions; `parseText`
+  with `SSE_CHOP` and `X87_53` replaces both (`parse24`, `parse53`).
+
+`test-x87` and the minimap reference are unchanged at 0 bytes; the corpus
+regression (`_tmp/matrix/regress-all.sh`) ran after the four: 458 of 458, the
+known `ГСК-001` 14/17 among them.

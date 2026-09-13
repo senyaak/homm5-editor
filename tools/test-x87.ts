@@ -12,7 +12,7 @@
 // wrong sine and a compensating filter. These ask each function on its own.
 
 import { readEngineSine, engineSin24 } from '../src/exe/sine-table.ts';
-import { add24, div24, mul24, parse24, parse24Right, sub24, tr24 } from '../src/exe/x87.ts';
+import { add24, div24, mul24, parse24, parse53, sub24, tr24 } from '../src/exe/x87.ts';
 import { lanczos3 } from '../src/rmg/resample.ts';
 import { gameDirIfAny } from './game-dir.ts';
 import { join } from 'node:path';
@@ -49,11 +49,11 @@ console.log('\nthe two builds read a decimal differently');
   // the chopping machine, truncate. The texts are the game's own tile
   // documents, and the numbers on the right are what each build's minimap has.
   const gameByte = (s: string): number => Math.trunc(mul24(parse24(s), 255));
-  const editorByte = (s: string): number => Math.trunc(mul24(parse24Right(s), 255));
-  // Bog's green is the one colour the EDITOR carries higher than the game, and
-  // the only reason `parse24Right` exists: 0.772549 is 2e-8 under 197/255, and
-  // accumulating the fraction from the right lands over it. Accumulate from
-  // the left instead — under nearest or under chop — and this case reddens.
+  const editorByte = (s: string): number => Math.trunc(mul24(parse53(s), 255));
+  // Bog's green is the one colour the EDITOR carries higher than the game:
+  // 0.772549 is 2e-8 under 197/255, and the loop run at 53 bits with one
+  // single store at the end lands over it. Run the same loop at a chopped
+  // single a step — the game's machine — and this case reddens.
   check('the editor lifts Bog\'s green over 197/255', editorByte('0.772549') === 197, `${editorByte('0.772549')}`);
   check('the game does not', gameByte('0.772549') === 196, `${gameByte('0.772549')}`);
   // Eleven colours go the other way: the game's parse drops them a byte and

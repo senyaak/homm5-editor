@@ -25,11 +25,11 @@ import { buildRmgTexts, GAME_CAPTION_TEXT } from '../src/rmg/emit-texts.ts';
 import { tr24 } from '../src/exe/x87.ts';
 import { MAP_SIZES } from '../src/rmg/create-map.ts';
 import { RACE } from '../src/rmg/load-template.ts';
-import { drawMinimap, drawTerrainLayer, type MinimapFloor } from '../src/rmg/minimap.ts';
+import { drawMinimap, drawTerrainLayer, waterTile, type MinimapFloor, type WaterTileInput } from '../src/rmg/minimap.ts';
 import {
   drawIconLayer, iconList, iconNameFor, loadMinimapIcons, type IconObject,
 } from '../src/rmg/minimap-icons.ts';
-import { bigWaterCovers, buildMinimapMask, vetoesRegistration } from '../src/rmg/minimap-mask.ts';
+import { buildMinimapMask, vetoesRegistration } from '../src/rmg/minimap-mask.ts';
 import { readTileInfo } from '../src/rmg/preset-table.ts';
 import {
   fillTerrain, makeRiverPlane, paintLakes, paintRoads, paintSeaCorners, paintWaterMarks, stampZoneLakeRiver,
@@ -181,7 +181,8 @@ function minimapFiles(
     ? new Uint8Array(dim * dim).fill(16)
     : run.vertexHeights[floor]!.bytes;
   const mask = buildMinimapMask({
-    side, plane: run.passability[floor]!, dim, layers, flags,
+    side, plane: run.passability[floor]!, dim, layers, flags, border,
+    underground: floor > 0, river: floor > 0 ? undefined : river,
     objects: run.objects.filter((o) => o.floor === floor && !o.alias).map((o) => ({
       // The WORLD object where it is not the record's — a random town's real
       // stand-in, a tile off and with its own lists. See `RunObject.world`.
@@ -192,8 +193,10 @@ function minimapFiles(
       // The active list too: it is the other half of the per-tile descriptor,
       // and a tile it claims is one the blocked lists cannot darken.
       active: o.world ? c.footprint(o.world.shared).active : o.shared ? c.footprint(o.shared).active : [],
+      // The passable list is the tile pass's own arm, not a registration.
+      passable: o.world ? c.footprint(o.world.shared).passable : o.shared ? c.footprint(o.shared).passable : [],
       // And whether the veto takes this class at all, in which case neither
-      // list is registered — `vetoesRegistration` names the measured ones.
+      // list is registered — `vetoesRegistration` names the read ones.
       vetoed: vetoesRegistration(o.shared),
     })),
   });
@@ -215,20 +218,16 @@ function minimapFiles(
   // the flaggable ones wherever they share a pixel. `sort` is stable, which
   // keeps each list in the world order the run holds.
   iconObjects.sort((a, b) => iconList(a.name) - iconList(b.name));
-  // A masked tile the halving spares: wet by the river half-grid and not under
-  // big water. See the note in `minimap.ts` — the rule is fitted to four maps.
+  // A masked tile the halving spares is one `0x9EC3C0` calls water — `waterTile`
+  // in `minimap.ts`, read whole — over the FLOOR'S OWN planes.
   //
   // THE RIVER PLANE IS THE SURFACE'S. The generator stamps one, from floor 0's
   // lakes and its sea, and an underground floor has none — its terrain carries
   // its own, empty. Handing the surface's plane to the floor below spares
   // thirteen cave tiles that happen to sit under the surface lake, which is
   // what it did until a two-level map was diffed.
-  const spared = floor > 0 ? undefined : (tx: number, ty: number): boolean => {
-    const cx = tx < 0 ? 0 : tx > side - 1 ? side - 1 : tx;
-    const cy = ty < 0 ? 0 : ty > side - 1 ? side - 1 : ty;
-    return river.data[(2 * cy + 1) * river.w + (2 * cx + 1)]! > 0x8c
-      && !bigWaterCovers(layers, dim, tx, ty);
-  };
+  const wet: WaterTileInput = { side, layers, flags, river: floor > 0 ? undefined : river };
+  const spared = (tx: number, ty: number): boolean => waterTile(wet, tx, ty);
   const floorInput: MinimapFloor = {
     side, border, layers, dim, masked: (tx, ty) => mask[ty * side + tx] === 1, spared, flags,
     gameParse: gameBuild,

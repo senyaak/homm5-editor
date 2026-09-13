@@ -53,7 +53,7 @@ function check(name: string, ok: boolean, detail = ''): void {
   const room = Array.from({ length: size }, () => new Int32Array(size).fill(0));
   const occupancy = new Int32Array(size * size);
   const points: Tile[] = [[3, 3]];
-  const empty: Footprint = { path: '/MapObjects/Artifacts/Graal.xdb', blocked: [], active: [], marker: [0, 0] };
+  const empty: Footprint = { path: '/MapObjects/Artifacts/Graal.xdb', blocked: [], active: [], passable: [], marker: [0, 0] };
   const stub = { below: (n: number) => n - 1, betweenFloat: () => 0 };
   const placed = placeZoneGraal({
     size, sizeIndex: 2, grid, border, occupancy, room, points,

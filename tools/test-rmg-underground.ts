@@ -78,7 +78,7 @@ function check(name: string, ok: boolean, detail = ''): void {
   const occ = new Int32Array(size * size);
   const rows = (v: number): Int32Array[] =>
     Array.from({ length: size }, () => new Int32Array(size).fill(v));
-  const column = (path: string): Footprint => ({ path, blocked: [], active: [], marker: [0, 0] });
+  const column = (path: string): Footprint => ({ path, blocked: [], active: [], passable: [], marker: [0, 0] });
   const tiles: Tile[] = [];
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) tiles.push([x, y]);
   placeDwarvenOneTileStatics({

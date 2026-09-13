@@ -142,75 +142,90 @@ export function div24(a: number, b: number): number {
 }
 
 /**
- * A decimal in an xdb, as the GAME's process reads it.
+ * THE ENGINE'S TEXT-TO-FLOAT, read out of both images (13.09.2026): `0x4DF4A0`
+ * in the game, `0x56B060` in the editor, one source compiled twice. It is not
+ * the CRT's correctly rounded `strtod` — it is the textbook loop, every step
+ * rounded at whatever precision the machine is running:
  *
- * The game's text-to-float is not the CRT's correctly rounded `atof`: it
- * accumulates the fraction digit by digit, `v += d * 10^-i`, on a machine
- * whose every operation chops to 24 bits toward zero — so a value written as
- * six digits of `k/255` can land far enough under the decimal that `* 255`
- * truncates to `k - 1`, and which values do depends on their digits, not on
- * how far above `k/255` they sit. Measured on the minimap of a large game
- * map: the tile colours this parse lowers (Dead_Land red, Water red, the
- * SandRoad and SnowRoad greens) take the surface floor from 62,090 of 65,536
- * pixels to 65,532 and the underground floor to 65,535, where a single chop
- * of the exact decimal (`tr24(Number(text))`) moves nothing and every
- * uniform "n ulps under" model tried made it worse. Read from the bytes it
- * produces, not from the parser's code.
+ *   v = 0
+ *   while digit:  v = v * 10 + (code - 48)
+ *   if '.':  p = 1
+ *            while digit:  p = p * 0.1f            ; the float32 0.1, 0x3DCCCCCD
+ *                          v = v + (code - 48) * p
+ *   if 'e' | 'E':  v = v * 10^e                    ; unread in any tile document
+ *   return sign * v
  *
- * The integer part and the digits are exact (`5` and `d` are small). The
- * powers of ten are a TABLE built by repeated division under round-to-
- * NEAREST — `p[i] = p[i-1] / 10` — which is what a static table computed at
- * start-up looks like before the process switched its rounding to chop;
- * only the products and the sums chop. That is the one shape, of eleven
- * tried, consistent with every colour the game lowered and every colour it
- * kept (42 constraints): the chopped powers lower `0.227451` where the game
- * does not, the nearest ones keep `0.00784314` where the game lowers it.
- * Five colours of a town's point light printed by the game agree as well.
+ * Left to right, a running power that is a product of `0.1f`s rather than a
+ * table or a division, three roundings a digit. The two builds differ only in
+ * WHERE they round:
+ *
+ *   - the GAME is compiled to SSE scalar single: every `mulss`/`addss` is a
+ *     24-bit result under MXCSR's rounding, which `_controlfp(_RC_CHOP)` set to
+ *     toward-zero along with the x87 word when the Direct3D device came up.
+ *     `mul24`/`add24` are that machine. The x87 control word never touches
+ *     this path — the value goes `movss` → `fld dword` → `fstp dword`, single
+ *     to single, exact.
+ *   - the EDITOR is compiled to x87: `v` and `p` live on the stack at the
+ *     process's precision control — the CRT's default 53 bits, nearest — and
+ *     are stored to a single ONCE, by the caller's `fstp dword ptr`. So the
+ *     whole loop is a double computation from the float32 constant 0.1f, and
+ *     the single rounding at the end is the only one.
+ *
+ * Measured against every colour text in the tile documents (124 distinct):
+ * the SSE-chop machine gives the byte the game draws on all 124 and the
+ * 53-bit machine the byte the editor draws on all 124 — which is what the two
+ * FITTED parses that stood here before (digits against a nearest power table
+ * under chop; the fraction accumulated from the right under nearest) had
+ * each matched, on the eleven colours that tell the builds apart and the 113
+ * they agree on. Two shapes fitted to two byte sets were one algorithm at two
+ * precisions; the shapes are gone.
+ *
+ * The exponent arm is transcribed and unexercised: no tile document writes
+ * one. The game raises ten by `pow` in double and multiplies the stored single
+ * by it before a `cvtsd2ss`; the editor has its own binary `powi` on the x87
+ * stack (`0x56BDE0`).
  */
-const POW10_NEAREST: number[] = (() => {
-  const p: number[] = [];
-  let x = 1;
-  for (let i = 0; i < 12; i++) { x = Math.fround(x / 10); p.push(x); }
-  return p;
-})();
-export function parse24(text: string): number {
+interface ParseMachine {
+  mul: (a: number, b: number) => number;
+  add: (a: number, b: number) => number;
+  /** The caller's single store. */
+  store: (v: number) => number;
+}
+const SSE_CHOP: ParseMachine = { mul: mul24, add: add24, store: (v) => v };
+const X87_53: ParseMachine = { mul: (a, b) => a * b, add: (a, b) => a + b, store: Math.fround };
+const TENTH = Math.fround(0.1);
+
+function parseText(text: string, m: ParseMachine): number {
   const neg = text.startsWith('-');
-  const [ip, fp = ''] = (neg ? text.slice(1) : text).split('.');
-  let v = Number(ip);
-  for (let i = 0; i < fp.length && i < POW10_NEAREST.length; i++) v = add24(v, mul24(Number(fp[i]), POW10_NEAREST[i]!));
-  return neg ? -v : v;
+  const s = neg ? text.slice(1) : text;
+  const digit = (i: number): boolean => i < s.length && s[i]! >= '0' && s[i]! <= '9';
+  let i = 0;
+  let v = 0;
+  for (; digit(i); i++) v = m.add(m.mul(v, 10), s.charCodeAt(i) - 48);
+  if (s[i] === '.') {
+    let p = 1;
+    for (i++; digit(i); i++) {
+      p = m.mul(p, TENTH);
+      v = m.add(v, m.mul(s.charCodeAt(i) - 48, p));
+    }
+  }
+  if (s[i] === 'e' || s[i] === 'E') {
+    const eneg = s[i + 1] === '-';
+    let e = 0;
+    for (i += eneg || s[i + 1] === '+' ? 2 : 1; digit(i); i++) e = e * 10 + s.charCodeAt(i) - 48;
+    const scale = Math.pow(10, eneg ? -e : e);
+    v = m === SSE_CHOP ? tr24(v * scale) : m.mul(v, scale);
+  }
+  const out = m.store(v);
+  return neg ? -out : out;
 }
 
-/**
- * The same decimal as the EDITOR's process reads it — and it is not the one
- * above.
- *
- * The fraction is accumulated FROM THE RIGHT, `v = (v + d) / 10` over the
- * digits in reverse, every step rounded to NEAREST at 24 bits, and the integer
- * part added last. Both halves of that matter: nearest rather than chopping,
- * and the least significant digit first rather than the most.
- *
- * WHY NEAREST HERE AND CHOPPING THERE. Not two machines — two moments. The
- * documents are read when the data loads; the process only switches its
- * rounding to chop when a Direct3D device appears, and the minimap's own
- * multiply, which runs long after, chops. `POW10_NEAREST` above rests on the
- * same argument for the same reason.
- *
- * FITTED, NOT READ, and the fit is narrow: of thirteen shapes tried against
- * the 127 distinct colour texts in the game's tile documents — the digits
- * against a power table built four ways, the whole fraction as an integer over
- * a power of ten, the accumulation from either end, each under nearest and
- * under chop — this is the ONLY one that puts Bog's `0.772549` over 197/255,
- * where the editor's own minimap has it, and leaves all 126 other colours on
- * the byte the port already reproduced. Eleven of those 126 are colours the
- * GAME lowers by one and the editor does not, so they hold the two parses
- * apart rather than merely agreeing with both.
- */
-export function parse24Right(text: string): number {
-  const neg = text.startsWith('-');
-  const [ip, fp = ''] = (neg ? text.slice(1) : text).split('.');
-  let v = 0;
-  for (let i = fp.length - 1; i >= 0; i--) v = Math.fround(Math.fround(v + Number(fp[i])) / 10);
-  const out = Math.fround(Number(ip) + v);
-  return neg ? -out : out;
+/** A decimal in an xdb as the GAME reads it — SSE single, toward zero. */
+export function parse24(text: string): number {
+  return parseText(text, SSE_CHOP);
+}
+
+/** The same decimal as the EDITOR reads it — x87 at 53 bits, one single store. */
+export function parse53(text: string): number {
+  return parseText(text, X87_53);
 }

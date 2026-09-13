@@ -169,6 +169,8 @@ export interface Footprint {
   path: string;
   blocked: Offset[];
   active: Offset[];
+  /** `passableTiles` — the third list, which only the minimap's tile pass reads. */
+  passable: Offset[];
   marker: Offset;
 }
 
@@ -197,6 +199,7 @@ export function readFootprint(dataRoot: string, href: string): Footprint {
     path,
     blocked: offsets('blockedTiles'),
     active: offsets('activeTiles'),
+    passable: offsets('passableTiles'),
     marker: marker
       ? [Number.parseInt(childText(marker, 'x'), 10) || 0, Number.parseInt(childText(marker, 'y'), 10) || 0]
       : [0, 0],
