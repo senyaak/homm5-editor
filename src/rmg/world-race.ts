@@ -50,6 +50,9 @@
 // Dungeon on every map, players 3 and 5 one of the six the picture cannot
 // tell apart. Where they come from is not read — they are an INPUT here
 // (`WorldRaceInput.playerRaces`), with the measured ones as the default.
+// NOT the lobby's slots: `ГСК-029` was generated with the lobby at Heaven /
+// Preserve / Academy / Dungeon / Necromancy and its minimap is the measured
+// races', Preserve and Necromancy being two the picture would have shown.
 
 import { RACE } from './load-template.ts';
 

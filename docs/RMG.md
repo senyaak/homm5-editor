@@ -7029,3 +7029,19 @@ recorded its own draw, so the outcome replays whichever slots were set.
 Console orders have no lobby and change nothing. What the temp world's
 PLAYERS carry for random towns is still another source — `ГСК-019`'s
 `PlayersInfo` says Necromancy for player 1 and its town stood as Fortress.
+
+**13.09, EVENING — THE WORLD'S PLAYER RACES ARE NOT THE LOBBY'S EITHER.**
+Four more maps from the game, all byte-identical: `ГСК-026` (five slots
+random), `027` (five set by hand), `028` and `029` on `S3-5P2-8Z8K2M` at
+LARGE — and 029 has random towns ON with the lobby at Heaven / Preserve /
+Academy / Dungeon / Necromancy. The port stood its owned random towns as the
+measured races (Fortress, Heaven, Heaven, Dungeon, Heaven) and the minimap
+came out the engine's, while Preserve for player 2 and Necromancy for player
+5 are exactly the two the picture CAN tell apart. So the temp world's players
+carry something constant to this installation across nine random-towns maps,
+two sessions and three lobbies — not the slots, not `PlayersInfo`. It stays an
+input (`randomTownPlayerRaces`, the measured ones as the default); what it
+comes from — the profile's last game is the guess — is unread, and for a map
+made by the editor's button it is cosmetic: the game's own world decides an
+owned random town's race when it loads the map, and the file carries only
+the minimap.
