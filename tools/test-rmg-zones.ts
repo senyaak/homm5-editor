@@ -43,22 +43,29 @@ check('thirteen zones: index 13 wraps to the front',
 check('fifteen zones: the 29-bucket table iterates ascending',
   floorIterationOrder(seeds([15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1])).map((z) => z.index).join(',')
     === '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15');
-// The one unread path refuses instead of guessing: post-rehash within-bucket
-// order depends on how the rehash re-inserted, which nobody has read yet.
-check('a collision after a rehash refuses instead of guessing', (() => {
-  try { floorIterationOrder(seeds([30, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])); return false; }
-  catch { return true; }
-})());
+// A collision AFTER the rehash sees the rehash's own order (0xEB0CB0): the old
+// buckets are walked ascending and every node is hung on the head of its new
+// bucket. 30 sits in bucket 4 of 13, 1 in bucket 1; the fourteenth key moves
+// them into 29 buckets where both are bucket 1 — 1 is met first, 30 is hung
+// in front of it. Laying the 29-bucket table out in one pass would put the
+// later-inserted 1 in front instead: that is the case that tells the two apart.
+check('a collision after a rehash iterates in the order the rehash moved the keys',
+  floorIterationOrder(seeds([30, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])).map((z) => z.index).join(',')
+    === '30,1,2,3,4,5,6,7,8,9,10,11,12,13');
+// A key inserted after the rehash goes in front of a moved one, as any insert does.
+check('a key inserted after the rehash goes to the head of its bucket',
+  floorIterationOrder(seeds([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 30])).map((z) => z.index).join(',')
+    === '30,1,2,3,4,5,6,7,8,9,10,11,12,13,14');
 
 console.log('\nthe shipped templates stay inside the modelled order');
 
 const dir = join(dataDir(), 'RMG', 'Templates');
 if (existsSync(dir)) {
-  // The one refused path is a collision in a rehashed table. A whole template
-  // on one floor is the worst case however LoadTemplate actually splits
-  // floors — if that survives, any split does (fewer zones, same indices).
-  // And the model is load-bearing, not decoration: shipped indices reach 15,
-  // so in a small table zone 14 would iterate before zone 2.
+  // The only refusal left is the prime table's end (over 53 keys). A whole
+  // template on one floor is the worst case however LoadTemplate actually
+  // splits floors — if that survives, any split does (fewer zones, same
+  // indices). And the model is load-bearing, not decoration: shipped indices
+  // reach 15, so in a small table zone 14 would iterate before zone 2.
   let worstCount = 0;
   let worstIndex = 0;
   let refused = '';

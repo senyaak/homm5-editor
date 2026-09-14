@@ -84,29 +84,48 @@ export interface GeneratedZones {
  * 29-bucket table where indices up to 28 stop colliding at all and the order is
  * plain ascending again.
  *
- * THE ONE PATH THIS REFUSES is a collision in a table that has been rehashed.
- * Within-bucket order there depends on the order the rehash re-inserted the old
- * elements, which has not been read out of the executable. Everywhere else the
- * re-insertion order cannot be observed — with no collision a bucket holds one
- * element however it was filled — so building the layout once, at the end, is
- * the same answer as growing it live. A named hole, not a guess.
+ * The rehash is read, not assumed (the floor's zone insert is `0xEB0CB0`,
+ * called from LoadTemplate at 0xEA26A3; FillZones' two containers inline the
+ * same template at 0xEA8DE1 and 0xEAA0EB): `insert_unique` first grows the
+ * table when `count + 1 > buckets` — `next_size(count + 1)` at 0x4E3D30 is a
+ * lower bound over the prime table — and moves the old nodes by walking the
+ * OLD buckets ascending, each chain from its head, hanging every node on the
+ * HEAD of its new bucket:
+ *
+ *     0xeb0d12  mov eax,[ecx+4]          ; node->key
+ *     0xeb0d17  div dword ptr [esp+14h]  ; % new bucket count
+ *     0xeb0d1b  mov eax,[ecx]            ; old[i] = node->next
+ *     0xeb0d1d  mov [esi],eax
+ *     0xeb0d1f  mov eax,[ebp+edx*4]      ; node->next = new[b]
+ *     0xeb0d23  mov [ecx],eax
+ *     0xeb0d25  mov [ebp+edx*4],ecx      ; new[b] = node
+ *
+ * then the new key goes to the head of its bucket (0xEB0DDE / 0xEB0DE3). So a
+ * bucket that collides after a rehash holds the moved keys in REVERSE of the
+ * order the old table yielded them, and anything inserted later in front.
+ * Growing the table live, exactly like this, is the only way to get that
+ * right — laying the final table out in one pass is not.
  */
 const HASH_PRIMES = [13, 29, 53] as const;
 
 export function hashMapOrder<T>(items: readonly T[], keyOf: (item: T) => number, what: string): T[] {
-  const bucketCount = HASH_PRIMES.find((p) => items.length <= p);
-  if (!bucketCount) throw new Error(`${what}: over ${HASH_PRIMES[HASH_PRIMES.length - 1]} keys — grow the prime table when something needs it`);
-  const rehashed = items.length > HASH_PRIMES[0];
-  const buckets: T[][] = Array.from({ length: bucketCount }, () => []);
+  // The engine's hash takes the key as size_t, so a negative index wraps:
+  // the water carve's -1 (sea) hashes as 0xFFFFFFFF and lands in bucket 8
+  // of 13. Non-negative keys are untouched by the >>> 0.
+  const slot = (item: T, bucketCount: number): number => (keyOf(item) >>> 0) % bucketCount;
+  let buckets: T[][] = Array.from({ length: HASH_PRIMES[0] }, () => []);
+  let count = 0;
   for (const item of items) {
-    // The engine's hash takes the key as size_t, so a negative index wraps:
-    // the water carve's -1 (sea) hashes as 0xFFFFFFFF and lands in bucket 8
-    // of 13. Non-negative keys are untouched by the >>> 0.
-    const bucket = buckets[(keyOf(item) >>> 0) % bucketCount]!;
-    if (rehashed && bucket.length) {
-      throw new Error(`${what}: bucket collision after a rehash — within-bucket order unverified`);
+    if (count + 1 > buckets.length) {
+      const grownTo = HASH_PRIMES.find((p) => p >= count + 1);
+      if (!grownTo) throw new Error(`${what}: over ${HASH_PRIMES[HASH_PRIMES.length - 1]} keys — grow the prime table when something needs it`);
+      const grown: T[][] = Array.from({ length: grownTo }, () => []);
+      // Old buckets ascending, each chain head first, each node to the new head.
+      for (const chain of buckets) for (const node of chain) grown[slot(node, grownTo)]!.unshift(node);
+      buckets = grown;
     }
-    bucket.unshift(item);
+    buckets[slot(item, buckets.length)]!.unshift(item);
+    count++;
   }
   return buckets.flat();
 }

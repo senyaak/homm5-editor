@@ -4499,10 +4499,20 @@ to 29 on the fourteenth insert (prime table at 0xF49470). Shipped indices
 reach 15, so in a small table zone 14 iterates before zone 2 — and a shipped
 15-zone template sits in a rehashed 29-bucket table where those indices stop
 colliding and the order is plain ascending again. `floorIterationOrder`
-models exactly this and **refuses** the one unread path (a collision after a
-rehash, whose within-bucket order depends on how the rehash re-inserted); the
-suite proves no shipped template reaches it even if all its zones landed on
-one floor.
+models exactly this, rehash included: the floor's insert is `0xEB0CB0`
+(LoadTemplate calls it at 0xEA26A3 with the floor's map: levels at
+`[[+0xC]+0x34]`, 0x120 a floor, the map at `+0xA8`), and its `insert_unique` grows the table
+before the insert when `count + 1 > buckets` — `next_size(count + 1)`
+(0x4E3D30, a lower bound over the prime table) — by walking the OLD buckets
+ascending, each chain from its head, and hanging every node on the HEAD of
+its new bucket (0xEB0D12–0xEB0D25), then puts the new key at the head of its
+bucket (0xEB0DDE/0xEB0DE3). So a collision after a rehash yields the moved
+keys in reverse of the old table's order, later inserts in front — the port
+grows its table live, the same way (`hashMapOrder`, tested with 30 and 1
+meeting in bucket 1 of 29). FillZones' two containers inline the same
+template (rehash loops at 0xEA8E11 and 0xEAA123). No shipped template
+collides after a rehash even with all its zones on one floor, but the path
+is read now, not refused.
 
 Also read on the way: **the zone constructor itself draws once** (`next()`
 into zone+0x13C) — those draws belong to LoadTemplate's budget, one per zone.
@@ -7283,8 +7293,10 @@ refused (unexercised: |Rot| < 10); and the three "rectangle" refusals now
 say what they are — the engine has ONE dimension (both of `map+0xC` and
 `map+0x10` come from the same size-table entry), so a rectangle is not an
 input it can be given, and the port's square-only readers guard their own
-API, not a hole. Still a refusal, and rightly: a rehashed bucket's order
-(`zones.ts`), which no shipped template with water reaches. The water
+API, not a hole. The last refusal, a rehashed bucket's order (`zones.ts`),
+was read on 14.09 out of the floor's insert `0xEB0CB0` (see Phase 3) and is
+modelled, not refused — what remains is the prime table's end, an API
+guard like the rectangle's. The water
 treasures' failed creation is read too (`0xECCDE2` / `0xECCF4D` → `0xECD104`:
 the candidate is spent and the loop goes round, nothing stamped, nothing in
 the repel ledger), and LoadTemplate's two former named holes are held by the

@@ -24,7 +24,9 @@ setting. And nothing in it is fitted any more: the last four places where the
 port matched the engine by trial — the minimap's water exemption, its object
 veto, two arms of its darkening pass, and the way each build turns a decimal
 in a document into a float — are now read out of the executables and written
-down as such. There is no new button for
+down as such, and the one path the port used to refuse (a hash bucket that
+collides after the table has grown) is read out of the engine's insert and
+modelled. There is no new button for
 it yet; this is the engine work the button will sit on.
 
 **The generator reads the install the game reads.** Every document the port
