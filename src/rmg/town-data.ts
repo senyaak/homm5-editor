@@ -10,11 +10,10 @@
 // Offsets are in the MAP's coordinates (x east, y south), the way the files
 // spell them; the phase rotates them by a quarter turn at a time.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { childText, find, findAll, parse } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 
 /** One (x, y) offset from the building's anchor. */
 export type Offset = readonly [number, number];
@@ -52,8 +51,7 @@ export interface TownSpecialization {
 
 const stripXpointer = (href: string): string => href.replace(/#xpointer\(.*\)$/, '');
 
-const readDoc = (dataRoot: string, path: string): XmlElement =>
-  parse(readFileSync(join(dataRoot, path.replace(/^\//, '')), 'utf8'));
+const readDoc = (dataRoot: DataRoot, path: string): XmlElement => parse(readText(dataRoot, path));
 
 /** `<name><Item><x>..</x><y>..</y></Item>…</name>` — an offset list. */
 function offsets(el: XmlElement, name: string): Offset[] {
@@ -65,7 +63,7 @@ function offsets(el: XmlElement, name: string): Offset[] {
   ]);
 }
 
-export function readTownShared(dataRoot: string, href: string): TownShared {
+export function readTownShared(dataRoot: DataRoot, href: string): TownShared {
   const path = stripXpointer(href);
   const town = find(readDoc(dataRoot, path), 'AdvMapTownShared');
   if (!town) throw new Error(`${path}: not an AdvMapTownShared`);
@@ -93,7 +91,7 @@ export function readTownShared(dataRoot: string, href: string): TownShared {
  * `RMG/TownRandomSpecGroup.xdb` in FILE ORDER — the order the phase's
  * `below(matches)` indexes into once the list is filtered.
  */
-export function readTownSpecializations(dataRoot: string): TownSpecialization[] {
+export function readTownSpecializations(dataRoot: DataRoot): TownSpecialization[] {
   const group = find(readDoc(dataRoot, '/RMG/TownRandomSpecGroup.xdb'), 'TownRandomSpecGroup');
   const link = group ? find(group, 'link') : null;
   if (!link) return [];

@@ -29,7 +29,7 @@ import { latePass } from '../src/rmg/heights.ts';
 import type { ChainOptions } from './rmg-chain.ts';
 import { readOrder, unreplayable } from './rmg-order.ts';
 import { heightsInput, runFull } from './rmg-run.ts';
-import { dataDir, gameDir } from './game-dir.ts';
+import { dataAssets, gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -109,7 +109,7 @@ console.log(`  dump: floor ${floorWanted}, stages ${[...dump.keys()].sort((a, b)
 
 // ------------------------------------------------------------- the port
 
-const run = runFull(dataDir(), options);
+const run = runFull(dataAssets(), options);
 const v = size + 1;
 console.log(`  port: ${options.template} ${size}x${size}, seed ${options.seed}, plane ${v}x${v}${options.gameBuild ? ", as the GAME's build" : ''}`);
 

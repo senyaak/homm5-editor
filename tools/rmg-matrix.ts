@@ -32,11 +32,11 @@ import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { SIZE_UNITS } from '../src/rmg/create-map.ts';
-import { readTemplate } from '../src/rmg/template.ts';
+import { readTemplateNamed } from '../src/rmg/template.ts';
 import type { RmgTemplate } from '../src/rmg/template.ts';
 import { MULTIPLIERS, SIZE_NAMES } from './rmg-order.ts';
 import { MAP_SIZES } from './rmg-build.ts';
-import { dataDir } from './game-dir.ts';
+import { dataAssets } from './game-dir.ts';
 
 /** The three seeds every row is run with — arbitrary, fixed, and not 0. */
 const SEEDS = [1001, 2002, 3003];
@@ -47,15 +47,17 @@ const MONSTER_NAMES = ['WEAK', 'MEDIUM', 'STRONG', 'VERY_STRONG', 'IMPOSSIBLE'] 
 interface Entry { name: string; t: RmgTemplate }
 
 function templates(): Entry[] {
-  const dir = join(dataDir(), 'RMG', 'Templates');
-  const out: Entry[] = [];
-  for (const f of readdirSync(dir).sort()) {
-    if (!f.endsWith('.xdb')) continue;
-    const path = join(dir, f);
-    if (!statSync(path).isFile()) continue;
-    out.push({ name: f.replace(/\.xdb$/, ''), t: readTemplate(path) });
+  // Every mounted root's folder, the way the engine lists it: a mod adds a
+  // template without replacing the shipped ones, and a name it repeats is
+  // read through the chain, the winner's copy.
+  const data = dataAssets();
+  const names = new Set<string>();
+  for (const dir of data.dirs('RMG/Templates')) {
+    for (const f of readdirSync(dir)) {
+      if (f.endsWith('.xdb') && statSync(join(dir, f)).isFile()) names.add(f.replace(/\.xdb$/, ''));
+    }
   }
-  return out;
+  return [...names].sort().map((name) => ({ name, t: readTemplateNamed(data, name) }));
 }
 
 /**

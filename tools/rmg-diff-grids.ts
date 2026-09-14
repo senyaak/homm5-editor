@@ -39,7 +39,7 @@ import { MAP_SIZES } from './rmg-build.ts';
 import { readOrder, unreplayable } from './rmg-order.ts';
 import type { ChainOptions } from './rmg-chain.ts';
 import { runFull } from './rmg-run.ts';
-import { dataDir, gameDir } from './game-dir.ts';
+import { dataAssets, gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -148,7 +148,7 @@ if (!dumped.length && !lists.size) process.exit(2);
 interface Snapshot { grid: Int32Array[]; border: Int32Array[]; occ: Int32Array; room: Int32Array[] }
 let snapshot: Snapshot[] | null = null;
 let drawsAt = -1;
-const run = runFull(dataDir(), options, (label, draws, chain) => {
+const run = runFull(dataAssets(), options, (label, draws, chain) => {
   if (label !== 'roads phase') return;
   drawsAt = draws;
   snapshot = chain.floors.map((f) => ({

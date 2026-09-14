@@ -27,6 +27,8 @@ import { readFileSync } from 'node:fs';
 
 import { childText, find, findAll, parse, text } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 
 /** An x/y/z triple — a light colour, held in single precision like the engine. */
 export interface RmgColor {
@@ -237,6 +239,12 @@ export function parseParams(xml: string): RmgParams {
   };
 }
 
+/** The params by their full path on disk — the tests' door. */
 export function readParams(path: string): RmgParams {
   return parseParams(readFileSync(path, 'utf8'));
+}
+
+/** `RMG/Params/Default.xdb` through the mounted chain — the generator's door. */
+export function readDefaultParams(dataRoot: DataRoot): RmgParams {
+  return parseParams(readText(dataRoot, 'RMG/Params/Default.xdb'));
 }

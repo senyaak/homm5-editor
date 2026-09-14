@@ -28,7 +28,7 @@ import { buildMapFiles, MAP_SIZES } from './rmg-build.ts';
 import { describeOrder, readOrder, unreplayable } from './rmg-order.ts';
 import { runFull } from './rmg-run.ts';
 import { RACE } from '../src/rmg/load-template.ts';
-import { dataDir, gameDir } from './game-dir.ts';
+import { dataAssets, gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 // The map is the one bare word that is not some flag's value.
@@ -38,9 +38,9 @@ if (!archive) {
   console.error('point me at a generated map: node tools/rmg-diff-map.ts --game <dir> <map.h5m>');
   process.exit(2);
 }
-const dir = dataDir();
-if (!existsSync(join(dir, 'RMG'))) {
-  console.error(`no RMG data under ${dir} — unpack it with \`npm run unpack-data\` first`);
+const dir = dataAssets();
+if (!dir.exists('RMG/Params/Default.xdb')) {
+  console.error(`no RMG data in ${dir.roots.join(', ')} — unpack it with \`npm run unpack-data\` first`);
   process.exit(2);
 }
 const game = gameDir();

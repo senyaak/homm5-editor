@@ -11,10 +11,9 @@
 // +0x3C (docs/engineInternals/ARTIFACTS_AND_EQUIPMENT.md). Nothing in the
 // data is called "RMG": selling and scattering are the same permission.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { childText, find, findAll, parse } from '../format/xml.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 
 export interface ArtifactInfo {
   /** The index in the reference table — the `ARTIFACT_*` enum value. */
@@ -32,8 +31,8 @@ export interface ArtifactInfo {
 export const ARTIFACT_NONE = 0;
 export const ARTIFACT_SEXTANT = 10;
 
-export function readArtifacts(dataRoot: string): ArtifactInfo[] {
-  const root = parse(readFileSync(join(dataRoot, 'GameMechanics', 'RefTables', 'Artifacts.xdb'), 'utf8'));
+export function readArtifacts(dataRoot: DataRoot): ArtifactInfo[] {
+  const root = parse(readText(dataRoot, 'GameMechanics/RefTables/Artifacts.xdb'));
   const table = find(root, 'Table_DBArtifact_ArtifactEffect');
   const objects = table ? find(table, 'objects') : null;
   if (!objects) return [];

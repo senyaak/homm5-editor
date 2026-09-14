@@ -15,8 +15,8 @@
 // flags) plus its minted name and kind for the by-name checks and the
 // emitter to come.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readText } from '../src/rmg/data.ts';
+import type { DataRoot } from '../src/rmg/data.ts';
 
 import { readArtifacts, rmgArtifactPool } from '../src/rmg/artifacts.ts';
 import type { HeightObject, HeightPlane, HeightsInput } from '../src/rmg/heights.ts';
@@ -133,7 +133,7 @@ export interface FullRun {
  * every step whose boundary a suite may want to hold.
  */
 export function runFull(
-  dir: string,
+  dir: DataRoot,
   options: ChainOptions = {},
   // The chain comes with the label so a probe can read a grid AT a boundary:
   // occupancy and the room are written all through the run, and "what did the
@@ -222,7 +222,7 @@ export function runFull(
     const floor = t.floor;
     if (t.kind === 'town') {
       const docType = /<Type>(\w+)<\/Type>/.exec(
-        readFileSync(join(dir, t.shared.replace(/#xpointer.*$/, '').replace(/^\//, '')), 'utf8'))?.[1] ?? '';
+        readText(c.dir, t.shared))?.[1] ?? '';
       // An underground town wears four point lights in its faction's own
       // colour — the preset's `RaceColor`, not the zone light's list. This was
       // a table grown by hand, one faction per reference that showed one, and
@@ -372,7 +372,7 @@ export function runFull(
       // tier's stand-in for mode 1 (`Chain.randomDwellings`).
       const href = (c.randomTowns ? c.randomDwellings : pricePreset.dwellings.concat(c.presets.get(lz.race)!.dwellings))
         .find((h) => c.footprint(h).path === d.type)!;
-      const docType = /<Type>(\w+)<\/Type>/.exec(readFileSync(join(dir, d.type.replace(/^\//, '')), 'utf8'))?.[1] ?? '';
+      const docType = /<Type>(\w+)<\/Type>/.exec(readText(c.dir, d.type))?.[1] ?? '';
       object('dwelling', d.name, d.x, d.y, d.q * HALF_PI, c.footprint(href), floor, {
         craterDwelling: CRATER_DWELLING_TYPES.has(docType),
         skipFlattenDwelling: SKIP_FLATTEN_DWELLING_TYPES.has(docType),

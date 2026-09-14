@@ -21,7 +21,7 @@ import { join } from 'node:path';
 import { initProject, packProject } from '../src/map/project.ts';
 import { MAP_SIZES, buildMapFiles } from './rmg-build.ts';
 import { runFull } from './rmg-run.ts';
-import { dataDir, gameDir } from './game-dir.ts';
+import { dataAssets, gameDir } from './game-dir.ts';
 import type { ChainOptions } from './rmg-chain.ts';
 
 const args = process.argv.slice(2);
@@ -53,9 +53,9 @@ if (args.includes('--help')) {
   process.exit(0);
 }
 
-const dir = dataDir();
-if (!existsSync(join(dir, 'RMG'))) {
-  console.error(`no RMG data under ${dir} — unpack it with \`npm run unpack-data\` first`);
+const dir = dataAssets();
+if (!dir.exists('RMG/Params/Default.xdb')) {
+  console.error(`no RMG data in ${dir.roots.join(', ')} — unpack it with \`npm run unpack-data\` first`);
   process.exit(2);
 }
 const game = gameDir();

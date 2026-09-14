@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { buildMapFiles } from './rmg-build.ts';
 import { readOrder } from './rmg-order.ts';
 import { runFull } from './rmg-run.ts';
-import { dataDir, gameDir } from './game-dir.ts';
+import { dataAssets, gameDir } from './game-dir.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 
 const argv = process.argv.slice(2);
@@ -18,7 +18,7 @@ const map = args[0]!;
 const read = readOrder(map); if (typeof read === 'string') throw new Error(read);
 const { order, files: theirs } = read;
 const LV = ['MONSTER_LEVEL_WEAK','MONSTER_LEVEL_MEDIUM','MONSTER_LEVEL_STRONG','MONSTER_LEVEL_VERY_STRONG','MONSTER_LEVEL_IMPOSSIBLE'];
-const dir = dataDir();
+const dir = dataAssets();
 const exe = join(gameDir(), 'bin', 'H5_Game_H5E.exe');
 const captions = [...theirs.keys()].filter((n) => /^caption-text-\d+\.txt$/.test(n)).length;
 const captionBase = Math.max(0, captions - order.players);

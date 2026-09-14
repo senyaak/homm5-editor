@@ -5,10 +5,9 @@
 // and the stamp (0xEC2F90). Each worker keeps its own candidate gathering and
 // its own threshold divisor — mines 5, dwellings 3 — and hands the rest here.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { childText, find, findAll, parse } from '../format/xml.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 import type { Offset } from './town-data.ts';
 
 export type Tile = readonly [number, number];
@@ -179,11 +178,11 @@ export interface Footprint {
  * `#xpointer(...)` suffix — a preset's Academy/Workshop.xdb has no tag in its
  * file name, only in the pointer.
  */
-export function readFootprint(dataRoot: string, href: string): Footprint {
+export function readFootprint(dataRoot: DataRoot, href: string): Footprint {
   const path = href.replace(/#xpointer\(.*\)$/, '');
   const tag = /#xpointer\(\/(\w+)\)/.exec(href)?.[1] ?? /\.\((\w+)\)\.xdb$/.exec(path)?.[1];
   if (!tag) throw new Error(`${href}: no document tag in the href`);
-  const doc = find(parse(readFileSync(join(dataRoot, path.replace(/^\//, '')), 'utf8')), tag);
+  const doc = find(parse(readText(dataRoot, path)), tag);
   if (!doc) throw new Error(`${path}: not an ${tag}`);
   const offsets = (name: string): Offset[] => {
     const holder = find(doc, name);

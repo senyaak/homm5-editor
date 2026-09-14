@@ -31,6 +31,7 @@ import { mintName, setMonster } from './armies.ts';
 import type { DrawSource, Guard, GuardTables } from './armies.ts';
 import { EIGHT, FOUR, ensureRoom, filterByRoom, isFree, readFootprint, stampFootprint, tileDistance, tryPlace } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
+import type { DataRoot } from './data.ts';
 
 export type { Tile } from './placement.ts';
 
@@ -105,7 +106,7 @@ export const MINE_TYPES: ReadonlyArray<{ mine: string; pile: string; guardLevel:
 export type MineFootprint = Footprint;
 
 /** `/MapObjects/<name>.(AdvMapMineShared).xdb` — the lists the stamp reads. */
-export function readMineShared(dataRoot: string, name: string): MineFootprint {
+export function readMineShared(dataRoot: DataRoot, name: string): MineFootprint {
   return readFootprint(dataRoot, `/MapObjects/${name}.(AdvMapMineShared).xdb`);
 }
 

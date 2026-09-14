@@ -13,10 +13,9 @@
 // object — Black Knight's `MonsterShared` is empty and Snow Ape's points at
 // a stand-in built from peasant art — so a map cannot show them.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { childText, find, findAll, parse } from '../format/xml.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 
 export interface CreatureInfo {
   /** The index in the reference table — the `CREATURE_*` enum value. */
@@ -49,8 +48,8 @@ export const TOWN_BY_NAME: Record<string, number> = {
 /** Ids the guard setter refuses outright, whatever their Power says. */
 export const UNPLACEABLE_CREATURES: ReadonlySet<number> = new Set([0, 89, 114]);
 
-export function readCreatures(dataRoot: string): CreatureInfo[] {
-  const root = parse(readFileSync(join(dataRoot, 'GameMechanics', 'RefTables', 'Creatures.xdb'), 'utf8'));
+export function readCreatures(dataRoot: DataRoot): CreatureInfo[] {
+  const root = parse(readText(dataRoot, 'GameMechanics/RefTables/Creatures.xdb'));
   const table = find(root, 'Table_Creature_CreatureType');
   const objects = table ? find(table, 'objects') : null;
   if (!objects) return [];
@@ -61,8 +60,7 @@ export function readCreatures(dataRoot: string): CreatureInfo[] {
     let tier = 0;
     let town = 0;
     if (href) {
-      const path = href.replace(/#xpointer\(.*\)$/, '').replace(/^\//, '');
-      const doc = find(parse(readFileSync(join(dataRoot, path), 'utf8')), 'Creature');
+      const doc = find(parse(readText(dataRoot, href)), 'Creature');
       power = doc ? Number.parseInt(childText(doc, 'Power'), 10) || 0 : 0;
       monsterShared = (doc ? find(doc, 'MonsterShared')?.attrs['href'] : undefined) ?? '';
       tier = doc ? Number.parseInt(childText(doc, 'CreatureTier'), 10) || 0 : 0;

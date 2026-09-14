@@ -42,6 +42,7 @@
     "view-dialog-scene": "node tools/view-dialog-scene.ts",
     "test-history": "node tools/test-history.ts",
     "test-assets": "node tools/test-assets.ts",
+    "test-mounted": "node tools/test-mounted.ts",
     "test-creature-mod": "node tools/test-creature-mod.ts",
     "test-abilities": "node tools/test-abilities.ts",
     "test-dwellings": "node tools/test-dwellings.ts",

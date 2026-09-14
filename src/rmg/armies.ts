@@ -45,11 +45,12 @@
 // creatures that already qualified are added a second time and become twice
 // as likely. That is the engine's behaviour, copied rather than tidied.
 
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { posix } from 'node:path';
 
 import { childText, find, findAll, parse } from '../format/xml.ts';
 import type { CreatureInfo } from './creatures.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 import { UNPLACEABLE_CREATURES } from './creatures.ts';
 
 /**
@@ -99,18 +100,19 @@ export interface Guard {
 export const ARMY_TEMPLATE_GROUP =
   'RMG/CustomArmyTemplates/SimpleTemplates/AutoTemplates/TestTemplateGroup.(RMGSimpleCustomArmyTemplateGroup).xdb';
 
-export function readArmyTemplates(dataRoot: string): ArmyTemplate[] {
-  const groupPath = join(dataRoot, ARMY_TEMPLATE_GROUP);
-  const group = find(parse(readFileSync(groupPath, 'utf8')), 'RMGSimpleCustomArmyTemplateGroup');
+export function readArmyTemplates(dataRoot: DataRoot): ArmyTemplate[] {
+  const group = find(parse(readText(dataRoot, ARMY_TEMPLATE_GROUP)), 'RMGSimpleCustomArmyTemplateGroup');
   const holder = group ? find(group, 'Templates') : null;
   if (!holder) return [];
-  const base = dirname(groupPath);
+  // The group's items are RELATIVE hrefs — resolved against the group's own
+  // folder, the one non-rooted list the generator reads.
+  const base = posix.dirname(ARMY_TEMPLATE_GROUP);
   return findAll(holder, 'Item')
     .map((i) => i.attrs['href'])
     .filter((h): h is string => !!h)
     .map((href) => {
       const path = href.replace(/#xpointer\(.*\)$/, '');
-      const doc = find(parse(readFileSync(join(base, path), 'utf8')), 'RMGSimpleCustomArmyTemplate');
+      const doc = find(parse(readText(dataRoot, posix.join(base, path))), 'RMGSimpleCustomArmyTemplate');
       const stacks = doc ? find(doc, 'Stacks') : null;
       return {
         path,

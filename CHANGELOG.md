@@ -27,6 +27,13 @@ in a document into a float — are now read out of the executables and written
 down as such. There is no new button for
 it yet; this is the engine work the button will sit on.
 
+**The generator reads the install the game reads.** Every document the port
+opens — the preset table, the templates, the tiles, every shared building,
+the creature roster — now comes through the same archive chain the
+executable mounts: everything in `H5E/`, newest member first, over the
+shipped data. A mod that overrides any of them changes the generated map the
+way it changes the game's, instead of being invisible to the port.
+
 **The Grail too.** Tick that box in the generator's dialog and the port
 reproduces what it makes: the Tear of Asha in one zone, obelisks in every
 zone, and "find the Tear of Asha" as the map's goal with the defeat-all it

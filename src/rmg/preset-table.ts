@@ -11,11 +11,10 @@
 // href PATH is the identity a terrain layer keeps, `#xpointer(...)` stripped
 // exactly the way GroundTerrain.bin stores it.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { childText, find, findAll, parse } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 import { RACE_BY_NAME } from './load-template.ts';
 
 /** A terrain tile document, reduced to what the painter reads. */
@@ -145,9 +144,9 @@ export interface PricedBuilding {
 const stripXpointer = (href: string): string => href.replace(/#xpointer\(.*\)$/, '');
 
 /** Read one AdvMapTile document by its href, relative to unpacked data. */
-export function readTileInfo(dataRoot: string, href: string): TerrainTileInfo {
+export function readTileInfo(dataRoot: DataRoot, href: string): TerrainTileInfo {
   const path = stripXpointer(href);
-  const root = parse(readFileSync(join(dataRoot, path.replace(/^\//, '')), 'utf8'));
+  const root = parse(readText(dataRoot, path));
   const tile = find(root, 'AdvMapTile');
   if (!tile) throw new Error(`${path}: not an AdvMapTile`);
   const colour = find(tile, 'MinimapColor');
@@ -162,8 +161,8 @@ export function readTileInfo(dataRoot: string, href: string): TerrainTileInfo {
 }
 
 /** Every race's preset, keyed by the race enum. */
-export function readPresets(dataRoot: string): Map<number, RacePreset> {
-  const xml = readFileSync(join(dataRoot, 'GameMechanics', 'RefTables', 'RMGPresetTable.xdb'), 'utf8');
+export function readPresets(dataRoot: DataRoot): Map<number, RacePreset> {
+  const xml = readText(dataRoot, 'GameMechanics/RefTables/RMGPresetTable.xdb');
   const root = parse(xml);
   const table = find(root, 'Table_RMGPreset_Race');
   const objects = table ? find(table, 'objects') : null;

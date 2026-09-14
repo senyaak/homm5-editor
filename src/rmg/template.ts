@@ -24,6 +24,8 @@ import { readFileSync } from 'node:fs';
 
 import { childText, find, findAll, parse, text } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 
 /** Seven, one per creature tier — the shape of `Mines` and `Dwellings`. */
 export const TIERS = 7;
@@ -172,6 +174,12 @@ export function parseTemplate(xml: string): RmgTemplate {
   };
 }
 
+/** A template by its full path on disk — the tests' door. */
 export function readTemplate(path: string): RmgTemplate {
   return parseTemplate(readFileSync(path, 'utf8'));
+}
+
+/** `RMG/Templates/<name>.xdb` through the mounted chain — the generator's door. */
+export function readTemplateNamed(dataRoot: DataRoot, name: string): RmgTemplate {
+  return parseTemplate(readText(dataRoot, `RMG/Templates/${name}.xdb`));
 }

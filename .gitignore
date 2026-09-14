@@ -22,7 +22,7 @@ _tmp/
 # extension, a patched executable, generated maps. The real install is shared
 # with every other session on this machine, so anything that writes to one gets
 # its own; `.env` here points at this copy. Game content, never committed.
-game/
+/game/
 
 # Where this machine keeps the game. One person's paths, nobody else's — the
 # committed file is .env.example, which says what belongs in it. `.env.test` is

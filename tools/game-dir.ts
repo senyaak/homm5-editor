@@ -20,7 +20,12 @@
 //                   proceeding; proceeding into a made-up path was the bug.
 
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+
+import { singleRoot } from '../src/game/assets.ts';
+import type { Assets } from '../src/game/assets.ts';
+import { mountArchives } from '../src/game/mounted.ts';
 
 /** The game folder, or null when nobody said. Never a guess. */
 export function gameDirIfAny(): string | null {
@@ -56,4 +61,17 @@ export function gameDir(): string {
     process.exit(2);
   }
   return dir;
+}
+
+/**
+ * The data as the GAME reads it: the archives mounted from `<game>/H5E/` over
+ * the unpacked cache, by the executable's own rule (`src/game/mounted.ts`).
+ * Without a game folder it is the cache alone — a chain of one, the shipped
+ * data — and a tool that must match a real install says `--game`.
+ */
+export function dataAssets(): Assets {
+  const base = dataDir();
+  const game = gameDirIfAny();
+  if (!game) return singleRoot(base);
+  return mountArchives(game, join(tmpdir(), 'homm5-editor', 'mounted'), base);
 }

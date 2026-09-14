@@ -13,10 +13,12 @@
 // (`CoCreateGuid` at run time), the map's name (typed into the dialog) and
 // the settings the dialog was set to. docs/RMG.md names them.
 
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { readEngineSine, type EngineSine } from '../src/exe/sine-table.ts';
+import { readText } from '../src/rmg/data.ts';
+import type { DataRoot } from '../src/rmg/data.ts';
 import { writeDDS } from '../src/format/texture.ts';
 import { heightsToFile, latePass, rotateOffsets } from '../src/rmg/heights.ts';
 import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
@@ -111,7 +113,7 @@ const MONSTER_NAMES = [
  * the roads. The river plane is stamped along the way because the lakes and
  * the sea share it.
  */
-export function replayTerrain(dataRoot: string, run: FullRun): {
+export function replayTerrain(dataRoot: DataRoot, run: FullRun): {
   layers: TerrainLayer[][];
   river: { w: number; data: Uint8Array };
 } {
@@ -168,7 +170,7 @@ function worldTile(o: FullRun['objects'][number]): { x: number; y: number } {
 
 /** One floor's minimap, both files. */
 function minimapFiles(
-  dataRoot: string, run: FullRun, floor: number, layers: readonly TerrainLayer[],
+  dataRoot: DataRoot, run: FullRun, floor: number, layers: readonly TerrainLayer[],
   river: { w: number; data: Uint8Array }, sine: EngineSine, icons: ReturnType<typeof loadMinimapIcons>,
   gameBuild = false,
 ): MapFile[] {
@@ -204,7 +206,7 @@ function minimapFiles(
   for (const o of run.objects) {
     if (o.floor !== floor || !o.shared || o.alias) continue;
     const docPath = o.shared.split('#')[0]!.replace(/^\//, '');
-    const docText = readFileSync(join(dataRoot, docPath), 'utf8');
+    const docText = readText(dataRoot, docPath);
     const docType = /<Type>(\w+)<\/Type>/.exec(docText)?.[1] ?? '';
     const name = iconNameFor(o.shared, o.town?.playerId ?? 0, docType);
     if (!name) continue;
@@ -276,7 +278,7 @@ function minimapFiles(
 
 /** Every file the archive holds, in no particular order — packing sorts them. */
 export function buildMapFiles(
-  dataRoot: string, exePath: string, run: FullRun, order: MapOrder,
+  dataRoot: DataRoot, exePath: string, run: FullRun, order: MapOrder,
   // The caption numbering belongs to the SAVE PATH, not to the generator: 0 is
   // what the console command writes, 2 what the editor's dialog does. See
   // `RmgTextsInput.captionBase`.

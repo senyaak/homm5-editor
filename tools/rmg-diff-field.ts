@@ -25,7 +25,7 @@ import { MAP_SIZES } from './rmg-build.ts';
 import { readOrder, unreplayable } from './rmg-order.ts';
 import type { ChainOptions } from './rmg-chain.ts';
 import { runFull } from './rmg-run.ts';
-import { dataDir, gameDir } from './game-dir.ts';
+import { dataAssets, gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -102,7 +102,7 @@ if (!theirs.length) { console.error('no `fld` lines — was `field` in the confi
 
 interface Ours { zone: number; kind: number; from: Tile; to: Tile; cost: Float32Array }
 const ours: Ours[] = [];
-runFull(dataDir(), {
+runFull(dataAssets(), {
   ...options,
   roadField: (zone, kind, cost, from, to) => ours.push({ zone, kind, from, to, cost: Float32Array.from(cost) }),
 });

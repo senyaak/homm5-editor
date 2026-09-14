@@ -12,10 +12,9 @@
 // newline — the engine's own writer (`src/map/new-map.ts` has the same
 // encoder for the editor's blanks).
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { find, findAll, parse } from '../format/xml.ts';
+import { readBytes, readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 
 /** What the GAME's generator writes into every scenario caption — see `captionText`. */
 export const GAME_CAPTION_TEXT = 'Это название карты';
@@ -54,8 +53,8 @@ export interface RmgTextsInput {
 }
 
 /** A params-relative text file, decoded by its BOM (they ship UTF-16LE). */
-function paramText(dataRoot: string, name: string): string {
-  const raw = readFileSync(join(dataRoot, 'RMG', 'Params', name));
+function paramText(dataRoot: DataRoot, name: string): string {
+  const raw = readBytes(dataRoot, `RMG/Params/${name}`);
   if (raw[0] === 0xff && raw[1] === 0xfe) return raw.subarray(2).toString('utf16le');
   const text = raw.toString('utf8');
   return text.startsWith('﻿') ? text.slice(1) : text;
@@ -82,8 +81,8 @@ function encode(text: string): Buffer {
  * The port used to hardcode 2, which made it exact against the three saved
  * references and two bytes out against every map the batch orders.
  */
-export function buildRmgTexts(dataRoot: string, input: RmgTextsInput): Array<{ name: string; data: Buffer }> {
-  const params = find(parse(readFileSync(join(dataRoot, 'RMG', 'Params', 'Default.xdb'), 'utf8')), 'RMGParameters');
+export function buildRmgTexts(dataRoot: DataRoot, input: RmgTextsInput): Array<{ name: string; data: Buffer }> {
+  const params = find(parse(readText(dataRoot, 'RMG/Params/Default.xdb')), 'RMGParameters');
   if (!params) throw new Error('RMG/Params/Default.xdb: not an RMGParameters');
   const href = (tag: string): string => {
     const h = find(params, tag)?.attrs['href'];

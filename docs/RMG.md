@@ -7178,6 +7178,23 @@ written down rather than from the exe:
   their documents (`statics-big.ts`, `statics-one-tile.ts`, the subterranean
   columns) — preset vectors, and what a preset may name.
 
+**The data half, done (14.09).** The port used to open every document with
+`readFileSync` against one folder — the unpacked `data/*.pak` — so a mod was
+invisible to it by construction. Now every reader in `src/rmg/` takes a
+`DataRoot` (`src/rmg/data.ts`: a directory, or an `Assets` chain) and reads
+through it; `runChain`/`runFull`/`buildMapFiles` carry the chain, and the
+CLIs get theirs from `dataAssets()` in `tools/game-dir.ts`. The chain is
+built by `src/game/mounted.ts` the way the executable builds its own: every
+archive in `<game>/H5E/` matching the five masks, the NEWEST member winning a
+path however the folder is ordered, a member dated at the ZIP epoch ignored,
+over the unpacked data — docs/ARCHIVES.md's rule, held by
+`tools/test-mounted.ts` with a folder order that contradicts the dates. The
+whole corpus (`_tmp/matrix/regress-all.sh`) is unchanged through the chain,
+which is the expected result: the vanilla copy's `H5E/` holds only the maps
+the engine made, and none of them carries a path the generator reads. The
+editor's own `mountedAssets` still mounts creature mods only; the generator
+needs more than that, and the button will build its chain from `mounted.ts`.
+
 **The two readings that were owed, taken (13.09, later still).**
 
 - **The sea is not big water.** The shipyard's ring and the minimap see the

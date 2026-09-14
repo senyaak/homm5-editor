@@ -33,7 +33,7 @@ import { describeOrder, readOrder } from './rmg-order.ts';
 import { runChain } from './rmg-chain.ts';
 import type { ChainOptions } from './rmg-chain.ts';
 import { runFull } from './rmg-run.ts';
-import { dataDir, gameDir } from './game-dir.ts';
+import { dataAssets, gameDir } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -133,8 +133,8 @@ options.onPhase = (label, draws) => phases.push({ label, draws });
 // the treasure blocks. A template whose CHAIN is exact still writes a wrong
 // map, and the phase that spoils it can only be named by replaying it too.
 const full = args.includes('--full');
-if (full) runFull(dataDir(), options, (label, draws) => phases.push({ label, draws }));
-else runChain(dataDir(), options);
+if (full) runFull(dataAssets(), options, (label, draws) => phases.push({ label, draws }));
+else runChain(dataAssets(), options);
 console.log(`port:   ${port.length} draws through ${full ? 'the whole run' : 'the chain'}`);
 
 const describe = (i: number): string => {

@@ -41,12 +41,11 @@
 // trunc(py) - trunc(h/2))`, copying every pixel whose OWN alpha is non-zero as
 // a whole dword — no blending, no scaling, clipped per pixel.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { add24, div24, mul24, sub24 } from '../exe/x87.ts';
 import { decodeDDS } from '../format/dds.ts';
 import { childText, find, findAll, parse } from '../format/xml.ts';
+import { filePath, readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 import { rotateOffsets } from './heights.ts';
 import { MINIMAP_SIDE } from './minimap.ts';
 import type { Bitmap } from './resample.ts';
@@ -167,8 +166,8 @@ const UNFLAGGABLE_DWELLINGS: ReadonlySet<string> = new Set([
 ]);
 
 /** Every minimap icon by the name the drawer asks for, as BGRA bitmaps. */
-export function loadMinimapIcons(dataRoot: string): Map<string, Bitmap> {
-  const root = parse(readFileSync(join(dataRoot, ICON_LIST), 'utf8'));
+export function loadMinimapIcons(dataRoot: DataRoot): Map<string, Bitmap> {
+  const root = parse(readText(dataRoot, ICON_LIST));
   const list = find(root, 'WindowRelatedTextures');
   const textures = list ? find(list, 'textures') : null;
   const out = new Map<string, Bitmap>();
@@ -178,12 +177,12 @@ export function loadMinimapIcons(dataRoot: string): Map<string, Bitmap> {
     const href = find(item, 'Texture')?.attrs['href'];
     if (!name || !href) continue;
     const docPath = href.split('#')[0]!.replace(/^\/+/, '');
-    const doc = parse(readFileSync(join(dataRoot, docPath), 'utf8'));
+    const doc = parse(readText(dataRoot, docPath));
     const dest = find(doc, 'Texture');
     const file = dest ? find(dest, 'DestName')?.attrs['href'] : undefined;
     if (!file) continue;
     const dir = docPath.slice(0, docPath.lastIndexOf('/') + 1);
-    const image = decodeDDS(join(dataRoot, dir + file));
+    const image = decodeDDS(filePath(dataRoot, dir + file));
     // The port keeps the engine's byte order, which is what the .dds stores.
     const data = new Uint8Array(image.rgba.length);
     for (let i = 0; i < data.length; i += 4) {

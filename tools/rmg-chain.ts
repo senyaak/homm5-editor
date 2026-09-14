@@ -7,7 +7,10 @@
 import { arithFor } from '../src/rmg/arith.ts';
 import type { Arith } from '../src/rmg/arith.ts';
 import type { ArithName } from '../src/rmg/arith.ts';
-import { join } from 'node:path';
+import { readDefaultParams } from '../src/rmg/params.ts';
+import { toAssets } from '../src/rmg/data.ts';
+import type { Assets } from '../src/game/assets.ts';
+import type { DataRoot } from '../src/rmg/data.ts';
 
 import { readArmyTemplates } from '../src/rmg/armies.ts';
 import type { GuardTables } from '../src/rmg/armies.ts';
@@ -25,7 +28,7 @@ import type { LoadedTemplate } from '../src/rmg/load-template.ts';
 import { mapSetup } from '../src/rmg/map-setup.ts';
 import { MINE_TYPES, placeZoneAbandonedMines, placeZoneMines, readMineShared } from '../src/rmg/mines.ts';
 import type { MineFootprint, PlacedMine } from '../src/rmg/mines.ts';
-import { readParams } from '../src/rmg/params.ts';
+import type { readParams } from '../src/rmg/params.ts';
 import { ensureRoom, filterByRoom, readFootprint, zoneTiles } from '../src/rmg/placement.ts';
 import { CARTOGRAPHER_HREF, placeZoneCartographers } from '../src/rmg/cartographer.ts';
 import type { PlacedCartographer } from '../src/rmg/cartographer.ts';
@@ -42,7 +45,7 @@ import { SHRINE_TYPES, placeZoneShrines } from '../src/rmg/shrines.ts';
 import type { PlacedShrine } from '../src/rmg/shrines.ts';
 import { placeZoneTeleports } from '../src/rmg/teleports.ts';
 import type { PlacedTeleport } from '../src/rmg/teleports.ts';
-import { readTemplate } from '../src/rmg/template.ts';
+import { readTemplateNamed } from '../src/rmg/template.ts';
 import {
   DEN_OF_THIEVES_HREF, OBSERVATORY_HREF, TREASURE_TYPES,
   placeObservatories, placeZoneTreasures,
@@ -214,7 +217,7 @@ export interface ChainOptions {
 }
 
 export interface Chain {
-  dir: string;
+  dir: Assets;
   rng: RmgRandom;
   size: number;
   template: RmgTemplate;
@@ -324,10 +327,11 @@ export interface Chain {
  * Run the nine ported phases; the rng stands at 18491 when this returns —
  * or at 4475 for the underground run's options.
  */
-export function runChain(dir: string, options: ChainOptions = {}): Chain {
+export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
+  const dir = toAssets(root);
   const size = options.size ?? SIZE;
-  const template = readTemplate(join(dir, 'RMG', 'Templates', `${options.template ?? 'S1P2Z2M1'}.xdb`));
-  const params = readParams(join(dir, 'RMG', 'Params', 'Default.xdb'));
+  const template = readTemplateNamed(dir, options.template ?? 'S1P2Z2M1');
+  const params = readDefaultParams(dir);
   const presets = readPresets(dir);
   const towns = new Map<string, TownShared>();
   for (const preset of presets.values()) {
