@@ -104,15 +104,15 @@ export interface MineType {
  * Which guard-level parameter a mine of index `type` is guarded at — the
  * step's own branches, not a column of the table: types 0 and 1 (`cmp
  * ecx,1; jle`, the near ring's two) take `Mine1LevelGuardLevel` (params
- * +0x68), the last takes `MineGoldGuardLevel` (+0x70), the rest
- * `Mine2LevelGuardLevel` (+0x6C). The three products sit at 0xEB65ED,
- * 0xEB708E and 0xEB7185; the compare that routes the gold mine is not yet
- * read as an instruction — "the last of the seven" is what every traced run
- * shows, and what this returns.
+ * +0x68); the type the step compares against a literal — `cmp dword ptr
+ * [esp+14h],6; jne` at 0xEB6F8D, READ (14.09), the immediate
+ * `goldMineType` in `src/exe/rmg-tables.ts` — takes `MineGoldGuardLevel`
+ * (+0x70); the rest `Mine2LevelGuardLevel` (+0x6C). The three products sit
+ * at 0xEB65ED, 0xEB708E and 0xEB7185.
  */
-export function guardLevelOf(type: number, count: number): 'mine1' | 'mine2' | 'gold' {
+export function guardLevelOf(type: number, goldType: number): 'mine1' | 'mine2' | 'gold' {
   if (type <= 1) return 'mine1';
-  return type === count - 1 ? 'gold' : 'mine2';
+  return type === goldType ? 'gold' : 'mine2';
 }
 
 export type MineFootprint = Footprint;
@@ -158,6 +158,8 @@ export interface MineStepInput {
   town: { x: number; y: number } | null;
   /** The mine table in placement order — read out of the executable. */
   types: readonly MineType[];
+  /** The type index the step guards at the gold level — the literal it compares against, read out of the executable. */
+  goldType: number;
   /** The template's per-type counts for this zone, in `types` order. */
   counts: number[];
   radii: { nearMin: number; nearMax: number; farMin: number; farMax: number };
@@ -180,7 +182,7 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
   for (let type = 0; type < input.types.length; type++) {
     const count = input.counts[type] ?? 0;
     const spec = input.types[type]!;
-    const guardLevel = guardLevelOf(type, input.types.length);
+    const guardLevel = guardLevelOf(type, input.goldType);
     const list = type <= 1 ? lists.near : lists.far;
 
     for (let instance = 0; instance < count; instance++) {

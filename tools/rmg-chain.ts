@@ -756,7 +756,7 @@ export class ZoneFill {
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor,
       town: this.zone.town && centre ? { x: centre.b, y: centre.a } : null,
-      types, counts: this.zone.mines,
+      types, goldType: c.exe.goldMineType, counts: this.zone.mines,
       radii: {
         nearMin: c.params.mine1LevelMinRadius, nearMax: c.params.mine1LevelMaxRadius,
         farMin: c.params.mine2LevelMinRadius, farMax: c.params.mine2LevelMaxRadius,

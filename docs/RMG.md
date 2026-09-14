@@ -7271,12 +7271,20 @@ these came out of the executable:
 - **The map angle at `map+0x5C` is the WORLD's to read** (`movss` at
   0xD65CB4, 0xD6A198), not the generator's.
 
-Still open from that sweep: the compare that refuses a (0,0) possession
-marker in PlaceTown (measured off the oracle's points, the instruction not
-found), the gold mine's guard-level compare (the last of the seven, every run
-agrees), the road walk's direction coin (read, draw-invisible), and the
-four named `throw`s — rectangle maps, a rehashed bucket's order, `%g`'s
-exponent forms — which stay refusals rather than guesses.
+And after them: the gold mine's guard level is routed by a LITERAL, `cmp
+dword ptr [esp+14h],6; jne` at 0xEB6F8D — not "the last of the seven" —
+and the reader takes the immediate out of the mines step (`goldMineType`);
+the (0,0) possession marker is refused by the stamp `0xEC2F90` skipping an
+EMPTY marker list (`test eax,0FFFFFFFEh; jle` at 0xEC3196), the pair being
+read at 0xEB4F7C / 0xEB506B on the way in — the test that keeps a zero
+pair out of the list is the one instruction still not located; `%g`'s
+large-exponent form is written by the runtime's own rule instead of
+refused (unexercised: |Rot| < 10); and the three "rectangle" refusals now
+say what they are — the engine has ONE dimension (both of `map+0xC` and
+`map+0x10` come from the same size-table entry), so a rectangle is not an
+input it can be given, and the port's square-only readers guard their own
+API, not a hole. Still a refusal, and rightly: a rehashed bucket's order
+(`zones.ts`), which no shipped template with water reaches.
 
 **The two readings that were owed, taken (13.09, later still).**
 

@@ -456,7 +456,7 @@ export function fillTerrain(
   presets: Map<number, RacePreset>,
   transitiveTile: TerrainTileInfo | null,
 ): TerrainLayer[][] {
-  if (width !== height) throw new Error('fillTerrain: the engine is only ever run square — rectangle semantics unread');
+  if (width !== height) throw new Error('fillTerrain: one side only — the engine has one dimension (map+0xC and map+0x10 come from the same size-table entry, map-setup.ts), so a rectangle is not an input it can be given');
   const size = width;
   const v = size + 1;
 

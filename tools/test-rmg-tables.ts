@@ -46,6 +46,7 @@ check('seven mines with their piles', same(t.mines.map((m) => [doc(m.href), doc(
   ['Sawmill', 'Wood'], ['Ore_Pit', 'Ore'], ['Alchemist_Lab', 'Mercury'], ['Crystal_Cavern', 'Crystal'],
   ['Sulfur_Dune', 'Sulfur'], ['Gem_Pond', 'Gems'], ['Gold_Mine', 'Gold'],
 ].map(([m, p]) => [object(m!, 'AdvMapMineShared'), object(p!, 'AdvMapTreasureShared')])), JSON.stringify(t.mines));
+check('the gold mine is type 6', t.goldMineType === 6, String(t.goldMineType));
 check('the random town', doc(t.randomTown) === '/MapObjects/RandomTown.xdb', t.randomTown);
 check('seven random dwellings', same(t.randomDwellings.map(doc), [1, 2, 3, 4, 5, 6, 7].map((n) => `/MapObjects/Random/RandomDwelling${n}.xdb`)),
   t.randomDwellings.join(' '));

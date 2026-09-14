@@ -187,7 +187,7 @@ export function fillZones(
   // SWAPPED relative to the neighbour bounds. On the square maps it makes the
   // two readings agree; on a rectangle they would not, and porting either one
   // would be a guess wearing the other's clothes.
-  if (width !== height) throw new Error('fillZones: the engine is only ever run square — rectangle semantics unread');
+  if (width !== height) throw new Error('fillZones: one side only — the engine has one dimension (map+0xC and map+0x10 come from the same size-table entry, map-setup.ts), so a rectangle is not an input it can be given');
   const size = width;
 
   const byFloor: PlacedZone[][] = Array.from({ length: floorCount }, () => []);

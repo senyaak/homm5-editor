@@ -355,8 +355,12 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
       // which is why this cost a template to find — `S1-2P2-8Z8K2S`'s zone 8
       // is a Stronghold, and the engine's `+0x68` there holds four points
       // where the port had five. Read off the engine's own list (the oracle's
-      // `points` dump); the instruction that refuses it has not been found,
-      // so this is measured rather than derived.
+      // `points` dump). Where the refusal sits (14.09): the stamp `0xEC2F90`
+      // takes the marker as a LIST of byte pairs and skips the mark and the
+      // push whole when the list is empty (`test eax,0FFFFFFFEh; jle` at
+      // 0xEC3196 on end − begin); PlaceTown reads the pair at 0xEB4F7C and
+      // 0xEB506B on its way to that list, and the test that keeps a (0,0)
+      // pair out of it is the one instruction still not located.
       const marker = proto.possessionMarker;
       const fours = marker[0] === 0 && marker[1] === 0
         ? proto.activeTiles

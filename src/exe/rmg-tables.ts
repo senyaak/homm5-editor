@@ -35,6 +35,8 @@ export interface RmgExeTables {
   treasures: readonly string[];
   /** The seven mines in placement order, each with the pile it drops beside. */
   mines: ReadonlyArray<{ href: string; pile: string }>;
+  /** The type index the step guards at the gold level — the literal it compares against. */
+  goldMineType: number;
   /** The random-towns town prototype and the seven tier stand-ins. */
   randomTown: string;
   randomDwellings: readonly string[];
@@ -124,6 +126,9 @@ class Reader {
       throw new Error('mines step: expected a mine run and a pile run of the same length');
     }
     const mines = mineHrefs.map((href, i) => ({ href, pile: pileHrefs[i]! }));
+    // The gold gate: the one compare of a stack slot against a small literal
+    // that a `jne` follows and that is not the near-ring's `cmp ecx,1`.
+    const goldMineType = this.stackCompareBefore(mineStep, 'jne', mines.length);
 
     const dwellingStep = this.functionWithString("Can't place dwelling %s at zone");
     const randomDwellings = this.stringRun(this.slotsOf(dwellingStep)[0]!);
@@ -204,7 +209,7 @@ class Reader {
     const unflaggableDwellingTypes = this.unflaggableDwellings();
 
     return {
-      shrines, treasures, mines, randomTown, randomDwellings, prison, cartographer, shipyard,
+      shrines, treasures, mines, goldMineType, randomTown, randomDwellings, prison, cartographer, shipyard,
       monolith, gateIn, gateOut, observatory, denOfThieves, armyTemplateGroup, blockResources, blockChest, minimapIcons, birds,
       mapSizes, sizeUnits, unitsToSize, waterDepth, densityMultipliers,
       raceEnum, ...races, slotRaceList, lakeRaces, lightNames, unflaggableDwellingTypes, unplaceableCreatures,
@@ -545,6 +550,25 @@ class Reader {
       out.push({ at: i, bound, targets });
     }
     return out;
+  }
+
+  /**
+   * The immediate of the one `cmp dword ptr [esp+N],imm` under `bound` that a
+   * `jump` follows within four instructions — a step routing one table index
+   * to its own branch.
+   */
+  private stackCompareBefore(fn: number, jump: string, bound: number): number {
+    const body = this.body(fn);
+    const found = new Set<number>();
+    for (let i = 0; i + 2 < body.length; i++) {
+      const ins = body[i]!;
+      if (ins.mnemonic !== 'cmp' || !ins.memory || ins.memory.base.toUpperCase() !== 'ESP' || ins.immediates.length !== 1) continue;
+      const imm = ins.immediates[0]!;
+      if (imm < 0 || imm >= bound) continue;
+      if (body.slice(i + 1, i + 5).some((j) => j.mnemonic === jump)) found.add(imm);
+    }
+    if (found.size !== 1) throw new Error(`0x${fn.toString(16)}: ${found.size} stack compares under ${bound} before a ${jump}, expected one (${[...found].join(' ')})`);
+    return [...found][0]!;
   }
 
   /** The first instruction at `va` — for reading a jump-table case. */

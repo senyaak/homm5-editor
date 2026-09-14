@@ -96,13 +96,14 @@ export function fmtRot(v: number, truncate = false): string {
   const parts = /^(-?)(\d)(?:\.(\d+))?e([+-]\d+)$/.exec(sci);
   if (!parts) throw new Error(`Rot ${v}: unreadable exponential form ${sci}`);
   const exponent = Number(parts[4]);
-  // UNREACHABLE by construction, and kept as the assertion that says so: every
-  // Rot the generator writes is a quadrant multiple (`q * pi/2`, at most 3pi/2),
-  // a mine's facing (at most 3pi) or the map angle (`betweenFloat(0, 2pi)`), so
-  // |Rot| < 10 and the exponent cannot reach 6. `%g`'s OTHER form — the one
-  // below, exponent under -4 — is reachable and measured, digit count included.
-  if (exponent >= 6) throw new Error(`Rot ${v} needs %g's large-exponent form — unmeasured`);
-  if (exponent >= -4) return String(Number(truncate ? sci : f.toPrecision(6)));
+  // Every Rot the generator writes is a quadrant multiple (`q * pi/2`, at most
+  // 3pi/2), a mine's facing (at most 3pi) or the map angle (`betweenFloat(0,
+  // 2pi)`), so |Rot| < 10 and the exponent never reaches 6. `%g`'s form for
+  // when it does is the C runtime's rule, the same one the measured form below
+  // follows — scientific once the exponent reaches the precision, the mantissa
+  // trimmed, the exponent signed and padded — and it is written that way here
+  // rather than refused, unexercised as it is.
+  if (exponent < 6 && exponent >= -4) return String(Number(truncate ? sci : f.toPrecision(6)));
   const mantissa = (parts[2] + (parts[3] ? `.${parts[3]}` : ''))
     .replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
   const sign = exponent < 0 ? '-' : '+';

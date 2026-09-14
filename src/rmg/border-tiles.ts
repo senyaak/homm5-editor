@@ -39,7 +39,7 @@ const FAR = fl(10000); // [0xFAA664] — where the minimum starts
  *          elsewhere, 10000 where no own-zone border exists
  */
 export function calcBorderTiles(width: number, height: number, floors: Int32Array[][]): Int32Array[][] {
-  if (width !== height) throw new Error('calcBorderTiles: the engine is only ever run square — rectangle semantics unread');
+  if (width !== height) throw new Error('calcBorderTiles: one side only — the engine has one dimension (map+0xC and map+0x10 come from the same size-table entry, map-setup.ts), so a rectangle is not an input it can be given');
   const size = width;
 
   return floors.map((grid) => {
