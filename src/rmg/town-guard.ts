@@ -46,7 +46,6 @@
 // (13+20)*8/2 is 132 exactly; 20000 - 105*132 is 6140, and 6140/180 is 34.
 
 import type { CreatureInfo } from './creatures.ts';
-import { UNPLACEABLE_CREATURES } from './creatures.ts';
 
 /** Below this the engine logs "no monster set at town" and draws nothing. */
 export const MIN_TOWN_GUARD_POWER = 100;
@@ -84,6 +83,7 @@ export function setTownGuard(
   strengthLevel: number,
   race: number,
   creatures: readonly CreatureInfo[],
+  unplaceable: ReadonlySet<number>,
   rng: DrawSource,
 ): TownGuardStack[] {
   if (power < MIN_TOWN_GUARD_POWER) return []; // no draws on this path
@@ -95,7 +95,7 @@ export function setTownGuard(
     // engine's `shr`, not a rounded division.
     let count = ((spread + 20) * (9 - tier)) >> 1;
     const pool = creatures.filter((c) =>
-      !UNPLACEABLE_CREATURES.has(c.id) && c.tier === tier && c.town === race);
+      !unplaceable.has(c.id) && c.tier === tier && c.town === race);
     if (!pool.length) return stacks; // the engine's own `xor al,al` exit
     const chosen = pool[rng.below(pool.length)]!;
     const unit = chosen.power;

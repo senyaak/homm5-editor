@@ -11,13 +11,16 @@ import { readDefaultParams } from '../src/rmg/params.ts';
 import { toAssets } from '../src/rmg/data.ts';
 import type { Assets } from '../src/game/assets.ts';
 import type { DataRoot } from '../src/rmg/data.ts';
+import { exeTables, objectName, withoutPointer } from '../src/rmg/exe.ts';
+import type { RmgExeTables } from '../src/rmg/exe.ts';
+import { gameExe } from './game-dir.ts';
 
 import { readArmyTemplates } from '../src/rmg/armies.ts';
 import type { GuardTables } from '../src/rmg/armies.ts';
 import { calcBorderTiles } from '../src/rmg/border-tiles.ts';
 import { zoneConnections } from '../src/rmg/connections.ts';
 import type { ConnectionsResult } from '../src/rmg/connections.ts';
-import { createMap, MAP_SIZES } from '../src/rmg/create-map.ts';
+import { createMap } from '../src/rmg/create-map.ts';
 import { readCreatures } from '../src/rmg/creatures.ts';
 import { fillDistToTowns } from '../src/rmg/dist-to-towns.ts';
 import { placeZoneDwellings } from '../src/rmg/dwellings.ts';
@@ -26,13 +29,13 @@ import { fillZones } from '../src/rmg/fill-zones.ts';
 import { loadTemplate } from '../src/rmg/load-template.ts';
 import type { LoadedTemplate } from '../src/rmg/load-template.ts';
 import { mapSetup } from '../src/rmg/map-setup.ts';
-import { MINE_TYPES, placeZoneAbandonedMines, placeZoneMines, readMineShared } from '../src/rmg/mines.ts';
+import { placeZoneAbandonedMines, placeZoneMines, readMineShared } from '../src/rmg/mines.ts';
 import type { MineFootprint, PlacedMine } from '../src/rmg/mines.ts';
 import type { readParams } from '../src/rmg/params.ts';
 import { ensureRoom, filterByRoom, readFootprint, zoneTiles } from '../src/rmg/placement.ts';
-import { CARTOGRAPHER_HREF, placeZoneCartographers } from '../src/rmg/cartographer.ts';
+import { placeZoneCartographers } from '../src/rmg/cartographer.ts';
 import type { PlacedCartographer } from '../src/rmg/cartographer.ts';
-import { PRISON_HREF, placeZonePrisons } from '../src/rmg/prisons.ts';
+import { placeZonePrisons } from '../src/rmg/prisons.ts';
 import type { PlacedPrison } from '../src/rmg/prisons.ts';
 import type { Footprint, Tile } from '../src/rmg/placement.ts';
 import { readPresets } from '../src/rmg/preset-table.ts';
@@ -41,15 +44,12 @@ import { placePriceList, scaledBudget } from '../src/rmg/price-lists.ts';
 import type { PlacedPriced, PricedItem } from '../src/rmg/price-lists.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
 import { buildZoneRoad } from '../src/rmg/road.ts';
-import { SHRINE_TYPES, placeZoneShrines } from '../src/rmg/shrines.ts';
+import { placeZoneShrines } from '../src/rmg/shrines.ts';
 import type { PlacedShrine } from '../src/rmg/shrines.ts';
 import { placeZoneTeleports } from '../src/rmg/teleports.ts';
 import type { PlacedTeleport } from '../src/rmg/teleports.ts';
 import { readTemplateNamed } from '../src/rmg/template.ts';
-import {
-  DEN_OF_THIEVES_HREF, OBSERVATORY_HREF, TREASURE_TYPES,
-  placeObservatories, placeZoneTreasures,
-} from '../src/rmg/treasures.ts';
+import { placeObservatories, placeZoneTreasures } from '../src/rmg/treasures.ts';
 import type { PlacedObject } from '../src/rmg/treasures.ts';
 import type { RmgTemplate, RmgZone } from '../src/rmg/template.ts';
 import { readTownShared, readTownSpecializations } from '../src/rmg/town-data.ts';
@@ -60,7 +60,7 @@ import { dwarvenCoarse, makeRiverPlane, stampZoneSeaRiver } from '../src/rmg/ter
 import type { RiverPlane } from '../src/rmg/terrain.ts';
 import { carveWaterBorder, placeWaterTreasures, waterDepth } from '../src/rmg/water-border.ts';
 import type { PlacedWaterTreasure, WaterMark } from '../src/rmg/water-border.ts';
-import { SHIPYARD_HREF, placeShipyard } from '../src/rmg/shipyards.ts';
+import { placeShipyard } from '../src/rmg/shipyards.ts';
 import type { PlacedShipyard } from '../src/rmg/shipyards.ts';
 import { placeZoneGraal, placeZoneObelisks } from '../src/rmg/obelisks.ts';
 import type { PlacedObelisk } from '../src/rmg/obelisks.ts';
@@ -68,12 +68,11 @@ import { placeZoneUpgradeBuildings } from '../src/rmg/upgrade-buildings.ts';
 import type { PlacedUpgradeBuilding } from '../src/rmg/upgrade-buildings.ts';
 import { floorIterationOrder, generateGameZones } from '../src/rmg/zones.ts';
 
-import { MEASURED_PLAYER_RACES } from '../src/rmg/world-race.ts';
+import { worldPlayerRaces } from '../src/rmg/world-race.ts';
+import { RACE } from '../src/rmg/load-template.ts';
 
 export const SEED = 1785351845;
 export const SIZE = 96;
-/** The random-towns town prototype — the global `0x121C544`, PlaceTown's other document. */
-export const RANDOM_TOWN_HREF = '/MapObjects/RandomTown.xdb#xpointer(/AdvMapTownShared)';
 
 /** The knobs the ordered reference runs differ by. */
 export interface ChainOptions {
@@ -84,6 +83,8 @@ export interface ChainOptions {
    * a branch the port has not written.
    */
   seed?: number;
+  /** The executable's tables; read from the game the tools point at when left out. */
+  exe?: RmgExeTables;
   /** Template file name without the extension; the surface run's default. */
   template?: string;
   /** Map side in tiles — 96 for the surface run, 72 for the underground one. */
@@ -218,6 +219,8 @@ export interface ChainOptions {
 
 export interface Chain {
   dir: Assets;
+  /** The executable's tables — every list the engine carries in its image. */
+  exe: RmgExeTables;
   rng: RmgRandom;
   size: number;
   template: RmgTemplate;
@@ -329,6 +332,14 @@ export interface Chain {
  */
 export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
   const dir = toAssets(root);
+  // The executable's tables — the order's own, or the game the tools point at.
+  const exe = options.exe ?? exeTables(gameExe());
+  // The port names the races symbolically; the numbers behind the names are
+  // the image's, checked here so a build that renumbers them fails out loud.
+  for (const [name, value] of Object.entries(RACE)) {
+    const theirs = exe.raceEnum[name === 'RANDOM' ? 'RANDOM_TYPE' : name];
+    if (theirs !== value) throw new Error(`the executable numbers RACE_${name} ${theirs}, the port ${value}`);
+  }
   const size = options.size ?? SIZE;
   const template = readTemplateNamed(dir, options.template ?? 'S1P2Z2M1');
   const params = readDefaultParams(dir);
@@ -343,12 +354,12 @@ export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
   // The random-towns stand-ins: one town, seven dwellings — the globals
   // 0x4D5A60 fills at start-up, spelled the way the engine spells them.
   const randomTowns = Boolean(options.randomTowns);
-  const randomTown = randomTowns ? readTownShared(dir, RANDOM_TOWN_HREF) : undefined;
-  const randomDwellings = Array.from({ length: 7 }, (_, i) =>
-    `/MapObjects/Random/RandomDwelling${i + 1}.xdb#xpointer(/AdvMapDwellingShared)`);
+  const randomTown = randomTowns ? readTownShared(dir, exe.randomTown) : undefined;
+  const randomDwellings = [...exe.randomDwellings];
   const creatures = readCreatures(dir);
   const tables: GuardTables = {
-    templates: readArmyTemplates(dir),
+    templates: readArmyTemplates(dir, exe.armyTemplateGroup),
+    unplaceable: new Set(exe.unplaceableCreatures),
     creatures,
     powerByName: new Map(creatures.map((c) => [c.name, c.power])),
   };
@@ -367,20 +378,20 @@ export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
   // already a fixed point of that lift, so an order read out of a map comes
   // back unchanged. An order typed by hand may not, and then the grid below
   // follows the engine rather than the request.
-  const asked = MAP_SIZES.indexOf(size as (typeof MAP_SIZES)[number]);
+  const asked = exe.mapSizes.indexOf(size);
   // A tile count outside the engine's seven is nobody's order; the reference's
   // index stands in, rather than leaving the size UNSUPPLIED, which would send
   // the phase down its drawing branch and change the value it yields.
-  const requested = asked < 0 ? MAP_SIZES.indexOf(SIZE as (typeof MAP_SIZES)[number]) : asked;
+  const requested = asked < 0 ? exe.mapSizes.indexOf(SIZE) : asked;
   const made = createMap(template,
-    { players: options.players ?? 2, size: requested, underground: options.underground }, rng);
+    { players: options.players ?? 2, size: requested, underground: options.underground }, rng, exe);
   if (made.size !== requested) {
     // Said out loud rather than followed: the grid below is laid out from the
     // caller's tile count, and rebuilding it here would hide the fact that the
     // engine would not have made this map at all. No order in the corpus
     // reaches this — every size a generated map records is a fixed point.
-    console.warn(`  the engine would lift this order's size: ${MAP_SIZES[requested]} asked,`
-      + ` ${MAP_SIZES[made.size]} is what ${template.name}'s ${template.minMapSize} units require`);
+    console.warn(`  the engine would lift this order's size: ${exe.mapSizes[requested]} asked,`
+      + ` ${exe.mapSizes[made.size]} is what ${template.name}'s ${template.minMapSize} units require`);
   }
   phase('createMap');
   const setup = mapSetup(params,
@@ -390,6 +401,7 @@ export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
     twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
     playerCount: made.players, mapSize: size, pointLightZoneRadius: params.pointLightParams.zoneRadius,
     players: options.playerRaces ? [...options.playerRaces] : undefined,
+    races: exe,
   }, rng);
   phase('loadTemplate');
   const placed = generateGameZones(size, size,
@@ -442,7 +454,7 @@ export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
     size, template, zones: loaded.zones, floors: filled.floors, distances,
     radii: new Map(placed.zones.map((z) => [z.index, z.r])),
     presets, towns, specializations: readTownSpecializations(dir),
-    creatures, basicLeverGuardPower: params.basicLeverGuardPower,
+    creatures, unplaceable: tables.unplaceable, basicLeverGuardPower: params.basicLeverGuardPower,
     monsterStrength: setup.monsterStrength,
     randomTowns, randomTown,
   }, rng);
@@ -459,7 +471,7 @@ export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
       // anyway, and every larger island order carved the wrong ring. With the
       // index said, a 136-tile order's border table comes back identical to
       // the engine's; with 3 or 5 instead, 17473 of its 18496 cells differ.
-      depth: waterDepth(MAP_SIZES.indexOf(size as (typeof MAP_SIZES)[number])),
+      depth: waterDepth(exe.waterDepth, exe.mapSizes.indexOf(size)),
       kept: new Map(), sea: new Map(), waterLedger: new Map(),
       repel: new Map(), treasures: new Map(), shipyards: new Map(),
       marks: new Map(),
@@ -556,6 +568,7 @@ export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
         const actives: Tile[] = [];
         const seats: Tile[] = [];
         const placedTeleports = placeZoneTeleports({
+          documents: { monolith: withoutPointer(exe.monolith), gateIn: withoutPointer(exe.gateIn), gateOut: withoutPointer(exe.gateOut) },
           size, zoneIndex: z.index, floor: f,
           grid: floors[f]!.grid, border: floors[f]!.border, occupancy: floors[f]!.occ,
           points: grew, blocked: blockedList(z.index), connectionPoints: actives, guardSeats: seats,
@@ -605,7 +618,7 @@ export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
               zoneIndex: z.index, floor: f, tiles: water.kept.get(z.index)!, framed,
               depth: water.depth, river: water.river,
               town: templateZone.town ? { x: centre.b, y: centre.a } : null,
-              foot: chainFootprint(SHIPYARD_HREF),
+              foot: chainFootprint(withoutPointer(exe.shipyard)),
               guardPowerUnit: params.basicLeverGuardPower * params.connectionGuardLevel,
               monsterStrength: setup.monsterStrength, tables,
             }, rng);
@@ -632,14 +645,14 @@ export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
   const room = floors[0]!.room;
 
   return {
-    dir, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
+    dir, exe, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
     multipliers: { resource: options.resourceMultiplier ?? 1, exp: options.expMultiplier ?? 1 },
     arith: ar,
     roadField: options.roadField,
     gameBuild: Boolean(options.gameBuild),
     grail: Boolean(options.grail),
     randomTowns, randomDwellings,
-    randomTownPlayerRaces: options.randomTownPlayerRaces ?? MEASURED_PLAYER_RACES,
+    randomTownPlayerRaces: options.randomTownPlayerRaces ?? worldPlayerRaces(8, exe.slotRaceList),
     randomTownRaceOverride: options.randomTownRaceOverride ?? new Map(),
     teleports, floors, grid, border, occ, room, gridAtFillTerrain, coarse,
     roomPoints(zoneIndex: number): Tile[] {
@@ -737,12 +750,13 @@ export class ZoneFill {
   mines(): PlacedMine[] {
     const { c } = this;
     const centre = c.townResult.centres.get(this.zoneIndex);
-    const feet = new Map<string, MineFootprint>(MINE_TYPES.map((t) => [t.mine, readMineShared(c.dir, t.mine)]));
+    const types = c.exe.mines.map((m) => ({ mine: objectName(m.href), pile: objectName(m.pile) }));
+    const feet = new Map<string, MineFootprint>(types.map((t) => [t.mine, readMineShared(c.dir, t.mine)]));
     const mines = placeZoneMines({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor,
       town: this.zone.town && centre ? { x: centre.b, y: centre.a } : null,
-      counts: this.zone.mines,
+      types, counts: this.zone.mines,
       radii: {
         nearMin: c.params.mine1LevelMinRadius, nearMax: c.params.mine1LevelMaxRadius,
         farMin: c.params.mine2LevelMinRadius, farMax: c.params.mine2LevelMaxRadius,
@@ -793,7 +807,7 @@ export class ZoneFill {
   graal(): PlacedObelisk | null {
     const { c } = this;
     return placeZoneGraal({
-      size: c.size, sizeIndex: (MAP_SIZES as readonly number[]).indexOf(c.size),
+      size: c.size, sizeIndex: c.exe.mapSizes.indexOf(c.size),
       grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
       obelisk: c.footprint(c.params.obelisk), graal: c.footprint(c.params.grail),
@@ -803,7 +817,7 @@ export class ZoneFill {
   obelisks(): PlacedObelisk[] {
     const { c } = this;
     return placeZoneObelisks({
-      size: c.size, sizeIndex: (MAP_SIZES as readonly number[]).indexOf(c.size), grid: this.f.grid, border: this.f.border,
+      size: c.size, sizeIndex: c.exe.mapSizes.indexOf(c.size), grid: this.f.grid, border: this.f.border,
       occupancy: this.f.occ, room: this.f.room, points: this.points,
       zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
       obelisk: c.footprint(c.params.obelisk),
@@ -814,7 +828,7 @@ export class ZoneFill {
     const { c } = this;
     return placeZoneUpgradeBuildings({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
-      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, density: this.zone.upgBuildingsDensity, multIndex: c.multipliers.exp,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, density: this.zone.upgBuildingsDensity, multIndex: c.multipliers.exp, multipliers: c.exe.densityMultipliers,
       list: this.priced(this.pricePreset.newUpgradeBuildings)
         .map((p, i) => ({ href: p.type, value: p.value, foot: p.foot,
           guardStrenght: this.pricePreset.newUpgradeBuildings[i]!.guardStrenght })),
@@ -829,7 +843,7 @@ export class ZoneFill {
     return placeZonePrisons({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
-      count: this.zone.prisons, foot: c.footprint(PRISON_HREF),
+      count: this.zone.prisons, foot: c.footprint(withoutPointer(c.exe.prison)),
     }, c.rng);
   }
 
@@ -839,7 +853,7 @@ export class ZoneFill {
     return placeZoneCartographers({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
-      count: this.zone.landCartographer, foot: c.footprint(CARTOGRAPHER_HREF),
+      count: this.zone.landCartographer, foot: c.footprint(withoutPointer(c.exe.cartographer)),
     }, c.rng);
   }
 
@@ -848,7 +862,8 @@ export class ZoneFill {
     return placeZoneShrines({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, shrinePoints: this.zone.shrinePoints,
-      footprints: SHRINE_TYPES.map((s) => c.footprint(`/MapObjects/${s.name}.(AdvMapShrineShared).xdb`)),
+      types: c.exe.shrines.map((s) => ({ name: objectName(s.href), cost: s.cost })),
+      footprints: c.exe.shrines.map((s) => c.footprint(withoutPointer(s.href))),
     }, c.rng);
   }
 
@@ -895,8 +910,8 @@ export class ZoneFill {
     return placeObservatories({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
-      observatory: c.footprint(OBSERVATORY_HREF),
-      denOfThieves: c.footprint(DEN_OF_THIEVES_HREF),
+      observatory: c.footprint(withoutPointer(c.exe.observatory)),
+      denOfThieves: c.footprint(withoutPointer(c.exe.denOfThieves)),
       playerNo: c.loaded.zones.find((z) => z.index === this.zoneIndex)!.playerNo,
     }, c.rng);
   }
@@ -914,8 +929,9 @@ export class ZoneFill {
       // port's candidate list loses tiles the engine keeps).
       points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
       density: kind === 'treasures' ? this.zone.treasureDensity : this.zone.treasureChestDensity,
-      multIndex: kind === 'treasures' ? c.multipliers.resource : c.multipliers.exp, kind,
-      footprints: TREASURE_TYPES.map((t) => c.footprint(`/MapObjects/${t}.(AdvMapTreasureShared).xdb`)),
+      multIndex: kind === 'treasures' ? c.multipliers.resource : c.multipliers.exp, multipliers: c.exe.densityMultipliers, kind,
+      types: c.exe.treasures.map(objectName),
+      footprints: c.exe.treasures.map((t) => c.footprint(withoutPointer(t))),
     }, c.rng);
   }
 

@@ -63,6 +63,16 @@ export function gameDir(): string {
   return dir;
 }
 
+/** The game's unwrapped executable — what the generator's tables are read from. */
+export function gameExe(): string {
+  const exe = join(gameDir(), 'bin', 'H5_Game_H5E.exe');
+  if (!existsSync(exe)) {
+    console.error(`${exe} is not there — \`npm run unwrap-exe\` makes it`);
+    process.exit(2);
+  }
+  return exe;
+}
+
 /**
  * The data as the GAME reads it: the archives mounted from `<game>/H5E/` over
  * the unpacked cache, by the executable's own rule (`src/game/mounted.ts`).
@@ -74,4 +84,12 @@ export function dataAssets(): Assets {
   const game = gameDirIfAny();
   if (!game) return singleRoot(base);
   return mountArchives(game, join(tmpdir(), 'homm5-editor', 'mounted'), base);
+}
+
+/** The game's unwrapped executable, or null when nobody said where the game is. */
+export function gameExeIfAny(): string | null {
+  const game = gameDirIfAny();
+  if (!game) return null;
+  const exe = join(game, 'bin', 'H5_Game_H5E.exe');
+  return existsSync(exe) ? exe : null;
 }

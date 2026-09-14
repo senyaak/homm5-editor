@@ -125,8 +125,8 @@ export interface LoadTemplateOptions {
   dwarvenUnderground: boolean;
   /**
    * gen+0xA6 — the WaterAmount byte (0/1/2); non-zero makes floor-0 zones
-   * WaterBordered. Whether the engine distinguishes 1 from 2 here is an
-   * assumption until read — the island reference is the only water run.
+   * WaterBordered. READ (14.09): the phase's one test of it is `cmp byte ptr
+   * [gen+0A6h],0; je` at 0xEA24B2 — zero against anything, 1 and 2 alike.
    */
   water: number;
   /** gen+0x28 — how many players CreateMap settled on. */
@@ -137,6 +137,13 @@ export interface LoadTemplateOptions {
   mapSize: number;
   /** RMGParameters.PointLightParams.ZoneRadius — 40 in the shipped file. */
   pointLightZoneRadius: number;
+  /** The draw lists, read out of the executable (`src/exe/rmg-tables.ts`). */
+  races: {
+    surfaceRaces: readonly number[];
+    /** Joins the surface list when the map has one floor; null when the build adds none. */
+    surfaceRaceWhenOneFloor: number | null;
+    undergroundRaces: readonly number[];
+  };
 }
 
 export interface LoadedTemplate {
@@ -173,9 +180,9 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
   // flavour — run 1 proved it by arithmetic.
   const subterra = rng.below(2) !== 0;
 
-  const surface: number[] = [RACE.HEAVEN, RACE.PRESERVE, RACE.ACADEMY, RACE.DWARF, RACE.INFERNO, RACE.NECROMANCY, RACE.STRONGHOLD];
-  if (!options.twoFloors) surface.push(RACE.DUNGEON);
-  const underground: number[] = [RACE.DUNGEON, RACE.INFERNO, RACE.DWARF, RACE.NECROMANCY];
+  const surface: number[] = [...options.races.surfaceRaces];
+  if (!options.twoFloors && options.races.surfaceRaceWhenOneFloor !== null) surface.push(options.races.surfaceRaceWhenOneFloor);
+  const underground: number[] = [...options.races.undergroundRaces];
 
   const players = options.players ? [...options.players] : [];
   let playerNo = 1;

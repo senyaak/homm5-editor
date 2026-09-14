@@ -93,15 +93,27 @@ const MINE_ROOM_DIVISOR = 5;
  * mines come out in exactly this sequence. The template's per-zone counts
  * index this list; the pile column is the parallel table at `0x121C830`.
  */
-export const MINE_TYPES: ReadonlyArray<{ mine: string; pile: string; guardLevel: 'mine1' | 'mine2' | 'gold' }> = [
-  { mine: 'Sawmill', pile: 'Wood', guardLevel: 'mine1' },
-  { mine: 'Ore_Pit', pile: 'Ore', guardLevel: 'mine1' },
-  { mine: 'Alchemist_Lab', pile: 'Mercury', guardLevel: 'mine2' },
-  { mine: 'Crystal_Cavern', pile: 'Crystal', guardLevel: 'mine2' },
-  { mine: 'Sulfur_Dune', pile: 'Sulfur', guardLevel: 'mine2' },
-  { mine: 'Gem_Pond', pile: 'Gems', guardLevel: 'mine2' },
-  { mine: 'Gold_Mine', pile: 'Gold', guardLevel: 'gold' },
-];
+export interface MineType {
+  /** The mine document's name — `Sawmill`, `Gold_Mine`. */
+  mine: string;
+  /** The pile it drops beside itself — `Wood`, `Gold`. */
+  pile: string;
+}
+
+/**
+ * Which guard-level parameter a mine of index `type` is guarded at — the
+ * step's own branches, not a column of the table: types 0 and 1 (`cmp
+ * ecx,1; jle`, the near ring's two) take `Mine1LevelGuardLevel` (params
+ * +0x68), the last takes `MineGoldGuardLevel` (+0x70), the rest
+ * `Mine2LevelGuardLevel` (+0x6C). The three products sit at 0xEB65ED,
+ * 0xEB708E and 0xEB7185; the compare that routes the gold mine is not yet
+ * read as an instruction — "the last of the seven" is what every traced run
+ * shows, and what this returns.
+ */
+export function guardLevelOf(type: number, count: number): 'mine1' | 'mine2' | 'gold' {
+  if (type <= 1) return 'mine1';
+  return type === count - 1 ? 'gold' : 'mine2';
+}
 
 export type MineFootprint = Footprint;
 
@@ -144,7 +156,9 @@ export interface MineStepInput {
   /** The level's persistent room grid, recomputed in place when carried. */
   room?: Int32Array[];
   town: { x: number; y: number } | null;
-  /** The template's seven counts for this zone. */
+  /** The mine table in placement order — read out of the executable. */
+  types: readonly MineType[];
+  /** The template's per-type counts for this zone, in `types` order. */
   counts: number[];
   radii: { nearMin: number; nearMax: number; farMin: number; farMax: number };
   guardPower: { basic: number; mine1: number; mine2: number; gold: number };
@@ -163,9 +177,10 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
   });
   const placed: PlacedMine[] = [];
 
-  for (let type = 0; type < MINE_TYPES.length; type++) {
+  for (let type = 0; type < input.types.length; type++) {
     const count = input.counts[type] ?? 0;
-    const spec = MINE_TYPES[type]!;
+    const spec = input.types[type]!;
+    const guardLevel = guardLevelOf(type, input.types.length);
     const list = type <= 1 ? lists.near : lists.far;
 
     for (let instance = 0; instance < count; instance++) {
@@ -230,8 +245,8 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
       let guard: PlacedMine['guard'] = null;
       if (guardAt) {
         const level =
-          spec.guardLevel === 'mine1' ? input.guardPower.mine1
-          : spec.guardLevel === 'mine2' ? input.guardPower.mine2
+          guardLevel === 'mine1' ? input.guardPower.mine1
+          : guardLevel === 'mine2' ? input.guardPower.mine2
           : input.guardPower.gold;
         const made = setMonster(input.guardPower.basic * level, input.monsterStrength, input.tables, rng);
         if (made) guard = { ...made, x: guardAt[0], y: guardAt[1] };

@@ -53,7 +53,6 @@ import { EIGHT, ensureRoom, fits, stampFootprint } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 import { mintName } from './armies.ts';
 
-export const SHIPYARD_HREF = '/MapObjects/Shipyard.(AdvMapShipyardShared).xdb';
 
 export interface ShipyardInput {
   size: number;

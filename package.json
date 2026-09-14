@@ -125,6 +125,7 @@
     "test-rmg-map": "node tools/reverse/rmg-map.ts --check",
     "test-doc-addresses": "node tools/test-doc-addresses.ts",
     "test-rmg-log-sites": "node tools/reverse/rmg-log-sites.ts --check",
+    "test-rmg-tables": "node tools/test-rmg-tables.ts",
     "test-rmg-random": "node tools/test-rmg-random.ts",
     "test-rmg-template": "node tools/test-rmg-template.ts",
     "test-rmg-params": "node tools/test-rmg-params.ts",

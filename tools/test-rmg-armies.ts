@@ -16,6 +16,16 @@ import type { DrawSource, GuardTables } from '../src/rmg/armies.ts';
 import { readCreatures } from '../src/rmg/creatures.ts';
 import { dataDir } from './game-dir.ts';
 import { hasReference, REFERENCE_MAP, REFERENCE_MISSING } from './rmg-reference.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExeIfAny } from './game-dir.ts';
+
+// The generator's tables come out of the executable, so a run needs the game.
+const exePath = gameExeIfAny();
+if (!exePath) {
+  console.log('skipping — the generator reads its tables from the executable; say --game <dir> or HOMM5_GAME');
+  process.exit(0);
+}
+const EXE = exeTables(exePath);
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -30,11 +40,11 @@ if (!existsSync(join(dir, 'RMG'))) {
 }
 
 const creatures = readCreatures(dir);
-const templates = readArmyTemplates(dir);
+const templates = readArmyTemplates(dir, EXE.armyTemplateGroup);
 const tables: GuardTables = {
   templates,
   creatures,
-  powerByName: new Map(creatures.map((c) => [c.name, c.power])),
+  powerByName: new Map(creatures.map((c) => [c.name, c.power])), unplaceable: new Set(EXE.unplaceableCreatures),
 };
 
 console.log('the tables the guard setter reads');

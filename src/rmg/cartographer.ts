@@ -20,7 +20,6 @@ import type { DrawSource } from './armies.ts';
 import { ensureRoom, filterByRoom, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 
-export const CARTOGRAPHER_HREF = '/MapObjects/Cartographer.(AdvMapCartographerShared).xdb';
 
 export interface PlacedCartographer {
   name: string;

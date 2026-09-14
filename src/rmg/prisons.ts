@@ -25,7 +25,6 @@ import type { DrawSource } from './armies.ts';
 import { ensureRoom, filterByRoom, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 
-export const PRISON_HREF = '/MapObjects/Prison.(AdvMapPrisonShared).xdb';
 
 export interface PlacedPrison {
   name: string;

@@ -50,9 +50,17 @@ import type { RmgConnection } from './template.ts';
 
 const fl = Math.fround;
 
-export const MONOLITH_HREF = '/MapObjects/Monolith_Two_Way.(AdvMapBuildingShared).xdb';
-export const GATE_IN_HREF = '/MapObjects/Subterranean_Gate_In.(AdvMapBuildingShared).xdb';
-export const GATE_OUT_HREF = '/MapObjects/Subterranean_Gate_Out.(AdvMapBuildingShared).xdb';
+/**
+ * The three documents the pass builds from — the two-way monolith for a
+ * same-floor link, the gate's In and Out halves for a link across floors —
+ * as the executable names them (`monolith`, `gateIn`, `gateOut` in
+ * `src/exe/rmg-tables.ts`), without their xpointers.
+ */
+export interface TeleportDocuments {
+  monolith: string;
+  gateIn: string;
+  gateOut: string;
+}
 
 /** The guard's neighbour rings — 0x1093968 orthogonals, 0x1093988 diagonals. */
 const ORTHO4: ReadonlyArray<readonly [number, number]> = [[0, -1], [1, 0], [0, 1], [-1, 0]];
@@ -99,6 +107,7 @@ export interface ZoneTeleportsInput {
   tiles: Tile[];
   floorOf(zoneIndex: number): number;
   footprint(href: string): Footprint;
+  documents: TeleportDocuments;
   /** `BasicLeverGuardPower * ConnectionGuardLevel`. */
   guardPowerUnit: number;
   monsterStrength: number;
@@ -135,8 +144,8 @@ export function placeZoneTeleports(input: ZoneTeleportsInput, rng: DrawSource): 
     if (!cand.length) return placed; // no log, no draw, the zone is done
 
     const otherFloor = input.floorOf(other);
-    const href = otherFloor === input.floor ? MONOLITH_HREF
-      : input.floor === 0 ? GATE_IN_HREF : GATE_OUT_HREF;
+    const href = otherFloor === input.floor ? input.documents.monolith
+      : input.floor === 0 ? input.documents.gateIn : input.documents.gateOut;
     const foot = input.footprint(href);
     const groupId = Math.min(zoneIndex, other) * 100 + Math.max(zoneIndex, other);
 

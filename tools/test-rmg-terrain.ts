@@ -24,6 +24,16 @@ import { generateGameZones } from '../src/rmg/zones.ts';
 import { parseTerrain, readMask, readTextureLayers } from '../src/terrain/terrain.ts';
 import { dataDir } from './game-dir.ts';
 import { hasReference, REFERENCE_MISSING, REFERENCE_TERRAIN } from './rmg-reference.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExeIfAny } from './game-dir.ts';
+
+// The generator's tables come out of the executable, so a run needs the game.
+const exePath = gameExeIfAny();
+if (!exePath) {
+  console.log('skipping — the generator reads its tables from the executable; say --game <dir> or HOMM5_GAME');
+  process.exit(0);
+}
+const EXE = exeTables(exePath);
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -48,11 +58,11 @@ check('the transitive tile resolves to the Necropolis dark ground',
   transitive?.path ?? 'null');
 
 const rng = new RmgRandom(1785351845);
-const made = createMap(t, { players: 2, size: 1 }, rng);
+const made = createMap(t, { players: 2, size: 1 }, rng, EXE);
 const setup = mapSetup(p, { monsterStrength: 1, water: 0 }, rng);
 const lt = loadTemplate(t, {
   twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
-  playerCount: made.players, mapSize: 96, pointLightZoneRadius: p.pointLightParams.zoneRadius,
+  playerCount: made.players, mapSize: 96, pointLightZoneRadius: p.pointLightParams.zoneRadius, races: EXE,
 }, rng);
 const zones = generateGameZones(96, 96,
   lt.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng);

@@ -39,10 +39,37 @@ export function readBytes(root: DataRoot, rel: string): Buffer {
   return bytes;
 }
 
+/**
+ * An enum's numbering out of the editor's type listing — `types.xml`, read
+ * through the chain so a mod's copy wins. The executable compares a building's
+ * `Type` as a number; the map file spells it as a name; this is the bridge.
+ */
+export function readEnumValues(root: DataRoot, typeName: string): Map<number, string> {
+  const xml = readText(root, 'types.xml');
+  const at = xml.indexOf(`<TypeName>${typeName}</TypeName>`);
+  if (at < 0) throw new Error(`types.xml: no type ${typeName}`);
+  const entries = xml.indexOf('<Entries>', at);
+  const end = xml.indexOf('</Entries>', entries);
+  if (entries < 0 || end < 0) throw new Error(`types.xml: ${typeName} has no entries`);
+  const out = new Map<number, string>();
+  for (const m of xml.slice(entries, end).matchAll(/<Name>([^<]+)<\/Name>\s*<Value>(-?\d+)<\/Value>/g)) {
+    out.set(Number.parseInt(m[2]!, 10), m[1]!);
+  }
+  return out;
+}
+
 /** The real file behind a path — for the readers that take a filename. */
 export function filePath(root: DataRoot, rel: string): string {
   const data = toAssets(root);
   const p = docPath(rel);
   if (!data.exists(p)) throw new Error(`${rel}: not in any mounted root (${data.roots.join(', ')})`);
   return data.path(p);
+}
+
+/** An enum's names by value, densely from 0 — the order a map file's index means. */
+export function enumNames(root: DataRoot, typeName: string): string[] {
+  const byValue = readEnumValues(root, typeName);
+  const out: string[] = [];
+  for (let v = 0; byValue.has(v); v++) out.push(byValue.get(v)!);
+  return out;
 }

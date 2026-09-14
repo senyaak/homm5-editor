@@ -34,6 +34,21 @@ executable mounts: everything in `H5E/`, newest member first, over the
 shipped data. A mod that overrides any of them changes the generated map the
 way it changes the game's, instead of being invisible to the port.
 
+**And nothing the generator knows is written into the port any more.** The
+shrines and their costs, the nine treasures, the seven mines and their piles,
+the random-town stand-ins, every document a step builds from, the size
+ladders, the sea depth, the density multipliers, the race lists, the lake
+gate, the substrings that light a cave, the dwellings a minimap never flags,
+the creatures a guard never is — twenty-eight tables that used to be
+literals copied out of the disassembly are now read out of the executable
+itself, each found by a landmark that survives a recompilation. A patched
+executable is read as patched; a table that moves is a test failure, not a
+silent drift. The names a map file spells its order in come from the type
+listing the same way. Two values the port had been carrying in with an
+order because it could not explain them are explained: the `<Birds>` line is
+the map-setup step's own draw, written where the executable writes it, and
+the game's caption placeholder is a text in the params' data.
+
 **The Grail too.** Tick that box in the generator's dialog and the port
 reproduces what it makes: the Tear of Asha in one zone, obelisks in every
 zone, and "find the Tear of Asha" as the map's goal with the defeat-all it

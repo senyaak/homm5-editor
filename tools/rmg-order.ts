@@ -18,16 +18,22 @@ import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { readEntries } from '../src/format/pak.ts';
-import { MAP_SIZES } from './rmg-build.ts';
+import { mapSizes } from './rmg-build.ts';
+import { enumNames } from '../src/rmg/data.ts';
+import { dataAssets } from './game-dir.ts';
+const MAP_SIZES = mapSizes();
+
+
+// The names an order spells its sizes, water, and multipliers in are the
+// enums' own — `MapSize`, `WaterAmount`, `ResourceMultiplier`, `ExpMultiplier`
+// in the type listing, read through the mounted chain.
+const names = (typeName: string): string[] => enumNames(dataAssets(), typeName);
 
 /** The map sizes an order can name, by the dialog's MapSize index. */
-export const SIZE_NAMES = [
-  'MAP_SIZE_TINY', 'MAP_SIZE_SMALL', 'MAP_SIZE_MEDIUM', 'MAP_SIZE_LARGE',
-  'MAP_SIZE_EXTRALARGE', 'MAP_SIZE_HUGE', 'MAP_SIZE_IMPOSSIBLE',
-] as const;
+export const sizeNames = (): string[] => names('MapSize');
 
-/** `RESOURCE_*` / `EXP_*` in the enum's own order — types.xml, not guessed. */
-export const MULTIPLIERS = ['MISERABLE', 'LITTLE', 'NORMAL', 'LOTS', 'MUCH'] as const;
+/** The five multipliers, by index, without their `RESOURCE_` / `EXP_` prefix. */
+export const multiplierNames = (): string[] => names('ResourceMultiplier').map((n) => n.replace(/^RESOURCE_/, ''));
 
 export interface MapOrder {
   seed: number;
@@ -72,10 +78,9 @@ export interface MapOrder {
     startHeroes: string[];
   };
   /**
-   * The `<Birds>` href, when the map has one. The generator decides it outside
-   * its draw stream (two full traces from the game match the port draw for
-   * draw and the line still comes and goes), so it is carried with the order
-   * the way the GUID is — a value the process made, not one to rebuild.
+   * The `<Birds>` href the map carries, when it carries one — read for the
+   * record only. The generator rebuilds it from its own sixth map-setup draw
+   * and the document the executable names (`src/rmg/emit.ts`).
    */
   birds?: string;
 }
@@ -154,9 +159,9 @@ export function readOrder(path: string): { order: MapOrder; files: Map<string, B
   const monster = one(/<MonsterLevel>(\w+)</, 'MonsterLevel');
   if (missing) return `${path}: no ${missing} — this map was not generated`;
 
-  const sizeIndex = SIZE_NAMES.indexOf(sizeName as (typeof SIZE_NAMES)[number]);
+  const sizeIndex = names('MapSize').indexOf(sizeName);
   const size = MAP_SIZES[sizeIndex];
-  const water = ['WATER_NONE', 'WATER_PRESENT', 'WATER_ISLAND_MAP'].indexOf(waterName);
+  const water = names('WaterAmount').indexOf(waterName);
   if (size === undefined || water < 0) {
     return `${path}: ${sizeName} / ${waterName} is not an order this port can replay`;
   }
@@ -171,10 +176,10 @@ export function readOrder(path: string): { order: MapOrder; files: Map<string, B
       extras: {
         resource: /<ResourceMultiplier>(\w+)</.exec(text)?.[1] ?? '',
         exp: /<ExpMultiplier>(\w+)</.exec(text)?.[1] ?? '',
-        resourceIndex: MULTIPLIERS.indexOf(
-          (/<ResourceMultiplier>RESOURCE_(\w+)</.exec(text)?.[1] ?? 'LITTLE') as never),
-        expIndex: MULTIPLIERS.indexOf(
-          (/<ExpMultiplier>EXP_(\w+)</.exec(text)?.[1] ?? 'LITTLE') as never),
+        resourceIndex: names('ResourceMultiplier').indexOf(
+          /<ResourceMultiplier>(\w+)</.exec(text)?.[1] ?? 'RESOURCE_LITTLE'),
+        expIndex: names('ExpMultiplier').indexOf(
+          /<ExpMultiplier>(\w+)</.exec(text)?.[1] ?? 'EXP_LITTLE'),
         randomTowns: /<RandomTowns>true</.test(text),
         grail: /<Grail>true</.test(text),
         // ONLY the order's own PlayersInfo. `<Race>` appears again for each of

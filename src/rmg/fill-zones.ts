@@ -199,9 +199,9 @@ export function fillZones(
   const byIndex = new Map<number, PlacedZone>();
   for (const floor of byFloor) for (const z of floor) if (!byIndex.has(z.index)) byIndex.set(z.index, z);
 
-  // Assumed, and said: the grid arrives all -1. FillZones itself never writes
-  // the initial value; whoever builds the floor does, and that constructor is
-  // still unread. The first oracle-held sweep will confirm or deny.
+  // The grid arrives all -1: the map-created step writes it when it builds the
+  // floors (border-tiles.ts has the reading), and every oracle-held sweep
+  // since has agreed.
   const grids: Int32Array[][] = byFloor.map(() =>
     Array.from({ length: size }, () => new Int32Array(size).fill(-1)));
 

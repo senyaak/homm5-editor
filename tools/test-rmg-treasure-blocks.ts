@@ -28,6 +28,16 @@ import type { ArtifactEntry, PlacedTreasure } from '../src/rmg/treasure-blocks.t
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { runChain, SIZE, ZoneFill } from './rmg-chain.ts';
 import { dataDir } from './game-dir.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExeIfAny } from './game-dir.ts';
+
+// The generator's tables come out of the executable, so a run needs the game.
+const exePath = gameExeIfAny();
+if (!exePath) {
+  console.log('skipping — the generator reads its tables from the executable; say --game <dir> or HOMM5_GAME');
+  process.exit(0);
+}
+const EXE = exeTables(exePath);
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -97,7 +107,7 @@ for (const tz of c.template.zones) {
   placeZoneBigStatics({
     size: SIZE, grid: c.grid, border: c.border, occupancy: c.occ, room: c.room,
     points: fill.points, zoneIndex: tz.index, floor: loadedZone.floor,
-    settingRace: loadedZone.race,
+    settingRace: loadedZone.race, lakeRaces: new Set(EXE.lakeRaces),
     roads: zoneRoads, bigPositions: [], blockedList: fill.blocked,
     bigStatics: preset.bigStatics.map((h) => c.footprint(h)),
     mountains: preset.mountains.map((h) => c.footprint(h)),
@@ -157,6 +167,7 @@ for (const tz of c.template.zones) {
     `${c.rng.draws} (${blocks.length} blocks)`);
 
   const result = fillTreasureBlocks({
+    resources: EXE.blockResources, chest: EXE.blockChest,
     size: SIZE, occupancy: c.occ, blocks, artifacts: ARTIFACTS,
     monsterStrength: c.setup.monsterStrength, tables: c.tables,
   }, c.rng);

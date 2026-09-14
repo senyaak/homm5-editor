@@ -471,10 +471,12 @@ export interface RmgMapInput {
    */
   truncateFloats?: boolean;
   /**
-   * The `<Birds>` href, when the map has one. Not the generator's to decide
-   * from its seed — two full draw traces from the game match the port to the
-   * last draw and the line still comes and goes — so it is carried in with
-   * the order, the way the GUID is, and written as the value it was.
+   * The `<Birds>` href, when the map has one — the map-setup step's own
+   * sixth draw (`below(10) > 6`, `mapSetup().birds`), and the document the
+   * executable names for it (`birds` in `src/exe/rmg-tables.ts`). READ
+   * (14.09): `0xEA0EA0`, right after the ambient light is set — and held
+   * across every corpus map and every game-made one but ГСК-001, whose
+   * all-random order replays only in part anyway.
    */
   birds?: string;
   /** The order's two multipliers, 0 MISERABLE .. 4 MUCH; both default LITTLE. */

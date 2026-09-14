@@ -23,9 +23,11 @@ import { writeDDS } from '../src/format/texture.ts';
 import { heightsToFile, latePass, rotateOffsets } from '../src/rmg/heights.ts';
 import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
 import { buildTerrainFile } from '../src/rmg/emit-terrain.ts';
-import { buildRmgTexts, GAME_CAPTION_TEXT } from '../src/rmg/emit-texts.ts';
+import { buildRmgTexts } from '../src/rmg/emit-texts.ts';
 import { tr24 } from '../src/exe/x87.ts';
-import { MAP_SIZES } from '../src/rmg/create-map.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExe } from './game-dir.ts';
+import { enumNames, readEnumValues } from '../src/rmg/data.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import { drawMinimap, drawTerrainLayer, waterTile, type MinimapFloor, type WaterTileInput } from '../src/rmg/minimap.ts';
 import {
@@ -52,13 +54,6 @@ export interface MapOrder {
    * decimal is written by a runtime whose x87 rounds toward zero.
    */
   gameBuild?: boolean;
-  /**
-   * The `<Birds>` href the map carries, when it carries one. The generator
-   * decides it outside its own draw stream — two full traces from the game
-   * match the port draw for draw and the line still comes and goes — so, like
-   * the GUID, it is a value the process made and the order carries as it is.
-   */
-  birds?: string;
   /** The template's name without its path, e.g. `S1P2Z2M1`. */
   template: string;
   players: number;
@@ -94,16 +89,12 @@ const TOWN_BY_RACE: Record<number, string> = {
   [RACE.DWARF]: 'TOWN_FORTRESS', [RACE.STRONGHOLD]: 'TOWN_STRONGHOLD',
 };
 // The engine's own table, kept where the engine keeps it.
-export { MAP_SIZES };
-const MAP_SIZE_NAMES = [
-  'MAP_SIZE_TINY', 'MAP_SIZE_SMALL', 'MAP_SIZE_MEDIUM', 'MAP_SIZE_LARGE',
-  'MAP_SIZE_EXTRALARGE', 'MAP_SIZE_HUGE', 'MAP_SIZE_IMPOSSIBLE',
-] as const;
-const WATER_NAMES = ['WATER_NONE', 'WATER_PRESENT', 'WATER_ISLAND_MAP'] as const;
-const MONSTER_NAMES = [
-  'MONSTER_LEVEL_WEAK', 'MONSTER_LEVEL_MEDIUM', 'MONSTER_LEVEL_STRONG',
-  'MONSTER_LEVEL_VERY_STRONG', 'MONSTER_LEVEL_IMPOSSIBLE',
-] as const;
+/** The tile counts by size index, out of the game the tools point at. */
+export function mapSizes(): readonly number[] {
+  return exeTables(gameExe()).mapSizes;
+}
+// The names `sRMGProps` spells the order in are the enums' — `MapSize`,
+// `WaterAmount`, `MonsterLevel` in the type listing, read through the chain.
 
 /**
  * The run's terrain layers, per floor, with every painter replayed in order.
@@ -175,6 +166,9 @@ function minimapFiles(
   gameBuild = false,
 ): MapFile[] {
   const c = run.c;
+  // The dwelling types the minimap never flags: numbers in the executable, names in the type listing.
+  const typeNames = readEnumValues(dataRoot, 'BuildingType');
+  const unflaggable = new Set(c.exe.unflaggableDwellingTypes.map((v) => typeNames.get(v) ?? `#${v}`));
   const side = c.size, border = 1, dim = c.size + 1;
   // The ground flags: the constructor's uniform 16 on the surface, the massif
   // carve's byte grid below. The pass leaves a tile over 0x15 black, and the
@@ -208,7 +202,7 @@ function minimapFiles(
     const docPath = o.shared.split('#')[0]!.replace(/^\//, '');
     const docText = readText(dataRoot, docPath);
     const docType = /<Type>(\w+)<\/Type>/.exec(docText)?.[1] ?? '';
-    const name = iconNameFor(o.shared, o.town?.playerId ?? 0, docType);
+    const name = iconNameFor(o.shared, o.town?.playerId ?? 0, docType, unflaggable);
     if (!name) continue;
     const foot = c.footprint(o.world?.shared ?? o.shared);
     // The hole tiles too — the anchor's mean runs over them (`IconObject.holes`).
@@ -289,7 +283,7 @@ export function buildMapFiles(
   const { layers, river } = replayTerrain(dataRoot, run);
   latePass(run.heightPlane, heightsInput(run), undefined, run.c.arith);
 
-  const sizeIndex = MAP_SIZES.indexOf(c.size as (typeof MAP_SIZES)[number]);
+  const sizeIndex = c.exe.mapSizes.indexOf(c.size);
   const races = Array.from({ length: order.players }, (_, i) =>
     TOWN_BY_RACE[c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!);
   const files: MapFile[] = [
@@ -298,7 +292,8 @@ export function buildMapFiles(
       data: Buffer.from(buildRmgMapDesc({
         tiles: c.size,
         truncateFloats: order.gameBuild ?? false,
-        birds: order.birds,
+        // The birds are the map-setup step's own draw (`setup.birds`), the document the executable names.
+        birds: c.setup.birds ? c.exe.birds : undefined,
         twoLevel,
         grail: c.grail,
         randomTowns: c.randomTowns,
@@ -311,10 +306,10 @@ export function buildMapFiles(
           version: 34,
           seed: order.seed,
           guid: order.guid,
-          mapSize: MAP_SIZE_NAMES[sizeIndex]!,
+          mapSize: enumNames(dataRoot, 'MapSize')[sizeIndex]!,
           template: `/RMG/Templates/${order.template}.xdb#xpointer(/RMGTemplate)`,
-          waterAmount: WATER_NAMES[order.water]!,
-          monsterLevel: MONSTER_NAMES[c.setup.monsterStrength]!,
+          waterAmount: enumNames(dataRoot, 'WaterAmount')[order.water]!,
+          monsterLevel: enumNames(dataRoot, 'MonsterLevel')[c.setup.monsterStrength]!,
           hasUnderground: twoLevel,
           races,
           mapName: order.mapName,
@@ -335,7 +330,7 @@ export function buildMapFiles(
   files.push(...buildRmgTexts(dataRoot, {
     mapName: order.mapName,
     grail: c.grail,
-    captionText: order.gameBuild ? GAME_CAPTION_TEXT : undefined,
+    gamePlaceholder: order.gameBuild,
     template: order.template,
     sizeIndex,
     underground: order.underground,
@@ -379,7 +374,7 @@ export function buildMapFiles(
 
   if (order.minimap !== false) {
     const sine = readEngineSine(exePath);
-    const icons = loadMinimapIcons(dataRoot);
+    const icons = loadMinimapIcons(dataRoot, c.exe.minimapIcons);
     for (let f = 0; f < c.floors.length; f++) {
       files.push(...minimapFiles(dataRoot, run, f, layers[f]!, river, sine, icons, order.gameBuild ?? false));
     }

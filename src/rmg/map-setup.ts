@@ -14,8 +14,10 @@
 //
 // Draw four is the strangest and the most load-bearing: its PARITY (map+0x8C
 // = map+0x88 & 1) is what later makes the underground Dwarven — the dwarven
-// caves are a 50/50 of one raw roll. What reads the angle at map+0x5C is
-// still open; the roll's own upper bits likewise.
+// caves are a 50/50 of one raw roll. The angle at map+0x5C is read by the
+// WORLD, not the generator — `movss xmm0,[+5Ch]` at 0xD65CB4 and 0xD6A198 in
+// the game's world code (the FireDots take it as their rotation, statics-big);
+// the roll's own upper bits reach nothing else.
 //
 // This is also where the floor vector is built: 1 + gen+0x1D elements of
 // 0x120 bytes — the "two floors" bit from CreateMap IS the floor count,

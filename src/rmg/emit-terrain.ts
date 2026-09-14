@@ -12,8 +12,8 @@
 //
 // The tail differs from a blank's trailer in one place: an editor-saved
 // map carries a FULL passability plane in the 0x0f slot (a blank leaves
-// it empty). The GAME's RMG never writes passability — it serializes the
-// init-time all-ones — while the ordered references, being editor
+// it empty). The GAME's RMG fills the plane last of all — the per-zone pass
+// in passability.ts — while the ordered references, being editor
 // re-saves, carry the editor's scene-geometry derivation (docs/RMG.md);
 // this writer emits the RMG's own all-ones unless told otherwise.
 

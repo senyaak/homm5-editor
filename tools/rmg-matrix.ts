@@ -31,12 +31,16 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { SIZE_UNITS } from '../src/rmg/create-map.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExe } from './game-dir.ts';
 import { readTemplateNamed } from '../src/rmg/template.ts';
 import type { RmgTemplate } from '../src/rmg/template.ts';
-import { MULTIPLIERS, SIZE_NAMES } from './rmg-order.ts';
-import { MAP_SIZES } from './rmg-build.ts';
+import { multiplierNames, sizeNames } from './rmg-order.ts';
+import { mapSizes } from './rmg-build.ts';
+
 import { dataAssets } from './game-dir.ts';
+const MAP_SIZES = mapSizes();
+const SIZE_UNITS = exeTables(gameExe()).sizeUnits;
 
 /** The three seeds every row is run with — arbitrary, fixed, and not 0. */
 const SEEDS = [1001, 2002, 3003];
@@ -108,13 +112,13 @@ function tables(): void {
   const p = [
     ['template', 'the order\'s first word', `${list.length} shipped, as a path under RMG/Templates`],
     ['seed', '-seed', 'any int32 but 0 — the dialog draws it, the console may name it'],
-    ['size', '-size', `0..6 = ${MAP_SIZES.join(', ')} (${SIZE_NAMES.map((s) => s.replace('MAP_SIZE_', '')).join('/')}), lifted by the fit`],
+    ['size', '-size', `0..6 = ${MAP_SIZES.join(', ')} (${sizeNames().map((s) => s.replace('MAP_SIZE_', '')).join('/')}), lifted by the fit`],
     ['players', '-players', 'the template\'s MinPlayers..MaxPlayers, clamped again by the map'],
     ['underground', '-underground', '0 or 1 — the ORDER decides the second floor, never the template'],
     ['water', '-water', `0..2 = ${WATER_NAMES.join(', ')} — the dialog orders 0 or 2; 1 comes only from the coin`],
     ['monsters', '-monsters', `0..4 = ${MONSTER_NAMES.join(', ')}`],
-    ['resource', '-resource', `0..4 = ${MULTIPLIERS.join(', ')}`],
-    ['exp', '-exp', `0..4 = ${MULTIPLIERS.join(', ')}`],
+    ['resource', '-resource', `0..4 = ${multiplierNames().join(', ')}`],
+    ['exp', '-exp', `0..4 = ${multiplierNames().join(', ')}`],
     ['random towns', 'dialog, or -pokeb 149 1', 'on/off — a race per town, hashed from its name; ported, byte-exact. The players\' races are an input'],
     ['grail', 'dialog, or -pokeb 165 1', 'on/off — a Graal and one obelisk pass per zone; ported, byte-exact'],
   ];

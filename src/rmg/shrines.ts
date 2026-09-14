@@ -25,21 +25,25 @@ import { placePriceList } from './price-lists.ts';
 import type { PlacedPriced, PriceListInput } from './price-lists.ts';
 
 /**
- * The engine's own table at 0x121CA90 (hrefs, static init 0x4D5B40) and
- * 0xFF4C94 (costs). The order is the table's — the prefix draw indexes it.
+ * One shrine as the engine's own table names it — the hrefs are string
+ * globals a static initializer fills, the costs a dword table beside the
+ * step; both are read out of the executable (`shrines` in
+ * `src/exe/rmg-tables.ts`). The order is the table's — the prefix draw
+ * indexes it.
  */
-export const SHRINE_TYPES: ReadonlyArray<{ name: string; cost: number }> = [
-  { name: 'Shrine_Of_Magic_1', cost: 6 },
-  { name: 'Shrine_Of_Magic_2', cost: 10 },
-  { name: 'Shrine_Of_Magic_3', cost: 12 },
-];
+export interface ShrineType {
+  name: string;
+  cost: number;
+}
 
 export type PlacedShrine = PlacedPriced;
 
 export interface ShrineStepInput extends Omit<PriceListInput, 'budget' | 'list'> {
   /** The template's ShrinePoints, raw. */
   shrinePoints: number;
-  /** Footprints for the three shrines, in SHRINE_TYPES order. */
+  /** The table, in its order. */
+  types: readonly ShrineType[];
+  /** Footprints for the shrines, in `types` order. */
   footprints: Footprint[];
 }
 
@@ -48,6 +52,6 @@ export function placeZoneShrines(input: ShrineStepInput, rng: DrawSource): Place
   return placePriceList({
     ...input,
     budget: input.shrinePoints,
-    list: SHRINE_TYPES.map((s, i) => ({ type: s.name, value: s.cost, foot: input.footprints[i]! })),
+    list: input.types.map((s, i) => ({ type: s.name, value: s.cost, foot: input.footprints[i]! })),
   }, rng);
 }

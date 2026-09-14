@@ -16,8 +16,6 @@ import { find, findAll, parse } from '../format/xml.ts';
 import { readBytes, readText } from './data.ts';
 import type { DataRoot } from './data.ts';
 
-/** What the GAME's generator writes into every scenario caption — see `captionText`. */
-export const GAME_CAPTION_TEXT = 'Это название карты';
 
 export interface RmgTextsInput {
   /** The order's GRAIL checkbox — it swaps all three objective texts. */
@@ -43,13 +41,13 @@ export interface RmgTextsInput {
   /**
    * What the two caption documents BELOW the base say. The editor's save path
    * copies the map name into every caption document; the GAME's save writes
-   * its two unreferenced ones as a fixed placeholder — every map its generator
-   * has produced carries `Это название карты` ("this is the map's name") in
-   * `caption-text-0/1` and the real name in the referenced `2/3`. Taken as the
-   * value it is; where the game reads it from has not been found in the
-   * unpacked data or either executable.
+   * its two unreferenced ones as the params' `MapName` text — READ (14.09):
+   * `RMG/Params/Default.xdb` names `rmgMapName.txt` for it, and that file is
+   * the `Это название карты` every game-made map carries in `caption-text-0/1`
+   * beside the real name in the referenced `2/3`. Read through the chain, so a
+   * mod's text wins the way it would in the game.
    */
-  captionText?: string;
+  gamePlaceholder?: boolean;
 }
 
 /** A params-relative text file, decoded by its BOM (they ship UTF-16LE). */
@@ -114,10 +112,11 @@ export function buildRmgTexts(dataRoot: DataRoot, input: RmgTextsInput): Array<{
   // ONE PER SCENARIO ITEM, plus whatever the numbering starts above. Every one
   // of them is a copy of the map name; only the last `players` are referenced.
   const captionBase = input.captionBase ?? 0;
-  // The GAME's two unreferenced documents below the base carry a fixed
-  // placeholder rather than another copy of the name — see `captionText`;
-  // the referenced ones above it are the name in both builds.
-  const placeholder = input.captionText === undefined ? name : encode(input.captionText);
+  // The GAME's two unreferenced documents below the base carry the params'
+  // own `MapName` text (`RMG/Params/rmgMapName.txt`, "Это название карты")
+  // rather than another copy of the name — see `gamePlaceholder`; the
+  // referenced ones above it are the name in both builds.
+  const placeholder = input.gamePlaceholder ? encode(paramText(dataRoot, href('MapName'))) : name;
   for (let i = 0; i < captionBase + input.players; i++) {
     files.push({ name: `caption-text-${i}.txt`, data: i < captionBase ? placeholder : name });
   }

@@ -24,11 +24,14 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
-import { buildMapFiles, MAP_SIZES } from './rmg-build.ts';
+import { buildMapFiles, mapSizes } from './rmg-build.ts';
+
+
 import { describeOrder, readOrder, unreplayable } from './rmg-order.ts';
 import { runFull } from './rmg-run.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import { dataAssets, gameDir } from './game-dir.ts';
+const MAP_SIZES = mapSizes();
 
 const args = process.argv.slice(2);
 // The map is the one bare word that is not some flag's value.
@@ -144,7 +147,7 @@ const captions = [...theirs.keys()].filter((n) => /^caption-text-\d+\.txt$/.test
 const captionBase = Math.max(0, captions - players);
 if (captionBase) console.log(`  captions: ${captions} documents, so the numbering starts at ${captionBase} (an editor SAVE)`);
 const ours = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), run,
-  { seed, template, players, underground, water, guid, mapName, minimap, gameBuild, birds: order.birds },
+  { seed, template, players, underground, water, guid, mapName, minimap, gameBuild },
   { captionBase });
 
 const ourNames = new Set(ours.map((f) => f.name));

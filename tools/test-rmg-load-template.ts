@@ -22,6 +22,16 @@ import { RmgRandom } from '../src/rmg/random.ts';
 import { readTemplate } from '../src/rmg/template.ts';
 import { generateGameZones } from '../src/rmg/zones.ts';
 import { dataDir } from './game-dir.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExeIfAny } from './game-dir.ts';
+
+// The generator's tables come out of the executable, so a run needs the game.
+const exePath = gameExeIfAny();
+if (!exePath) {
+  console.log('skipping — the generator reads its tables from the executable; say --game <dir> or HOMM5_GAME');
+  process.exit(0);
+}
+const EXE = exeTables(exePath);
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -58,7 +68,7 @@ const template = readTemplate(join(dir, 'Templates', 'S1P2Z2M1.xdb'));
 const params = readParams(join(dir, 'Params', 'Default.xdb'));
 
 const rng = new RmgRandom(1785351845);
-const made = createMap(template, { players: 2, size: 1 }, rng);
+const made = createMap(template, { players: 2, size: 1 }, rng, EXE);
 check('CreateMap leaves the counter at 3', rng.draws === 3, `${rng.draws}`);
 
 // Whether the operator fixed the strength or the water cannot matter here:
@@ -71,7 +81,7 @@ const loaded = loadTemplate(template, {
   twoFloors: made.twoFloors,
   dwarvenUnderground: setup.dwarvenUnderground,
   water: setup.water,
-  playerCount: made.players,
+  playerCount: made.players, races: EXE,
   mapSize: 96,
   pointLightZoneRadius: params.pointLightParams.zoneRadius,
 }, rng);

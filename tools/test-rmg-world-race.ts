@@ -10,6 +10,16 @@ import {
   adler32, drawnDwellingRace, drawnTownRace, dwellingWorldRace, nameHash, seededBetween, townWorldRace,
   WORLD_SEED_FIRST, makeVersionTracker, worldPlayerRaces,
 } from '../src/rmg/world-race.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExeIfAny } from './game-dir.ts';
+
+// The slot list and the race count come out of the executable, so a run needs the game.
+const exePath = gameExeIfAny();
+if (!exePath) {
+  console.log('skipping — the generator reads its tables from the executable; say --game <dir> or HOMM5_GAME');
+  process.exit(0);
+}
+const EXE = exeTables(exePath);
 
 let failed = 0;
 const check = (what: string, got: unknown, want: unknown): void => {
@@ -44,7 +54,7 @@ for (const [name, want] of [
 for (const [name, x, y, want] of [
   ['item_-1337514376', 117, 55, RACE.DUNGEON], ['item_2057967587', 101, 29, RACE.PRESERVE],
   ['item_104202003', 48, 56, RACE.INFERNO], ['item_1506628804', 111, 93, RACE.PRESERVE],
-] as const) check(`neutral town ${name} at ${x},${y}`, drawnTownRace(name, x, y), want);
+] as const) check(`neutral town ${name} at ${x},${y}`, drawnTownRace(name, x, y, EXE.slotRaceList.length), want);
 
 // THE WORLD'S PLAYERS' RACES — the probe on the editor's 0x8450E0 (13.09):
 // every slot RANDOM, the list [3 8 7 4 6 5 9 10], a CRMVersionTracker
@@ -55,23 +65,23 @@ for (const [name, x, y, want] of [
 {
   const first = makeVersionTracker(0)();
   check("the tracker's first draw from seed 0 lands on index 5", first % 8, 5);
-  const races = worldPlayerRaces(5);
+  const races = worldPlayerRaces(5, EXE.slotRaceList);
   check('players 1..5 from seed 0, first draw spent',
     [1, 2, 3, 4, 5].map((p) => races.get(p)).join(' '),
     [RACE.DWARF, RACE.HEAVEN, RACE.ACADEMY, RACE.DUNGEON, RACE.HEAVEN].join(' '));
 }
 
 // Owned towns take the player's race, no draw (`rt race` with owner 1 -> 9, 2 -> 3).
-check('player 1 town', townWorldRace({ name: 'item_-549808217', x: 60, y: 103, playerNo: 1 }), RACE.DWARF);
-check('player 2 town', townWorldRace({ name: 'item_249313776', x: 104, y: 17, playerNo: 2 }), RACE.HEAVEN);
+check('player 1 town', townWorldRace({ name: 'item_-549808217', x: 60, y: 103, playerNo: 1, playerRaces: worldPlayerRaces(8, EXE.slotRaceList), raceCount: EXE.slotRaceList.length }), RACE.DWARF);
+check('player 2 town', townWorldRace({ name: 'item_249313776', x: 104, y: 17, playerNo: 2, playerRaces: worldPlayerRaces(8, EXE.slotRaceList), raceCount: EXE.slotRaceList.length }), RACE.HEAVEN);
 
 // Dwellings: bound to a town they take its race; townless they draw on two
 // ints — ГСК-024's four townless dwellings, whose world lists the anchor probe
 // printed (one Dwarven, three not).
-check('bound dwelling', dwellingWorldRace({ name: 'item_x' }, RACE.INFERNO), RACE.INFERNO);
-check('townless dwelling item_1014433349 (Dwarven list logged)', drawnDwellingRace('item_1014433349'), RACE.DWARF);
+check('bound dwelling', dwellingWorldRace({ name: 'item_x', raceCount: EXE.slotRaceList.length }, RACE.INFERNO), RACE.INFERNO);
+check('townless dwelling item_1014433349 (Dwarven list logged)', drawnDwellingRace('item_1014433349', EXE.slotRaceList.length), RACE.DWARF);
 for (const name of ['item_409827485', 'item_-281008947', 'item_-119668731']) {
-  const race = drawnDwellingRace(name);
+  const race = drawnDwellingRace(name, EXE.slotRaceList.length);
   check(`townless dwelling ${name} not Dwarven`, race !== RACE.DWARF, true);
 }
 

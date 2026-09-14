@@ -35,11 +35,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { Tile } from '../src/rmg/placement.ts';
-import { MAP_SIZES } from './rmg-build.ts';
+import { mapSizes } from './rmg-build.ts';
+
+
 import { readOrder, unreplayable } from './rmg-order.ts';
 import type { ChainOptions } from './rmg-chain.ts';
 import { runFull } from './rmg-run.ts';
 import { dataAssets, gameDir } from './game-dir.ts';
+const MAP_SIZES = mapSizes();
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {

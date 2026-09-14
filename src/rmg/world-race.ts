@@ -55,8 +55,14 @@
 
 import { RACE } from './load-template.ts';
 
-/** The world's `+0x50` in the game build — the seed vector's first word. */
-export const WORLD_SEED_FIRST = -1981557827;
+/**
+ * The world's `+0x50` — the seed vector's first word. DERIVED (14.09): it is
+ * the one draw the CWorld constructor takes from the version tracker seeded
+ * with 0 (`setup+0x30`), the draw `worldPlayerRaces` spends before the
+ * players; measured as 0x89E3D3BD in the game and the editor alike, and that
+ * is exactly what `makeVersionTracker(0)()` gives.
+ */
+export const WORLD_SEED_FIRST = makeVersionTracker(0)() | 0;
 
 /** The path every record of the generator's temp world is addressed by. */
 const TEMP_MAP_PATH = '/RMGTemp/CurrentMap/map.xdb';
@@ -97,26 +103,22 @@ const le = (v: number): number[] => {
 };
 
 /** The race the seeded draw gives a TOWN record — the third arm above. */
-export function drawnTownRace(name: string, x: number, y: number, first = WORLD_SEED_FIRST): number {
+export function drawnTownRace(name: string, x: number, y: number, raceCount: number, first = WORLD_SEED_FIRST): number {
   const h = nameHash(`${TEMP_MAP_PATH}#xpointer(id(${name})/AdvMapTown)`);
   const seed = (adler32(0x12345678, [first, x, y, h].flatMap(le)) + 16) | 0;
-  return seededBetween(seed, 0, 7) + RACE.HEAVEN;
+  return seededBetween(seed, 0, raceCount - 1) + RACE.HEAVEN;
 }
 
 /** The race the seeded draw gives a DWELLING record — `0xB4E2D0`, two ints. */
-export function drawnDwellingRace(name: string, first = WORLD_SEED_FIRST): number {
+export function drawnDwellingRace(name: string, raceCount: number, first = WORLD_SEED_FIRST): number {
   const h = nameHash(`${TEMP_MAP_PATH}#xpointer(id(${name})/AdvMapDwelling)`);
   const seed = (adler32(0x12345678, [first, h].flatMap(le)) + 8) | 0;
-  return seededBetween(seed, 0, 7) + RACE.HEAVEN;
+  return seededBetween(seed, 0, raceCount - 1) + RACE.HEAVEN;
 }
 
-/**
- * The list a RANDOM player slot draws from — `CPlayersStartInfo` item +0x50,
- * eight entries in this order on every slot the probe saw.
- */
-export const SLOT_RACE_LIST: readonly number[] = [
-  RACE.HEAVEN, RACE.INFERNO, RACE.NECROMANCY, RACE.PRESERVE, RACE.DUNGEON, RACE.ACADEMY, RACE.DWARF, RACE.STRONGHOLD,
-];
+// The list a RANDOM player slot draws from — `CPlayersStartInfo` item +0x50,
+// the lobby's own order — is read out of the executable (`slotRaceList` in
+// `src/exe/rmg-tables.ts`) and handed to `worldPlayerRaces` by the chain.
 
 /**
  * One draw of `NWorld::CRMVersionTracker` — the world builder's generator
@@ -153,16 +155,13 @@ export function makeVersionTracker(seed: number): () => number {
  * game maps and three lobbies had shown. The lobby's own slots are NOT what
  * the builder sees (`ГСК-029`); this is.
  */
-export function worldPlayerRaces(players: number): ReadonlyMap<number, number> {
+export function worldPlayerRaces(players: number, slotRaceList: readonly number[]): ReadonlyMap<number, number> {
   const draw = makeVersionTracker(0);
   draw(); // the CWorld constructor's own, into `world+0x50`
   const out = new Map<number, number>();
-  for (let slot = 1; slot <= players; slot++) out.set(slot, SLOT_RACE_LIST[draw() % 8]!);
+  for (let slot = 1; slot <= players; slot++) out.set(slot, slotRaceList[draw() % slotRaceList.length]!);
   return out;
 }
-
-/** The first eight, for the callers that do not know their count. */
-export const MEASURED_PLAYER_RACES: ReadonlyMap<number, number> = worldPlayerRaces(8);
 
 export interface WorldRaceInput {
   /** The town's minted name and record position, and its owner (0 neutral). */
@@ -170,22 +169,25 @@ export interface WorldRaceInput {
   x: number;
   y: number;
   playerNo: number;
-  playerRaces?: ReadonlyMap<number, number>;
+  /** The world's players' races — `worldPlayerRaces`, or the order's own. */
+  playerRaces: ReadonlyMap<number, number>;
+  /** How many playable races the draw spans — the slot list's length. */
+  raceCount: number;
   first?: number;
 }
 
 /** A random TOWN's race in the world — arms 1 and 3. */
 export function townWorldRace(t: WorldRaceInput): number {
-  const owner = t.playerNo ? (t.playerRaces ?? MEASURED_PLAYER_RACES).get(t.playerNo) : undefined;
+  const owner = t.playerNo ? t.playerRaces.get(t.playerNo) : undefined;
   if (owner !== undefined && owner !== RACE.RANDOM && owner !== RACE.NO_TYPE) return owner;
-  return drawnTownRace(t.name, t.x, t.y, t.first);
+  return drawnTownRace(t.name, t.x, t.y, t.raceCount, t.first);
 }
 
 /**
  * A random DWELLING's race in the world: its town's when it is bound to one
  * (arm 2), else its own draw (arm 3) — its own name, no tile.
  */
-export function dwellingWorldRace(d: { name: string; first?: number }, townRace: number | undefined): number {
+export function dwellingWorldRace(d: { name: string; raceCount: number; first?: number }, townRace: number | undefined): number {
   if (townRace !== undefined) return townRace;
-  return drawnDwellingRace(d.name, d.first);
+  return drawnDwellingRace(d.name, d.raceCount, d.first);
 }

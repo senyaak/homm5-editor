@@ -15,6 +15,7 @@ import { writeDDS } from '../src/format/texture.ts';
 import { drawMinimap, drawTerrainLayer } from '../src/rmg/minimap.ts';
 import { buildMinimapMask, vetoesRegistration } from '../src/rmg/minimap-mask.ts';
 import { drawIconLayer, iconNameFor, loadMinimapIcons, type IconObject } from '../src/rmg/minimap-icons.ts';
+import { readEnumValues } from '../src/rmg/data.ts';
 import { iconAnchor } from '../src/rmg/minimap-icons.ts';
 import { readTileInfo } from '../src/rmg/preset-table.ts';
 import {
@@ -24,6 +25,16 @@ import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { runFull } from './rmg-run.ts';
 import { dataDir, gameDirIfAny } from './game-dir.ts';
 import { REFERENCE_DIR, REFERENCE_MISSING, hasReference, referenceMinimap } from './rmg-reference.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExeIfAny } from './game-dir.ts';
+
+// The generator's tables come out of the executable, so a run needs the game.
+const exePath = gameExeIfAny();
+if (!exePath) {
+  console.log('skipping — the generator reads its tables from the executable; say --game <dir> or HOMM5_GAME');
+  process.exit(0);
+}
+const EXE = exeTables(exePath);
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -106,6 +117,8 @@ function check(name: string, ok: boolean, detail = ''): void {
 }
 
 const dir = dataDir();
+const typeNames = readEnumValues(dir, 'BuildingType');
+const unflaggable = new Set(EXE.unflaggableDwellingTypes.map((v) => typeNames.get(v)!));
 if (!existsSync(join(dir, 'RMG'))) {
   console.log('no unpacked RMG data — skipping');
   process.exit(0);
@@ -169,7 +182,7 @@ for (const o of r.objects) {
   if (o.floor !== 0 || !o.shared) continue;
   const docPath = o.shared.split('#')[0]!.replace(/^\//, '');
   const docType = /<Type>(\w+)<\/Type>/.exec(readFileSync(join(dir, docPath), 'utf8'))?.[1] ?? '';
-  const name = iconNameFor(o.shared, o.town?.playerId ?? 0, docType);
+  const name = iconNameFor(o.shared, o.town?.playerId ?? 0, docType, unflaggable);
   if (!name) continue;
   const foot = c.footprint(o.shared);
   iconObjects.push({ x: o.x, y: o.y, rot: o.rot, blocked: foot.blocked, active: foot.active, name });
@@ -178,7 +191,7 @@ check('the icon list is the engine\'s 22 — two towns, eighteen mines, two flag
   iconObjects.length === 22, `${iconObjects.length}`);
 
 const floor = { side, border, layers: floors[0]!, dim, masked: (tx: number, ty: number) => mask[ty * side + tx] === 1 };
-const icons = loadMinimapIcons(dir);
+const icons = loadMinimapIcons(dir, EXE.minimapIcons);
 const image = drawMinimap(floor, drawIconLayer(iconObjects, icons, side, border),
   readEngineSine(join(game, 'bin', 'H5_Game_H5E.exe')));
 

@@ -18,8 +18,8 @@
 // WHAT THIS IS NOT. It is not a conversion. `DOUBLES` is the arithmetic 136
 // reference maps were checked against and it stays the default; every site
 // that takes an `Arith` computes exactly what it computed before when handed
-// that one. `X87` is the second machine, and it is worth nothing until a map
-// the GAME made comes out of it.
+// that one. `X87` is the second machine — the game's — and every game-made map
+// in the corpus comes out of it byte for byte (`--game-build`).
 //
 // The single-precision operations themselves are `src/exe/x87.ts`, which the
 // minimap has spoken since the Lanczos filter was measured — the editor's

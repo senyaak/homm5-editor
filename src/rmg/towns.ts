@@ -184,6 +184,8 @@ export interface TownsInput {
   specializations: TownSpecialization[];
   /** The creature table, for the garrison an unowned town is given. */
   creatures: readonly CreatureInfo[];
+  /** Ids the garrison never buys — read out of the executable. */
+  unplaceable: ReadonlySet<number>;
   /** `BasicLeverGuardPower` — the zone's `TownGuardStrenght` multiplies it. */
   basicLeverGuardPower: number;
   /** The map's monster level, 0..4 — the garrison scales by its own two cases. */
@@ -235,7 +237,7 @@ function centroid(tiles: Array<[number, number]>): { a: number; b: number } {
 
 export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
   const { size, template, zones, floors, distances, radii, presets, towns, specializations } = input;
-  const { creatures, basicLeverGuardPower, monsterStrength } = input;
+  const { creatures, unplaceable, basicLeverGuardPower, monsterStrength } = input;
   const randomTowns = Boolean(input.randomTowns);
   if (randomTowns && !input.randomTown) throw new Error('random towns ordered, but no RandomTown document was given');
   const objects: PlacedObject[] = [];
@@ -321,7 +323,7 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
       // instruction earlier, and an owned town pays nothing here.
       const army = zone.playerNo === 0
         ? setTownGuard(item.townGuardStrenght * basicLeverGuardPower, monsterStrength,
-          zone.race, creatures, rng)
+          zone.race, creatures, unplaceable, rng)
         : [];
       // Reserve: blockedTiles mark 2, the active tiles and the marker 4 —
       // the engine's own two values, kept because later phases read them.

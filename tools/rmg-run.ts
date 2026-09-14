@@ -16,6 +16,7 @@
 // emitter to come.
 
 import { readText } from '../src/rmg/data.ts';
+import { objectName, withoutPointer } from '../src/rmg/exe.ts';
 import type { DataRoot } from '../src/rmg/data.ts';
 
 import { readArtifacts, rmgArtifactPool } from '../src/rmg/artifacts.ts';
@@ -25,14 +26,12 @@ import {
 } from '../src/rmg/heights.ts';
 import { createVertexHeights } from '../src/rmg/massif-carve.ts';
 import type { VertexHeights } from '../src/rmg/massif-carve.ts';
-import { MINE_TYPES, readMineShared } from '../src/rmg/mines.ts';
-import { CARTOGRAPHER_HREF } from '../src/rmg/cartographer.ts';
-import { PRISON_HREF } from '../src/rmg/prisons.ts';
+import { readMineShared } from '../src/rmg/mines.ts';
 import { recomputeRoom } from '../src/rmg/placement.ts';
 import type { Footprint, Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
-import { SHIPYARD_HREF, shipTile } from '../src/rmg/shipyards.ts';
-import { LIGHT_NAMES, placeZoneBigStatics } from '../src/rmg/statics-big.ts';
+import { shipTile } from '../src/rmg/shipyards.ts';
+import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import type { PlacedStatic } from '../src/rmg/statics-big.ts';
 import type { TownGuardStack } from '../src/rmg/town-guard.ts';
 import {
@@ -249,7 +248,7 @@ export function runFull(
       const townZone = c.loaded.zones.find((z) => c.townResult.townNames.get(z.index) === t.name);
       const worldRace = c.randomTowns && townZone
         ? c.randomTownRaceOverride.get(townZone.index)
-          ?? townWorldRace({ name: t.name, x: t.pos.x, y: t.pos.y, playerNo: townZone.playerNo, playerRaces: c.randomTownPlayerRaces })
+          ?? townWorldRace({ name: t.name, x: t.pos.x, y: t.pos.y, playerNo: townZone.playerNo, playerRaces: c.randomTownPlayerRaces, raceCount: c.exe.slotRaceList.length })
         : undefined;
       if (townZone && worldRace !== undefined) worldRaces.set(townZone.index, worldRace);
       const worldTown = worldRace === undefined ? undefined : c.presets.get(worldRace)?.townProto ?? undefined;
@@ -302,9 +301,9 @@ export function runFull(
       for (const ship of c.water?.shipyards.get(z.index) ?? []) {
         // The facing quarter 0 is the engine's full 2*pi in the file.
         object('shipyard', ship.name, ship.x, ship.y,
-          ship.q === 0 ? 2 * Math.PI : ship.q * HALF_PI, c.footprint(SHIPYARD_HREF), f,
+          ship.q === 0 ? 2 * Math.PI : ship.q * HALF_PI, c.footprint(withoutPointer(c.exe.shipyard)), f,
           {
-            shared: pointered(SHIPYARD_HREF, 'AdvMapShipyardShared'),
+            shared: c.exe.shipyard,
             shipTile: c.water ? shipTile([ship.x, ship.y], c.water.river, c.size) ?? undefined : undefined,
           });
         // The shipyard's guard records one quarter BEHIND the facing (4/4 fit).
@@ -355,7 +354,7 @@ export function runFull(
         guardPoint(m.guard, m.guard.x, m.guard.y, floor, m.facing);
         seats.push([m.guard.x, m.guard.y]);
       }
-      const pile = MINE_TYPES.find((t) => t.mine === m.type)!.pile;
+      const pile = objectName(c.exe.mines.find((t) => objectName(t.href) === m.type)!.pile);
       for (const p of m.piles) {
         point('pile', p.name, p.x, p.y, floor, m.facing, { shared: treasureShared(pile), amount: null });
       }
@@ -387,7 +386,7 @@ export function runFull(
         // or its own draw when the zone has no town (`world-race.ts`).
         world: (() => {
           if (!c.randomTowns) return undefined;
-          const race = c.randomTownRaceOverride.get(zone) ?? dwellingWorldRace({ name: d.name }, worldRaces.get(zone));
+          const race = c.randomTownRaceOverride.get(zone) ?? dwellingWorldRace({ name: d.name, raceCount: c.exe.slotRaceList.length }, worldRaces.get(zone));
           const own = c.presets.get(race)?.dwellings[Math.min(d.tier, 3)];
           return own ? { shared: pointered(own, 'AdvMapDwellingShared'), dx: 0, dy: 0 } : undefined;
         })(),
@@ -429,14 +428,14 @@ export function runFull(
     step(`zone ${zone} upgradeBuildings`);
 
     for (const p of fill.prisons()) {
-      object('prison', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(PRISON_HREF), floor,
-        { shared: pointered(PRISON_HREF, 'AdvMapPrisonShared') });
+      object('prison', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(withoutPointer(c.exe.prison)), floor,
+        { shared: c.exe.prison });
     }
     step(`zone ${zone} prisons`);
 
     for (const g of fill.cartographers()) {
-      object('cartographer', g.name, g.x, g.y, g.q * HALF_PI, c.footprint(CARTOGRAPHER_HREF), floor,
-        { shared: pointered(CARTOGRAPHER_HREF, 'AdvMapCartographerShared') });
+      object('cartographer', g.name, g.x, g.y, g.q * HALF_PI, c.footprint(withoutPointer(c.exe.cartographer)), floor,
+        { shared: c.exe.cartographer });
     }
     step(`zone ${zone} cartographer`);
 
@@ -517,11 +516,11 @@ export function runFull(
       swapJitterAxes: c.gameBuild, arith: c.arith,
       size: c.size, grid: floor.grid, border: floor.border, occupancy: floor.occ, room: floor.room,
       points: fill.points, zoneIndex: tz.index, floor: f,
-      settingRace: lz.race,
+      settingRace: lz.race, lakeRaces: new Set(c.exe.lakeRaces),
       roads: zoneRoads, bigPositions: [], blockedList: fill.blocked,
       bigStatics: preset.bigStatics.map((h) => c.footprint(h)),
       pointLight: c.params.pointLightParams,
-      lightNames: LIGHT_NAMES[lz.kind],
+      lightNames: c.exe.lightNames[lz.kind],
       zoneClass: subterranean ? (lz.kind as 'subterra' | 'subInferno' | 'dwarven') : undefined,
       mountains: preset.mountains.map((h) => c.footprint(h)),
       overLakeCenterObjects: preset.overLakeCenterObjects.map((h) => c.footprint(h)),
@@ -572,7 +571,7 @@ export function runFull(
       ? (lz.kind === 'dwarven' ? placeDwarvenOneTileStatics : placeSubterraOneTileStatics)({
           ...oneInput, vertexHeights: vertexHeights[f]!,
           pointLight: c.params.pointLightParams,
-          lightNames: LIGHT_NAMES[lz.kind] ?? [],
+          lightNames: c.exe.lightNames[lz.kind] ?? [],
         }, c.rng)
       : water
         ? placeWaterOneTileStatics(oneInput, c.rng)
@@ -620,6 +619,7 @@ export function runFull(
     step(`zone ${tz.index} blocks grown`);
     const result = fillTreasureBlocks({
       size: c.size, occupancy: fl.occ, blocks, artifacts,
+      resources: c.exe.blockResources, chest: c.exe.blockChest,
       monsterStrength: c.setup.monsterStrength, tables: c.tables,
     }, c.rng);
     for (const b of result) {

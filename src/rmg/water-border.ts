@@ -49,10 +49,10 @@ import { mintName } from './armies.ts';
 import type { DrawSource } from './armies.ts';
 import type { Tile } from './placement.ts';
 
-/** The sea depth by size index — the jump table at 0xEAC3C0; >6 falls to 3. */
-export function waterDepth(sizeIndex: number): number {
-  const table = [2, 3, 4, 5, 7, 8, 10];
-  return sizeIndex >= 0 && sizeIndex <= 6 ? table[sizeIndex]! : 3;
+/** The sea depth by size index — a jump table in GenerateMap, read out of the executable; an index past it takes the fallback. */
+export function waterDepth(depth: { table: readonly number[]; fallback: number }, sizeIndex: number): number {
+  const { table } = depth;
+  return sizeIndex >= 0 && sizeIndex < table.length ? table[sizeIndex]! : depth.fallback;
 }
 
 export interface WaterCarveInput {

@@ -25,7 +25,7 @@ import { recomputeRoom } from '../src/rmg/placement.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
 import type { Footprint, Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
-import { LIGHT_NAMES, placeZoneBigStatics } from '../src/rmg/statics-big.ts';
+import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
 import { placeDwarvenOneTileStatics, placeZoneOneTileStatics, placeSubterraOneTileStatics } from '../src/rmg/statics-one-tile.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { RACE_BY_NAME } from '../src/rmg/load-template.ts';
@@ -36,6 +36,16 @@ import { zoneTiles } from '../src/rmg/placement.ts';
 import { runChain, ZoneFill } from './rmg-chain.ts';
 import { dataDir } from './game-dir.ts';
 import { REFERENCE_UG_DIR, hasUndergroundReference } from './rmg-reference.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExeIfAny } from './game-dir.ts';
+
+// The generator's tables come out of the executable, so a run needs the game.
+const exePath = gameExeIfAny();
+if (!exePath) {
+  console.log('skipping — the generator reads its tables from the executable; say --game <dir> or HOMM5_GAME');
+  process.exit(0);
+}
+const EXE = exeTables(exePath);
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -239,7 +249,7 @@ for (const tz of c.template.zones) {
   const big = placeZoneBigStatics({
     size: c.size, grid: floor.grid, border: floor.border, occupancy: floor.occ, room: floor.room,
     points: fill.points, zoneIndex: tz.index, floor: f,
-    settingRace: loadedZone.race,
+    settingRace: loadedZone.race, lakeRaces: new Set(EXE.lakeRaces),
     roads: zoneRoads, bigPositions: [], blockedList: fill.blocked,
     bigStatics: preset.bigStatics.map((h) => c.footprint(h)),
     mountains: preset.mountains.map((h) => c.footprint(h)),
@@ -248,7 +258,7 @@ for (const tz of c.template.zones) {
     mapAngle: c.setup.angle,
     subterranean, vertexHeights: vertexHeights[f]!,
     pointLight: c.params.pointLightParams,
-    lightNames: LIGHT_NAMES[loadedZone.kind] ?? [],
+    lightNames: EXE.lightNames[loadedZone.kind] ?? [],
     zoneClass: subterranean
       ? (loadedZone.kind as 'subterra' | 'subInferno' | 'dwarven')
       : undefined,
@@ -271,7 +281,7 @@ for (const tz of c.template.zones) {
     ? placeSubterraOneTileStatics({
         ...oneInput, vertexHeights: vertexHeights[f]!,
         pointLight: c.params.pointLightParams,
-        lightNames: LIGHT_NAMES[loadedZone.kind] ?? [],
+        lightNames: EXE.lightNames[loadedZone.kind] ?? [],
       }, c.rng)
     : placeZoneOneTileStatics(oneInput, c.rng);
   for (const p of one) named.push(p);
@@ -318,6 +328,7 @@ for (const tz of c.template.zones) {
     distBetween: c.params.distBetweenTreasureBlocks,
   }, c.rng);
   const result = fillTreasureBlocks({
+    resources: EXE.blockResources, chest: EXE.blockChest,
     size: c.size, occupancy: fl.occ, blocks, artifacts: ARTIFACTS,
     monsterStrength: c.setup.monsterStrength, tables: c.tables,
   }, c.rng);

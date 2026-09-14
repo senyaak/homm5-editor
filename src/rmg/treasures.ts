@@ -46,13 +46,10 @@ import type { DrawSource } from './armies.ts';
 import { ensureRoom, filterByRoom, fits, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
 
-export const OBSERVATORY_HREF = '/MapObjects/Redwood_Observatory.(AdvMapBuildingShared).xdb';
-export const DEN_OF_THIEVES_HREF = '/MapObjects/Den_Of_Thieves.(AdvMapBuildingShared).xdb';
-
-/** The nine-entry table at 0x121C910 — below(9) indexes it; Chest is 1. */
-export const TREASURE_TYPES: readonly string[] = [
-  'Campfire', 'Chest', 'Crystal', 'Gems', 'Gold', 'Mercury', 'Ore', 'Sulfur', 'Wood',
-];
+// The nine treasure documents `below(9)` indexes (Chest is 1), the
+// observatory and the Den of Thieves are string globals in the image, read
+// out of the executable (`treasures`, `observatory`, `denOfThieves` in
+// `src/exe/rmg-tables.ts`) and handed in by the chain.
 
 export interface PlacedObject {
   type: string;
@@ -131,15 +128,17 @@ export function placeObservatories(input: ObservatoriesInput, rng: DrawSource): 
 export interface TreasureStepInput extends ZoneContext {
   /** TreasureDensity or TreasureChestDensity, raw from the template. */
   density: number;
-  /** The `{0.2, 0.5, 1, 2, 4}` ladder index — generator+0xA8 / +0xB0. */
+  /** The multiplier ladder's index — generator+0xA8 / +0xB0. */
   multIndex: number;
+  /** The ladder itself, read out of the executable. */
+  multipliers: readonly number[];
   /** Chests fix the type at index 1 and spend no type draw. */
   kind: 'treasures' | 'chests';
-  /** Footprints for TREASURE_TYPES, in table order. */
+  /** The treasure documents' names, in the engine's table order. */
+  types: readonly string[];
+  /** Footprints for `types`, in the same order. */
   footprints: Footprint[];
 }
-
-const LADDER: readonly number[] = [0.2, 0.5, 1, 2, 4];
 
 /** `0xEB9DC0` — the treasures/chests worker. Surface zones only (caller's gate). */
 export function placeZoneTreasures(input: TreasureStepInput, rng: DrawSource): PlacedObject[] {
@@ -148,11 +147,11 @@ export function placeZoneTreasures(input: TreasureStepInput, rng: DrawSource): P
 
   const raw = input.tiles ?? zoneTiles(size, grid, zoneIndex);
   const prefiltered = raw.filter(([x, y]) => border[y]![x]! >= 1);
-  const mult = LADDER[input.multIndex] ?? 1;
+  const mult = input.multipliers[input.multIndex] ?? 1;
   const count = Math.trunc((raw.length * Math.trunc(input.density * mult)) / 10000);
 
   for (let i = 0; i < count; i++) {
-    const type = input.kind === 'treasures' ? rng.below(9) : 1;
+    const type = input.kind === 'treasures' ? rng.below(input.types.length) : 1;
     const foot = input.footprints[type]!;
 
     const room = ensureRoom(input.room, size, grid, zoneIndex, input.points);
@@ -166,7 +165,7 @@ export function placeZoneTreasures(input: TreasureStepInput, rng: DrawSource): P
 
     const name = mintName(rng);
     stampFootprint(input, foot, tile, q);
-    placed.push({ type: TREASURE_TYPES[type]!, name, x: tile[0], y: tile[1], q });
+    placed.push({ type: input.types[type]!, name, x: tile[0], y: tile[1], q });
   }
   return placed;
 }

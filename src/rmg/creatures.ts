@@ -45,8 +45,6 @@ export const TOWN_BY_NAME: Record<string, number> = {
   TOWN_INFERNO: 8, TOWN_FORTRESS: 9, TOWN_STRONGHOLD: 10,
 };
 
-/** Ids the guard setter refuses outright, whatever their Power says. */
-export const UNPLACEABLE_CREATURES: ReadonlySet<number> = new Set([0, 89, 114]);
 
 export function readCreatures(dataRoot: DataRoot): CreatureInfo[] {
   const root = parse(readText(dataRoot, 'GameMechanics/RefTables/Creatures.xdb'));

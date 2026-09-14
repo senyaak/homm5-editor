@@ -207,14 +207,9 @@ export interface ArtifactEntry {
 /** Below this the block is skipped whole, draws included. */
 export const MIN_BLOCK_VALUE = 600;
 
-/** `0x121EBA0` — the seven resources, in the order `below(7)` indexes them. */
-export const BLOCK_RESOURCES: readonly string[] = [
-  'Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gems', 'Gold',
-];
-export const BLOCK_CHEST = 'Chest';
-
-const treasureHref = (name: string): string =>
-  `/MapObjects/${name}.(AdvMapTreasureShared).xdb#xpointer(/AdvMapTreasureShared)`;
+// The seven resource piles `below(7)` indexes and the chest are string globals
+// in the image (`blockResources`, `blockChest` in `src/exe/rmg-tables.ts`),
+// spelled with their xpointers the way the map file names them.
 
 export interface PlacedTreasure {
   /** `item_<signed int32>`, minted from two below(65535). */
@@ -237,6 +232,9 @@ export interface FillBlocksInput {
   artifacts: readonly ArtifactEntry[];
   monsterStrength: number;
   tables: GuardTables;
+  /** The resource piles a block draws from, in the executable's order, and the chest it stacks. */
+  resources: readonly string[];
+  chest: string;
 }
 
 export interface FilledBlock {
@@ -321,14 +319,14 @@ export function fillTreasureBlocks(input: FillBlocksInput, rng: DrawSource): Fil
 
       let perPoint = Math.trunc(Math.trunc(value / pc) / 100);
       if (perPoint <= 1) {
-        place(treasureHref(BLOCK_CHEST), Math.trunc(perPoint / 6) + 1, 'chest');
+        place(input.chest, Math.trunc(perPoint / 6) + 1, 'chest');
         continue;
       }
       if (perPoint > 10) perPoint = rng.below(6) + 7;
       // Three points or more, and the pile may become a chest instead.
       const chest = pc >= 3 && rng.below(2) !== 0;
-      if (chest) place(treasureHref(BLOCK_CHEST), Math.trunc(perPoint / 6) + 1, 'chest');
-      else place(treasureHref(BLOCK_RESOURCES[rng.below(7)]!), perPoint, 'resource');
+      if (chest) place(input.chest, Math.trunc(perPoint / 6) + 1, 'chest');
+      else place(input.resources[rng.below(input.resources.length)]!, perPoint, 'resource');
     }
 
     out.push({ guard, guardAt: [block.x, block.y], guardRotation, items });

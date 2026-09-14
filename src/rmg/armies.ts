@@ -49,9 +49,8 @@ import { posix } from 'node:path';
 
 import { childText, find, findAll, parse } from '../format/xml.ts';
 import type { CreatureInfo } from './creatures.ts';
-import { readText } from './data.ts';
+import { docPath, readText } from './data.ts';
 import type { DataRoot } from './data.ts';
-import { UNPLACEABLE_CREATURES } from './creatures.ts';
 
 /**
  * Only the two entries a guard spends, so a test can hand this function a
@@ -94,19 +93,18 @@ export interface Guard {
 
 /**
  * The template list, at the path the executable spells out in full — not a
- * parameter, not a reference table, a string constant in the image. Its
- * ORDER is the candidate order the draw indexes into.
+ * parameter, not a reference table, a string constant in the image
+ * (`armyTemplateGroup` in `src/exe/rmg-tables.ts`). Its ORDER is the
+ * candidate order the draw indexes into.
  */
-export const ARMY_TEMPLATE_GROUP =
-  'RMG/CustomArmyTemplates/SimpleTemplates/AutoTemplates/TestTemplateGroup.(RMGSimpleCustomArmyTemplateGroup).xdb';
-
-export function readArmyTemplates(dataRoot: DataRoot): ArmyTemplate[] {
-  const group = find(parse(readText(dataRoot, ARMY_TEMPLATE_GROUP)), 'RMGSimpleCustomArmyTemplateGroup');
+export function readArmyTemplates(dataRoot: DataRoot, groupHref: string): ArmyTemplate[] {
+  const groupPath = docPath(groupHref);
+  const group = find(parse(readText(dataRoot, groupPath)), 'RMGSimpleCustomArmyTemplateGroup');
   const holder = group ? find(group, 'Templates') : null;
   if (!holder) return [];
   // The group's items are RELATIVE hrefs — resolved against the group's own
   // folder, the one non-rooted list the generator reads.
-  const base = posix.dirname(ARMY_TEMPLATE_GROUP);
+  const base = posix.dirname(groupPath);
   return findAll(holder, 'Item')
     .map((i) => i.attrs['href'])
     .filter((h): h is string => !!h)
@@ -140,6 +138,8 @@ export interface GuardTables {
   creatures: CreatureInfo[];
   /** By name, for the templates' `CREATURE_*` references. */
   powerByName: Map<string, number>;
+  /** Ids the single-stack branch skips outright — read out of the executable. */
+  unplaceable: ReadonlySet<number>;
 }
 
 /**
@@ -241,7 +241,7 @@ function singleStack(scaled: number, tables: GuardTables, rng: DrawSource): Guar
   for (let round = 0; candidates.length < 10; round++) {
     if (round >= 64) throw new Error(`the guard scan is not converging at power ${scaled}`);
     for (const creature of tables.creatures) {
-      if (UNPLACEABLE_CREATURES.has(creature.id) || creature.power <= 0) continue;
+      if (tables.unplaceable.has(creature.id) || creature.power <= 0) continue;
       const ratio = fl(scaled / creature.power);
       if (ratio >= fl(desired / tolerance) && ratio <= fl(desired * tolerance)) candidates.push(creature);
     }

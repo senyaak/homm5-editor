@@ -19,10 +19,19 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { zoneTiles } from '../src/rmg/placement.ts';
-import { DENSITY_MULTIPLIERS } from '../src/rmg/upgrade-buildings.ts';
 import { runChain, SIZE, ZoneFill } from './rmg-chain.ts';
 import { dataDir } from './game-dir.ts';
 import { hasReference, REFERENCE_MAP, REFERENCE_MISSING } from './rmg-reference.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExeIfAny } from './game-dir.ts';
+
+// The generator's tables come out of the executable, so a run needs the game.
+const exePath = gameExeIfAny();
+if (!exePath) {
+  console.log('skipping — the generator reads its tables from the executable; say --game <dir> or HOMM5_GAME');
+  process.exit(0);
+}
+const EXE = exeTables(exePath);
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -72,7 +81,7 @@ const EXPECTED_BUDGETS: Array<{ zone: number; budget: number }> = [
 for (const { zone, budget } of EXPECTED_BUDGETS) {
   const density = c.zone(zone).upgBuildingsDensity;
   const tiles = zoneTiles(SIZE, c.grid, zone).length;
-  const got = Math.trunc((tiles * Math.trunc(density * DENSITY_MULTIPLIERS[1]!)) / 10000);
+  const got = Math.trunc((tiles * Math.trunc(density * EXE.densityMultipliers[1]!)) / 10000);
   check(`zone ${zone}: budget ${budget} from ${tiles} tiles at density ${density}`, got === budget, `${got}`);
 }
 {

@@ -116,8 +116,12 @@ export interface RacePreset {
    * list is here, and most races have none — only SPECIAL (five lava
    * colours), NO_TYPE (four) and DUNGEON (nine) are filled, which is exactly
    * the three an underground floor can be painted as. The SPANS the two
-   * draws use are still the global params': every race here says zMin 3
-   * zMax 3, and the maps show z = 2 + below(5).
+   * draws use are the GLOBAL params' — READ (14.09): `vt+0x3C` fetches the
+   * generator's params through `0xEAFF80` and draws `zMin + below(zMax -
+   * zMin)` and `radiusMin + below(radiusMax - radiusMin)` off their
+   * `+0xB4..+0xC0` (0xEC63A6..0xEC6415); the shipped file says 2..7 and
+   * 20..25, which is the `2 + below(5)` the maps show. A race's own zMin 3
+   * zMax 3 is never read.
    */
   pointLightColors: Array<{ x: number; y: number; z: number }>;
   /**

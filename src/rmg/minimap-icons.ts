@@ -63,18 +63,17 @@ export interface IconObject {
   active: readonly Offset[];
   /**
    * Its `holeTiles`, unrotated — NOT averaged in: tried, and it moves the
-   * mines of every game map off their pixels. Kept on the object for the one
-   * case that is still open: a medium game map's Fairie Tree (five blocked,
-   * three holes, one active, anchor exactly 192) drawn one pixel left of
-   * where blocked-and-active put it, while a large map's mine with the same
-   * exact-192 anchor stands where the port puts it.
+   * mines of every game map off their pixels. The Fairie Tree that once made
+   * this look open (five blocked, three holes, one active, anchor exactly
+   * 192, drawn a pixel left) was the x87 chop at `iconAnchor`, not the
+   * holes — see there. Kept on the object for the record only.
    */
   holes?: readonly Offset[];
   /** The looked-up name, `Town_1` / `Mine_0` / `Object_0` / `UnderworldExitEnter`. */
   name: string;
 }
 
-const ICON_LIST = 'UI/AdventureScreen-FPP-2/MinimapTextures.(WindowRelatedTextures).xdb';
+
 
 /**
  * The name an object's icon is looked up by, or null when it gets none.
@@ -84,12 +83,12 @@ const ICON_LIST = 'UI/AdventureScreen-FPP-2/MinimapTextures.(WindowRelatedTextur
  * the class for both. `owner` is `[obj+0xC]`: 0 for neutral, 1..8 a player,
  * and anything above 8 skips the object.
  */
-export function iconNameFor(shared: string, owner: number, buildingType = ''): string | null {
+export function iconNameFor(shared: string, owner: number, buildingType: string, unflaggable: ReadonlySet<string>): string | null {
   if (owner < 0 || owner > 8) return null;
   if (shared.includes('AdvMapTownShared')) return `Town_${owner}`;
   if (shared.includes('AdvMapMineShared') || shared.includes('AdvMapAbanMineShared')) return `Mine_${owner}`;
   if (shared.includes('AdvMapDwellingShared')) {
-    return UNFLAGGABLE_DWELLINGS.has(buildingType) ? null : `Object_${owner}`;
+    return unflaggable.has(buildingType) ? null : `Object_${owner}`;
   }
   if (FLAGGED_BUILDINGS.has(buildingType)) return `Object_${owner}`;
   // The SECOND list, and the RMG fills it the moment a map has two levels: a
@@ -161,13 +160,10 @@ const FLAGGED_BUILDINGS: ReadonlySet<string> = new Set([
  * They are the three neutral "buy creatures here" dwellings, which is what
  * the game does with them.
  */
-const UNFLAGGABLE_DWELLINGS: ReadonlySet<string> = new Set([
-  'BUILDING_FIRE_LAKE', 'BUILDING_REFUGEE_CAMP', 'BUILDING_ELEMENTAL_CONFLUX',
-]);
 
 /** Every minimap icon by the name the drawer asks for, as BGRA bitmaps. */
-export function loadMinimapIcons(dataRoot: DataRoot): Map<string, Bitmap> {
-  const root = parse(readText(dataRoot, ICON_LIST));
+export function loadMinimapIcons(dataRoot: DataRoot, listHref: string): Map<string, Bitmap> {
+  const root = parse(readText(dataRoot, listHref));
   const list = find(root, 'WindowRelatedTextures');
   const textures = list ? find(list, 'textures') : null;
   const out = new Map<string, Bitmap>();

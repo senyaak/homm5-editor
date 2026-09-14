@@ -19,10 +19,13 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { initProject, packProject } from '../src/map/project.ts';
-import { MAP_SIZES, buildMapFiles } from './rmg-build.ts';
+import { buildMapFiles, mapSizes } from './rmg-build.ts';
+
+
 import { runFull } from './rmg-run.ts';
 import { dataAssets, gameDir } from './game-dir.ts';
 import type { ChainOptions } from './rmg-chain.ts';
+const MAP_SIZES = mapSizes();
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {

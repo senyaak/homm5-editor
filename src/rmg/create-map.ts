@@ -32,9 +32,10 @@
 //
 // BOTH NAMED HOLES ARE CLOSED, and neither was arithmetic. `vt+0x14` and
 // `vt+0x18` are the generator's own slots, `0xEADE20` and `0xEADE90`, and they
-// are two hardcoded tables — see `SIZE_UNITS` and `unitsToSize` below. With
-// them the size fit at `0xEAB616` reads out whole, and so does the
-// forced-underground branch behind it.
+// are two tables in the code — a jump table and a compare ladder, read out of
+// the executable into `SizeTables` (`src/exe/rmg-tables.ts`). With them the
+// size fit at `0xEAB616` reads out whole, and so does the forced-underground
+// branch behind it.
 //
 // What is pinned: the size that reaches the map is an index into the table at
 // 0xff291c — 72, 96, 136, 176, 216, 256, 320 tiles — and the reference map is
@@ -43,30 +44,24 @@
 import type { RmgRandom } from './random.ts';
 
 /**
- * The engine's size table at `0xff291c` — tile counts in the enum's order, and
- * the INDEX is what the request carries and what the water depth is chosen by.
+ * The three size tables, read out of the executable (`src/exe/rmg-tables.ts`):
+ * the tile counts by size index (the index is what the request carries and
+ * what the water depth is chosen by), a size index in the template's own
+ * UNITS — a seven-way jump table whose numbers are the tile count squared
+ * over a thousand, rounded, held as constants — and the ladder back.
  */
-export const MAP_SIZES = [72, 96, 136, 176, 216, 256, 320] as const;
+export interface SizeTables {
+  mapSizes: readonly number[];
+  sizeUnits: readonly number[];
+  /** The ladder's thresholds: units below `[i]` are size `i`; past the last, the last index. */
+  unitsToSize: readonly number[];
+}
 
-/**
- * `0xEADE20` — a size index in the template's own units. NOT a formula: a
- * seven-way jump table, read case by case and with the table's own dwords
- * checked so the order is the file's rather than the listing's.
- *
- * The numbers are the tile count squared over a thousand, rounded — 96x96 is
- * 9.2 and the table says 10 — but the engine holds the rounded constants, so
- * the port holds them too and there is no divisor to argue about.
- */
-export const SIZE_UNITS = [5, 10, 18, 31, 47, 66, 102] as const;
-
-/** `0xEADE90` — the other way, and it is a ladder of five compares. */
-export function unitsToSize(units: number): number {
-  if (units < 8) return 0;
-  if (units < 15) return 1;
-  if (units < 25) return 2;
-  if (units < 40) return 3;
-  if (units < 60) return 4;
-  return units < 90 ? 5 : 6;
+/** The generator's `unitsToSize` — a ladder of compares, the thresholds the executable's. */
+export function unitsToSize(sizes: SizeTables, units: number): number {
+  const ladder = sizes.unitsToSize;
+  for (let i = 0; i < ladder.length; i++) if (units < ladder[i]!) return i;
+  return ladder.length;
 }
 import type { RmgTemplate } from './template.ts';
 
@@ -88,7 +83,7 @@ export interface CreatedMap {
   twoFloors: boolean;
 }
 
-export function createMap(template: RmgTemplate, request: MapRequest, rng: RmgRandom): CreatedMap {
+export function createMap(template: RmgTemplate, request: MapRequest, rng: RmgRandom, sizes: SizeTables): CreatedMap {
   // Draw one: the underground. The coin only spins when the operator asked
   // for a random one; otherwise the number is drawn and dropped like every
   // other supplied parameter.
@@ -107,7 +102,7 @@ export function createMap(template: RmgTemplate, request: MapRequest, rng: RmgRa
   let size: number;
   if (request.size === undefined) {
     const units = template.minMapSize + rng.below(template.maxMapSize - template.minMapSize + 1);
-    size = unitsToSize(twoFloors ? Math.trunc(units / 2) : units);
+    size = unitsToSize(sizes, twoFloors ? Math.trunc(units / 2) : units);
   } else {
     rng.next();
     size = request.size;
@@ -138,9 +133,9 @@ export function createMap(template: RmgTemplate, request: MapRequest, rng: RmgRa
   // DIALOG is where the upper bound lives — it filters the template list by
   // `Min <= units * floors <= Max`, which is why ticking the underground
   // swaps small templates for large ones rather than the other way round.
-  const total = SIZE_UNITS[size] === undefined ? 0 : SIZE_UNITS[size]! * (twoFloors ? 2 : 1);
+  const total = sizes.sizeUnits[size] === undefined ? 0 : sizes.sizeUnits[size]! * (twoFloors ? 2 : 1);
   if (total < template.minMapSize) {
-    const straight = unitsToSize(template.minMapSize);
+    const straight = unitsToSize(sizes, template.minMapSize);
     if (straight <= 5) {
       size = straight;
     } else {
@@ -148,7 +143,7 @@ export function createMap(template: RmgTemplate, request: MapRequest, rng: RmgRa
       // underground FORCED and half its units, capped at EXTRALARGE. No
       // shipped template reaches this — the largest MinMapSize is 70 — so it
       // is ported from the instructions and untested by any map here.
-      const half = unitsToSize(Math.trunc(template.minMapSize / 2));
+      const half = unitsToSize(sizes, Math.trunc(template.minMapSize / 2));
       size = half >= 4 ? 4 : half;
       twoFloors = true;
     }

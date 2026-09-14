@@ -86,33 +86,16 @@ import { rotate } from './towns.ts';
 
 const fl = Math.fround;
 
-/** Preset indices whose surface zones grow lakes (`0xEBC260`'s gate). */
-const LAKE_RACES = new Set([3, 4, 7, 8, 9, 10]);
-
-/**
- * The resource names each subterranean class hangs a POINT LIGHT on — the
- * substrings its `vt+0x3C` (`0xEC6280`) tests before spending the light's two
- * draws. Every static that passes gets one, big or one-tile.
- *
- * ALL THREE LISTS ARE READ, one predicate per class, each a chain of
- * `0x987790` (`find`) over the shared's own resource path at `+0x20`:
- * `0xEB2EF0` "Crystal" (Subterra), `0xEB2FB0` then `0xEB3010` "Fakel" or
- * "FireColumn" (Dwarven), `0xEB3070` "Crater" or "Lavacrack" or "Hellpikes"
- * (SubInferno) — the same shape as `0xEB3120` "Mountain" (the relief cone) and
- * `0xEB3180` "Crater" (the big spacing rule).
- *
- * The lava list was FITTED first and the note here said so: on a `S2-3P2Z7N2`
- * underground the engine's own map carries 198 lights, split cleanly by
- * resource name with no type on both sides — 25 lit (`Crater*`, `Lavacrack*`,
- * `Hellpikes_*`) against 27 unlit (`FireDot*`, `StickOfDeath_*`, `LavaStone_*`,
- * `Cross_01`, `Mountains_*`, `Mountain10x7`). The reading agrees with the fit
- * exactly, which is the only reason to keep the fit's story here.
- */
-export const LIGHT_NAMES: Readonly<Record<string, readonly string[]>> = {
-  subterra: ['Crystal'],
-  subInferno: ['Crater', 'Lavacrack', 'Hellpikes'],
-  dwarven: ['Fakel', 'FireColumn'],
-};
+// The lake gate — which races' surface zones grow lakes, `0xEBC260`'s compare
+// chain — and the resource-name substrings each subterranean class hangs a
+// POINT LIGHT on (its `vt+0x3C`, a chain of `find` over the shared's resource
+// path: "Crystal" for Subterra, "Fakel"/"FireColumn" for Dwarven,
+// "Crater"/"Lavacrack"/"Hellpikes" for SubInferno) are both read out of the
+// executable (`lakeRaces`, `lightNames` in `src/exe/rmg-tables.ts`) and
+// arrive as inputs. The lava list was FITTED first: on a `S2-3P2Z7N2`
+// underground the engine's own map carried 198 lights split cleanly by
+// resource name — 25 lit (`Crater*`, `Lavacrack*`, `Hellpikes_*`) against 27
+// unlit — and the reading agreed with the fit exactly.
 
 export interface PlacedStatic {
   /** The shared document's href path — the map file's identity. */
@@ -124,7 +107,7 @@ export interface PlacedStatic {
   angle: number;
   /**
    * The subterranean point light (`vt+0x3C`) — two draws when the resource
-   * path matches the CLASS's own substrings, which are `LIGHT_NAMES` above and
+   * path matches the CLASS's own substrings — the input's `lightNames`, which
    * are not shared between the three. The colour costs no draw and is not this
    * record's: it is the zone's RACE PRESET's
    * `PointLightParams.Colors[zoneIndex % count]`, taken where the run is
@@ -155,6 +138,8 @@ export interface BigStaticsInput {
    * HEAVEN zone opened the gate for real and pinned the reading.
    */
   settingRace: number;
+  /** The races whose surface zones grow lakes — the gate, read out of the executable. */
+  lakeRaces: ReadonlySet<number>;
   /** The three road lists the roads phase built — the 0x3C room mask. */
   roads: Tile[];
   /**
@@ -529,7 +514,7 @@ export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): Bi
       carveMassif(size, occupancy, input.vertexHeights!, input.arith ?? DOUBLES);
     }
   } else if (input.floor !== 1) {
-    if (LAKE_RACES.has(input.settingRace) && input.floor === 0) {
+    if (input.lakeRaces.has(input.settingRace) && input.floor === 0) {
       const lakes = growLakes(input, rng);
       lakeSeeds = lakes.seeds;
       lakeTiles = lakes.blob;

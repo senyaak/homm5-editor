@@ -416,14 +416,15 @@ static int g_rmgSmoothNo = 0;
  * `+0x74` (dims) — the same level object the grids dump already walks, filled
  * with 1 by the terrain constructor `0xEB2B60` at `0xEB2D83`.
  *
- * WHY. The port emits all-ones and the references do not: a map ordered from
- * the GAME's own generator carries 1874 zeros of 5329, so the generator fills
- * the plane and we do not know where. Three cheap derivations were fitted and
- * all died (footprints 79.6%, occupancy 82.4%, slope 70.1%), and the editor
- * addresses an earlier reading named turned out to be an overlay toggle, not
- * a per-tile query. So the question is no longer "what is the rule" but
- * "WHICH STEP writes it" — and the step boundaries already exist. A count per
- * boundary turns the whole generator into a bisection.
+ * WHY IT WAS BUILT. The port used to emit all-ones and the references did
+ * not: a map ordered from the GAME's own generator carries 1874 zeros of
+ * 5329. Three cheap derivations were fitted and all died (footprints 79.6%,
+ * occupancy 82.4%, slope 70.1%), so the question became "WHICH STEP writes
+ * it", and a count per step boundary answered it: all ones on every boundary
+ * up to "treasure blocks set", the reference's count after — the plane is the
+ * last thing GenerateMap writes, per zone, through `CGameZone` vt+0x38. That
+ * rule is ported (`src/rmg/passability.ts`); the probe stays for the next
+ * plane that turns up filled.
  *
  * Needs `trace` as well: the zone pointers this reads through are harvested
  * by the GetZone detour, which only goes in under `trace`.

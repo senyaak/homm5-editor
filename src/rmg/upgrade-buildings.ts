@@ -23,9 +23,12 @@
 //              FIRST element, not a recomputed minimum)
 //   failure    exhausted candidates abandon the step, dwellings-style
 //
-// The engine's mint-failure path (0xEB9B37) skips the accounting and loops
-// with an identical candidate list — a suspected infinite loop it never
-// reaches; this port's mint cannot fail.
+// The engine's mint-failure path — READ (14.09): `0xEB9B37` jumps to
+// `0xEB9D03`, which frees the two name strings and goes straight back to the
+// loop test (`list[0].Value + spent <= points`, 0xEB9D1F..0xEB9D30, `jle
+// 0xEB9780`) with nothing spent and the same candidate list, so a mint that
+// kept failing would spin forever. Nothing to port: the mint is the document
+// manager's create, and this port's mint cannot fail.
 
 import { mintName, setMonster } from './armies.ts';
 import type { DrawSource, Guard, GuardTables } from './armies.ts';
@@ -33,8 +36,8 @@ import { EIGHT, ensureRoom, filterByRoom, isFree, stampFootprint, tryPlace, zone
 import type { Footprint, Tile } from './placement.ts';
 import { rotate } from './towns.ts';
 
-/** `{0.2, 0.5, 1, 2, 4}` — the jump table at 0xEA543C, indexed by generator+0xB0. */
-export const DENSITY_MULTIPLIERS: readonly number[] = [0.2, 0.5, 1, 2, 4];
+
+
 
 export interface PricedEntry {
   /** The Building href, identity for the map file. */
@@ -130,8 +133,15 @@ export interface UpgradeBuildingsInput {
   tiles?: Tile[];
   /** The template's UpgBuildingsDensity, raw (`zone params +0x3C`). */
   density: number;
-  /** generator+0xB0 — 1 in every traced run. What writes it is unread. */
+  /**
+   * generator+0xB0 — the order's ExpMultiplier index (`-exp`, the dialog's
+   * experience slider): block F of the matrix swept it 0..4 byte for byte.
+   * Nothing in the generator's own code writes it; the order's parser and
+   * the dialog fill the request before GenerateMap runs.
+   */
   multIndex: number;
+  /** The five multipliers the fill loop switches on, read out of the executable. */
+  multipliers: readonly number[];
   /** The race preset's NewUpgradeBuildings, file order, with footprints. */
   list: PricedEntry[];
   basicLeverGuardPower: number;
@@ -144,7 +154,7 @@ export function placeZoneUpgradeBuildings(input: UpgradeBuildingsInput, rng: Dra
   const { size, grid, border, occupancy, zoneIndex, list } = input;
   const candidates = input.tiles ?? zoneTiles(size, grid, zoneIndex);
 
-  const mult = DENSITY_MULTIPLIERS[input.multIndex] ?? 1;
+  const mult = input.multipliers[input.multIndex] ?? 1;
   const budget = Math.trunc((candidates.length * Math.trunc(input.density * mult)) / 10000);
 
   const placed: PlacedUpgradeBuilding[] = [];

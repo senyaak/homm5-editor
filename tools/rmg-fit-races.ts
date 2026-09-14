@@ -10,6 +10,7 @@ import { readOrder } from './rmg-order.ts';
 import { runFull } from './rmg-run.ts';
 import { dataAssets, gameDir } from './game-dir.ts';
 import { RACE } from '../src/rmg/load-template.ts';
+import { exeTables } from '../src/rmg/exe.ts';
 
 const argv = process.argv.slice(2);
 const gameBuild = argv.includes('--game-build');
@@ -23,7 +24,8 @@ const exe = join(gameDir(), 'bin', 'H5_Game_H5E.exe');
 const captions = [...theirs.keys()].filter((n) => /^caption-text-\d+\.txt$/.test(n)).length;
 const captionBase = Math.max(0, captions - order.players);
 
-const RACES = [RACE.HEAVEN, RACE.PRESERVE, RACE.ACADEMY, RACE.DUNGEON, RACE.NECROMANCY, RACE.INFERNO, RACE.DWARF, RACE.STRONGHOLD];
+const raceEnum = exeTables(exe).raceEnum;
+const RACES = Object.values(raceEnum).filter((v) => v >= RACE.HEAVEN && v < raceEnum['__RACE_COUNT']!).sort((a, b) => a - b);
 const name = (r: number) => Object.entries(RACE).find(([, v]) => v === r)![0];
 
 function minimapDiff(races: ReadonlyMap<number, number>): number {
@@ -35,7 +37,7 @@ function minimapDiff(races: ReadonlyMap<number, number>): number {
   });
   const ours = buildMapFiles(dir, exe, run,
     { seed: order.seed, template: order.template, players: order.players, underground: order.underground, water: order.water,
-      guid: order.guid, mapName: order.mapName, minimap: order.minimap, gameBuild, birds: order.birds }, { captionBase });
+      guid: order.guid, mapName: order.mapName, minimap: order.minimap, gameBuild }, { captionBase });
   let bytes = 0;
   for (const f of ours) {
     if (!f.name.startsWith('minimap_floor_') || !f.name.endsWith('.dds')) continue;

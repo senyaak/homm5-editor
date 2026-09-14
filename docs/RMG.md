@@ -7195,6 +7195,89 @@ the engine made, and none of them carries a path the generator reads. The
 editor's own `mountedAssets` still mounts creature mods only; the generator
 needs more than that, and the button will build its chain from `mounted.ts`.
 
+**The code half, done (14.09, later).** Everything the survey above listed as
+"carried in the code" — and a dozen more that turned up once the port was
+swept for literals — is now read out of the game's image by
+`src/exe/rmg-tables.ts` and handed through `Chain.exe` (`src/rmg/exe.ts`
+memoizes the read; `tools/game-dir.ts` `gameExe()` names the file). The
+locators are landmarks, never addresses: the generator's own log strings
+find the step that uses a table ("Cant set shrine %s in zone %d" is the
+shrine step; the call before "at %g prisons in zone %d set" is the prison
+worker), RTTI finds the zone classes' vtables (the lake gate is the first
+call of `CGameZone`'s `+0x34`, the light substrings are the `find` calls
+under each subterranean class's `+0x3C`, the shipyard is the document the
+water zone's `+0x2C` tail-jumps into), and a byte pattern finds the one
+accessor a RANDOM slot's race list is read through. The values come from
+the instructions: a string global is the `push <str>; mov ecx,<slot>; call`
+triple its static initializer builds it with, a table of them is the run of
+such triples 0x20 apart, a size ladder is the jump table's cases, the
+multipliers are the `movss` loads the fill loop switches to (the 1.0 case
+jumps straight to the store, keeping what was loaded before the switch), the
+race lists are LoadTemplate's `push_back` immediates with the one under
+`cmp byte [+1Dh],0` set apart. `tools/test-rmg-tables.ts` holds the decoding
+to the vanilla game's twenty-eight values; the RMG suites and the whole
+corpus pass through them unchanged.
+
+What stays in the port as code is what the engine has as code: the port's
+`RACE` names are checked against the image's enum when the chain starts
+(a renumbered build fails out loud rather than drifting), the mine guard
+levels are the step's three branches (`guardLevelOf`), the size fit's caps
+are the fit's own compares. The dwelling `Type` values the minimap never
+flags are numbers in the image and names in the map file; the bridge is the
+`BuildingType` enum of `types.xml`, read through the chain
+(`readEnumValues`), which is also where the order's `MapSize`,
+`WaterAmount`, `MonsterLevel` and multiplier names come from now. The
+editor's build of the generator is not read: it compiles the same lists
+differently (`push_back` inlined, constants in registers), and the game's
+image is the one the maps are for.
+
+Two hedges this left, both in comments where they belong: the compare that
+routes the gold mine to `MineGoldGuardLevel` is not yet read as an
+instruction (`mines.ts`, "the last of the seven" is what every run shows),
+and the `CartographerWater` document the image also carries has no reader
+in the generator's range — noted, not ported.
+
+**The hedges of the sweep, read (14.09, later still).** The port was swept
+for every "assumed / measured / carried in / argued unreachable" note, and
+these came out of the executable:
+
+- **`<Birds>` is a draw after all.** The map-setup step's sixth draw
+  (`below(10) > 6`, `mapSetup().birds`) had always been ported; what was
+  missed is that the line is written right there, at `0xEA0EA0`, under the
+  flag the ambient-light set leaves, with the document a string global names
+  (`birds` in `rmg-tables.ts`, `Pigeons_Adv.xdb`). Replaying the setup draws
+  alone predicts the line on 138 of 138 corpus maps and 31 of 32 game-made
+  ones; the one miss is ГСК-001, whose all-random order does not replay past
+  its coins anyway. It is no longer carried in with the order.
+- **The game's caption placeholder is data.** `Это название карты` is
+  `RMG/Params/rmgMapName.txt`, the params' `MapName` href; the emitter reads
+  it through the chain (`gamePlaceholder`).
+- **The world's seed word is derived.** `WORLD_SEED_FIRST` (0x89E3D3BD) is
+  exactly the first draw of the version tracker seeded with 0 — the CWorld
+  constructor's own draw, the one `worldPlayerRaces` spends before the
+  players — so it is computed, not held.
+- **The point-light spans are the global params'.** `vt+0x3C` fetches the
+  generator's params (`0xEAFF80`) and draws `zMin + below(zMax - zMin)`,
+  `radiusMin + below(radiusMax - radiusMin)` off `+0xB4..+0xC0`
+  (0xEC63A6..0xEC6415): 2..7 and 20..25 in the shipped file, the
+  `2 + below(5)` the maps show; a race preset's own zMin/zMax is never read.
+- **The upgrade-buildings mint-failure path** (`0xEB9B37` → `0xEB9D03`)
+  frees the name and goes straight back to the loop test with nothing spent —
+  the suspected spin is real, and unreachable while a create cannot fail.
+- **LoadTemplate tests WaterAmount for zero only** (`cmp byte [gen+0A6h],0`
+  at 0xEA24B2): 1 and 2 are the same to it.
+- **`generator+0xB0` is the order's ExpMultiplier index**, swept 0..4 by
+  block F; nothing in the generator writes it.
+- **The map angle at `map+0x5C` is the WORLD's to read** (`movss` at
+  0xD65CB4, 0xD6A198), not the generator's.
+
+Still open from that sweep: the compare that refuses a (0,0) possession
+marker in PlaceTown (measured off the oracle's points, the instruction not
+found), the gold mine's guard-level compare (the last of the seven, every run
+agrees), the road walk's direction coin (read, draw-invisible), and the
+four named `throw`s — rectangle maps, a rehashed bucket's order, `%g`'s
+exponent forms — which stay refusals rather than guesses.
+
 **The two readings that were owed, taken (13.09, later still).**
 
 - **The sea is not big water.** The shipyard's ring and the minimap see the
