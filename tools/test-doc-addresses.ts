@@ -77,10 +77,18 @@ const DATA = new Set([
 
 const unresolved: number[] = [];
 const codeAddresses: number[] = [];
+// The GAME's image answers first: the document's addresses are the game's
+// unless it says otherwise, and the game's `.rdata` overlaps the editor's
+// larger `.text` — asking both at once held every data table in the game
+// (the size ladder, the sine table, the shrine costs) to an instruction
+// boundary in the editor. An address the game does not map at all is the
+// editor's, and the editor answers for it.
+const [gameImage, ...others] = images;
 for (const va of cited) {
   if (DATA.has(va)) continue;
-  if (images.some((pe) => pe.isCode(va))) codeAddresses.push(va);
-  else if (images.every((pe) => pe.offsetOf(va) === null)) unresolved.push(va);
+  const owner = gameImage!.offsetOf(va) !== null ? gameImage! : others.find((pe) => pe.offsetOf(va) !== null);
+  if (!owner) unresolved.push(va);
+  else if (owner.isCode(va)) codeAddresses.push(va);
 }
 console.log(`docs/RMG.md cites ${cited.length} distinct addresses`);
 // Everything that resolves nowhere must be a value rather than an address —
@@ -92,6 +100,9 @@ const CONSTANTS = new Set([
   0x1fffffff, 0x40080000, 0x3f800000, 0x80000000, 0xffffffff, 0x10000000,
   // The compiler's reciprocals for the two divisions the treasure route does.
   0x4ec4ec4f, 0xba2e8ba3,
+  // adler32's seed, the world's first seed word, and three single-precision
+  // bit patterns the minimap section compares digit by digit.
+  0x12345678, 0x89e3d3bd, 0x412e32d9, 0x412e32d8, 0x3fddb3d7,
 ]);
 check('every citation is an address in one of the images, or a named constant',
   unresolved.every((v) => CONSTANTS.has(v)),
@@ -100,7 +111,7 @@ check('every citation is an address in one of the images, or a named constant',
 const off = codeAddresses.filter((va) => !images.some((pe) => pe.isCode(va) && onBoundary(pe, va)));
 // A ratchet, not a target: the heuristic misses a few legitimate mid-function
 // citations, so what matters is that the number does not grow.
-const KNOWN_OFF = 12;
+const KNOWN_OFF = 5;
 check(`${codeAddresses.length - off.length} of ${codeAddresses.length} code citations land on an instruction boundary`,
   off.length <= KNOWN_OFF, `${off.length} do not: ${off.map((v) => `0x${v.toString(16)}`).join(' ')}`);
 

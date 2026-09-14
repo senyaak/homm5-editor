@@ -2258,7 +2258,7 @@ three whole instructions with no relocation in EITHER build, `this` in ECX with
 no stack arguments — and prints the grid dimensions and then every zone the
 phase is handed: floor, id, the two centre floats AS BITS, the radius and the
 Size. And the per-sweep line the editor already logged is now hooked in the game
-too (`0xaa9866` reaching `0xde080`, the same `__cdecl (fmt, sweep)` arity as the
+too (`0xaa9866` reaching `0x4de080`, the same `__cdecl (fmt, sweep)` arity as the
 editor's `0x8f333e`/`0xa8b510`; the game's `% 10` is a magic multiply where the
 editor's is an `idiv`, which is codegen and not logic).
 
@@ -7284,7 +7284,13 @@ say what they are — the engine has ONE dimension (both of `map+0xC` and
 `map+0x10` come from the same size-table entry), so a rectangle is not an
 input it can be given, and the port's square-only readers guard their own
 API, not a hole. Still a refusal, and rightly: a rehashed bucket's order
-(`zones.ts`), which no shipped template with water reaches.
+(`zones.ts`), which no shipped template with water reaches. The water
+treasures' failed creation is read too (`0xECCDE2` / `0xECCF4D` → `0xECD104`:
+the candidate is spent and the loop goes round, nothing stamped, nothing in
+the repel ledger), and LoadTemplate's two former named holes are held by the
+matrix (block B) and by ГСК-025. `tools/test-doc-addresses.ts` now asks the
+GAME's image first, so a data table of the game is no longer held to an
+instruction boundary in the editor's larger `.text`; its ratchet is 5.
 
 **The two readings that were owed, taken (13.09, later still).**
 

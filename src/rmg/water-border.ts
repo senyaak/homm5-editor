@@ -39,7 +39,11 @@
 //             params +0x210 list), below(4) a quarter-turn (x pi/2,
 //             0xF4B538), and 0xEB3990 mints the name — two below(65535) —
 //             on the way to creation. The island run placed all 36 of 36;
-//             what a failed creation skips is unread (a named hole).
+//             a failed creation — READ (14.09), both mint sites 0xECCDE2 and
+//             0xECCF4D `je 0xECD104` — advances the candidate pointer and
+//             the count and goes round again: the tile is spent, nothing is
+//             stamped and nothing joins the repel ledger, the treasures'
+//             own "skip the object". This port's mint cannot fail.
 //
 // The repel distance compares single-precision sqrt against 5.0, but the
 // operands are whole tile coordinates: dist < 5.0 is exactly dx^2+dy^2 < 25

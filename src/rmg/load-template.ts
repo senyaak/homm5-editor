@@ -33,13 +33,12 @@
 // than the base one's single next() into zone+0x13C — the roll FillTerrain
 // later reads to pick the zone's ground tile.
 //
-// Named holes: the tie order of the Size sort is exact by construction but
-// no oracle has held a two-floor run to it yet; the concrete-race branch
-// appends a player entry without checking the operator's (nothing shipped
-// exercises it — port copies the reading). Who pre-fills the player vector
-// upstream is the LOBBY: a map the game generated with three slots set by
-// hand (`ГСК-025`) came out with those three races and the fourth slot's
-// draw, on the same draw count — the concrete-slot arm above, measured.
+// Both former named holes are held now: the tie order of the Size sort by
+// block B of the matrix (every template with two floors, 66 of 66 byte for
+// byte), and the concrete-race arm by a map the game generated with three
+// slots set by hand (`ГСК-025`), which came out with those three races and
+// the fourth slot's draw on the same draw count. Who pre-fills the player
+// vector upstream is the LOBBY.
 
 import type { RmgRandom } from './random.ts';
 import type { RmgTemplate, RmgZone } from './template.ts';
