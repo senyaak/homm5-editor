@@ -7377,7 +7377,16 @@ size and the floor count (`templatesOffered`, the filter at `0xCF7B58`), so
 the players field follows the template's range and a mod's template is
 offered beside the shipped ones. Water is the checkbox the game has (it
 records `WATER_ISLAND_MAP`); random towns, the grail and the minimap are the
-other three; the seed is typed or left blank for a drawn one.
+other three; the seed is typed or left blank for a drawn one. **Every
+choice but the name and the minimap can be left to Random** ("All random"
+leaves them all): main draws them before the run (`resolve` in
+`electron/channels/rmg.ts`), in the order the dialog's own dependencies go —
+the size, then the levels, then a template the game's dialog would offer for
+those and that takes the players when they are fixed, then the players inside
+its range — so a fixed template with a random size is a size the template
+fits, never one the engine would lift; water, the monster level, the
+multipliers, the towns and the grail are drawn independently. What came out
+is in the result and on the HUD.
 
 **A generation is a job in a child process** (`src/rmg/job.ts`,
 `electron/rmg-worker.ts`, forked through `utilityProcess` the way the scene

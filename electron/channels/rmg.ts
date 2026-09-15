@@ -17,7 +17,7 @@ import { app, ipcMain, utilityProcess } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RmgChoicesResult, RmgGeneratePayload, RmgGenerateResult, RmgTemplateEntry, RmgTemplatesPayload } from '#electron/ipc.ts';
+import type { RmgChoicesResult, RmgGeneratePayload, RmgGenerateResult, RmgResolvedOrder, RmgTemplateEntry, RmgTemplatesPayload } from '#electron/ipc.ts';
 import { APP_ROOT, gameData, gameRoot, tmpRoot } from '#electron/paths.ts';
 import { landAsArchive, unpackRoot } from '#electron/channels/maps.ts';
 import type { RmgWorkerReply } from '#electron/rmg-worker.ts';
@@ -81,6 +81,54 @@ function generateInChild(job: RmgJob): Promise<RmgJobResult> | null {
   });
 }
 
+/** A draw for the dialog's "Random" choices — the SUITE's kind, not the engine's stream. */
+const below = (n: number): number => Math.floor(Math.random() * n);
+const pick = <T>(xs: readonly T[]): T => xs[below(xs.length)]!;
+
+/**
+ * Every 'random' of the payload, drawn — in the order the dialog's own
+ * dependencies run: the size, then the floors, then a template the game's
+ * dialog would offer for those (and one that takes the players, when they
+ * are fixed), then the players inside its range. The rest are independent.
+ * A fixed template narrows the sizes to the ones it fits, so "random size,
+ * this template" never draws a size the engine would lift.
+ */
+function resolve(inst: RmgInstall, p: RmgGeneratePayload): RmgResolvedOrder {
+  const choices = dialogChoices(inst);
+  const tiles = choices.sizes.map((s) => s.tiles);
+  const fits = (t: RmgTemplateEntry): boolean =>
+    (p.template === 'random' || t.file === p.template)
+    && (p.players === 'random' || (t.minPlayers <= p.players && p.players <= t.maxPlayers));
+  const sizes = p.sizeIndex === 'random' ? tiles.map((_, i) => i) : [p.sizeIndex];
+  const floors = p.underground === 'random' ? [false, true] : [p.underground];
+  // What is on offer for each (size, floors) — and only the pairs with something on it.
+  const offered = new Map<string, RmgTemplateEntry[]>();
+  for (const s of sizes) for (const u of floors) {
+    const list = templatesOffered(inst, s, u).filter(fits);
+    if (list.length) offered.set(`${s}/${u}`, list);
+  }
+  if (!offered.size) {
+    throw new Error(`nothing the game's dialog would offer fits this order`
+      + `${p.template !== 'random' ? ` — ${p.template}` : ''}${p.players !== 'random' ? `, ${p.players} players` : ''}`
+      + `${p.sizeIndex !== 'random' ? `, ${choices.sizes[p.sizeIndex]?.name ?? p.sizeIndex}` : ''}`
+      + `${p.underground !== 'random' ? (p.underground ? ', with an underground' : ', one floor') : ''}`);
+  }
+  const sizeIndex = pick([...new Set([...offered.keys()].map((k) => Number(k.split('/')[0])))]);
+  const underground = pick([...new Set([...offered.keys()].filter((k) => k.startsWith(`${sizeIndex}/`)).map((k) => k.endsWith('true')))]);
+  const template = pick(offered.get(`${sizeIndex}/${underground}`)!);
+  const players = p.players === 'random' ? template.minPlayers + below(template.maxPlayers - template.minPlayers + 1) : p.players;
+  return {
+    template: template.file, sizeIndex, tiles: tiles[sizeIndex]!, underground, players,
+    // Water the way the checkbox records it, or none.
+    water: p.water === 'random' ? pick([0, 2]) : p.water,
+    monsterLevel: p.monsterLevel === 'random' ? below(choices.monsterLevels.length) : p.monsterLevel,
+    resourceMultiplier: p.resourceMultiplier === 'random' ? below(choices.resourceMultipliers.length) : p.resourceMultiplier,
+    expMultiplier: p.expMultiplier === 'random' ? below(choices.expMultipliers.length) : p.expMultiplier,
+    grail: p.grail === 'random' ? below(2) === 1 : p.grail,
+    randomTowns: p.randomTowns === 'random' ? below(2) === 1 : p.randomTowns,
+  };
+}
+
 export function registerRmg(): void {
   ipcMain.handle('rmg:choices', async (): Promise<RmgChoicesResult> => {
     const { install: inst } = install();
@@ -106,6 +154,7 @@ export function registerRmg(): void {
     // The seed the way the game's dialog fills it in when nobody typed one: a
     // positive 31-bit number, which is what the engine's generator takes.
     const seed = p.seed ?? (1 + Math.floor(Math.random() * 2147483646));
+    const order = resolve(inst, p);
     const guid = newGuid();
     const prefix = `Maps/RMG/${guid}`;
     const mapDir = join(unpackRoot(archive).root, prefix);
@@ -114,12 +163,7 @@ export function registerRmg(): void {
 
     const job: RmgJob = {
       gameRoot: g, dataRoot: gameData(), cacheDir: mountCache(), exe: inst.exe, mapDir,
-      order: {
-        seed, guid, template: p.template, sizeIndex: p.sizeIndex, underground: p.underground,
-        water: p.water, players: p.players, monsterLevel: p.monsterLevel,
-        resourceMultiplier: p.resourceMultiplier, expMultiplier: p.expMultiplier,
-        grail: p.grail, randomTowns: p.randomTowns, minimap: p.minimap, mapName: name,
-      },
+      order: { ...order, seed, guid, minimap: p.minimap, mapName: name },
     };
     const started = performance.now();
     let where: RmgGenerateResult['where'] = 'child';
@@ -133,7 +177,8 @@ export function registerRmg(): void {
     }
     landAsArchive(g, mapDir, archive, prefix);
     const ms = Math.round(performance.now() - started);
-    console.log(`[rmg] ${archive} · ${p.template} seed ${seed} · ${r.draws} draws, ${r.objects} objects · ${r.ms}ms in the ${where}, ${ms}ms in all`);
-    return { mapPath: join(mapDir, 'map.xdb'), mapDir, archive, seed, draws: r.draws, objects: r.objects, where, ms };
+    console.log(`[rmg] ${archive} · ${order.template} ${order.tiles}×${order.tiles}${order.underground ? ' two-level' : ''}, ${order.players} players, seed ${seed}`
+      + ` · ${r.draws} draws, ${r.objects} objects · ${r.ms}ms in the ${where}, ${ms}ms in all`);
+    return { mapPath: join(mapDir, 'map.xdb'), mapDir, archive, seed, order, draws: r.draws, objects: r.objects, where, ms };
   });
 }

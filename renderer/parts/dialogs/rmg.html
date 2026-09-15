@@ -1,7 +1,9 @@
   <!-- Random Map — the game's own generator dialog, field for field, and the
        game's own generator behind it (src/rmg): the same order and seed give
        the map the game would have made. The lists are the install's — sizes,
-       water, monster levels, multipliers, templates — filled when it opens. -->
+       water, monster levels, multipliers, templates — filled when it opens, and
+       every one of them can be left to chance: "Random" is the first choice
+       of each, and main draws it before the run. -->
   <dialog id="rmg">
     <div class="mp-card rmg-card">
       <div class="mp-head">
@@ -12,29 +14,56 @@
         <label class="on-row"><span>Name<b class="req">*</b></span><input id="rmg-name" type="text" spellcheck="false" autocomplete="off" value="Random Map"></label>
         <div class="rmg-two">
           <label class="on-row"><span>Size</span><select id="rmg-size"></select></label>
-          <label class="nm-check"><input id="rmg-two" type="checkbox"> Two Level Map</label>
+          <label class="on-row rmg-short"><span>Levels</span>
+            <select id="rmg-two">
+              <option value="random">Random</option>
+              <option value="0" selected>One</option>
+              <option value="1">Two</option>
+            </select>
+          </label>
         </div>
         <label class="on-row"><span>Template</span><select id="rmg-template"></select></label>
         <div id="rmg-template-note" class="nm-where"></div>
         <div class="rmg-two">
-          <label class="on-row"><span>Players</span><input id="rmg-players" type="number" min="2" max="8" value="2"></label>
-          <label class="nm-check"><input id="rmg-water" type="checkbox"> Water (island map)</label>
+          <label class="on-row"><span>Players</span><select id="rmg-players"></select></label>
+          <label class="on-row rmg-short"><span>Water</span>
+            <select id="rmg-water">
+              <option value="random">Random</option>
+              <option value="0" selected>None</option>
+              <option value="2">Island map</option>
+            </select>
+          </label>
         </div>
         <label class="on-row"><span>Monsters</span><select id="rmg-monsters"></select></label>
         <label class="on-row"><span>Resources</span><select id="rmg-resource"></select></label>
         <label class="on-row"><span>Experience</span><select id="rmg-exp"></select></label>
-        <div class="rmg-checks">
-          <label class="nm-check"><input id="rmg-towns" type="checkbox"> Random towns</label>
-          <label class="nm-check"><input id="rmg-grail" type="checkbox"> Grail</label>
+        <div class="rmg-two">
+          <label class="on-row"><span>Random towns</span>
+            <select id="rmg-towns">
+              <option value="random">Random</option>
+              <option value="0" selected>No</option>
+              <option value="1">Yes</option>
+            </select>
+          </label>
+          <label class="on-row rmg-short"><span>Grail</span>
+            <select id="rmg-grail">
+              <option value="random">Random</option>
+              <option value="0" selected>No</option>
+              <option value="1">Yes</option>
+            </select>
+          </label>
+        </div>
+        <div class="rmg-two">
+          <label class="on-row"><span>Seed</span><input id="rmg-seed" type="text" inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="random"></label>
           <label class="nm-check"><input id="rmg-minimap" type="checkbox" checked> Minimap</label>
         </div>
-        <label class="on-row"><span>Seed</span><input id="rmg-seed" type="text" inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="random"></label>
         <div id="rmg-where" class="nm-where"></div>
         <div id="rmg-missing" class="um-missing"></div>
         <div id="rmg-err" class="on-err"></div>
         <div id="rmg-busy" class="rmg-busy" hidden>Generating… a large map takes a few minutes.</div>
       </div>
       <div class="de-foot">
+        <button id="rmg-random" class="ghost" title="every choice to Random — the name and the minimap stay">All random</button>
         <button id="rmg-cancel" class="ghost">Cancel</button>
         <button id="rmg-ok">Generate</button>
       </div>

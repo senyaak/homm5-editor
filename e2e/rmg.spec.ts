@@ -65,11 +65,13 @@ test('generates a tiny map through the dialog and opens it', async () => {
   await bar(page, '#rmgbtn');
   await expect(page.locator('#rmg')).toBeVisible();
 
-  // The lists are the install's: seven sizes with their tile counts, five
-  // monster levels, and a template list that narrows with the size.
-  await expect(page.locator('#rmg-size option')).toHaveCount(7);
-  await expect(page.locator('#rmg-size option').first()).toHaveText(/Tiny \(72×72\)/);
-  await expect(page.locator('#rmg-monsters option')).toHaveCount(5);
+  // The lists are the install's, each with Random in front: seven sizes with
+  // their tile counts, five monster levels, and a template list that narrows
+  // with the size.
+  await expect(page.locator('#rmg-size option')).toHaveCount(8);
+  await expect(page.locator('#rmg-size option').first()).toHaveText('Random');
+  await expect(page.locator('#rmg-size option').nth(1)).toHaveText(/Tiny \(72×72\)/);
+  await expect(page.locator('#rmg-monsters option')).toHaveCount(6);
   await page.locator('#rmg-size').selectOption('0');
   await expect(page.locator('#rmg-template-note')).toContainText('fit this size');
   const tiny = await page.locator('#rmg-template option').count();
@@ -77,16 +79,22 @@ test('generates a tiny map through the dialog and opens it', async () => {
   await expect(page.locator('#rmg-template-note')).toContainText('fit this size');
   const huge = await page.locator('#rmg-template option').count();
   expect(tiny).toBeGreaterThan(huge);
-  // And with an underground the list changes again — twice the units to fit.
-  await page.locator('#rmg-two').check();
+  // With an underground the list changes again — twice the units to fit — and
+  // with the size left to chance every template is on offer.
+  await page.locator('#rmg-two').selectOption('1');
   await expect(page.locator('#rmg-template-note')).toContainText('with an underground');
-  await page.locator('#rmg-two').uncheck();
+  await page.locator('#rmg-size').selectOption('random');
+  await expect(page.locator('#rmg-template-note')).toContainText('any template');
+  await expect(page.locator('#rmg-template option')).toHaveCount(23); // 22 shipped + Random
+  await page.locator('#rmg-two').selectOption('0');
 
   // A tiny map on the reference template, with a seed, so the run is short and
   // the map it makes is a known one (S1P2Z2M1 fits Tiny).
   await page.locator('#rmg-size').selectOption('0');
   await page.locator('#rmg-template').selectOption('S1P2Z2M1');
-  await expect(page.locator('#rmg-players')).toHaveAttribute('max', '2');
+  // Two players: the template's range, so Random and 2.
+  await expect(page.locator('#rmg-players option')).toHaveCount(2);
+  await page.locator('#rmg-players').selectOption('2');
   await page.locator('#rmg-name').fill(NAME);
   await page.locator('#rmg-seed').fill('1785351845');
   await expect(page.locator('#rmg-where')).toContainText(`${NAME}.h5m`);
@@ -129,4 +137,28 @@ test('a name already taken is refused and the dialog stays open', async () => {
   await expect(page.locator('#rmg')).toBeVisible();
   await page.locator('#rmg-cancel').click();
   await expect(page.locator('#rmg')).toBeHidden();
+});
+
+test('a fixed template with everything else random draws a size it fits', async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  cleanup();
+  await bar(page, '#rmgbtn');
+  await page.locator('#rmg-random').click();
+  await expect(page.locator('#rmg-template')).toHaveValue('random');
+  await expect(page.locator('#rmg-players')).toHaveValue('random');
+  // The tiny reference template again, so the drawn size is Tiny or Small and
+  // the run stays short — `S1P2Z2M1` fits 5..14 units: Tiny, Small, and either
+  // with two levels only Tiny (2×5 = 10).
+  await page.locator('#rmg-template').selectOption('S1P2Z2M1');
+  await page.locator('#rmg-name').fill(NAME);
+  await page.locator('#rmg-ok').click();
+  await expect(page.locator('#rmg')).toBeHidden({ timeout: 4 * 60_000 });
+  await expect(page.locator('#title')).toContainText(NAME, { timeout: 60_000 });
+  const line = ed.log.filter((l) => l.includes('[rmg] ') && l.includes(`${NAME}.h5m`)).pop();
+  expect(line).toBeDefined();
+  expect(line).toMatch(/S1P2Z2M1 (72×72|96×96)/);
+  const xdb = readFileSync(join(ourFolders()[0]!, 'map.xdb'), 'latin1');
+  expect(xdb).toMatch(/<MapSize>MAP_SIZE_(TINY|SMALL)<\/MapSize>/);
+  expect(xdb).toContain('<Players>2</Players>');
 });

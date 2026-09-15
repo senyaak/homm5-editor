@@ -162,13 +162,36 @@ export interface RmgTemplatesPayload {
   underground: boolean;
 }
 
-/** Payload of `rmg:generate` — an order in the dialog's own units (see `RmgOrder` in src/rmg/index.ts). */
+/**
+ * Payload of `rmg:generate` — an order in the dialog's own units (see
+ * `RmgOrder` in src/rmg/index.ts), where any control but the name and the
+ * minimap may say `'random'` and main draws it: the size, then the floors,
+ * then a template the game's dialog would offer for those (and that takes the
+ * players, when they are fixed), then the players inside its range; the rest
+ * independently. What was drawn comes back in the result's `order`.
+ */
 export interface RmgGeneratePayload {
   mapName: string;
   /** Left out: the generator draws one, the way the game's dialog does. */
   seed?: number;
+  template: string | 'random';
+  sizeIndex: number | 'random';
+  underground: boolean | 'random';
+  water: number | 'random';
+  players: number | 'random';
+  monsterLevel: number | 'random';
+  resourceMultiplier: number | 'random';
+  expMultiplier: number | 'random';
+  grail: boolean | 'random';
+  randomTowns: boolean | 'random';
+  minimap: boolean;
+}
+
+/** The order as it was generated — every `'random'` of the payload resolved. */
+export interface RmgResolvedOrder {
   template: string;
   sizeIndex: number;
+  tiles: number;
   underground: boolean;
   water: number;
   players: number;
@@ -177,12 +200,12 @@ export interface RmgGeneratePayload {
   expMultiplier: number;
   grail: boolean;
   randomTowns: boolean;
-  minimap: boolean;
 }
 
 /** Result of `rmg:generate` — the map, landed and packed like a new one, plus what the run cost. */
 export interface RmgGenerateResult extends NewMapResult {
   seed: number;
+  order: RmgResolvedOrder;
   draws: number;
   objects: number;
   /** Where the generator ran: its own process, or this one when no child could be forked. */

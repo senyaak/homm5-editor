@@ -35,8 +35,9 @@ order in its units, a `.h5m` out) that the application imports: **Random
 map…** in the Map menu and on the map list opens the game's own generator
 dialog, field for field — size, two levels, a template list that narrows the
 way the game's does, players in the template's range, water, monster level,
-both multipliers, random towns, grail, minimap, a seed or a drawn one — and
-the map lands like a new one, in `<game>/H5E/`, opened from its archive. The
+both multipliers, random towns, grail, minimap, a seed or a drawn one — every
+choice but the name and the minimap can be left to Random, and "All random"
+leaves them all — and the map lands like a new one, in `<game>/H5E/`, opened from its archive. The
 generation runs in a process of its own, so the editor keeps answering while a
 large map is made. A map opened from a `.h5m` of ours is now titled after the
 file rather than the folder inside it, which for a generated map was a GUID.

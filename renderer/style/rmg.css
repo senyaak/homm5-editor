@@ -8,5 +8,7 @@
 .rmg-card .on-row select:focus { outline: none; border-color: #1f6feb; }
 .rmg-two { display: flex; align-items: center; gap: 16px; }
 .rmg-two .on-row { flex: 1; }
+.rmg-two .rmg-short span { flex: 0 0 auto; padding-left: 4px; }
+.de-foot #rmg-random { margin-right: auto; }
 .rmg-checks { display: flex; gap: 16px; flex-wrap: wrap; }
 .rmg-busy { font-size: 12px; color: #d29922; }
