@@ -157,10 +157,12 @@ Stronghold/Orcs, Haven/NewHaven.
 Possible — nothing found is a wall — but it is executable work of a kind the
 spell and creature ceilings never needed: the two patch sites above, then one
 site per `__RACE_COUNT`-sized structure as each is met, then native code for
-any racial mechanic the new faction is to have. The mod scene's answer —
-replace an existing faction in place, keeping its ordinal — exists precisely
-because of this ledger (and there is real headroom inside a faction:
-`TB_SPECIAL_0..9` is ten special-building slots, Academy uses four).
+any racial mechanic the new faction is to have — and that is the path this
+tool takes. The mod scene's workaround — replace an existing faction in
+place, keeping its ordinal — exists precisely because of this ledger, and is
+not ours: a ninth faction means a ninth slot, with the arrays reallocated
+and the mechanics added natively through the extension (see
+[EXTENSION.md](EXTENSION.md)).
 
 The cheap decisive experiment, in the spirit of
 [EXTENSION.md](EXTENSION.md)'s two probes: raise `TownType` to 12 with a
