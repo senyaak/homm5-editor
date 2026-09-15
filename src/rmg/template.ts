@@ -78,6 +78,15 @@ export interface RmgZone {
    * `RmgZoneObject`. Empty for every template of the game's.
    */
   objects: RmgZoneObject[];
+  /**
+   * OURS (`.h5et`): `<GuardMultiplier>`, a factor on the power of every
+   * guard the zone seats for ITSELF — its mines, its upgrade buildings,
+   * its treasure blocks, its named objects — the way a Heroes III zone is
+   * `weak` or `strong`. 1 when absent, which is the engine's map. It does
+   * not touch the guards between zones (the passages and teleports take the
+   * connection's `GuardStrenght`) nor the town's (`TownGuardStrenght`).
+   */
+  guardMultiplier: number;
 }
 
 /**
@@ -220,6 +229,7 @@ export function parseTemplate(xml: string): RmgTemplate {
       redwoodObservatoryDensity: int(z, 'RedwoodObservatoryDensity'),
       buffPoints: int(z, 'BuffPoints'),
       objects: zoneObjects(z),
+      guardMultiplier: childText(z, 'GuardMultiplier') === '' ? 1 : Number.parseFloat(childText(z, 'GuardMultiplier')) || 0,
     }));
 
   const connectionsEl = find(t, 'Connections');

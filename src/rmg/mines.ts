@@ -164,6 +164,8 @@ export interface MineStepInput {
   counts: number[];
   radii: { nearMin: number; nearMax: number; farMin: number; farMax: number };
   guardPower: { basic: number; mine1: number; mine2: number; gold: number };
+  /** OURS: the zone's `<GuardMultiplier>` on the power; absent or 1 is the engine's. */
+  guardMultiplier?: number;
   monsterStrength: number;
   tables: GuardTables;
   footprints: Map<string, MineFootprint>;
@@ -250,7 +252,7 @@ export function placeZoneMines(input: MineStepInput, rng: DrawSource): PlacedMin
           guardLevel === 'mine1' ? input.guardPower.mine1
           : guardLevel === 'mine2' ? input.guardPower.mine2
           : input.guardPower.gold;
-        const made = setMonster(input.guardPower.basic * level, input.monsterStrength, input.tables, rng);
+        const made = setMonster(Math.trunc(input.guardPower.basic * level * (input.guardMultiplier ?? 1)), input.monsterStrength, input.tables, rng);
         if (made) guard = { ...made, x: guardAt[0], y: guardAt[1] };
         occupancy[guardAt[1] * size + guardAt[0]] = 4;
       }

@@ -43,6 +43,8 @@ export interface RmgJobResult {
   objects: number;
   files: string[];
   ms: number;
+  /** The generator's warnings — a named object the zone had no room for, say. */
+  warnings: string[];
 }
 
 /** Run one job to the end: the files are in `job.mapDir` when this returns. */
@@ -56,5 +58,6 @@ export function runRmgJob(job: RmgJob): RmgJobResult {
   return {
     guid: map.guid, seed: job.order.seed, draws: map.draws, objects: map.objects,
     files: map.files.map((f) => f.name), ms: Math.round(performance.now() - started),
+    warnings: map.warnings,
   };
 }

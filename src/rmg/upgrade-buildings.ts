@@ -188,7 +188,8 @@ export function placeZoneUpgradeBuildings(input: UpgradeBuildingsInput, rng: Dra
     stampFootprint(input, entry.foot, tile, q);
     const guard = seatGuard({
       size, occupancy, at: tile, q, foot: entry.foot,
-      power: input.basicLeverGuardPower * entry.guardStrenght,
+      // Truncated for our multiplier's sake; the engine's product is whole already.
+      power: Math.trunc(input.basicLeverGuardPower * entry.guardStrenght),
       monsterStrength: input.monsterStrength, tables: input.tables,
     }, rng);
 

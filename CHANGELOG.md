@@ -63,7 +63,11 @@ byte for byte. A zone of ours can also NAME its objects, the way a Heroes
 III template does: `<Objects>` gives a building a floor (placed before the
 budgets are spent, with a guard if asked) and a ceiling (the budgets stop
 buying it; 0 forbids it) — Jebus Cross's middle carries one guarded Dragon
-Utopia and no second.
+Utopia and no second. And a zone can guard itself harder or softer
+(`<GuardMultiplier>`, on top of the map's monster level): Jebus's middle
+at twice, its start zones at half. A template asking for more than fits
+is not refused: the map is made with what fits, and the HUD line says
+what was left out.
 
 **The generator reads the install the game reads.** Every document the port
 opens — the preset table, the templates, the tiles, every shared building,

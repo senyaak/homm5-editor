@@ -3791,6 +3791,30 @@ shipped template's budget DOES buy a Crypt there (seed 100) and the
 variant's does not. Templates of the game's carry no `<Objects>`: no step,
 no caps, the corpus untouched (`test-rmg-pack` still lands on 92438).
 
+### A zone's guard multiplier, and what a run says instead of refusing
+
+`<GuardMultiplier>` on a zone (ours; 1 when absent) is HotA's `Monsters:
+weak / strong` as a number: a factor on the power of every guard the zone
+seats for ITSELF — its mines (`mines.ts`), its upgrade buildings, its
+treasure blocks, its named objects — applied to the power BEFORE the map's
+own monster level scales it inside SetMonster (`× [0.4, 0.9, 1.7, 4.0,
+12.0]`), so the two multiply: a `2` in the middle of a `strong` map is
+3.4× the base. The guards between zones (passages, teleports — the
+connection's `GuardStrenght`) and the town's (`TownGuardStrenght`) are not
+in it. Jebus Cross's middle guards at 2, its start zones at 0.5, which is
+what its `.h3t` says in words. Measured on one seed: the middle's armies
+1393 creatures against 1120 at 1, a start zone's 331 against 451.
+
+A template that asks for more than fits is NOT refused — its author's
+business, and the map is still worth having. It gets what fits and a line
+in `Chain.warnings`, which the generator's result carries (`GeneratedMap`,
+the job, the IPC result) and the editor shows on the map's HUD line and
+in full on the console: `zone 1: Dragon_Utopia asked 1000, placed 40 — no
+room for more` (measured: forty is what a Medium map's middle has room for
+before the shared candidate filter runs dry; twenty-two other buildings
+still fit after them). The order the engine would have lifted the size of
+goes there too, where it used to be a `console.warn` nobody read.
+
 What the Voronoi layout does NOT yet read, and HotA's templates do — noted
 for the template editor, not for now: a connection's TYPE (`teleport`
 against `ground` — ours would be a field on the connection, since the

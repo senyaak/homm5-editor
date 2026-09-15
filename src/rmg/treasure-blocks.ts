@@ -232,6 +232,8 @@ export interface FillBlocksInput {
   artifacts: readonly ArtifactEntry[];
   monsterStrength: number;
   tables: GuardTables;
+  /** OURS: the zone's `<GuardMultiplier>` on each block guard's power; absent or 1 is the engine's. */
+  guardMultiplier?: number;
   /** The resource piles a block draws from, in the executable's order, and the chest it stacks. */
   resources: readonly string[];
   chest: string;
@@ -282,7 +284,9 @@ export function fillTreasureBlocks(input: FillBlocksInput, rng: DrawSource): Fil
     accY = fl(accY + fl(0.01));
     const guardRotation = fl(-Math.atan2(accX, accY));
 
-    const power = Math.trunc(fl(fl(opening * fl(2.5)) + fl(0.5)));
+    const enginePower = Math.trunc(fl(fl(opening * fl(2.5)) + fl(0.5)));
+    const power = input.guardMultiplier === undefined || input.guardMultiplier === 1
+      ? enginePower : Math.trunc(enginePower * input.guardMultiplier);
     const guard = setMonster(power, input.monsterStrength, input.tables, rng);
 
     // ------------------------------------------------------- the artifact

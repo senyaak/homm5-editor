@@ -41,11 +41,18 @@ export interface ZoneObjectsResult {
   placed: PlacedZoneObject[];
   /** For the budget steps that follow: the ceilings, forced ones subtracted. */
   caps: Map<string, number>;
+  /**
+   * Lines the zone had no room to honour — a warning for the run's list,
+   * not a refusal: a template asking for more than fits gets what fits and
+   * a line saying so.
+   */
+  short: Array<{ href: string; min: number; placed: number }>;
 }
 
 export function placeZoneObjects(input: ZoneObjectsInput, rng: DrawSource): ZoneObjectsResult {
   const placed: PlacedZoneObject[] = [];
   const caps = new Map<string, number>();
+  const short: ZoneObjectsResult['short'] = [];
   for (const line of input.objects) {
     const foot = input.footprint(line.href);
     const landed = line.min > 0
@@ -55,15 +62,16 @@ export function placeZoneObjects(input: ZoneObjectsInput, rng: DrawSource): Zone
       const guard = line.guardStrenght > 0
         ? seatGuard({
           size: input.size, occupancy: input.occupancy, at: [p.x, p.y], q: p.q, foot,
-          power: input.basicLeverGuardPower * line.guardStrenght,
+          power: Math.trunc(input.basicLeverGuardPower * line.guardStrenght),
           monsterStrength: input.monsterStrength, tables: input.tables,
         }, rng)
         : null;
       placed.push({ ...p, guard });
     }
+    if (landed.length < line.min) short.push({ href: line.href, min: line.min, placed: landed.length });
     if (Number.isFinite(line.max)) {
       caps.set(capKey(line.href), Math.max(0, line.max - landed.length));
     }
   }
-  return { placed, caps };
+  return { placed, caps, short };
 }

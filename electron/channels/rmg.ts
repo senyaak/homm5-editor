@@ -187,6 +187,7 @@ export function registerRmg(): void {
     const ms = Math.round(performance.now() - started);
     console.log(`[rmg] ${archive} · ${order.template} ${order.tiles}×${order.tiles}${order.underground ? ' two-level' : ''}, ${order.players} players, seed ${seed}`
       + ` · ${r.draws} draws, ${r.objects} objects · ${r.ms}ms in the ${where}, ${ms}ms in all`);
-    return { mapPath: join(mapDir, 'map.xdb'), mapDir, archive, seed, order, draws: r.draws, objects: r.objects, where, ms };
+    for (const w of r.warnings) console.warn(`[rmg] ${w}`);
+    return { mapPath: join(mapDir, 'map.xdb'), mapDir, archive, seed, order, draws: r.draws, objects: r.objects, where, ms, warnings: r.warnings };
   });
 }

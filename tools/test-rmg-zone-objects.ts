@@ -121,6 +121,48 @@ if (!game) {
         JSON.stringify([...countBy(capped, CRYPT)]));
     }
   }
+
+  // THE GUARD MULTIPLIER, and the warning. Jebus's middle guards at 2, its
+  // start zones at 0.5; a variant at 1 everywhere is the control — the same
+  // seed, the same mines and buildings, the armies' power the only
+  // difference. The powers go through the engine's own SetMonster ladder,
+  // so what is compared is what the ladder answers with: creatures.
+  console.log('the guard multiplier, and the warning');
+  {
+    const flat = jebusXml
+      .replace('<Name>Jebus Cross</Name>', '<Name>Jebus Flat</Name>')
+      .replace(/<GuardMultiplier>[^<]*<\/GuardMultiplier>\n/g, '');
+    writeFileSync(join(root, 'RMG', 'Templates', 'Jebus Flat.h5et'), flat);
+    const thousand = jebusXml
+      .replace('<Name>Jebus Cross</Name>', '<Name>Jebus Thousand</Name>')
+      .replace('<Min>1</Min>', '<Min>1000</Min>').replace('<Max>1</Max>', '<Max>1000</Max>');
+    writeFileSync(join(root, 'RMG', 'Templates', 'Jebus Thousand.h5et'), thousand);
+    const order = { size: 136, players: 4, seed: 202, monsterStrength: 1, water: 0 };
+    const strong = runFull(install, { ...order, template: 'Jebus Cross' });
+    const flatRun = runFull(install, { ...order, template: 'Jebus Flat' });
+    const creatures = (run: FullRun, zone: number): number => {
+      const grid = run.c.gridAtFillTerrain[0]!;
+      let n = 0;
+      for (const o of run.objects) {
+        if (!o.army || grid[o.y]![o.x] !== zone) continue;
+        for (const st of o.army.stacks) n += st.amount;
+      }
+      return n;
+    };
+    check('a template of ours reads its multipliers',
+      strong.c.template.zones.map((z) => z.guardMultiplier).join(',') === '2,0.5,0.5,0.5,0.5');
+    check('one without them reads 1 everywhere', flatRun.c.template.zones.every((z) => z.guardMultiplier === 1));
+    check('the middle\'s armies are bigger at 2 than at 1', creatures(strong, 1) > creatures(flatRun, 1),
+      `${creatures(strong, 1)} vs ${creatures(flatRun, 1)} creatures`);
+    check('a start zone\'s are smaller at 0.5 than at 1', creatures(strong, 2) < creatures(flatRun, 2),
+      `${creatures(strong, 2)} vs ${creatures(flatRun, 2)} creatures`);
+    check('a clean run warns of nothing', strong.c.warnings.length === 0, strong.c.warnings.join('; '));
+    const many = runFull(install, { ...order, template: 'Jebus Thousand' });
+    const utopias = countBy(many, UTOPIA).get(1) ?? 0;
+    check('a thousand Utopias asked: what fits is placed, the rest is a warning, not a refusal',
+      utopias > 1 && utopias < 1000 && many.c.warnings.length === 1 && many.c.warnings[0]!.includes(`placed ${utopias}`),
+      `${utopias} placed; ${many.c.warnings.join('; ')}`);
+  }
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall good');

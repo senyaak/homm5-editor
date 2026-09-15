@@ -135,6 +135,8 @@ export interface GeneratedMap {
   /** The stream's length and the object count — the two numbers every corpus map is checked by. */
   draws: number;
   objects: number;
+  /** What the run wanted said — see `Chain.warnings`. Empty on a clean run. */
+  warnings: string[];
 }
 
 /**
@@ -177,7 +179,7 @@ export function generateMap(install: RmgInstall, order: RmgOrder): GeneratedMap 
     seed: order.seed, template: order.template, players: order.players, underground: order.underground,
     water: order.water, guid, mapName: order.mapName, minimap: order.minimap,
   }, { captionBase: 2 });
-  return { files, guid, draws: run.c.rng.draws, objects: run.objects.length };
+  return { files, guid, draws: run.c.rng.draws, objects: run.objects.length, warnings: run.c.warnings };
 }
 
 /**

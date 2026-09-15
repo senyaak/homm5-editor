@@ -635,6 +635,7 @@ export function runFull(
       size: c.size, occupancy: fl.occ, blocks, artifacts,
       resources: c.exe.blockResources, chest: c.exe.blockChest,
       monsterStrength: c.setup.monsterStrength, tables: c.tables,
+      guardMultiplier: tz.guardMultiplier,
     }, c.rng);
     for (const b of result) {
       if (b.guard) guardPoint(b.guard, b.guardAt[0], b.guardAt[1], lz.floor, b.guardRotation);

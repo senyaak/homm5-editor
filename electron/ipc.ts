@@ -211,6 +211,8 @@ export interface RmgGenerateResult extends NewMapResult {
   /** Where the generator ran: its own process, or this one when no child could be forked. */
   where: 'child' | 'main';
   ms: number;
+  /** What the generator wanted said and did not stop for — shown, not thrown. */
+  warnings: string[];
 }
 
 /** Result of `map:load`. */

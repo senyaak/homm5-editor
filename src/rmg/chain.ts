@@ -209,6 +209,12 @@ export interface Chain {
   arith: Arith;
   /** The listeners, kept for the roads phase to hand its routes through. */
   trace?: ChainTrace;
+  /**
+   * What the run wants said and did not stop for: an order the engine would
+   * have lifted, a named object the zone had no room for. Read out by the
+   * application into the map's line; a tool prints them.
+   */
+  warnings: string[];
   /** Whether this is the game's build — the later phases toss their own coins. */
   gameBuild: boolean;
   /** The order's GRAIL checkbox — see `ChainOptions.grail`. */
@@ -344,6 +350,7 @@ export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain
   const swapZoneAxes = options.swapZoneAxes || Boolean(options.gameBuild);
   rng.arith = ar;
   const trace = options.trace;
+  const warnings: string[] = [];
   if (trace?.draw) rng.onDraw = (kind, value, limit) => trace.draw!(kind, value, limit);
   const phase = (label: string): void => trace?.phase?.(label, rng.draws);
   phase('start');
@@ -366,7 +373,7 @@ export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain
     // caller's tile count, and rebuilding it here would hide the fact that the
     // engine would not have made this map at all. No order in the corpus
     // reaches this — every size a generated map records is a fixed point.
-    console.warn(`  the engine would lift this order's size: ${exe.mapSizes[requested]} asked,`
+    warnings.push(`the engine would lift this order's size: ${exe.mapSizes[requested]} asked,`
       + ` ${exe.mapSizes[made.size]} is what ${template.name}'s ${template.minMapSize} units require`);
   }
   phase('createMap');
@@ -624,7 +631,7 @@ export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain
     dir, exe, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
     multipliers: { resource: options.resourceMultiplier ?? 1, exp: options.expMultiplier ?? 1 },
     arith: ar,
-    trace,
+    trace, warnings,
     gameBuild: Boolean(options.gameBuild),
     grail: Boolean(options.grail),
     randomTowns, randomDwellings,
@@ -748,6 +755,7 @@ export class ZoneFill {
         mine1: c.params.mine1LevelGuardLevel, mine2: c.params.mine2LevelGuardLevel,
         gold: c.params.mineGoldGuardLevel,
       },
+      guardMultiplier: this.zone.guardMultiplier,
       monsterStrength: c.setup.monsterStrength,
       tables: c.tables,
       footprints: feet,
@@ -817,10 +825,13 @@ export class ZoneFill {
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
       objects: this.zone.objects, footprint: (href) => c.footprint(href),
-      basicLeverGuardPower: c.params.basicLeverGuardPower,
+      basicLeverGuardPower: c.params.basicLeverGuardPower * this.zone.guardMultiplier,
       monsterStrength: c.setup.monsterStrength, tables: c.tables,
     }, c.rng);
     this.caps = r.caps;
+    for (const short of r.short) {
+      c.warnings.push(`zone ${this.zoneIndex}: ${objectName(short.href)} asked ${short.min}, placed ${short.placed} — no room for more`);
+    }
     return r.placed;
   }
 
@@ -833,7 +844,8 @@ export class ZoneFill {
       list: this.priced(this.pricePreset.newUpgradeBuildings)
         .map((p, i) => ({ href: p.type, value: p.value, foot: p.foot,
           guardStrenght: this.pricePreset.newUpgradeBuildings[i]!.guardStrenght })),
-      basicLeverGuardPower: c.params.basicLeverGuardPower,
+      // OURS: the zone's multiplier rides on the unit; 1 for the game's templates.
+      basicLeverGuardPower: c.params.basicLeverGuardPower * this.zone.guardMultiplier,
       monsterStrength: c.setup.monsterStrength, tables: c.tables,
     }, c.rng);
   }

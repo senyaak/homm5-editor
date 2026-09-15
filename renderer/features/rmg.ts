@@ -172,7 +172,12 @@ async function submit(open: (path: string, archive: string) => Promise<void>, re
     });
     dialog().close();
     await open(r.mapPath, r.archive);
-    $('hud').textContent = `random map → ${r.archive} · ${describe(r.order)} · seed ${r.seed} · ${r.objects} objects in ${(r.ms / 1000).toFixed(1)}s`;
+    // The generator's warnings are not failures: the map is there, and the
+    // line says what it could not do — a named object the zone had no room
+    // for. Each is on the console in full.
+    for (const w of r.warnings) console.warn(`random map: ${w}`);
+    const warned = r.warnings.length ? ` · ⚠ ${r.warnings.length === 1 ? r.warnings[0] : `${r.warnings.length} warnings (see console)`}` : '';
+    $('hud').textContent = `random map → ${r.archive} · ${describe(r.order)} · seed ${r.seed} · ${r.objects} objects in ${(r.ms / 1000).toFixed(1)}s${warned}`;
     refresh();
   } catch (e) {
     // Stay open on failure — a name clash is fixed by editing the name.

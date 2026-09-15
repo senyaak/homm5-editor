@@ -5,7 +5,8 @@
      zone goes; the layout below reads the graph and puts the players at the
      edges and the treasure between them. An .h5et is our template format:
      the game's RMGTemplate plus the fields of our own the game's serialiser
-     does not know (ZoneLayout on the template, Objects on a zone). -->
+     does not know (ZoneLayout on the template; Objects and GuardMultiplier on
+     a zone: the middle guards at twice the power, the start zones at half). -->
 <RMGTemplate>
 	<NameFileRef href=""/>
 	<DescriptionFileRef href=""/>
@@ -20,6 +21,7 @@
 			<CanBePlayerStart>false</CanBePlayerStart>
 			<Town>true</Town>
 			<TownGuardStrenght>3</TownGuardStrenght>
+			<GuardMultiplier>2</GuardMultiplier>
 			<Mines>
 				<Item>2</Item>
 				<Item>1</Item>
@@ -72,6 +74,7 @@
 			<CanBePlayerStart>true</CanBePlayerStart>
 			<Town>true</Town>
 			<TownGuardStrenght>1</TownGuardStrenght>
+			<GuardMultiplier>0.5</GuardMultiplier>
 			<Mines>
 				<Item>1</Item>
 				<Item>1</Item>
@@ -114,6 +117,7 @@
 			<CanBePlayerStart>true</CanBePlayerStart>
 			<Town>true</Town>
 			<TownGuardStrenght>1</TownGuardStrenght>
+			<GuardMultiplier>0.5</GuardMultiplier>
 			<Mines>
 				<Item>1</Item>
 				<Item>1</Item>
@@ -156,6 +160,7 @@
 			<CanBePlayerStart>true</CanBePlayerStart>
 			<Town>true</Town>
 			<TownGuardStrenght>1</TownGuardStrenght>
+			<GuardMultiplier>0.5</GuardMultiplier>
 			<Mines>
 				<Item>1</Item>
 				<Item>1</Item>
@@ -198,6 +203,7 @@
 			<CanBePlayerStart>true</CanBePlayerStart>
 			<Town>true</Town>
 			<TownGuardStrenght>1</TownGuardStrenght>
+			<GuardMultiplier>0.5</GuardMultiplier>
 			<Mines>
 				<Item>1</Item>
 				<Item>1</Item>
