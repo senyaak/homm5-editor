@@ -15,17 +15,14 @@
 // -9 on the minimap by a thousand bytes. What is the engine's is the entry
 // set and every entry's contents — `test-rmg-pack` holds that line.
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { initProject, packProject } from '../src/map/project.ts';
-import { buildMapFiles, mapSizes } from './rmg-build.ts';
+import { dialogChoices, generateMap, writeMap } from '../src/rmg/index.ts';
+import { dataAssets, gameDir, gameInstall } from './game-dir.ts';
 
-
-import { runFull } from './rmg-run.ts';
-import { dataAssets, gameDir } from './game-dir.ts';
-import type { ChainOptions } from './rmg-chain.ts';
-const MAP_SIZES = mapSizes();
+const install = gameInstall();
+const choices = dialogChoices(install);
+const MAP_SIZES = choices.sizes.map((s) => s.tiles);
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -43,14 +40,17 @@ if (seed === undefined || !Number.isFinite(seed)) {
   process.exit(2);
 }
 if (args.includes('--help')) {
-  console.log('--seed <n>            the order\'s seed (required)');
+  console.log("--seed <n>            the order's seed (required)");
   console.log('--template <name>     default S1P2Z2M1');
   console.log(`--size <tiles>        one of ${MAP_SIZES.join(' ')}, default 96`);
   console.log('--underground         two floors');
-  console.log('--water <0|1|2>       0 none, 2 island map — what the dialog\'s checkbox orders');
-  console.log('--players <n>         default 2, clamped to the template\'s own range');
+  console.log("--water <0|1|2>       0 none, 2 island map — what the dialog's checkbox orders");
+  console.log("--players <n>         default 2, inside the template's own range");
   console.log('--monsters <0..4>     MonsterLevel, default 1 (medium); it scales every guard');
-  console.log('--name <text>         the map\'s name, default "RMG <seed>"');
+  console.log('--resource <0..4>     ResourceMultiplier, default 2 (normal)');
+  console.log('--exp <0..4>          ExpMultiplier, default 2 (normal)');
+  console.log('--grail --random-towns --no-minimap   the three checkboxes');
+  console.log('--name <text>         the map name, default "RMG <seed>"');
   console.log('--guid <G>            default random, as CoCreateGuid makes one');
   console.log('--out <file.h5m>      default <game>/Maps/<name>.h5m');
   process.exit(0);
@@ -65,54 +65,25 @@ const game = gameDir();
 
 const template = flag('template') ?? 'S1P2Z2M1';
 const size = num('size') ?? 96;
-if (!MAP_SIZES.includes(size as (typeof MAP_SIZES)[number])) {
+const sizeIndex = MAP_SIZES.indexOf(size);
+if (sizeIndex < 0) {
   console.error(`--size ${size} is not one of the dialog's sizes: ${MAP_SIZES.join(' ')}`);
   process.exit(2);
 }
-const underground = args.includes('--underground');
-const water = num('water') ?? 0;
-const players = num('players') ?? 2;
-const monsters = num('monsters') ?? 1;
 const mapName = flag('name') ?? `RMG ${seed}`;
-
-// The size is an order like the rest: the tile count goes back through the
-// engine's own table into the request (`create-map.ts`, both conversions
-// read), and the chain warns when a template's units would lift it. Nothing
-// here to refuse.
-
-const options: ChainOptions = {
-  seed, template, size, underground, water: water || undefined, players, monsterStrength: monsters,
+const order = {
+  seed, template, sizeIndex, underground: args.includes('--underground'),
+  water: num('water') ?? 0, players: num('players') ?? 2,
+  monsterLevel: num('monsters') ?? 1, resourceMultiplier: num('resource') ?? 2, expMultiplier: num('exp') ?? 2,
+  grail: args.includes('--grail'), randomTowns: args.includes('--random-towns'), minimap: !args.includes('--no-minimap'),
+  mapName, guid: flag('guid'),
 };
-console.log(`generating ${template} ${size}x${size}, seed ${seed}, ${players} players`
-  + `, monsters ${monsters}${underground ? ', underground' : ''}${water ? `, water ${water}` : ''}`);
-const run = runFull(dir, options);
-console.log(`  ${run.c.rng.draws} draws, ${run.objects.length} objects`);
 
-// CoCreateGuid's shape, which is what the engine stamps into the map and names
-// the folder with. Ours is random the same way; nothing reads it back.
-const hex = (n: number): string => Array.from({ length: n },
-  () => '0123456789ABCDEF'[Math.floor(Math.random() * 16)]).join('');
-// `--guid` is for reproducing a particular archive — the engine's own, when
-// comparing against a map it wrote.
-const guid = flag('guid') ?? `${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}`;
-
-// An `.h5m` is what the editor's SAVE writes, so its caption numbering is the
-// dialog's: two unreferenced documents at 0 and 1 and the scenario captions at
-// 2. The console command writes the other numbering, and `rmg-diff-map` knows
-// which it is looking at. See `RmgTextsInput.captionBase`.
-const files = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), run, {
-  seed, template, players, underground, water, guid, mapName,
-}, { captionBase: 2 });
-
-const prefix = `Maps/RMG/${guid}`;
-const staging = join('_tmp', 'rmg-pack');
-rmSync(staging, { recursive: true, force: true });
-const mapDir = join(staging, ...prefix.split('/'));
-mkdirSync(mapDir, { recursive: true });
-for (const file of files) writeFileSync(join(mapDir, file.name), file.data);
-initProject(mapDir);
+console.log(`generating ${template} ${size}x${size}, seed ${seed}, ${order.players} players`
+  + `, monsters ${order.monsterLevel}${order.underground ? ', underground' : ''}${order.water ? `, water ${order.water}` : ''}`);
+const map = generateMap(install, order);
+console.log(`  ${map.draws} draws, ${map.objects} objects`);
 
 const out = flag('out') ?? join(game, 'Maps', `${mapName}.h5m`);
-mkdirSync(join(out, '..'), { recursive: true });
-const packed = packProject(mapDir, out, { prefix });
+const packed = writeMap(map, out, join('_tmp', 'rmg-pack'));
 console.log(`${out} — ${packed.entries} entries, ${packed.bytes} bytes`);

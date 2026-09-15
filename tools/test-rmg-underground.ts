@@ -33,8 +33,8 @@ import { readArtifacts, rmgArtifactPool } from '../src/rmg/artifacts.ts';
 import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
 import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
 import { zoneTiles } from '../src/rmg/placement.ts';
-import { runChain, ZoneFill } from './rmg-chain.ts';
-import { dataDir } from './game-dir.ts';
+import { runChain, ZoneFill } from '../src/rmg/chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 import { REFERENCE_UG_DIR, hasUndergroundReference } from './rmg-reference.ts';
 import { exeTables } from '../src/rmg/exe.ts';
 import { gameExeIfAny } from './game-dir.ts';
@@ -112,7 +112,7 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const c = runChain(dir, { template: 'S0-1P2Z2K3.1T', size: 72, underground: true });
+const c = runChain(gameInstall(dir), { template: 'S0-1P2Z2K3.1T', size: 72, underground: true });
 
 console.log('the chain, on the underground run');
 check('the chain ends on the traced 4475', c.rng.draws === 4475, `${c.rng.draws}`);

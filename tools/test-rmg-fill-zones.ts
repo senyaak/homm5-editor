@@ -13,8 +13,8 @@
 import { existsSync } from 'node:fs';
 
 import { RmgRandom } from '../src/rmg/random.ts';
-import { dataDir } from './game-dir.ts';
-import { runChain } from './rmg-chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
+import { runChain } from '../src/rmg/chain.ts';
 import { fillZones } from '../src/rmg/fill-zones.ts';
 import { generateGameZones } from '../src/rmg/zones.ts';
 import type { ZoneSeed } from '../src/rmg/zones.ts';
@@ -97,7 +97,7 @@ if (!existsSync(dataDir())) {
   const perSweep = new Map<number, number>();
   let seen = 0;
   let candidate961 = '';
-  runChain(dataDir(), {
+  runChain(gameInstall(dataDir()), {
     template: 'S7-22P2-8Z15K2.4c', size: 256, players: 2, seed: 1785351845,
     monsterStrength: 1, water: 0,
     jitter: (sweep) => { jitterTotal++; perSweep.set(sweep, (perSweep.get(sweep) ?? 0) + 1); },

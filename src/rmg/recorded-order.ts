@@ -17,25 +17,24 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { readEntries } from '../src/format/pak.ts';
-import { mapSizes } from './rmg-build.ts';
-import { enumNames } from '../src/rmg/data.ts';
-import { dataAssets } from './game-dir.ts';
-const MAP_SIZES = mapSizes();
-
+import { readEntries } from '../format/pak.ts';
+import { mapSizes } from './build.ts';
+import { enumNames } from './data.ts';
+import type { RmgInstall } from './install.ts';
 
 // The names an order spells its sizes, water, and multipliers in are the
 // enums' own — `MapSize`, `WaterAmount`, `ResourceMultiplier`, `ExpMultiplier`
-// in the type listing, read through the mounted chain.
-const names = (typeName: string): string[] => enumNames(dataAssets(), typeName);
+// in the type listing, read through the install's mounted chain.
+const names = (install: RmgInstall, typeName: string): string[] => enumNames(install.data, typeName);
 
 /** The map sizes an order can name, by the dialog's MapSize index. */
-export const sizeNames = (): string[] => names('MapSize');
+export const sizeNames = (install: RmgInstall): string[] => names(install, 'MapSize');
 
 /** The five multipliers, by index, without their `RESOURCE_` / `EXP_` prefix. */
-export const multiplierNames = (): string[] => names('ResourceMultiplier').map((n) => n.replace(/^RESOURCE_/, ''));
+export const multiplierNames = (install: RmgInstall): string[] => names(install, 'ResourceMultiplier').map((n) => n.replace(/^RESOURCE_/, ''));
 
-export interface MapOrder {
+/** The order a generated map carries in its `sRMGProps`, as the map spells it. */
+export interface RecordedOrder {
   seed: number;
   guid: string;
   mapName: string;
@@ -94,7 +93,7 @@ export interface MapOrder {
  * outside its enum and a chosen starting hero, and the honest answer to a map
  * that carries one is to say so rather than to diff it.
  */
-export function unreplayable(o: MapOrder): string[] {
+export function unreplayable(o: RecordedOrder): string[] {
   const out: string[] = [];
   const { startHeroes, resourceIndex, expIndex } = o.extras;
   // The two multipliers ARE replayed now — the treasures step takes its ladder
@@ -133,7 +132,7 @@ export function readMapFiles(path: string): Map<string, Buffer> {
  * The order, or a sentence saying why this is not a generated map. Callers
  * decide what to do about it; nothing here calls `process.exit`.
  */
-export function readOrder(path: string): { order: MapOrder; files: Map<string, Buffer> } | string {
+export function readOrder(install: RmgInstall, path: string): { order: RecordedOrder; files: Map<string, Buffer> } | string {
   if (!existsSync(path)) return `${path} is not there`;
   const files = readMapFiles(path);
   const mapEntry = files.get('map.xdb');
@@ -159,9 +158,9 @@ export function readOrder(path: string): { order: MapOrder; files: Map<string, B
   const monster = one(/<MonsterLevel>(\w+)</, 'MonsterLevel');
   if (missing) return `${path}: no ${missing} — this map was not generated`;
 
-  const sizeIndex = names('MapSize').indexOf(sizeName);
-  const size = MAP_SIZES[sizeIndex];
-  const water = names('WaterAmount').indexOf(waterName);
+  const sizeIndex = names(install, 'MapSize').indexOf(sizeName);
+  const size = mapSizes(install)[sizeIndex];
+  const water = names(install, 'WaterAmount').indexOf(waterName);
   if (size === undefined || water < 0) {
     return `${path}: ${sizeName} / ${waterName} is not an order this port can replay`;
   }
@@ -176,9 +175,9 @@ export function readOrder(path: string): { order: MapOrder; files: Map<string, B
       extras: {
         resource: /<ResourceMultiplier>(\w+)</.exec(text)?.[1] ?? '',
         exp: /<ExpMultiplier>(\w+)</.exec(text)?.[1] ?? '',
-        resourceIndex: names('ResourceMultiplier').indexOf(
+        resourceIndex: names(install, 'ResourceMultiplier').indexOf(
           /<ResourceMultiplier>(\w+)</.exec(text)?.[1] ?? 'RESOURCE_LITTLE'),
-        expIndex: names('ExpMultiplier').indexOf(
+        expIndex: names(install, 'ExpMultiplier').indexOf(
           /<ExpMultiplier>(\w+)</.exec(text)?.[1] ?? 'EXP_LITTLE'),
         randomTowns: /<RandomTowns>true</.test(text),
         grail: /<Grail>true</.test(text),
@@ -198,7 +197,7 @@ export function readOrder(path: string): { order: MapOrder; files: Map<string, B
 }
 
 /** The order in one line, the way both diff tools print it. */
-export function describeOrder(o: MapOrder): string {
+export function describeOrder(o: RecordedOrder): string {
   return `${o.template} ${o.sizeName.replace('MAP_SIZE_', '').toLowerCase()} ${o.size}x${o.size},`
     + ` ${o.players} players, seed ${o.seed}, ${o.waterName}, ${o.monster}`
     + `${o.underground ? ', underground' : ''}${o.minimap ? '' : ', no minimap'}`;

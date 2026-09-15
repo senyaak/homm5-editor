@@ -22,8 +22,8 @@ import {
   fillTerrain, makeRiverPlane, paintLakes, paintRoads, stampZoneLakeRiver,
 } from '../src/rmg/terrain.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
-import { runFull } from './rmg-run.ts';
-import { dataDir, gameDirIfAny } from './game-dir.ts';
+import { runFull } from '../src/rmg/run.ts';
+import { dataDir, gameDirIfAny, gameInstall } from './game-dir.ts';
 import { REFERENCE_DIR, REFERENCE_MISSING, hasReference, referenceMinimap } from './rmg-reference.ts';
 import { exeTables } from '../src/rmg/exe.ts';
 import { gameExeIfAny } from './game-dir.ts';
@@ -129,7 +129,7 @@ if (!game) {
   process.exit(0);
 }
 
-const r = runFull(dir, {});
+const r = runFull(gameInstall(dir), {});
 const c = r.c;
 const side = c.size, border = 1, dim = c.size + 1;
 

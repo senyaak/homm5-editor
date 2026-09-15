@@ -129,7 +129,7 @@ export interface RacePreset {
    *
    * Not the zone's colour above: that one is picked per zone out of a list,
    * this one is the faction's and there is exactly one. It was a hand-grown
-   * table in `tools/rmg-run.ts` for as long as the corpus held one underground
+   * table in `run.ts` for as long as the corpus held one underground
    * faction, and every new map threw until someone read its colour off the
    * result. It was in the preset all along, beside the lists the same preset
    * already gives us ([[take-the-value-dont-derive-it]]).

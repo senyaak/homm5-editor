@@ -21,14 +21,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { Tile } from '../src/rmg/placement.ts';
-import { mapSizes } from './rmg-build.ts';
+import { mapSizes } from '../src/rmg/build.ts';
 
 
-import { readOrder, unreplayable } from './rmg-order.ts';
-import type { ChainOptions } from './rmg-chain.ts';
-import { runFull } from './rmg-run.ts';
-import { dataAssets, gameDir } from './game-dir.ts';
-const MAP_SIZES = mapSizes();
+import { readOrder, unreplayable } from '../src/rmg/recorded-order.ts';
+import type { ChainOptions } from '../src/rmg/chain.ts';
+import { runFull } from '../src/rmg/run.ts';
+import { gameDir, gameInstall } from './game-dir.ts';
+const MAP_SIZES = mapSizes(gameInstall());
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -50,7 +50,7 @@ const MONSTER_LEVELS = [
   'MONSTER_LEVEL_WEAK', 'MONSTER_LEVEL_MEDIUM', 'MONSTER_LEVEL_STRONG',
   'MONSTER_LEVEL_VERY_STRONG', 'MONSTER_LEVEL_IMPOSSIBLE',
 ];
-const read = readOrder(mapPath);
+const read = readOrder(gameInstall(), mapPath);
 if (typeof read === 'string') { console.error(read); process.exit(2); }
 const { order } = read;
 const cannot = unreplayable(order);
@@ -105,7 +105,7 @@ if (!theirs.length) { console.error('no `fld` lines — was `field` in the confi
 
 interface Ours { zone: number; kind: number; from: Tile; to: Tile; cost: Float32Array }
 const ours: Ours[] = [];
-runFull(dataAssets(), {
+runFull(gameInstall(), {
   ...options,
   roadField: (zone, kind, cost, from, to) => ours.push({ zone, kind, from, to, cost: Float32Array.from(cost) }),
 });

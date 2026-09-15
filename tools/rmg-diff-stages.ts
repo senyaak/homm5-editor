@@ -26,10 +26,10 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { latePass } from '../src/rmg/heights.ts';
-import type { ChainOptions } from './rmg-chain.ts';
-import { readOrder, unreplayable } from './rmg-order.ts';
-import { heightsInput, runFull } from './rmg-run.ts';
-import { dataAssets, gameDir } from './game-dir.ts';
+import type { ChainOptions } from '../src/rmg/chain.ts';
+import { readOrder, unreplayable } from '../src/rmg/recorded-order.ts';
+import { heightsInput, runFull } from '../src/rmg/run.ts';
+import { gameDir, gameInstall } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -54,7 +54,7 @@ const MONSTER_LEVELS = [
 let options: ChainOptions;
 let size: number;
 if (mapPath) {
-  const read = readOrder(mapPath);
+  const read = readOrder(gameInstall(), mapPath);
   if (typeof read === 'string') { console.error(read); process.exit(2); }
   const { order } = read;
   const cannot = unreplayable(order);
@@ -109,7 +109,7 @@ console.log(`  dump: floor ${floorWanted}, stages ${[...dump.keys()].sort((a, b)
 
 // ------------------------------------------------------------- the port
 
-const run = runFull(dataAssets(), options);
+const run = runFull(gameInstall(), options);
 const v = size + 1;
 console.log(`  port: ${options.template} ${size}x${size}, seed ${options.seed}, plane ${v}x${v}${options.gameBuild ? ", as the GAME's build" : ''}`);
 

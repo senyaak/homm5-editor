@@ -62,7 +62,7 @@ no forgiveness clause left.**
 **The HEIGHT PLANE closes the float half of ALL THREE references — and
 of every template the port accepts** (`0xECF760` → `heights.ts`,
 `test-rmg-heights`, replaying through the shared full-run driver
-`tools/rmg-run.ts`): every vertex of the surface, island and underground
+`src/rmg/run.ts`): every vertex of the surface, island and underground
 floor-0 planes — 24,147 across the three files — bit for bit, and
 **21 of 21 templates of the sweep, on BOTH seeds, BYTE-identical** — every
 entry of every map, not merely the planes and not merely inside a tolerance.
@@ -2545,7 +2545,7 @@ had never been ordered together.
 
 **The point-light colour table had one entry.** An underground Necropolis wears
 four lights at `0.560784, 0.360784, 0.439216`, read off this map. The table grows
-by observation, one faction per reference (`tools/rmg-run.ts`).
+by observation, one faction per reference (`src/rmg/run.ts`).
 
 **And `<Birds>` is a DRAW, not a setting.** The engine writes
 `<Birds href="/MapObjects/_(AdvMapBirds)/Pigeons_Adv.xdb#xpointer(/AdvMapBirds)"/>`
@@ -3569,7 +3569,7 @@ npm run rmg-pack -- --game <dir> --seed 1785351845
 npm run rmg-pack -- --game <dir> --seed 7 --template S0-1P2Z2K3.1T --size 72 --underground
 ```
 
-The step between the phases and the archive is `tools/rmg-build.ts`, and it
+The step between the phases and the archive is `src/rmg/build.ts`, and it
 exists because three suites had each grown their own copy of the same replay —
 fill the terrain, paint the water marks and the sea corners, then the lakes,
 then the roads, then run the height late pass. That is one function now, and
@@ -3678,7 +3678,7 @@ saying so:
 | **ResourceMultiplier, ExpMultiplier** | **ordered** (`-resource`, `-exp`) — and they are not cosmetic: see below |
 | monster level | **ordered** (`-monsters`) — and replayed: `rmg-diff-map` takes the level out of the map's own `sRMGProps` and hands it to the chain, so a map ordered at any of the five is compared at that one |
 | RandomTowns, Grail | **ordered** (`-pokeb 149 1`, `-pokeb 165 1`) and replayed — `rmg-diff-map` reads both off the map's `sRMGProps`; see the 10.09 and 11.09 entries at the end |
-| StartHero | **not the generator's** — no dialog of the game's offers it; `<StartHero>` is a map property any map can carry, the generator writes it empty, and `rmg-order` treats a map with one as edited after generation, which is what it is |
+| StartHero | **not the generator's** — no dialog of the game's offers it; `<StartHero>` is a map property any map can carry, the generator writes it empty, and `recorded-order.ts` treats a map with one as edited after generation, which is what it is |
 
 And an ordered setting is checked only where a map from the engine stands
 against it — the corpus in `RMG_TEST_MATRIX.md`'s "What has been measured so
@@ -4250,6 +4250,23 @@ is what it is belongs next to the number.
 | `emit-texts.ts` | the archive's UTF-16LE texts from the Params word files | **done — all three references byte-identical** |
 | `emit-terrain.ts` | the GroundTerrain.bin writer, N layers | **done** — all four reference terrain files BYTE-IDENTICAL |
 | `passability.ts` | GenerateMap's last pass — the zone slot `+0x38` | **done** — the plane exact on all four files |
+
+**And the assembly, which used to live in `tools/` and now sits beside the
+phases** (15.09): `install.ts` is the pair the generator reads and nothing
+else — the data as the game mounts it and the game's executable — carried as
+an argument instead of reached for through `--game`; `chain.ts` runs the
+nine phases to the door of MainObjects and holds `ZoneFill`, the per-zone
+runner; `run.ts` is the whole run, objects collected in slot order;
+`build.ts` turns a run into the sixteen files; `recorded-order.ts` reads an
+order back out of a map's `sRMGProps`. **`index.ts` is the one door the
+application uses**: `dialogChoices` (the enums' names and the size ladder,
+from the install), `templatesOffered` (the dialog's filter at `0xCF7B58`,
+read — an order outside it is one the engine would lift), `generateMap`
+(an `RmgOrder` in the dialog's own units → the files, or a refusal that
+says why) and `writeMap` (the `.h5m`, packed the way the editor packs any
+map). The tools build the install once from the flag (`gameInstall()` in
+`tools/game-dir.ts`); `rmg-pack` and the random suite go through the door,
+the phase suites reach into the phases.
 
 ### The number stream, and why it comes first
 
@@ -5868,7 +5885,7 @@ zone is -1, so no race flip, and its negative dist term digs below the
 plateau), and the underground map's floor-0 plane is the same machinery
 over its own grids — the town-object floors decide which towns the
 craters and flattens see (`towns.ts` now records the floor). The shared
-full-run driver `tools/rmg-run.ts` is what collects the object list in
+full-run driver `src/rmg/run.ts` is what collects the object list in
 slot order for all three runs — and is the emitter's foundation. Still
 separate: the ground-flags/passability planes, a reverse target on the
 save path.
@@ -6151,7 +6168,7 @@ and on 192 here. The object is the `Fairie_Tree` dwelling at (101,101), rot
 one of them.
 
 The rule the port has — the mean over blocked and active, ROTATED — is not in
-doubt. `tools/rmg-build.ts` was made to list, per map, every icon whose anchor
+doubt. `src/rmg/build.ts` was made to list, per map, every icon whose anchor
 moves when the rotation is dropped: 166 of them over the corpus, 17 on
 `ГСК-007` alone, and the port has 16 of those 17 right — four at the same
 3pi/2 quadrant, a town, three mines and an `OrcishDwelling01`. The Fairie Tree
@@ -6431,7 +6448,7 @@ The template's own `<Underground>` field (+0x88, read out of the serialiser at
 so it can only be UI, and which UI is unread.
 
 `tools/test-rmg-template.ts` holds both tables, the ladder's every step, the
-nine measured fits and the forced branch. `tools/rmg-chain.ts` now hands
+nine measured fits and the forced branch. `src/rmg/chain.ts` now hands
 `createMap` the real index rather than the reference's 8 units, and says so out
 loud if the engine would lift an order rather than quietly building a map the
 engine would not make: no order in the corpus reaches that, because every size

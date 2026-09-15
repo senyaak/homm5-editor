@@ -18,8 +18,8 @@ import { join } from 'node:path';
 import type { Tile } from '../src/rmg/placement.ts';
 import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
-import { runChain, SIZE, ZoneFill } from './rmg-chain.ts';
-import { dataDir } from './game-dir.ts';
+import { runChain, SIZE, ZoneFill } from '../src/rmg/chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -33,7 +33,7 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const c = runChain(dir);
+const c = runChain(gameInstall(dir));
 c.rng.next(); // the MainObjects prologue draw
 
 console.log('the first loop of MainObjects, mine actives kept');

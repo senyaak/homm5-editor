@@ -32,13 +32,11 @@
 // have made the generator abort (docs/RMG.md, block C).
 
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { readRmgExeTables } from '../src/exe/rmg-tables.ts';
-import { enumNames } from '../src/rmg/data.ts';
-import { readTemplateNamed } from '../src/rmg/template.ts';
-import { dataAssets, gameDir, gameExe } from './game-dir.ts';
+import { dialogChoices, templatesOffered } from '../src/rmg/index.ts';
+import { gameDir, gameInstall } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -96,54 +94,31 @@ function orderLine(d: Draft): string {
 }
 
 function draftOrders(): { lines: string[]; drafts: Draft[] } {
-  const assets = dataAssets();
-  const tables = readRmgExeTables(gameExe());
-  const sizeNames = enumNames(assets, 'MapSize');
-  const monsterNames = enumNames(assets, 'MonsterLevel');
-  const multNames = enumNames(assets, 'ResourceMultiplier');
+  const install = gameInstall();
+  const choices = dialogChoices(install);
   const rng = mulberry32(suiteSeed);
   const below = (n: number): number => Math.floor(rng() * n);
   const coin = (): boolean => below(2) === 1;
 
-  // The templates the game mounts — a mod's are in the list too.
-  const seen = new Set<string>();
-  const names: string[] = [];
-  for (const dir of assets.dirs('RMG/Templates')) {
-    for (const f of readdirSync(dir)) {
-      if (!f.endsWith('.xdb') || seen.has(f)) continue;
-      seen.add(f);
-      names.push(f.slice(0, -4));
-    }
-  }
-  // The FILE name is what an order says; the document's own <Name> may differ.
-  const templates = names.map((file) => ({ file, ...readTemplateNamed(assets, file) }));
-
-  // The dialog's filter: units of the size inside the template's range; with
-  // an underground, twice the units, and the template must reach 10.
-  const offered = (size: number, underground: boolean): typeof templates => {
-    const units = tables.sizeUnits[size]!;
-    return templates.filter((t) => (underground
-      ? t.maxMapSize >= 10 && t.minMapSize <= 2 * units && 2 * units <= t.maxMapSize
-      : t.minMapSize <= units && units <= t.maxMapSize));
-  };
-
-  const sizes = tables.sizeUnits.length - 1; // the last rung is IMPOSSIBLE
+  // The dialog's own filter, through the generator's door — a mod's
+  // templates are in the list too.
+  const sizes = choices.sizes.length - 1; // the last rung is IMPOSSIBLE
   const drafts: Draft[] = [];
   for (let size = 0; size < sizes; size++) {
     for (let k = 0; k < perSize; k++) {
       let underground = coin();
-      let pool = offered(size, underground);
-      if (!pool.length) { underground = !underground; pool = offered(size, underground); }
-      if (!pool.length) throw new Error(`no template fits size ${size} (${sizeNames[size]}) — the ladder or the templates changed`);
+      let pool = templatesOffered(install, size, underground);
+      if (!pool.length) { underground = !underground; pool = templatesOffered(install, size, underground); }
+      if (!pool.length) throw new Error(`no template fits size ${size} (${choices.sizes[size]!.name}) — the ladder or the templates changed`);
       const t = pool[below(pool.length)]!;
       drafts.push({
         size, underground, template: t.file,
         seed: 1 + below(2147483646),
         players: t.minPlayers + below(t.maxPlayers - t.minPlayers + 1),
         water: coin() ? 2 : 0,
-        monsters: below(monsterNames.length),
-        resource: below(multNames.length),
-        exp: below(multNames.length),
+        monsters: below(choices.monsterLevels.length),
+        resource: below(choices.resourceMultipliers.length),
+        exp: below(choices.expMultipliers.length),
         randomTowns: coin(),
         grail: coin(),
       });
@@ -151,7 +126,7 @@ function draftOrders(): { lines: string[]; drafts: Draft[] } {
   }
   const lines = [
     `# random suite — suite seed ${suiteSeed}, ${perSize} a size, ${new Date().toISOString()}`,
-    `# sizes 0..${sizes - 1} (${sizeNames.slice(0, sizes).join(' ')}), ${templates.length} templates offered`,
+    `# sizes 0..${sizes - 1} (${choices.sizes.slice(0, sizes).map((s) => s.name).join(' ')})`,
     ...drafts.map(orderLine),
   ];
   return { lines, drafts };

@@ -24,14 +24,14 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
-import { buildMapFiles, mapSizes } from './rmg-build.ts';
+import { buildMapFiles, mapSizes } from '../src/rmg/build.ts';
 
 
-import { describeOrder, readOrder, unreplayable } from './rmg-order.ts';
-import { runFull } from './rmg-run.ts';
+import { describeOrder, readOrder, unreplayable } from '../src/rmg/recorded-order.ts';
+import { runFull } from '../src/rmg/run.ts';
 import { RACE } from '../src/rmg/load-template.ts';
-import { dataAssets, gameDir } from './game-dir.ts';
-const MAP_SIZES = mapSizes();
+import { dataAssets, gameInstall } from './game-dir.ts';
+const MAP_SIZES = mapSizes(gameInstall());
 
 const args = process.argv.slice(2);
 // The map is the one bare word that is not some flag's value.
@@ -46,9 +46,8 @@ if (!dir.exists('RMG/Params/Default.xdb')) {
   console.error(`no RMG data in ${dir.roots.join(', ')} — unpack it with \`npm run unpack-data\` first`);
   process.exit(2);
 }
-const game = gameDir();
 
-const read = readOrder(archive);
+const read = readOrder(gameInstall(), archive);
 if (typeof read === 'string') { console.error(read); process.exit(2); }
 const { order, files: theirs } = read;
 const { seed, guid, mapName, template, size, players, water, monster, underground, minimap } = order;
@@ -109,7 +108,7 @@ if (monsterStrength < 0) {
 // the game, nothing for one ordered through the editor.
 const gameBuild = args.includes('--game-build');
 if (gameBuild) console.log(`  reading it as the GAME's build: zone axes swapped`);
-const run = runFull(dir, {
+const run = runFull(gameInstall(dir), {
   // The swapped axes, the SSE arithmetic the road router reaches a map
   // through, and the shipyard's carried centroid — see `ChainOptions.gameBuild`.
   gameBuild,
@@ -146,7 +145,7 @@ console.log(`  replayed: ${run.c.rng.draws} draws, ${run.objects.length} objects
 const captions = [...theirs.keys()].filter((n) => /^caption-text-\d+\.txt$/.test(n)).length;
 const captionBase = Math.max(0, captions - players);
 if (captionBase) console.log(`  captions: ${captions} documents, so the numbering starts at ${captionBase} (an editor SAVE)`);
-const ours = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), run,
+const ours = buildMapFiles(gameInstall(dir), run,
   { seed, template, players, underground, water, guid, mapName, minimap, gameBuild },
   { captionBase });
 

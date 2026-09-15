@@ -35,14 +35,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { Tile } from '../src/rmg/placement.ts';
-import { mapSizes } from './rmg-build.ts';
+import { mapSizes } from '../src/rmg/build.ts';
 
 
-import { readOrder, unreplayable } from './rmg-order.ts';
-import type { ChainOptions } from './rmg-chain.ts';
-import { runFull } from './rmg-run.ts';
-import { dataAssets, gameDir } from './game-dir.ts';
-const MAP_SIZES = mapSizes();
+import { readOrder, unreplayable } from '../src/rmg/recorded-order.ts';
+import type { ChainOptions } from '../src/rmg/chain.ts';
+import { runFull } from '../src/rmg/run.ts';
+import { gameDir, gameInstall } from './game-dir.ts';
+const MAP_SIZES = mapSizes(gameInstall());
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -69,7 +69,7 @@ const gameBuild = args.includes('--game-build');
 let options: ChainOptions;
 let size: number;
 if (mapPath) {
-  const read = readOrder(mapPath);
+  const read = readOrder(gameInstall(), mapPath);
   if (typeof read === 'string') { console.error(read); process.exit(2); }
   const { order } = read;
   const cannot = unreplayable(order);
@@ -151,7 +151,7 @@ if (!dumped.length && !lists.size) process.exit(2);
 interface Snapshot { grid: Int32Array[]; border: Int32Array[]; occ: Int32Array; room: Int32Array[] }
 let snapshot: Snapshot[] | null = null;
 let drawsAt = -1;
-const run = runFull(dataAssets(), options, (label, draws, chain) => {
+const run = runFull(gameInstall(), options, (label, draws, chain) => {
   if (label !== 'roads phase') return;
   drawsAt = draws;
   snapshot = chain.floors.map((f) => ({

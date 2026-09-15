@@ -19,8 +19,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { zoneTiles } from '../src/rmg/placement.ts';
-import { runChain, SIZE, ZoneFill } from './rmg-chain.ts';
-import { dataDir } from './game-dir.ts';
+import { runChain, SIZE, ZoneFill } from '../src/rmg/chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 import { hasReference, REFERENCE_MAP, REFERENCE_MISSING } from './rmg-reference.ts';
 import { exeTables } from '../src/rmg/exe.ts';
 import { gameExeIfAny } from './game-dir.ts';
@@ -45,7 +45,7 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const c = runChain(dir);
+const c = runChain(gameInstall(dir));
 
 console.log('the chain, through zone 1\'s mines and dwellings');
 c.rng.next(); // the phase prologue draw

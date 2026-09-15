@@ -19,8 +19,8 @@ import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
 import { fillTerrain, paintRoads } from '../src/rmg/terrain.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { parseTerrain, readMask, readTextureLayers } from '../src/terrain/terrain.ts';
-import { runChain, SIZE, ZoneFill } from './rmg-chain.ts';
-import { dataDir } from './game-dir.ts';
+import { runChain, SIZE, ZoneFill } from '../src/rmg/chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 import { hasReference, REFERENCE_MISSING, REFERENCE_TERRAIN } from './rmg-reference.ts';
 
 let failures = 0;
@@ -35,7 +35,7 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const c = runChain(dir);
+const c = runChain(gameInstall(dir));
 c.rng.next(); // the MainObjects prologue draw
 
 console.log('the run through the roads phase, replayed');

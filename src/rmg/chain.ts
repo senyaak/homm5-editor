@@ -4,72 +4,73 @@
 // of this; they now share one, so a new step's test is the step and its
 // assertions, nothing else.
 
-import { arithFor } from '../src/rmg/arith.ts';
-import type { Arith } from '../src/rmg/arith.ts';
-import type { ArithName } from '../src/rmg/arith.ts';
-import { readDefaultParams } from '../src/rmg/params.ts';
-import { toAssets } from '../src/rmg/data.ts';
-import type { Assets } from '../src/game/assets.ts';
-import type { DataRoot } from '../src/rmg/data.ts';
-import { exeTables, objectName, withoutPointer } from '../src/rmg/exe.ts';
-import type { RmgExeTables } from '../src/rmg/exe.ts';
-import { gameExe } from './game-dir.ts';
+import { arithFor } from './arith.ts';
+import type { Arith } from './arith.ts';
+import type { ArithName } from './arith.ts';
+import { readDefaultParams } from './params.ts';
+import { toAssets } from './data.ts';
+import type { Assets } from '../game/assets.ts';
+import type { DataRoot } from './data.ts';
+import { objectName, withoutPointer } from './exe.ts';
+import type { RmgExeTables } from './exe.ts';
+import { installTables } from './install.ts';
+import type { RmgInstall } from './install.ts';
 
-import { readArmyTemplates } from '../src/rmg/armies.ts';
-import type { GuardTables } from '../src/rmg/armies.ts';
-import { calcBorderTiles } from '../src/rmg/border-tiles.ts';
-import { zoneConnections } from '../src/rmg/connections.ts';
-import type { ConnectionsResult } from '../src/rmg/connections.ts';
-import { createMap } from '../src/rmg/create-map.ts';
-import { readCreatures } from '../src/rmg/creatures.ts';
-import { fillDistToTowns } from '../src/rmg/dist-to-towns.ts';
-import { placeZoneDwellings } from '../src/rmg/dwellings.ts';
-import type { PlacedDwelling } from '../src/rmg/dwellings.ts';
-import { fillZones } from '../src/rmg/fill-zones.ts';
-import { loadTemplate } from '../src/rmg/load-template.ts';
-import type { LoadedTemplate } from '../src/rmg/load-template.ts';
-import { mapSetup } from '../src/rmg/map-setup.ts';
-import { placeZoneAbandonedMines, placeZoneMines, readMineShared } from '../src/rmg/mines.ts';
-import type { MineFootprint, PlacedMine } from '../src/rmg/mines.ts';
-import type { readParams } from '../src/rmg/params.ts';
-import { ensureRoom, filterByRoom, readFootprint, zoneTiles } from '../src/rmg/placement.ts';
-import { placeZoneCartographers } from '../src/rmg/cartographer.ts';
-import type { PlacedCartographer } from '../src/rmg/cartographer.ts';
-import { placeZonePrisons } from '../src/rmg/prisons.ts';
-import type { PlacedPrison } from '../src/rmg/prisons.ts';
-import type { Footprint, Tile } from '../src/rmg/placement.ts';
-import { readPresets } from '../src/rmg/preset-table.ts';
-import type { PricedBuilding, RacePreset } from '../src/rmg/preset-table.ts';
-import { placePriceList, scaledBudget } from '../src/rmg/price-lists.ts';
-import type { PlacedPriced, PricedItem } from '../src/rmg/price-lists.ts';
-import { RmgRandom } from '../src/rmg/random.ts';
-import { buildZoneRoad } from '../src/rmg/road.ts';
-import { placeZoneShrines } from '../src/rmg/shrines.ts';
-import type { PlacedShrine } from '../src/rmg/shrines.ts';
-import { placeZoneTeleports } from '../src/rmg/teleports.ts';
-import type { PlacedTeleport } from '../src/rmg/teleports.ts';
-import { readTemplateNamed } from '../src/rmg/template.ts';
-import { placeObservatories, placeZoneTreasures } from '../src/rmg/treasures.ts';
-import type { PlacedObject } from '../src/rmg/treasures.ts';
-import type { RmgTemplate, RmgZone } from '../src/rmg/template.ts';
-import { readTownShared, readTownSpecializations } from '../src/rmg/town-data.ts';
-import type { TownShared } from '../src/rmg/town-data.ts';
-import { placeTowns } from '../src/rmg/towns.ts';
-import type { TownsResult } from '../src/rmg/towns.ts';
-import { dwarvenCoarse, makeRiverPlane, stampZoneSeaRiver } from '../src/rmg/terrain.ts';
-import type { RiverPlane } from '../src/rmg/terrain.ts';
-import { carveWaterBorder, placeWaterTreasures, waterDepth } from '../src/rmg/water-border.ts';
-import type { PlacedWaterTreasure, WaterMark } from '../src/rmg/water-border.ts';
-import { placeShipyard } from '../src/rmg/shipyards.ts';
-import type { PlacedShipyard } from '../src/rmg/shipyards.ts';
-import { placeZoneGraal, placeZoneObelisks } from '../src/rmg/obelisks.ts';
-import type { PlacedObelisk } from '../src/rmg/obelisks.ts';
-import { placeZoneUpgradeBuildings } from '../src/rmg/upgrade-buildings.ts';
-import type { PlacedUpgradeBuilding } from '../src/rmg/upgrade-buildings.ts';
-import { floorIterationOrder, generateGameZones } from '../src/rmg/zones.ts';
+import { readArmyTemplates } from './armies.ts';
+import type { GuardTables } from './armies.ts';
+import { calcBorderTiles } from './border-tiles.ts';
+import { zoneConnections } from './connections.ts';
+import type { ConnectionsResult } from './connections.ts';
+import { createMap } from './create-map.ts';
+import { readCreatures } from './creatures.ts';
+import { fillDistToTowns } from './dist-to-towns.ts';
+import { placeZoneDwellings } from './dwellings.ts';
+import type { PlacedDwelling } from './dwellings.ts';
+import { fillZones } from './fill-zones.ts';
+import { loadTemplate } from './load-template.ts';
+import type { LoadedTemplate } from './load-template.ts';
+import { mapSetup } from './map-setup.ts';
+import { placeZoneAbandonedMines, placeZoneMines, readMineShared } from './mines.ts';
+import type { MineFootprint, PlacedMine } from './mines.ts';
+import type { readParams } from './params.ts';
+import { ensureRoom, filterByRoom, readFootprint, zoneTiles } from './placement.ts';
+import { placeZoneCartographers } from './cartographer.ts';
+import type { PlacedCartographer } from './cartographer.ts';
+import { placeZonePrisons } from './prisons.ts';
+import type { PlacedPrison } from './prisons.ts';
+import type { Footprint, Tile } from './placement.ts';
+import { readPresets } from './preset-table.ts';
+import type { PricedBuilding, RacePreset } from './preset-table.ts';
+import { placePriceList, scaledBudget } from './price-lists.ts';
+import type { PlacedPriced, PricedItem } from './price-lists.ts';
+import { RmgRandom } from './random.ts';
+import { buildZoneRoad } from './road.ts';
+import { placeZoneShrines } from './shrines.ts';
+import type { PlacedShrine } from './shrines.ts';
+import { placeZoneTeleports } from './teleports.ts';
+import type { PlacedTeleport } from './teleports.ts';
+import { readTemplateNamed } from './template.ts';
+import { placeObservatories, placeZoneTreasures } from './treasures.ts';
+import type { PlacedObject } from './treasures.ts';
+import type { RmgTemplate, RmgZone } from './template.ts';
+import { readTownShared, readTownSpecializations } from './town-data.ts';
+import type { TownShared } from './town-data.ts';
+import { placeTowns } from './towns.ts';
+import type { TownsResult } from './towns.ts';
+import { dwarvenCoarse, makeRiverPlane, stampZoneSeaRiver } from './terrain.ts';
+import type { RiverPlane } from './terrain.ts';
+import { carveWaterBorder, placeWaterTreasures, waterDepth } from './water-border.ts';
+import type { PlacedWaterTreasure, WaterMark } from './water-border.ts';
+import { placeShipyard } from './shipyards.ts';
+import type { PlacedShipyard } from './shipyards.ts';
+import { placeZoneGraal, placeZoneObelisks } from './obelisks.ts';
+import type { PlacedObelisk } from './obelisks.ts';
+import { placeZoneUpgradeBuildings } from './upgrade-buildings.ts';
+import type { PlacedUpgradeBuilding } from './upgrade-buildings.ts';
+import { floorIterationOrder, generateGameZones } from './zones.ts';
 
-import { worldPlayerRaces } from '../src/rmg/world-race.ts';
-import { RACE } from '../src/rmg/load-template.ts';
+import { worldPlayerRaces } from './world-race.ts';
+import { RACE } from './load-template.ts';
 
 export const SEED = 1785351845;
 export const SIZE = 96;
@@ -83,8 +84,6 @@ export interface ChainOptions {
    * a branch the port has not written.
    */
   seed?: number;
-  /** The executable's tables; read from the game the tools point at when left out. */
-  exe?: RmgExeTables;
   /** Template file name without the extension; the surface run's default. */
   template?: string;
   /** Map side in tiles — 96 for the surface run, 72 for the underground one. */
@@ -123,7 +122,7 @@ export interface ChainOptions {
    * through the console). It changes the stream from the FIRST draw of
    * MainObjects: without it that draw is a bare `next()` nobody has explained,
    * with it a `below(zoneCount)` — the zone the Graal goes into. See
-   * `rmg-run.ts`, where the draw is spent.
+   * `run.ts`, where the draw is spent.
    */
   grail?: boolean;
   /**
@@ -330,10 +329,10 @@ export interface Chain {
  * Run the nine ported phases; the rng stands at 18491 when this returns —
  * or at 4475 for the underground run's options.
  */
-export function runChain(root: DataRoot, options: ChainOptions = {}): Chain {
-  const dir = toAssets(root);
-  // The executable's tables — the order's own, or the game the tools point at.
-  const exe = options.exe ?? exeTables(gameExe());
+export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain {
+  const dir = toAssets(install.data);
+  // The executable's tables — the install's, read once.
+  const exe = installTables(install);
   // The port names the races symbolically; the numbers behind the names are
   // the image's, checked here so a build that renumbers them fails out loud.
   for (const [name, value] of Object.entries(RACE)) {
@@ -703,7 +702,7 @@ export class ZoneFill {
   readonly points: Tile[];
   readonly floor: number;
   /** The abandoned mines the last mines() call placed — actives included. */
-  abandoned: import('../src/rmg/mines.ts').PlacedAbandonedMine[] = [];
+  abandoned: import('./mines.ts').PlacedAbandonedMine[] = [];
   private readonly c: Chain;
   private readonly zoneIndex: number;
   private readonly zone: RmgZone;

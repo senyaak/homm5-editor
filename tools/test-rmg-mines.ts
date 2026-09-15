@@ -17,8 +17,8 @@ import { join } from 'node:path';
 import { mineLists } from '../src/rmg/mines.ts';
 import type { Tile } from '../src/rmg/mines.ts';
 import { filterByRoom, roomGrid } from '../src/rmg/placement.ts';
-import { runChain, SIZE, ZoneFill } from './rmg-chain.ts';
-import { dataDir } from './game-dir.ts';
+import { runChain, SIZE, ZoneFill } from '../src/rmg/chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 import { hasReference, REFERENCE_MAP, REFERENCE_MISSING } from './rmg-reference.ts';
 
 let failures = 0;
@@ -33,7 +33,7 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const c = runChain(dir);
+const c = runChain(gameInstall(dir));
 const { grid, border, occ, params, template } = c;
 
 console.log('the chain, up to the door of MainObjects');

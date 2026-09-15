@@ -14,8 +14,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { runChain, ZoneFill } from './rmg-chain.ts';
-import { dataDir } from './game-dir.ts';
+import { runChain, ZoneFill } from '../src/rmg/chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 import { hasReference, REFERENCE_MAP, REFERENCE_MISSING } from './rmg-reference.ts';
 
 let failures = 0;
@@ -30,7 +30,7 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const c = runChain(dir);
+const c = runChain(gameInstall(dir));
 check('the chain stands at 18491', c.rng.draws === 18491, `${c.rng.draws}`);
 c.rng.next(); // the phase prologue draw
 

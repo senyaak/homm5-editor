@@ -13,8 +13,8 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { runChain, ZoneFill } from './rmg-chain.ts';
-import { dataDir } from './game-dir.ts';
+import { runChain, ZoneFill } from '../src/rmg/chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -28,7 +28,7 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const c = runChain(dir);
+const c = runChain(gameInstall(dir));
 c.rng.next(); // the phase prologue draw
 
 // Every step boundary the trace recorded, zone by zone. A zero-cost step

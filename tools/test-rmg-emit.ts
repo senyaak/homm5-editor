@@ -21,9 +21,9 @@ import {
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { parseTerrain, passabilityPlane } from '../src/terrain/terrain.ts';
 import { RACE } from '../src/rmg/load-template.ts';
-import type { ChainOptions } from './rmg-chain.ts';
-import { heightsInput, runFull } from './rmg-run.ts';
-import { dataDir } from './game-dir.ts';
+import type { ChainOptions } from '../src/rmg/chain.ts';
+import { heightsInput, runFull } from '../src/rmg/run.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 import { REFERENCE_MAP, REFERENCE_SEED, REFERENCE_UG_MAP, REFERENCE_WATER_MAP } from './rmg-reference.ts';
 
 let failures = 0;
@@ -132,7 +132,7 @@ for (const spec of RUNS) {
     return m[1]!;
   };
 
-  const r = runFull(dir, spec.options);
+  const r = runFull(gameInstall(dir), spec.options);
   const c = r.c;
   check(`the run ends on the traced ${spec.endDraws}`, c.rng.draws === spec.endDraws, `${c.rng.draws}`);
 

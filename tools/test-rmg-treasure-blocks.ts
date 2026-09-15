@@ -26,8 +26,8 @@ import { placeZoneOneTileStatics } from '../src/rmg/statics-one-tile.ts';
 import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
 import type { ArtifactEntry, PlacedTreasure } from '../src/rmg/treasure-blocks.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
-import { runChain, SIZE, ZoneFill } from './rmg-chain.ts';
-import { dataDir } from './game-dir.ts';
+import { runChain, SIZE, ZoneFill } from '../src/rmg/chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 import { exeTables } from '../src/rmg/exe.ts';
 import { gameExeIfAny } from './game-dir.ts';
 
@@ -51,7 +51,7 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const c = runChain(dir);
+const c = runChain(gameInstall(dir));
 c.rng.next(); // the MainObjects prologue draw
 
 console.log('the run up to the statics boundary, replayed');

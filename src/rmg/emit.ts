@@ -112,7 +112,7 @@ export function fmtRot(v: number, truncate = false): string {
   return `${parts[1]}${mantissa}e${sign}${String(Math.abs(exponent)).padStart(truncate ? 2 : 3, '0')}`;
 }
 
-/** What one object's map entry needs — tools/rmg-run.ts records satisfy it. */
+/** What one object's map entry needs — `run.ts` records satisfy it. */
 /** What the generator writes into `<dialogs>` for every map it makes. */
 export const RMG_CAMERA = {
   rod: '335.585', pitch: '-0.54063', yaw: '5.93275', fov: '35',
@@ -135,7 +135,7 @@ export interface EmitObject {
   /**
    * The second slot of a name minted twice: the same document as an earlier
    * item, which the serializer has already inlined, so this slot is written
-   * as a reference to it — see `add` in `tools/rmg-run.ts`.
+   * as a reference to it — see `add` in `run.ts`.
    */
   alias?: true;
   x: number;

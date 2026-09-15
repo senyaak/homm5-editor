@@ -5,7 +5,7 @@
 //
 //   node tools/test-rmg-heights.ts
 //
-// The full runs replay through tools/rmg-run.ts, which collects every
+// The full runs replay through src/rmg/run.ts, which collects every
 // placement in the map's slot order — the pass needs the OBJECT LIST:
 // the craters read the Inferno towns and dwellings, the footprint
 // flatten reads every non-static object's shared tiles, and the
@@ -20,9 +20,9 @@ import { join } from 'node:path';
 
 import { heightsToFile, latePass } from '../src/rmg/heights.ts';
 import { parseTerrain, readHeights } from '../src/terrain/terrain.ts';
-import type { ChainOptions } from './rmg-chain.ts';
-import { heightsInput, runFull } from './rmg-run.ts';
-import { dataDir } from './game-dir.ts';
+import type { ChainOptions } from '../src/rmg/chain.ts';
+import { heightsInput, runFull } from '../src/rmg/run.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 import {
   REFERENCE_TERRAIN, REFERENCE_UG_TERRAIN, REFERENCE_WATER_TERRAIN,
 } from './rmg-reference.ts';
@@ -50,7 +50,7 @@ const RUNS: Array<{ label: string; options: ChainOptions; endDraws: number; terr
 
 for (const run of RUNS) {
   console.log(`\nthe ${run.label} run`);
-  const r = runFull(dir, run.options);
+  const r = runFull(gameInstall(dir), run.options);
   const c = r.c;
   check(`the run ends on the traced ${run.endDraws}`, c.rng.draws === run.endDraws, `${c.rng.draws}`);
 

@@ -25,8 +25,8 @@ import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blo
 import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
 import { floorIterationOrder } from '../src/rmg/zones.ts';
 import { parseTerrain, readMask, readTextureLayers, readWaterPlane } from '../src/terrain/terrain.ts';
-import { runChain, ZoneFill } from './rmg-chain.ts';
-import { dataDir } from './game-dir.ts';
+import { runChain, ZoneFill } from '../src/rmg/chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 import { REFERENCE_WATER_MAP, REFERENCE_WATER_TERRAIN, hasWaterReference } from './rmg-reference.ts';
 import { exeTables } from '../src/rmg/exe.ts';
 import { gameExeIfAny } from './game-dir.ts';
@@ -51,7 +51,7 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const c = runChain(dir, { water: 2 });
+const c = runChain(gameInstall(dir), { water: 2 });
 const water = c.water!;
 check('the chain carries a water pass', water !== null);
 
@@ -409,7 +409,7 @@ console.log('\na water order bigger than 96 tiles, where the shipyard doubles');
 // The three numbers are the ENGINE'S, off `-water 2` orders of this template:
 // 14 shipyards on seven zones, and a run that ends on 128471 draws.
 if (existsSync(dataDir())) {
-  const big = runChain(dataDir(), {
+  const big = runChain(gameInstall(dataDir()), {
     template: 'S2-3P2Z7N2', size: 136, players: 2, seed: 1785351845,
     monsterStrength: 1, water: 2,
   });
@@ -431,7 +431,7 @@ console.log('\na shipyard needs somewhere to put the ship');
 //
 // The positions are the ENGINE'S, off its own `-water 2` map of this order.
 if (existsSync(dataDir())) {
-  const wide = runChain(dataDir(), {
+  const wide = runChain(gameInstall(dataDir()), {
     template: 'S3-5P2Z7N2.2', size: 176, players: 2, seed: 987654321,
     monsterStrength: 1, water: 2,
   });

@@ -33,9 +33,9 @@ import { join } from 'node:path';
 
 import { heightsToFile, latePass } from '../src/rmg/heights.ts';
 import { parseTerrain, readHeights } from '../src/terrain/terrain.ts';
-import { heightsInput, runFull } from './rmg-run.ts';
-import { replayTerrain } from './rmg-build.ts';
-import { dataAssets, gameDir } from './game-dir.ts';
+import { heightsInput, runFull } from '../src/rmg/run.ts';
+import { replayTerrain } from '../src/rmg/build.ts';
+import { dataAssets, gameDir, gameInstall } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -101,7 +101,7 @@ for (const n of slots) {
   }
   let line = `slot ${String(slot.n).padStart(2)} ${slot.template.padEnd(18)} ${String(slot.size).padStart(3)}`;
   try {
-    const run = runFull(dataAssets(), {
+    const run = runFull(gameInstall(), {
       template: slot.template, size: slot.size, players, seed,
       monsterStrength: 1, water: 0, underground: slot.underground || undefined,
     });

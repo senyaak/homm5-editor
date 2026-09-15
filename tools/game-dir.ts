@@ -26,6 +26,8 @@ import { join, resolve } from 'node:path';
 import { singleRoot } from '../src/game/assets.ts';
 import type { Assets } from '../src/game/assets.ts';
 import { mountArchives } from '../src/game/mounted.ts';
+import type { DataRoot } from '../src/rmg/data.ts';
+import type { RmgInstall } from '../src/rmg/install.ts';
 
 /** The game folder, or null when nobody said. Never a guess. */
 export function gameDirIfAny(): string | null {
@@ -92,4 +94,13 @@ export function gameExeIfAny(): string | null {
   if (!game) return null;
   const exe = join(game, 'bin', 'H5_Game_H5E.exe');
   return existsSync(exe) ? exe : null;
+}
+
+/**
+ * The install the generator runs against — the data as the game mounts it
+ * and the game's executable, both from the folder somebody said. A suite
+ * that reads the unpacked cache alone passes `dataDir()` as the data.
+ */
+export function gameInstall(data: DataRoot = dataAssets()): RmgInstall {
+  return { data, exe: gameExe() };
 }

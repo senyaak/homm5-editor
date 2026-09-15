@@ -16,32 +16,32 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { readEngineSine, type EngineSine } from '../src/exe/sine-table.ts';
-import { readText } from '../src/rmg/data.ts';
-import type { DataRoot } from '../src/rmg/data.ts';
-import { writeDDS } from '../src/format/texture.ts';
-import { heightsToFile, latePass, rotateOffsets } from '../src/rmg/heights.ts';
-import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from '../src/rmg/emit.ts';
-import { buildTerrainFile } from '../src/rmg/emit-terrain.ts';
-import { buildRmgTexts } from '../src/rmg/emit-texts.ts';
-import { tr24 } from '../src/exe/x87.ts';
-import { exeTables } from '../src/rmg/exe.ts';
-import { gameExe } from './game-dir.ts';
-import { enumNames, readEnumValues } from '../src/rmg/data.ts';
-import { RACE } from '../src/rmg/load-template.ts';
-import { drawMinimap, drawTerrainLayer, waterTile, type MinimapFloor, type WaterTileInput } from '../src/rmg/minimap.ts';
+import { readEngineSine, type EngineSine } from '../exe/sine-table.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
+import { writeDDS } from '../format/texture.ts';
+import { heightsToFile, latePass, rotateOffsets } from './heights.ts';
+import { buildMinimapXdb, buildRmgMapDesc, buildRmgMapTag } from './emit.ts';
+import { buildTerrainFile } from './emit-terrain.ts';
+import { buildRmgTexts } from './emit-texts.ts';
+import { tr24 } from '../exe/x87.ts';
+import { installTables } from './install.ts';
+import type { RmgInstall } from './install.ts';
+import { enumNames, readEnumValues } from './data.ts';
+import { RACE } from './load-template.ts';
+import { drawMinimap, drawTerrainLayer, waterTile, type MinimapFloor, type WaterTileInput } from './minimap.ts';
 import {
   drawIconLayer, iconList, iconNameFor, loadMinimapIcons, type IconObject,
-} from '../src/rmg/minimap-icons.ts';
-import { buildMinimapMask, vetoesRegistration } from '../src/rmg/minimap-mask.ts';
-import { readTileInfo } from '../src/rmg/preset-table.ts';
+} from './minimap-icons.ts';
+import { buildMinimapMask, vetoesRegistration } from './minimap-mask.ts';
+import { readTileInfo } from './preset-table.ts';
 import {
   fillTerrain, makeRiverPlane, paintLakes, paintRoads, paintSeaCorners, paintWaterMarks, stampZoneLakeRiver,
   type TerrainLayer,
-} from '../src/rmg/terrain.ts';
-import { floorIterationOrder } from '../src/rmg/zones.ts';
-import { heightsInput } from './rmg-run.ts';
-import type { FullRun } from './rmg-run.ts';
+} from './terrain.ts';
+import { floorIterationOrder } from './zones.ts';
+import { heightsInput } from './run.ts';
+import type { FullRun } from './run.ts';
 
 /** The order a map was generated from, plus the two values nobody generates. */
 export interface MapOrder {
@@ -89,9 +89,9 @@ const TOWN_BY_RACE: Record<number, string> = {
   [RACE.DWARF]: 'TOWN_FORTRESS', [RACE.STRONGHOLD]: 'TOWN_STRONGHOLD',
 };
 // The engine's own table, kept where the engine keeps it.
-/** The tile counts by size index, out of the game the tools point at. */
-export function mapSizes(): readonly number[] {
-  return exeTables(gameExe()).mapSizes;
+/** The tile counts by size index, out of the install's executable. */
+export function mapSizes(install: RmgInstall): readonly number[] {
+  return installTables(install).mapSizes;
 }
 // The names `sRMGProps` spells the order in are the enums' — `MapSize`,
 // `WaterAmount`, `MonsterLevel` in the type listing, read through the chain.
@@ -272,7 +272,7 @@ function minimapFiles(
 
 /** Every file the archive holds, in no particular order — packing sorts them. */
 export function buildMapFiles(
-  dataRoot: DataRoot, exePath: string, run: FullRun, order: MapOrder,
+  install: RmgInstall, run: FullRun, order: MapOrder,
   // The caption numbering belongs to the SAVE PATH, not to the generator: 0 is
   // what the console command writes, 2 what the editor's dialog does. See
   // `RmgTextsInput.captionBase`.
@@ -280,7 +280,7 @@ export function buildMapFiles(
 ): MapFile[] {
   const c = run.c;
   const twoLevel = c.floors.length > 1;
-  const { layers, river } = replayTerrain(dataRoot, run);
+  const { layers, river } = replayTerrain(install.data, run);
   latePass(run.heightPlane, heightsInput(run), undefined, run.c.arith);
 
   const sizeIndex = c.exe.mapSizes.indexOf(c.size);
@@ -306,10 +306,10 @@ export function buildMapFiles(
           version: 34,
           seed: order.seed,
           guid: order.guid,
-          mapSize: enumNames(dataRoot, 'MapSize')[sizeIndex]!,
+          mapSize: enumNames(install.data, 'MapSize')[sizeIndex]!,
           template: `/RMG/Templates/${order.template}.xdb#xpointer(/RMGTemplate)`,
-          waterAmount: enumNames(dataRoot, 'WaterAmount')[order.water]!,
-          monsterLevel: enumNames(dataRoot, 'MonsterLevel')[c.setup.monsterStrength]!,
+          waterAmount: enumNames(install.data, 'WaterAmount')[order.water]!,
+          monsterLevel: enumNames(install.data, 'MonsterLevel')[c.setup.monsterStrength]!,
           hasUnderground: twoLevel,
           races,
           mapName: order.mapName,
@@ -327,7 +327,7 @@ export function buildMapFiles(
     // Empty, and the engine writes it — a marker rather than a document.
     { name: '1.test', data: Buffer.alloc(0) },
   ];
-  files.push(...buildRmgTexts(dataRoot, {
+  files.push(...buildRmgTexts(install.data, {
     mapName: order.mapName,
     grail: c.grail,
     gamePlaceholder: order.gameBuild,
@@ -373,10 +373,10 @@ export function buildMapFiles(
   }
 
   if (order.minimap !== false) {
-    const sine = readEngineSine(exePath);
-    const icons = loadMinimapIcons(dataRoot, c.exe.minimapIcons);
+    const sine = readEngineSine(install.exe);
+    const icons = loadMinimapIcons(install.data, c.exe.minimapIcons);
     for (let f = 0; f < c.floors.length; f++) {
-      files.push(...minimapFiles(dataRoot, run, f, layers[f]!, river, sine, icons, order.gameBuild ?? false));
+      files.push(...minimapFiles(install.data, run, f, layers[f]!, river, sine, icons, order.gameBuild ?? false));
     }
   }
   return files;

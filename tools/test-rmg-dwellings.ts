@@ -14,8 +14,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { runChain, ZoneFill } from './rmg-chain.ts';
-import { dataDir } from './game-dir.ts';
+import { runChain, ZoneFill } from '../src/rmg/chain.ts';
+import { dataDir, gameInstall } from './game-dir.ts';
 import { hasReference, REFERENCE_MAP, REFERENCE_MISSING } from './rmg-reference.ts';
 
 let failures = 0;
@@ -30,7 +30,7 @@ if (!existsSync(join(dir, 'RMG'))) {
   process.exit(0);
 }
 
-const c = runChain(dir);
+const c = runChain(gameInstall(dir));
 
 console.log('the chain, through zone 1\'s mines step');
 check('the counter stands at 18491, where the trace has it', c.rng.draws === 18491, `${c.rng.draws}`);

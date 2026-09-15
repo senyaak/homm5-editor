@@ -22,8 +22,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { runFull } from './rmg-run.ts';
-import { dataAssets, gameDir } from './game-dir.ts';
+import { runFull } from '../src/rmg/run.ts';
+import { gameDir, gameInstall } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -67,7 +67,7 @@ if (!present) {
 
 // ------------------------------------------------------------- the port
 
-const run = runFull(dataAssets(), { template, size, players, seed, monsterStrength: 1, water: 0 });
+const run = runFull(gameInstall(), { template, size, players, seed, monsterStrength: 1, water: 0 });
 const v = size + 1;
 const ours = run.heightPlane.mem;
 console.log(`  port: ${template} ${size}x${size}, seed ${seed}, plane ${v}x${v}`);

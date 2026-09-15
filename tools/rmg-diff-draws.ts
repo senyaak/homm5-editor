@@ -29,11 +29,11 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { describeOrder, readOrder } from './rmg-order.ts';
-import { runChain } from './rmg-chain.ts';
-import type { ChainOptions } from './rmg-chain.ts';
-import { runFull } from './rmg-run.ts';
-import { dataAssets, gameDir } from './game-dir.ts';
+import { describeOrder, readOrder } from '../src/rmg/recorded-order.ts';
+import { runChain } from '../src/rmg/chain.ts';
+import type { ChainOptions } from '../src/rmg/chain.ts';
+import { runFull } from '../src/rmg/run.ts';
+import { gameDir, gameInstall } from './game-dir.ts';
 
 const args = process.argv.slice(2);
 const flag = (name: string): string | undefined => {
@@ -89,7 +89,7 @@ const options: ChainOptions = {
 };
 const from = flag('--from');
 if (from) {
-  const read = readOrder(from);
+  const read = readOrder(gameInstall(), from);
   if (typeof read === 'string') { console.error(read); process.exit(2); }
   const { order } = read;
   console.log(`order:  ${describeOrder(order)}`);
@@ -133,8 +133,8 @@ options.onPhase = (label, draws) => phases.push({ label, draws });
 // the treasure blocks. A template whose CHAIN is exact still writes a wrong
 // map, and the phase that spoils it can only be named by replaying it too.
 const full = args.includes('--full');
-if (full) runFull(dataAssets(), options, (label, draws) => phases.push({ label, draws }));
-else runChain(dataAssets(), options);
+if (full) runFull(gameInstall(), options, (label, draws) => phases.push({ label, draws }));
+else runChain(gameInstall(), options);
 console.log(`port:   ${port.length} draws through ${full ? 'the whole run' : 'the chain'}`);
 
 const describe = (i: number): string => {

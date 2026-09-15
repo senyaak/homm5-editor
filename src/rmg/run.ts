@@ -15,38 +15,39 @@
 // flags) plus its minted name and kind for the by-name checks and the
 // emitter to come.
 
-import { readText } from '../src/rmg/data.ts';
-import { objectName, withoutPointer } from '../src/rmg/exe.ts';
-import type { DataRoot } from '../src/rmg/data.ts';
+import { readText } from './data.ts';
+import { objectName, withoutPointer } from './exe.ts';
+import type { DataRoot } from './data.ts';
 
-import { readArtifacts, rmgArtifactPool } from '../src/rmg/artifacts.ts';
-import type { HeightObject, HeightPlane, HeightsInput } from '../src/rmg/heights.ts';
+import { readArtifacts, rmgArtifactPool } from './artifacts.ts';
+import type { HeightObject, HeightPlane, HeightsInput } from './heights.ts';
 import {
   CRATER_DWELLING_TYPES, SKIP_FLATTEN_DWELLING_TYPES, makeHeightPlane,
-} from '../src/rmg/heights.ts';
-import { createVertexHeights } from '../src/rmg/massif-carve.ts';
-import type { VertexHeights } from '../src/rmg/massif-carve.ts';
-import { readMineShared } from '../src/rmg/mines.ts';
-import { recomputeRoom } from '../src/rmg/placement.ts';
-import type { Footprint, Tile } from '../src/rmg/placement.ts';
-import { buildZoneRoadsPhase } from '../src/rmg/roads-phase.ts';
-import { shipTile } from '../src/rmg/shipyards.ts';
-import { placeZoneBigStatics } from '../src/rmg/statics-big.ts';
-import type { PlacedStatic } from '../src/rmg/statics-big.ts';
-import type { TownGuardStack } from '../src/rmg/town-guard.ts';
+} from './heights.ts';
+import { createVertexHeights } from './massif-carve.ts';
+import type { VertexHeights } from './massif-carve.ts';
+import { readMineShared } from './mines.ts';
+import { recomputeRoom } from './placement.ts';
+import type { Footprint, Tile } from './placement.ts';
+import { buildZoneRoadsPhase } from './roads-phase.ts';
+import { shipTile } from './shipyards.ts';
+import { placeZoneBigStatics } from './statics-big.ts';
+import type { PlacedStatic } from './statics-big.ts';
+import type { TownGuardStack } from './town-guard.ts';
 import {
   placeDwarvenOneTileStatics, placeSubterraOneTileStatics, placeWaterOneTileStatics, placeZoneOneTileStatics,
-} from '../src/rmg/statics-one-tile.ts';
-import { markPassability } from '../src/rmg/passability.ts';
-import type { LakePaint } from '../src/rmg/terrain.ts';
-import { buildTreasureBlocks, fillTreasureBlocks } from '../src/rmg/treasure-blocks.ts';
-import type { ArtifactEntry } from '../src/rmg/treasure-blocks.ts';
-import { RACE } from '../src/rmg/load-template.ts';
-import { readTownShared } from '../src/rmg/town-data.ts';
-import { dwellingWorldRace, townWorldRace } from '../src/rmg/world-race.ts';
-import { floorIterationOrder } from '../src/rmg/zones.ts';
-import type { Chain, ChainOptions } from './rmg-chain.ts';
-import { runChain, ZoneFill } from './rmg-chain.ts';
+} from './statics-one-tile.ts';
+import { markPassability } from './passability.ts';
+import type { LakePaint } from './terrain.ts';
+import { buildTreasureBlocks, fillTreasureBlocks } from './treasure-blocks.ts';
+import type { ArtifactEntry } from './treasure-blocks.ts';
+import { RACE } from './load-template.ts';
+import { readTownShared } from './town-data.ts';
+import { dwellingWorldRace, townWorldRace } from './world-race.ts';
+import { floorIterationOrder } from './zones.ts';
+import type { Chain, ChainOptions } from './chain.ts';
+import { runChain, ZoneFill } from './chain.ts';
+import type { RmgInstall } from './install.ts';
 
 const HALF_PI = Math.PI / 2;
 
@@ -132,14 +133,15 @@ export interface FullRun {
  * every step whose boundary a suite may want to hold.
  */
 export function runFull(
-  dir: DataRoot,
+  install: RmgInstall,
   options: ChainOptions = {},
   // The chain comes with the label so a probe can read a grid AT a boundary:
   // occupancy and the room are written all through the run, and "what did the
   // treasure blocks see" is a question about one moment, not about the end.
   onStep?: (label: string, draws: number, chain: Chain) => void,
 ): FullRun {
-  const c = runChain(dir, options);
+  const c = runChain(install, options);
+  const dir = c.dir;
   const step = (label: string): void => onStep?.(label, c.rng.draws, c);
   step('chain');
 

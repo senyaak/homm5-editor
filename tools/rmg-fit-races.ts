@@ -5,10 +5,10 @@
 //
 //   node tools/rmg-fit-races.ts --game <dir> [--game-build] <map.h5m | run folder>
 import { join } from 'node:path';
-import { buildMapFiles } from './rmg-build.ts';
-import { readOrder } from './rmg-order.ts';
-import { runFull } from './rmg-run.ts';
-import { dataAssets, gameDir } from './game-dir.ts';
+import { buildMapFiles } from '../src/rmg/build.ts';
+import { readOrder } from '../src/rmg/recorded-order.ts';
+import { runFull } from '../src/rmg/run.ts';
+import { dataAssets, gameDir, gameInstall } from './game-dir.ts';
 import { RACE } from '../src/rmg/load-template.ts';
 import { exeTables } from '../src/rmg/exe.ts';
 
@@ -16,7 +16,7 @@ const argv = process.argv.slice(2);
 const gameBuild = argv.includes('--game-build');
 const args = argv.filter((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--game');
 const map = args[0]!;
-const read = readOrder(map); if (typeof read === 'string') throw new Error(read);
+const read = readOrder(gameInstall(), map); if (typeof read === 'string') throw new Error(read);
 const { order, files: theirs } = read;
 const LV = ['MONSTER_LEVEL_WEAK','MONSTER_LEVEL_MEDIUM','MONSTER_LEVEL_STRONG','MONSTER_LEVEL_VERY_STRONG','MONSTER_LEVEL_IMPOSSIBLE'];
 const dir = dataAssets();
@@ -29,13 +29,13 @@ const RACES = Object.values(raceEnum).filter((v) => v >= RACE.HEAVEN && v < race
 const name = (r: number) => Object.entries(RACE).find(([, v]) => v === r)![0];
 
 function minimapDiff(races: ReadonlyMap<number, number>): number {
-  const run = runFull(dir, {
+  const run = runFull(gameInstall(dir), {
     gameBuild, players: order.players, seed: order.seed, template: order.template, size: order.size,
     underground: order.underground, water: order.water || undefined, monsterStrength: LV.indexOf(order.monster),
     resourceMultiplier: order.extras.resourceIndex, expMultiplier: order.extras.expIndex,
     grail: order.extras.grail, randomTowns: order.extras.randomTowns, randomTownRaceOverride: races,
   });
-  const ours = buildMapFiles(dir, exe, run,
+  const ours = buildMapFiles(gameInstall(dir), run,
     { seed: order.seed, template: order.template, players: order.players, underground: order.underground, water: order.water,
       guid: order.guid, mapName: order.mapName, minimap: order.minimap, gameBuild }, { captionBase });
   let bytes = 0;
@@ -47,7 +47,7 @@ function minimapDiff(races: ReadonlyMap<number, number>): number {
   return bytes;
 }
 
-const probe = runFull(dir, { gameBuild, players: order.players, seed: order.seed, template: order.template, size: order.size,
+const probe = runFull(gameInstall(dir), { gameBuild, players: order.players, seed: order.seed, template: order.template, size: order.size,
   underground: order.underground, water: order.water || undefined, monsterStrength: LV.indexOf(order.monster),
   resourceMultiplier: order.extras.resourceIndex, expMultiplier: order.extras.expIndex, grail: order.extras.grail, randomTowns: order.extras.randomTowns });
 const zones = probe.c.template.zones.map((z) => z.index).filter((z) => probe.c.townResult.townNames.has(z) || probe.c.zone(z).dwellings.some((n) => n > 0)).sort((a, b) => a - b);

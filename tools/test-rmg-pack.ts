@@ -10,9 +10,9 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { buildMapFiles } from './rmg-build.ts';
-import { runFull } from './rmg-run.ts';
-import { dataDir, gameDirIfAny } from './game-dir.ts';
+import { buildMapFiles } from '../src/rmg/build.ts';
+import { runFull } from '../src/rmg/run.ts';
+import { dataDir, gameDirIfAny, gameInstall } from './game-dir.ts';
 import { REFERENCE_DIR, REFERENCE_MAP, REFERENCE_MISSING, REFERENCE_SEED, hasReference } from './rmg-reference.ts';
 
 let failures = 0;
@@ -47,10 +47,10 @@ const grab = (re: RegExp): string => {
   return m[1]!;
 };
 
-const run = runFull(dir, {});
+const run = runFull(gameInstall(dir), {});
 check('the run ends on the traced 92438', run.c.rng.draws === 92438, `${run.c.rng.draws}`);
 
-const ours = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), run, {
+const ours = buildMapFiles(gameInstall(dir), run, {
   seed: REFERENCE_SEED,
   template: 'S1P2Z2M1',
   players: 2,
@@ -100,8 +100,8 @@ check('every entry is byte-identical', bad === 0, `${bad} entries differ`);
 // and the archive is the shape a map has, which is the difference between an
 // untested claim and an unmade one.
 for (const seed of [42, 20260902]) {
-  const other = runFull(dir, { seed });
-  const built = buildMapFiles(dir, join(game, 'bin', 'H5_Game_H5E.exe'), other, {
+  const other = runFull(gameInstall(dir), { seed });
+  const built = buildMapFiles(gameInstall(dir), other, {
     seed, template: 'S1P2Z2M1', players: 2, underground: false, water: 0,
     guid: '00000000-0000-0000-0000-000000000000', mapName: `seed ${seed}`,
   }, { captionBase: 2 });
