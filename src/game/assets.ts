@@ -96,6 +96,27 @@ export function toAssets(root: string | Assets): Assets {
   return typeof root === 'string' ? singleRoot(root) : root;
 }
 
+/**
+ * One folder in front of a chain: consulted first, and when it has nothing
+ * the chain answers as it would have. The chain's own rule for choosing among
+ * ITS roots — newest archive member wins, for a mounted install — is kept,
+ * which is why this wraps the chain rather than rebuilding it from its roots.
+ * It is how the application's own documents (`assets/rmg`, the templates of
+ * ours) sit over the game's without being a mod inside the game folder.
+ */
+export function inFront(front: string, chain: Assets): Assets {
+  const own = singleRoot(front);
+  return {
+    roots: [front, ...chain.roots],
+    path: (rel) => own.exists(rel) ? own.path(rel) : chain.path(rel),
+    exists: (rel) => own.exists(rel) || chain.exists(rel),
+    text: (rel, encoding) => own.text(rel, encoding) ?? chain.text(rel, encoding),
+    bytes: (rel) => own.bytes(rel) ?? chain.bytes(rel),
+    all: (rel) => [...own.all(rel), ...chain.all(rel)],
+    dirs: (rel) => [...own.dirs(rel), ...chain.dirs(rel)],
+  };
+}
+
 /** The base root — the shipped data, under everything mounted over it. */
 export function baseRoot(a: Assets): string {
   return a.roots[a.roots.length - 1]!;

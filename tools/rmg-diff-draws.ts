@@ -122,12 +122,14 @@ if (from) {
 
 const port: Array<{ kind: string; value: number; limit?: number }> = [];
 const jitterTiles = new Map<number, { sweep: number; a: number; b: number }>();
-options.onDraw = (kind, value, limit) => port.push({ kind, value, limit });
-// port.length is the index the NEXT draw will take — the jitter draw this
-// call announces.
-options.jitter = (sweep, a, b) => jitterTiles.set(port.length, { sweep, a, b });
 const phases: Array<{ label: string; draws: number }> = [];
-options.onPhase = (label, draws) => phases.push({ label, draws });
+options.trace = {
+  draw: (kind, value, limit) => port.push({ kind, value, limit }),
+  // port.length is the index the NEXT draw will take — the jitter draw this
+  // call announces.
+  jitter: (sweep, a, b) => jitterTiles.set(port.length, { sweep, a, b }),
+  phase: (label, draws) => phases.push({ label, draws }),
+};
 
 // `--full` carries on past the chain — MainObjects, the roads, the statics and
 // the treasure blocks. A template whose CHAIN is exact still writes a wrong

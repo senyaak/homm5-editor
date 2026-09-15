@@ -19,7 +19,7 @@ import { toAssets, enumNames } from './data.ts';
 import { installTables } from './install.ts';
 import type { RmgInstall } from './install.ts';
 import { runFull } from './run.ts';
-import { readTemplateNamed } from './template.ts';
+import { TEMPLATE_EXTENSIONS, readTemplateNamed } from './template.ts';
 import type { RmgTemplate } from './template.ts';
 
 export type { RmgInstall } from './install.ts';
@@ -97,9 +97,11 @@ export function allTemplates(install: RmgInstall): OfferedTemplate[] {
   const out: OfferedTemplate[] = [];
   for (const dir of assets.dirs('RMG/Templates')) {
     for (const f of readdirSync(dir)) {
-      if (!f.endsWith('.xdb') || seen.has(f)) continue;
-      seen.add(f);
-      const file = f.slice(0, -4);
+      const ext = TEMPLATE_EXTENSIONS.find((e) => f.endsWith(e));
+      if (!ext) continue;
+      const file = f.slice(0, -ext.length);
+      if (seen.has(file)) continue;
+      seen.add(file);
       const t: RmgTemplate = readTemplateNamed(assets, file);
       out.push({ file, name: t.name, minPlayers: t.minPlayers, maxPlayers: t.maxPlayers,
         minMapSize: t.minMapSize, maxMapSize: t.maxMapSize });

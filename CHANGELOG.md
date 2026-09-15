@@ -47,6 +47,20 @@ the last record was closed this time: a connection's `TwoWay`, `Guarded` and
 when flipped — whether two zones meet by a guarded passage or a teleport is
 the geometry's decision alone.
 
+**And the zones can be laid out our way.** The engine's layout has no
+opinion — random points, blobs grown from them — so a template that means
+"four players at the edges, one rich zone in the middle" (Heroes III's Jebus
+Cross) came out as five blobs anywhere. A template can now ask for
+`<ZoneLayout>Voronoi</ZoneLayout>`: the zones' centres settle by the
+template's connections (joined zones pull together, start zones push each
+other to the corners) and the tiles are cut as Voronoi cells, so the graph
+alone decides the picture, with no coordinate in the file — and everything
+after the zones runs as it did. Templates of ours are `.h5et` files — the
+game's format plus our fields, kept out of the game's own folder — and ship
+with the editor: the generator's dialog lists **Jebus Cross** beside the
+game's twenty-two. A template without the field is still the engine's map,
+byte for byte.
+
 **The generator reads the install the game reads.** Every document the port
 opens — the preset table, the templates, the tiles, every shared building,
 the creature roster — now comes through the same archive chain the

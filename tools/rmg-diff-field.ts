@@ -107,7 +107,7 @@ interface Ours { zone: number; kind: number; from: Tile; to: Tile; cost: Float32
 const ours: Ours[] = [];
 runFull(gameInstall(), {
   ...options,
-  roadField: (zone, kind, cost, from, to) => ours.push({ zone, kind, from, to, cost: Float32Array.from(cost) }),
+  trace: { roadField: (zone, kind, cost, from, to) => ours.push({ zone, kind, from, to, cost: Float32Array.from(cost) }) },
 });
 console.log(`  port: ${ours.length} routes${gameBuild ? ", as the GAME's build" : ''}`);
 

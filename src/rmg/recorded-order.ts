@@ -153,7 +153,7 @@ export function readOrder(install: RmgInstall, path: string): { order: RecordedO
   // `[^"]+` and not `[^.]+`: half the stock templates have a dot in the NAME —
   // `S0-1P2Z2K3.1T.xdb`, `S3-5P2Z7N2.2.xdb` — and a stricter class stopped at
   // the first one, so those maps read as "not generated".
-  const template = one(/<Template href="\/RMG\/Templates\/([^"]+)\.xdb/, 'Template');
+  const template = one(/<Template href="\/RMG\/Templates\/([^"]+)\.(?:xdb|h5et)/, 'Template');
   const waterName = one(/<WaterAmount>(\w+)</, 'WaterAmount');
   const monster = one(/<MonsterLevel>(\w+)</, 'MonsterLevel');
   if (missing) return `${path}: no ${missing} — this map was not generated`;

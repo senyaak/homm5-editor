@@ -132,6 +132,7 @@
     "test-rmg-params": "node tools/test-rmg-params.ts",
     "test-rmg-zones": "node tools/test-rmg-zones.ts",
     "test-rmg-fill-zones": "node tools/test-rmg-fill-zones.ts",
+    "test-rmg-layout": "node tools/test-rmg-layout.ts",
     "test-rmg-load-template": "node tools/test-rmg-load-template.ts",
     "test-rmg-border-tiles": "node tools/test-rmg-border-tiles.ts",
     "test-rmg-terrain": "node tools/test-rmg-terrain.ts",

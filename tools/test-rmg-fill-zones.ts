@@ -100,9 +100,11 @@ if (!existsSync(dataDir())) {
   runChain(gameInstall(dataDir()), {
     template: 'S7-22P2-8Z15K2.4c', size: 256, players: 2, seed: 1785351845,
     monsterStrength: 1, water: 0,
-    jitter: (sweep) => { jitterTotal++; perSweep.set(sweep, (perSweep.get(sweep) ?? 0) + 1); },
-    candidate: (sweep, _a, _b, own, best) => {
-      if (sweep === 27 && seen++ === 961) candidate961 = `${own}->${best}`;
+    trace: {
+      jitter: (sweep) => { jitterTotal++; perSweep.set(sweep, (perSweep.get(sweep) ?? 0) + 1); },
+      candidate: (sweep, _a, _b, own, best) => {
+        if (sweep === 27 && seen++ === 961) candidate961 = `${own}->${best}`;
+      },
     },
   });
   check('the tile the tie decides goes to zone 2, as the engine sends it',

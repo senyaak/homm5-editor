@@ -3685,6 +3685,80 @@ against it — the corpus in `RMG_TEST_MATRIX.md`'s "What has been measured so
 far". `npm run rmg-diff-map` is what turns any other order into a check — order it in the
 editor, save it, point the tool at the file.
 
+## Laying the zones out our way
+
+The engine's layout is two phases and no opinion: `GenerateGameZones` draws
+`tiles/100` random points and hands each zone the first that fits, `FillZones`
+grows circles from them into blobs. A five-zone star — one rich zone joined to
+four start zones and to nothing else, which is what Heroes III players know
+as Jebus Cross — comes out of it as five blobs anywhere, the rich one as
+likely in a corner as in the middle. The template cannot say otherwise: it
+carries sizes, connections and densities, and not one coordinate (neither
+does HotA's — its `Image settings` are the template editor's picture, and
+its layout comes from the generator listening to the graph).
+
+So the zones now go through ONE DOOR, `layoutZones` in `src/rmg/layout.ts`,
+and the template says which way through it with `<ZoneLayout>`:
+
+- **`Engine`** — the two phases above, untouched, byte for byte; the default,
+  and what every template without the field gets. `test-rmg-layout` holds
+  the door to them draw for draw, and the boundary chain (`test-rmg-load-template`)
+  still lands on 3, 9, 22, 388, 18459.
+- **`Voronoi`** — ours, `src/rmg/layout-voronoi.ts`, and nothing in it is read
+  out of an executable: a map laid out this way is our map. Two classical
+  steps. CENTRES BY RELAXATION: every zone is a disc of its share of the map
+  (`Size` over the floor's sum), moved three hundred times by three springs
+  — joined zones pull together until they touch, overlapping discs push
+  apart, start zones (`CanBePlayerStart`) push each other away regardless,
+  which is what sends them to the corners; the map's edge is a wall. TILES
+  BY WEIGHTED VORONOI: a tile belongs to the zone whose centre is nearest in
+  units of that zone's weight, then twelve rounds of Lloyd (a centre steps
+  halfway to its cell's centroid) and of weight correction (a cell short of
+  its share reaches further), so the areas land on the template's
+  proportions exactly — the engine's jitter does the same job by a hundred
+  thousand coin flips. Two draws a zone, the starting point, nothing else.
+  Floors are laid out one at a time; a connection across floors is not a
+  spring, it becomes a gate pair later as it always did.
+
+Everything downstream takes the grid and the radii and nothing else, which
+was a claim about the code and is now a test: the whole run on Jebus Cross —
+four players seated, a town in every zone, four passages each joining the
+middle to a start zone, none left for a teleport, three thousand objects,
+a `map.xdb` out — is the last section of `test-rmg-layout`, and `--png`
+draws the layouts and the finished map to `_tmp/` for looking at. The
+picture is HotA's: four wedges in the corners, a rounded square between
+them.
+
+Start zones MAY touch in it — the diamond's tips reach the edge — and that
+is fine, because a border no passage opens gets the engine's border fence
+(`statics-one-tile.ts`, pass 1: a blocker on every border tile), which is
+how the engine's own layout keeps unjoined neighbours apart too.
+
+**`.h5et`, our template format**, is the game's `RMGTemplate` with the fields
+of our own that its serialiser would not know — `ZoneLayout` so far. It
+lives in a file of its own extension so the game's generator, which lists
+`RMG/Templates/*.xdb`, never meets one. Ours ship in `assets/rmg`, a root the
+application puts IN FRONT of the mounted install (`inFront` in
+`src/game/assets.ts`; the generator's job carries it as `ownRoot`), so the
+dialog lists `Jebus Cross` beside the game's twenty-two and an order names
+it the way it names theirs. `templateFile` resolves a name to whichever
+spelling the chain has first, ours winning; the generated `map.xdb` records
+the file as it resolved, `/RMG/Templates/Jebus Cross.h5et`, and a replay of
+that order (`recorded-order.ts`) reads either spelling back. Whether the
+GAME dereferences that href when it loads a generated map is not known;
+its own maps carry one that names a file in its data, ours names a file
+that is not there. To be watched when such a map is first played.
+
+What the Voronoi layout does NOT yet read, and HotA's templates do — noted
+for the template editor, not for now: a connection's TYPE (`teleport`
+against `ground` — ours would be a field on the connection, since the
+engine's record has no live flag, see the sweep below), a FICTIVE
+connection (a spring with no passage — the outcast zones of `Jebus Outcast`
+lie beside a start zone this way), and REPEATED connections between one pair
+(HotA writes the same pair eight times — seven fictive, one real — to make
+the spring stronger, and `mt_outcast` joins opposite zones of its ring by
+teleport on top of the ring's ground passages).
+
 ## Which fields the engine actually reads
 
 A data format read out of an executable comes with a second question behind
@@ -4276,8 +4350,11 @@ is what it is belongs next to the number.
 | `map-setup.ts` | the "map created" step — strength, water, floors | **done**, six draws bracketed by run 1 |
 | `load-template.ts` | `LoadTemplate` — floors, races, players, zone classes | **done**, 22 draws reconciled; derives run 3's races |
 | `params.ts` | reading `RMGParameters` | **done**, held to `Params/Default.xdb` field by field |
+| `layout.ts` | the ONE DOOR for the zones — `Engine` (the two phases below, byte for byte) or one of ours, by the template's `<ZoneLayout>` | **done**; see "Laying the zones out our way" |
 | `zones.ts` | `GenerateGameZones` | **done**, reconciled against run 1 |
 | `fill-zones.ts` | `FillZones` | **done, held in lockstep**: an editor trace matched all 18,459 draws |
+| `layout-voronoi.ts` | OURS: centres by relaxation over the template's graph, tiles by weighted Voronoi | **done**, held to what it promises (`test-rmg-layout`), not to any reference |
+| `trace.ts` | the listeners a tool attaches — draws, phases, jitter tiles, road fields | **done**; one object, `ChainOptions.trace` |
 | `border-tiles.ts` | `CalcBorderTiles` | **done** — drawless, held to the definition and the reference chain |
 | `preset-table.ts` | `RMGPresetTable` Tiles + AdvMapTile documents | **done** for what the painter reads |
 | `terrain.ts` | `FillTerrain`, the road painter `0xECE3E0`, the water and LAKE painters | **done** — every mask layer of all four reference files, byte for byte |

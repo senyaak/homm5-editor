@@ -21,6 +21,7 @@ import type { RmgChoicesResult, RmgGeneratePayload, RmgGenerateResult, RmgResolv
 import { APP_ROOT, gameData, gameRoot, tmpRoot } from '#electron/paths.ts';
 import { landAsArchive, unpackRoot } from '#electron/channels/maps.ts';
 import type { RmgWorkerReply } from '#electron/rmg-worker.ts';
+import { inFront } from '#src/game/assets.ts';
 import { mountArchives } from '#src/game/mounted.ts';
 import { ensureModDir, modFile } from '#src/game/mod-paths.ts';
 import { PATCHED_EXE } from '#src/exe/creature-limit.ts';
@@ -45,8 +46,15 @@ function install(): { g: string; install: RmgInstall } {
   if (!existsSync(exe)) {
     throw new Error(`no ${PATCHED_EXE} — this install has not been prepared yet (start the editor with --setup and press Prepare)`);
   }
-  return { g, install: { data: mountArchives(g, mountCache(), gameData()), exe } };
+  return { g, install: { data: inFront(OWN_ROOT, mountArchives(g, mountCache(), gameData())), exe } };
 }
+
+/**
+ * The application's own documents in front of the game's: `assets/rmg`
+ * holds the templates of ours (`.h5et` — the game's format plus our fields,
+ * see `src/rmg/template.ts`), which the dialog then lists beside the game's.
+ */
+const OWN_ROOT = join(APP_ROOT, 'assets', 'rmg');
 
 /** The child's entry point: TypeScript from the repo, JavaScript from a build. */
 const workerFile = (): string =>
@@ -162,7 +170,7 @@ export function registerRmg(): void {
     ensureModDir(g);
 
     const job: RmgJob = {
-      gameRoot: g, dataRoot: gameData(), cacheDir: mountCache(), exe: inst.exe, mapDir,
+      gameRoot: g, dataRoot: gameData(), cacheDir: mountCache(), exe: inst.exe, ownRoot: OWN_ROOT, mapDir,
       order: { ...order, seed, guid, minimap: p.minimap, mapName: name },
     };
     const started = performance.now();

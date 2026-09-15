@@ -85,7 +85,7 @@ test('generates a tiny map through the dialog and opens it', async () => {
   await expect(page.locator('#rmg-template-note')).toContainText('with an underground');
   await page.locator('#rmg-size').selectOption('random');
   await expect(page.locator('#rmg-template-note')).toContainText('any template');
-  await expect(page.locator('#rmg-template option')).toHaveCount(23); // 22 shipped + Random
+  await expect(page.locator('#rmg-template option')).toHaveCount(24); // 22 shipped + Jebus Cross (ours) + Random
   await page.locator('#rmg-two').selectOption('0');
 
   // A tiny map on the reference template, with a seed, so the run is short and

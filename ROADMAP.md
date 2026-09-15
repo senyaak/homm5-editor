@@ -1101,6 +1101,16 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       towns, grail, minimap, a seed or a drawn one. Runs in a child process
       (`electron/rmg-worker.ts`), lands like New Map (`<game>/H5E/<name>.h5m`,
       opened from the archive). `e2e/rmg.spec.ts` ✅
+- [x] **The zones laid out our way** (`src/rmg/layout.ts`): one door for the
+      zones, the template choosing with `<ZoneLayout>` — `Engine` (the two
+      phases, byte for byte, the default) or `Voronoi` (ours: centres settled
+      by the connections, start zones pushed to the corners, tiles cut as
+      weighted Voronoi cells — the picture Heroes III's Jebus Cross has in
+      mind, from the graph alone, no coordinate in the file). `.h5et` is our
+      template format — the game's plus our fields — shipped in `assets/rmg`
+      and listed by the dialog beside the game's. The whole generator runs on
+      it (`test-rmg-layout`). A template's connection record was swept on
+      the way: `TwoWay`, `Guarded`, `Wide` are read by nothing ✅
 
 **Before it can be released — three things, in a chat of their own:**
 
@@ -1122,7 +1132,16 @@ or its data, so a mod's templates, creatures and artifacts reach it.
 - [ ] **A mirrored "Outcast" template**, the way HotA's is: two players, the
       same start, the same road, the same guards — and for a mirrored game the
       same start hero for both and the map's hero list cut down to those two
-      (StartHero is a map property, not the generator's; noted 13.09) ⬜
+      (StartHero is a map property, not the generator's; noted 13.09). Read
+      15.09, `mt_outcast 4.8` and `Jebus Outcast`: a ring of eight zones
+      joined by ground passages, the OPPOSITE zones of the ring joined by
+      teleports on top (`Type: teleport`, `Portal repulsion`), tiny "outcast"
+      treasure zones held beside a start zone by FICTIVE connections (a
+      spring for the layout, no passage), the same pair written eight times
+      to make the spring stronger, and the hero list cut by a `Heroes`
+      column of exclusions. So the template will want, on a connection: a
+      type (teleport / ground — our field, the engine's flags being dead), a
+      fictive flag, and a weight; none of it is in the Voronoi layout yet ⬜
 
 ## Open research questions
 

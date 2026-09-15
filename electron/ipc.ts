@@ -146,7 +146,7 @@ export interface RmgChoicesResult {
 }
 
 export interface RmgTemplateEntry {
-  /** The file name without `.xdb` — what an order names. */
+  /** The file name without its extension (`.xdb` the game's, `.h5et` ours) — what an order names. */
   file: string;
   /** The document's own `<Name>`. */
   name: string;

@@ -26,7 +26,7 @@ import { readCreatures } from './creatures.ts';
 import { fillDistToTowns } from './dist-to-towns.ts';
 import { placeZoneDwellings } from './dwellings.ts';
 import type { PlacedDwelling } from './dwellings.ts';
-import { fillZones } from './fill-zones.ts';
+import { layoutZones } from './layout.ts';
 import { loadTemplate } from './load-template.ts';
 import type { LoadedTemplate } from './load-template.ts';
 import { mapSetup } from './map-setup.ts';
@@ -67,7 +67,8 @@ import { placeZoneGraal, placeZoneObelisks } from './obelisks.ts';
 import type { PlacedObelisk } from './obelisks.ts';
 import { placeZoneUpgradeBuildings } from './upgrade-buildings.ts';
 import type { PlacedUpgradeBuilding } from './upgrade-buildings.ts';
-import { floorIterationOrder, generateGameZones } from './zones.ts';
+import type { ChainTrace } from './trace.ts';
+import { floorIterationOrder } from './zones.ts';
 
 import { worldPlayerRaces } from './world-race.ts';
 import { RACE } from './load-template.ts';
@@ -164,30 +165,10 @@ export interface ChainOptions {
   resourceMultiplier?: number;
   expMultiplier?: number;
   /**
-   * Every draw as it is taken, for `tools/rmg-diff-draws.ts`. It has to be
-   * attached here rather than by the caller: the RNG is made inside this
-   * function, and by the time a caller holds `c.rng` the chain has run.
+   * The listeners — every draw, every phase boundary, a jitter draw's tile,
+   * a road's cost field. None of them changes the map; see `trace.ts`.
    */
-  onDraw?: (kind: string, value: number, limit?: number) => void;
-  /**
-   * Which tile a FillZones jitter draw was deciding. Same reason — the sweep
-   * loop is in here, and the trace's context is worth more than its index.
-   */
-  jitter?: (sweep: number, a: number, b: number) => void;
-  /**
-   * Every candidate that reaches the zone lookup, whether or not it goes on to
-   * draw — the engine's `gz` pairs are this callback's twin, so the two can be
-   * counted against each other when the jitter counts alone say only THAT a
-   * sweep differs.
-   */
-  candidate?: (sweep: number, a: number, b: number, own: number, best: number, count: number) => void;
-  /** Each sweep's areas, the numbers the next sweep's ratio divides. */
-  areas?: (sweep: number, areas: ReadonlyMap<number, number>) => void;
-  /**
-   * The draw counter as each phase ends. "The 13807th draw disagrees" is a
-   * number; "the 13807th draw is in zoneConnections, which starts at 13798"
-   * is a place to read, and the difference between the two is this callback.
-   */
+  trace?: ChainTrace;
   /**
    * Which machine to compute on — the editor's doubles (the default, and what
    * every reference map in the corpus was checked against) or the game's
@@ -207,13 +188,6 @@ export interface ChainOptions {
    * comparing against a third build nobody ships.
    */
   gameBuild?: boolean;
-  /**
-   * Every converged road cost field, as the router hands it to the walk —
-   * see `RoadInput.field`. `kindBit` is 0x20 for the zone road, 0x08/0x10
-   * for the roads phase.
-   */
-  roadField?: (zone: number, kindBit: number, cost: Float32Array, from: Tile, to: Tile) => void;
-  onPhase?: (label: string, draws: number) => void;
 }
 
 export interface Chain {
@@ -231,8 +205,8 @@ export interface Chain {
   multipliers: { resource: number; exp: number };
   /** The machine this run computes on — see `src/rmg/arith.ts`. */
   arith: Arith;
-  /** The option, kept for the roads phase to hand its routes through. */
-  roadField?: ChainOptions['roadField'];
+  /** The listeners, kept for the roads phase to hand its routes through. */
+  trace?: ChainTrace;
   /** Whether this is the game's build — the later phases toss their own coins. */
   gameBuild: boolean;
   /** The order's GRAIL checkbox — see `ChainOptions.grail`. */
@@ -367,8 +341,9 @@ export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain
   const ar = arithFor(options.arith ?? (options.gameBuild ? 'sse' : undefined));
   const swapZoneAxes = options.swapZoneAxes || Boolean(options.gameBuild);
   rng.arith = ar;
-  if (options.onDraw) rng.onDraw = options.onDraw;
-  const phase = (label: string): void => options.onPhase?.(label, rng.draws);
+  const trace = options.trace;
+  if (trace?.draw) rng.onDraw = (kind, value, limit) => trace.draw!(kind, value, limit);
+  const phase = (label: string): void => trace?.phase?.(label, rng.draws);
   phase('start');
   // THE REQUEST CARRIES THE SIZE INDEX, now that `vt+0x14`/`vt+0x18` are read
   // (`create-map.ts`): the tile count the caller asked for, back through the
@@ -403,15 +378,15 @@ export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain
     races: exe,
   }, rng);
   phase('loadTemplate');
-  const placed = generateGameZones(size, size,
-    loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng, ar, swapZoneAxes);
-  phase('placeZones');
-  const filled = fillZones(size, size, placed.zones, made.twoFloors, rng,
-    options.jitter || options.candidate || options.areas
-      ? { jitter: options.jitter, candidate: options.candidate, areas: options.areas }
-      : undefined,
-    ar);
-  phase('fillZones');
+  // WHICH WAY THE ZONES ARE LAID OUT is the template's choice — the engine's
+  // own two phases by default, byte for byte, or one of ours. See `layout.ts`.
+  const laid = layoutZones(template.zoneLayout, {
+    size, zones: loaded.zones, templateZones: template.zones, connections: template.connections,
+    twoFloors: made.twoFloors,
+    arith: ar, swapZoneAxes, spy: trace, phase,
+  }, rng);
+  const placed = { zones: laid.zones };
+  const filled = { floors: laid.floors };
   // THE ZONE'S `+0xCC`, TAKEN WHERE THE ENGINE TAKES IT. `0xEB7790` — whose
   // one caller is FillZones' own tail at 0xeaa609, right after the grow and
   // flip lists are painted back into the grid — walks the level grid once and
@@ -647,7 +622,7 @@ export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain
     dir, exe, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
     multipliers: { resource: options.resourceMultiplier ?? 1, exp: options.expMultiplier ?? 1 },
     arith: ar,
-    roadField: options.roadField,
+    trace,
     gameBuild: Boolean(options.gameBuild),
     grail: Boolean(options.grail),
     randomTowns, randomDwellings,
@@ -959,7 +934,7 @@ export class ZoneFill {
       arith: c.arith,
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ,
       zoneIndex, points: this.points, kindBit: 0x20,
-      field: c.roadField && ((cost, from, to) => c.roadField!(zoneIndex, 0x20, cost, from, to)),
+      field: c.trace?.roadField && ((cost, from, to) => c.trace!.roadField!(zoneIndex, 0x20, cost, from, to)),
     }, c.rng);
   }
 }

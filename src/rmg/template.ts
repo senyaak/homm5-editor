@@ -26,8 +26,10 @@ import { readFileSync } from 'node:fs';
 
 import { childText, find, findAll, parse, text } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
-import { readText } from './data.ts';
+import { readText, toAssets } from './data.ts';
 import type { DataRoot } from './data.ts';
+import { zoneLayoutKind } from './layout.ts';
+import type { ZoneLayoutKind } from './layout.ts';
 
 /** Seven, one per creature tier — the shape of `Mines` and `Dwellings`. */
 export const TIERS = 7;
@@ -111,6 +113,13 @@ export interface RmgTemplate {
   underground: boolean;
   /** Read by the editor's template list, to hide a template from the dialog. */
   testTemplate: boolean;
+  /**
+   * OURS, not the game's: `<ZoneLayout>` names how the zones are laid out —
+   * the engine's own way when absent, or one of `layout.ts`'s. The game's
+   * serialiser does not know the tag, which is why a template that carries
+   * it is an `.h5et` of ours rather than an `.xdb` in its folder.
+   */
+  zoneLayout: ZoneLayoutKind;
 }
 
 const int = (el: XmlElement, name: string): number => Number.parseInt(childText(el, name), 10) || 0;
@@ -186,6 +195,7 @@ export function parseTemplate(xml: string): RmgTemplate {
     maxMapSize: int(t, 'MaxMapSize'),
     underground: bool(t, 'Underground'),
     testTemplate: bool(t, 'TestTemplate'),
+    zoneLayout: zoneLayoutKind(childText(t, 'ZoneLayout')),
   };
 }
 
@@ -194,7 +204,26 @@ export function readTemplate(path: string): RmgTemplate {
   return parseTemplate(readFileSync(path, 'utf8'));
 }
 
-/** `RMG/Templates/<name>.xdb` through the mounted chain — the generator's door. */
+/**
+ * The two spellings of a template file. `.xdb` is the game's; `.h5et` is
+ * OURS — the same document with the fields of our own the game's serialiser
+ * would not know (`ZoneLayout`), kept out of the folder the game lists so
+ * that its own generator never meets them. One name may exist in both;
+ * ours wins, the way a mod's file wins over the shipped one.
+ */
+export const TEMPLATE_EXTENSIONS = ['.h5et', '.xdb'] as const;
+
+/** `RMG/Templates/<name>.h5et` or `.xdb`, whichever the mounted chain has first. */
+export function templateFile(dataRoot: DataRoot, name: string): string {
+  const data = toAssets(dataRoot);
+  for (const ext of TEMPLATE_EXTENSIONS) {
+    const rel = `RMG/Templates/${name}${ext}`;
+    if (data.text(rel) !== null) return rel;
+  }
+  throw new Error(`RMG/Templates/${name}: neither .h5et nor .xdb in any mounted root (${data.roots.join(', ')})`);
+}
+
+/** A template by name through the mounted chain — the generator's door. */
 export function readTemplateNamed(dataRoot: DataRoot, name: string): RmgTemplate {
-  return parseTemplate(readText(dataRoot, `RMG/Templates/${name}.xdb`));
+  return parseTemplate(readText(dataRoot, templateFile(dataRoot, name)));
 }

@@ -29,6 +29,7 @@ import { installTables } from './install.ts';
 import type { RmgInstall } from './install.ts';
 import { enumNames, readEnumValues } from './data.ts';
 import { RACE } from './load-template.ts';
+import { templateFile } from './template.ts';
 import { drawMinimap, drawTerrainLayer, waterTile, type MinimapFloor, type WaterTileInput } from './minimap.ts';
 import {
   drawIconLayer, iconList, iconNameFor, loadMinimapIcons, type IconObject,
@@ -307,7 +308,9 @@ export function buildMapFiles(
           seed: order.seed,
           guid: order.guid,
           mapSize: enumNames(install.data, 'MapSize')[sizeIndex]!,
-          template: `/RMG/Templates/${order.template}.xdb#xpointer(/RMGTemplate)`,
+          // The file as it resolved — `.h5et` for one of ours, which is then
+          // what a replay of this map's order reads back.
+          template: `/${templateFile(install.data, order.template)}#xpointer(/RMGTemplate)`,
           waterAmount: enumNames(install.data, 'WaterAmount')[order.water]!,
           monsterLevel: enumNames(install.data, 'MonsterLevel')[c.setup.monsterStrength]!,
           hasUnderground: twoLevel,

@@ -11,6 +11,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { inFront } from '../game/assets.ts';
 import { mountArchives } from '../game/mounted.ts';
 import { generateMap } from './index.ts';
 import type { RmgOrder } from './index.ts';
@@ -24,6 +25,12 @@ export interface RmgJob {
   cacheDir: string;
   /** The game's UNWRAPPED executable. */
   exe: string;
+  /**
+   * The application's own documents — `assets/rmg`, where our templates
+   * live — in front of everything the game mounts. Optional: a job without
+   * one reads the game's templates alone.
+   */
+  ownRoot?: string;
   order: RmgOrder;
   /** The folder to write the map's files into; created if missing. */
   mapDir: string;
@@ -41,7 +48,8 @@ export interface RmgJobResult {
 /** Run one job to the end: the files are in `job.mapDir` when this returns. */
 export function runRmgJob(job: RmgJob): RmgJobResult {
   const started = performance.now();
-  const data = mountArchives(job.gameRoot, job.cacheDir, job.dataRoot);
+  const mounted = mountArchives(job.gameRoot, job.cacheDir, job.dataRoot);
+  const data = job.ownRoot ? inFront(job.ownRoot, mounted) : mounted;
   const map = generateMap({ data, exe: job.exe }, job.order);
   mkdirSync(job.mapDir, { recursive: true });
   for (const f of map.files) writeFileSync(join(job.mapDir, f.name), f.data);
