@@ -41,6 +41,11 @@ leaves them all — and the map lands like a new one, in `<game>/H5E/`, opened f
 generation runs in a process of its own, so the editor keeps answering while a
 large map is made. A map opened from a `.h5m` of ours is now titled after the
 file rather than the folder inside it, which for a generated map was a GUID.
+What a template can and cannot ask for is written down field by field, and
+the last record was closed this time: a connection's `TwoWay`, `Guarded` and
+`Wide` are read by nothing in either executable and change no byte of a map
+when flipped — whether two zones meet by a guarded passage or a teleport is
+the geometry's decision alone.
 
 **The generator reads the install the game reads.** Every document the port
 opens — the preset table, the templates, the tiles, every shared building,

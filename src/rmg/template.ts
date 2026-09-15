@@ -11,14 +11,16 @@
 // the way in would mean every reader of this port has to translate back before
 // they can grep the data. See docs/RMG.md.
 //
-// FOUR OF THESE FIELDS FEED NOTHING, and they are marked below rather than
+// SEVEN OF THESE FIELDS FEED NOTHING, and they are marked below rather than
 // dropped: the format carries them, so a reader that skipped them would be a
 // reader of a different format. `GraalOnMap` and `Underground` are read by no
 // instruction in either executable; `RedwoodObservatoryDensity` and
 // `DenOfThieves` are handed to the step that places those objects, which never
 // looks at them and decides both from the zone's tile count and a roll. Each
 // was checked twice — over the whole image, and by generating the same map with
-// the field changed. See "Which fields the engine actually reads".
+// the field changed. A connection's `TwoWay`, `Guarded` and `Wide` are the
+// other three, checked the same two ways. See "Which fields the engine
+// actually reads".
 
 import { readFileSync } from 'node:fs';
 
@@ -71,13 +73,26 @@ export interface RmgZone {
   buffPoints: number;
 }
 
+/**
+ * A connection is read at three of its six fields — the two zones and the
+ * guard's strength — by the land digger and the teleport pass alike, in both
+ * builds; the three flags are registered by the serialiser and read by no
+ * instruction, and flipping each on every connection of the reference
+ * template changes no byte of the map (docs/RMG.md, "The template's
+ * CONNECTION"). Whether a pair gets a guarded land passage or a teleport is
+ * geometry's decision alone, which is why a switch for it has to be our own
+ * field in our own template format, not a reading of these.
+ */
 export interface RmgConnection {
   sourceZoneIndex: number;
   destZoneIndex: number;
+  /** DEAD: varies across the shipped templates, and nothing reads it. */
   twoWay: boolean;
   /** How strong the army sitting on the passage is. */
   guardStrenght: number;
+  /** DEAD: true on all 150 shipped connections; false takes no guard off. */
   guarded: boolean;
+  /** DEAD: false on all 150 shipped connections; true widens nothing. */
   wide: boolean;
 }
 

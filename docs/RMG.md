@@ -3993,6 +3993,61 @@ So it is read by nothing and changes nothing, on the one order that could ever
 have shown it. Whatever the field was for, the shipped generator does not use
 it.
 
+### The template's CONNECTION — three of its six feed nothing
+
+The connection item was the one record of the template the sweep had not
+been run over, and the corpus could not stand in for it: all 22 shipped
+templates write `Guarded` true and `Wide` false on all 150 connections, so
+896 byte-identical maps say nothing about what either flag does when set
+the other way. (`TwoWay` does vary — 77 true, 73 false of 150 — and the port
+ignores it and still matches, which is the one verdict the corpus can
+give.)
+
+The item is `0x18` bytes, walked by that stride from `template+0x68` (the
+`add edx,18h` at `0xEC1E22`/`0xEC2326`), and its reader — `0xB9B8C0`, the
+one caller of which is the template's own at `0xB9BF3B` — registers six
+fields with `0x987A70(path, &field, size, type)`, a different idiom from
+the zone's `lea eax` pairs, which is why `struct-fields.ts` prints them
+all at `+0x00C` and the map below is read by hand:
+
+| off | field | size | read by |
+| --- | --- | --- | --- |
+| `+0x04` | SourceZoneIndex | int | the land digger `0xEC1630`, the teleport pass `0xEB7C60` |
+| `+0x08` | DestZoneIndex | int | the same two |
+| `+0x0C` | **TwoWay** | bool | **nothing** |
+| `+0x10` | GuardStrenght | int | both — the guard's power |
+| `+0x14` | **Guarded** | bool | **nothing** |
+| `+0x15` | **Wide** | bool | **nothing** |
+
+Two instruments, both builds. `struct-use.ts --cast 0x10b3350 --deref 0x68
+--min 0x4` on the game build: 71 doors, 18 leading to a read, every read at
+`+0x4`, `+0x8` or `+0x10`, and not one `push` among the escapes. The editor
+build needs its getter as well as its cast (`--cast 0x128cee0 --getter
+0x87f770`): 101 doors, 10 reads, the same three offsets. Then, because the
+sweep only follows a taint it can see, the whole `.text` of each build was
+scanned for byte-sized reads at `+0xC`, `+0x14` or `+0x15` through a
+base+index address — the only way a stride-walked item is ever reached —
+and each hit with an `add reg,18h` nearby was looked at: none is in the
+generator's range, and the two that looked closest (`0xEA5CB0`, `0xEA8D80`)
+are the zone item's `Town` and a hash node.
+
+So the passage between two zones is decided by geometry and nothing else:
+a straight enough border gets a guarded land passage, anything else gets
+the teleport pass, and no flag in the file can ask for one or the other,
+or for the guard to be left off. This is what the port already does — it
+reads only `GuardStrenght` — and it is the reason a "teleport / ground"
+switch on a connection has to be OUR field in OUR template format rather
+than a reading of theirs.
+
+**And the engine agrees.** `rmg-field-probe.ts --template` with each flag
+flipped on all three connections of `S1P2Z2M1` — `TwoWay` false, `Guarded`
+false, `Wide` true — ordered at seed 1785351845 against the baseline:
+**no change**, each of them, not a byte beyond the two known nuisances. The
+control in the same run, the first connection's `GuardStrenght` 12 → 90,
+rewrote `map.xdb`, so the instrument was awake. `Guarded` false does not
+take the guard off the passage; `Wide` true does not widen it; the three
+flags are data the format carries and nothing consumes.
+
 ### The preset table — the road strengths reach nothing
 
 `RMGPresetTable.xdb` carries a `*Strenght` int behind each of its four tile

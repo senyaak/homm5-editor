@@ -119,7 +119,23 @@ const UNREAD_TEMPLATE: Array<[string, string]> = [
   ['DenOfThieves', '9'],
   ['RedwoodObservatoryDensity', '400'],
   ['BuffPoints', '400'],
+  // The CONNECTION's three flags (15.09.2026): the item is read at +0x4, +0x8
+  // and +0x10 — the two zone indices and GuardStrenght — by the land digger
+  // and the teleport pass alike, in both builds, and at +0xC/+0x14/+0x15 by
+  // nothing. Every shipped template writes Guarded true and Wide false, so
+  // the corpus could never have shown otherwise; these three are flipped on
+  // EVERY connection of the template at once (see `withField`).
+  ['TwoWay', 'false'],
+  ['Guarded', 'false'],
+  ['Wide', 'true'],
 ];
+
+/**
+ * Fields that live once per CONNECTION rather than once per document or
+ * zone. The question is whether the field does anything at all, so every
+ * connection is changed together — the same reasoning as the preset table.
+ */
+const CONNECTION_FIELDS = new Set(['TwoWay', 'Guarded', 'Wide']);
 
 /**
  * The template's controls. The first tag wins, and for a per-zone field that
@@ -128,6 +144,8 @@ const UNREAD_TEMPLATE: Array<[string, string]> = [
 const CONTROL_TEMPLATE: Array<[string, string]> = [
   ['TreasureDensity', '400'],
   ['Prisons', '4'],
+  // The connection's own control: the first item's guard, 12 -> 90.
+  ['GuardStrenght', '90'],
 ];
 
 /**
@@ -198,11 +216,13 @@ function generate(): Snapshot {
 
 /**
  * The stock file with one field changed — the FIRST occurrence, or every one
- * of them in the preset table, where a field repeats per race.
+ * of them in the preset table, where a field repeats per race, and for a
+ * connection's flag, which repeats per connection.
  */
 function withField(field: string, value: string): string {
   const xml = readFileSync(stock, 'utf8');
-  const tag = new RegExp(`<${field}>[^<]*</${field}>`, onPreset ? 'g' : '');
+  const every = onPreset || (onTemplate && CONNECTION_FIELDS.has(field));
+  const tag = new RegExp(`<${field}>[^<]*</${field}>`, every ? 'g' : '');
   if (!new RegExp(`<${field}>`).test(xml)) throw new Error(`${stock} has no <${field}>`);
   return xml.replace(tag, `<${field}>${value}</${field}>`);
 }
