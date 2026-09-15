@@ -3749,6 +3749,48 @@ GAME dereferences that href when it loads a generated map is not known;
 its own maps carry one that names a file in its data, ours names a file
 that is not there. To be watched when such a map is first played.
 
+### A zone's named objects
+
+The game's zone says how many mines and dwellings by tier and how many
+points to spend by category — treasuries, shops, shrines, upgrade
+buildings, resource and luck/morale buildings — and each budget is spent
+over the zone's race's pool in `RMGPresetTable.xdb` by the draw: forty
+treasury points may or may not buy the Dragon Utopia (40). A Heroes III
+template names the building (`+95 0 d d d 3 d`: object 95, at least three);
+the game's format cannot. Ours can, on a zone of an `.h5et`:
+
+```xml
+<Objects>
+  <Item><Href>/MapObjects/Dragon_Utopia.(AdvMapBuildingShared).xdb</Href>
+        <Min>1</Min><Max>1</Max><GuardStrenght>30</GuardStrenght></Item>
+  <Item><Href>/MapObjects/Crypt.(AdvMapBuildingShared).xdb</Href><Max>0</Max></Item>
+</Objects>
+```
+
+`Min` is placed BEFORE the budget steps (`zone-objects.ts`, a step of its own
+in the run's ledger, `zone N objects`), through the very placer the budgets
+use — the shared candidate helper, the fit, the stamp, the mint — with a
+one-entry list priced at 1 and a budget of `Min`, so it lands exactly that
+many times or runs out of room the way the borrowed step does. A
+`GuardStrenght` seats a guard beside each the way an upgrade building's is
+seated (`seatGuard`, the 0xED3200 wrapper), at that × `BasicLeverGuardPower`;
+absent, the object comes unguarded, the way treasuries and shops do from
+the engine. `Max` becomes a CAP — how many more of that document the budget
+steps may take, the forced ones subtracted — which `placePriceList` and
+`placeZoneUpgradeBuildings` honour by striking a capped-out entry from the
+list for the rest of the step (a departure from the engine's fixed prefix,
+taken only when a cap exists); `Max` 0 strikes it from the start. Absent,
+no ceiling. The dwellings and mines are not in this — they have their own
+counts by tier — and neither are the treasures.
+
+Held by `test-rmg-zone-objects` on the whole generator: the shipped Jebus
+Cross puts one guarded Utopia in the middle and none elsewhere; a variant
+gives every start zone exactly two Trading Posts and forbids the middle a
+Crypt — and the ceiling is checked by sabotage, on a seed where the
+shipped template's budget DOES buy a Crypt there (seed 100) and the
+variant's does not. Templates of the game's carry no `<Objects>`: no step,
+no caps, the corpus untouched (`test-rmg-pack` still lands on 92438).
+
 What the Voronoi layout does NOT yet read, and HotA's templates do — noted
 for the template editor, not for now: a connection's TYPE (`teleport`
 against `ground` — ours would be a field on the connection, since the
@@ -4355,6 +4397,7 @@ is what it is belongs next to the number.
 | `fill-zones.ts` | `FillZones` | **done, held in lockstep**: an editor trace matched all 18,459 draws |
 | `layout-voronoi.ts` | OURS: centres by relaxation over the template's graph, tiles by weighted Voronoi | **done**, held to what it promises (`test-rmg-layout`), not to any reference |
 | `trace.ts` | the listeners a tool attaches — draws, phases, jitter tiles, road fields | **done**; one object, `ChainOptions.trace` |
+| `zone-objects.ts` | OURS: a zone's NAMED objects from a template's `<Objects>` — floors placed before the budgets, ceilings the budgets honour | **done**, `test-rmg-zone-objects` |
 | `border-tiles.ts` | `CalcBorderTiles` | **done** — drawless, held to the definition and the reference chain |
 | `preset-table.ts` | `RMGPresetTable` Tiles + AdvMapTile documents | **done** for what the painter reads |
 | `terrain.ts` | `FillTerrain`, the road painter `0xECE3E0`, the water and LAKE painters | **done** — every mask layer of all four reference files, byte for byte |

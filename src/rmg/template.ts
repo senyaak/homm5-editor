@@ -73,6 +73,36 @@ export interface RmgZone {
   redwoodObservatoryDensity: number;
   /** Read, and handed to a worker whose whole body is `ret 4`. */
   buffPoints: number;
+  /**
+   * OURS (`.h5et`): objects this zone must have, or may not — see
+   * `RmgZoneObject`. Empty for every template of the game's.
+   */
+  objects: RmgZoneObject[];
+}
+
+/**
+ * One line of a zone's `<Objects>` — what Heroes III's templates say with
+ * `+95 0 d d d 3 d` and the game's format cannot say at all: a NAMED object
+ * with a floor and a ceiling. The game's zone carries counts by tier (mines,
+ * dwellings) and point budgets by category (shops, shrines, treasuries…),
+ * each spent over a per-race pool from the preset table; which building the
+ * budget buys is the draw's business. This names one.
+ *
+ *   Min   placed before the budgets are spent — guaranteed, candidates
+ *         permitting; 0 by default
+ *   Max   the most of it the zone gets, forced ones counted — the budgets
+ *         skip it once reached; 0 strikes it from the zone's pools;
+ *         absent means no ceiling
+ *   GuardStrenght  a guard on each forced one, × BasicLeverGuardPower the
+ *         way an upgrade building's is; absent or 0 means none — the way
+ *         the treasuries, shops and the rest come unguarded from the engine
+ */
+export interface RmgZoneObject {
+  /** The document, `/MapObjects/Dragon_Utopia.(AdvMapBuildingShared).xdb`, xpointer or not. */
+  href: string;
+  min: number;
+  max: number;
+  guardStrenght: number;
 }
 
 /**
@@ -135,6 +165,23 @@ function items(el: XmlElement, name: string, length = TIERS): number[] {
   return out;
 }
 
+/** `<Objects><Item><Href>…</Href><Min>1</Min><Max>1</Max></Item>…</Objects>`, ours. */
+function zoneObjects(z: XmlElement): RmgZoneObject[] {
+  const holder = find(z, 'Objects');
+  if (!holder) return [];
+  return findAll(holder, 'Item').map((o) => {
+    const href = childText(o, 'Href');
+    if (!href) throw new Error('a zone <Objects> item needs an <Href>');
+    const max = childText(o, 'Max');
+    return {
+      href,
+      min: int(o, 'Min'),
+      max: max === '' ? Number.POSITIVE_INFINITY : Number.parseInt(max, 10) || 0,
+      guardStrenght: int(o, 'GuardStrenght'),
+    };
+  });
+}
+
 export function parseTemplate(xml: string): RmgTemplate {
   const root = parse(xml);
   const t = find(root, 'RMGTemplate');
@@ -172,6 +219,7 @@ export function parseTemplate(xml: string): RmgTemplate {
       denOfThieves: int(z, 'DenOfThieves'),
       redwoodObservatoryDensity: int(z, 'RedwoodObservatoryDensity'),
       buffPoints: int(z, 'BuffPoints'),
+      objects: zoneObjects(z),
     }));
 
   const connectionsEl = find(t, 'Connections');

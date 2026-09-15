@@ -88,6 +88,29 @@ export interface PriceListInput {
   budget: number;
   /** The preset vector in file order — the prefix draw leans on it. */
   list: PricedItem[];
+  /**
+   * OURS: how many more of each document (href without its xpointer) the
+   * zone may take — a template's `<Objects>` ceilings, forced ones already
+   * subtracted. An entry at 0 leaves the list for the rest of the step,
+   * which is a departure from the engine's fixed prefix; absent, the step
+   * is the engine's. MUTATED as objects land.
+   */
+  caps?: Map<string, number>;
+}
+
+/** The identity a cap is keyed by. */
+export const capKey = (href: string): string => href.replace(/#.*$/, '');
+
+/** The list with the capped-out entries struck, or the list itself. */
+export function withinCaps(list: PricedItem[], caps: Map<string, number> | undefined): PricedItem[] {
+  if (!caps) return list;
+  return list.filter((e) => (caps.get(capKey(e.type)) ?? Number.POSITIVE_INFINITY) > 0);
+}
+
+/** One more of `href` landed: its cap, if any, comes down. */
+export function spendCap(caps: Map<string, number> | undefined, href: string): void {
+  const k = capKey(href);
+  if (caps?.has(k)) caps.set(k, caps.get(k)! - 1);
 }
 
 /**
@@ -96,13 +119,14 @@ export interface PriceListInput {
  * this with theirs.
  */
 export function placePriceList(input: PriceListInput, rng: DrawSource): PlacedPriced[] {
-  const { size, grid, border, occupancy, zoneIndex, budget, list } = input;
+  const { size, grid, border, occupancy, zoneIndex, budget, caps } = input;
   const placed: PlacedPriced[] = [];
+  let list = withinCaps(input.list, caps);
   if (list.length === 0) return placed;
 
   const candidates = input.tiles ?? zoneTiles(size, grid, zoneIndex);
   let spent = 0;
-  while (list[0]!.value + spent <= budget) {
+  while (list.length && list[0]!.value + spent <= budget) {
     // The affordable LEADING prefix — breaks at the first element over
     // budget, so entries behind an expensive one stay unreachable.
     let prefix = 0;
@@ -123,6 +147,8 @@ export function placePriceList(input: PriceListInput, rng: DrawSource): PlacedPr
     stampFootprint(input, entry.foot, tile, q);
     placed.push({ type: entry.type, name, x: tile[0], y: tile[1], q });
     spent += entry.value;
+    spendCap(caps, entry.type);
+    list = withinCaps(list, caps);
   }
   return placed;
 }

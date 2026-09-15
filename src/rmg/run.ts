@@ -421,6 +421,18 @@ export function runFull(
       object('building', p.name, p.x, p.y, p.q * HALF_PI, c.footprint(p.type), floor,
         { shared: pointered(p.type, 'AdvMapBuildingShared') });
     };
+    // OURS: a template's named objects, before the budgets — none on a
+    // template of the game's, and no step label then, so its ledger of
+    // boundaries stays the engine's.
+    const named = fill.objects();
+    if (named.length) {
+      for (const o of named) {
+        priced(o);
+        if (o.guard?.guard) guardPoint(o.guard.guard, o.guard.x, o.guard.y, floor, o.q * HALF_PI);
+        if (o.guard) seats.push([o.guard.x, o.guard.y]);
+      }
+      step(`zone ${zone} objects`);
+    }
     for (const u of fill.upgradeBuildings()) {
       priced(u);
       // The 0xED3200 door's guard records the BUILDING's own rotation.

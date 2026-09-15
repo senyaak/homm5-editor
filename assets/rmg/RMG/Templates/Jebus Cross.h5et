@@ -5,7 +5,7 @@
      zone goes; the layout below reads the graph and puts the players at the
      edges and the treasure between them. An .h5et is our template format:
      the game's RMGTemplate plus the fields of our own the game's serialiser
-     does not know (ZoneLayout, so far). -->
+     does not know (ZoneLayout on the template, Objects on a zone). -->
 <RMGTemplate>
 	<NameFileRef href=""/>
 	<DescriptionFileRef href=""/>
@@ -53,6 +53,16 @@
 			<DenOfThieves>0</DenOfThieves>
 			<RedwoodObservatoryDensity>0</RedwoodObservatoryDensity>
 			<BuffPoints>0</BuffPoints>
+			<!-- Ours: the rich middle has a Dragon Utopia, guarded, and one only;
+			     the Objects list is what the game's format cannot say (template.ts). -->
+			<Objects>
+				<Item>
+					<Href>/MapObjects/Dragon_Utopia.(AdvMapBuildingShared).xdb</Href>
+					<Min>1</Min>
+					<Max>1</Max>
+					<GuardStrenght>30</GuardStrenght>
+				</Item>
+			</Objects>
 		</Item>
 		<Item>
 			<Index>2</Index>
@@ -260,8 +270,8 @@
 	<GraalOnMap>false</GraalOnMap>
 	<MinPlayers>2</MinPlayers>
 	<MaxPlayers>4</MaxPlayers>
-	<MinMapSize>14</MinMapSize>
-	<MaxMapSize>42</MaxMapSize>
+	<MinMapSize>18</MinMapSize>
+	<MaxMapSize>102</MaxMapSize>
 	<Underground>false</Underground>
 	<TestTemplate>false</TestTemplate>
 </RMGTemplate>

@@ -48,6 +48,8 @@ import { buildZoneRoad } from './road.ts';
 import { placeZoneShrines } from './shrines.ts';
 import type { PlacedShrine } from './shrines.ts';
 import { placeZoneTeleports } from './teleports.ts';
+import { placeZoneObjects } from './zone-objects.ts';
+import type { PlacedZoneObject } from './zone-objects.ts';
 import type { PlacedTeleport } from './teleports.ts';
 import { readTemplateNamed } from './template.ts';
 import { placeObservatories, placeZoneTreasures } from './treasures.ts';
@@ -702,6 +704,12 @@ export class ZoneFill {
    * which by then has disowned tiles the engine is still drawing from.
    */
   private readonly tiles: Tile[];
+  /**
+   * OURS: the template's `<Objects>` ceilings for this zone, forced ones
+   * subtracted — set by `objects()`, read by every priced step after it.
+   * Empty (no ceilings) for a template of the game's.
+   */
+  private caps = new Map<string, number>();
 
   constructor(c: Chain, zoneIndex: number) {
     this.c = c;
@@ -798,11 +806,30 @@ export class ZoneFill {
     }, c.rng);
   }
 
+  /**
+   * OURS — the template's `<Objects>` for this zone: the floors placed, the
+   * ceilings kept for the priced steps that follow. See `zone-objects.ts`.
+   */
+  objects(): PlacedZoneObject[] {
+    const { c } = this;
+    if (!this.zone.objects.length) return [];
+    const r = placeZoneObjects({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      objects: this.zone.objects, footprint: (href) => c.footprint(href),
+      basicLeverGuardPower: c.params.basicLeverGuardPower,
+      monsterStrength: c.setup.monsterStrength, tables: c.tables,
+    }, c.rng);
+    this.caps = r.caps;
+    return r.placed;
+  }
+
   upgradeBuildings(): PlacedUpgradeBuilding[] {
     const { c } = this;
     return placeZoneUpgradeBuildings({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, density: this.zone.upgBuildingsDensity, multIndex: c.multipliers.exp, multipliers: c.exe.densityMultipliers,
+      caps: this.caps.size ? this.caps : undefined,
       list: this.priced(this.pricePreset.newUpgradeBuildings)
         .map((p, i) => ({ href: p.type, value: p.value, foot: p.foot,
           guardStrenght: this.pricePreset.newUpgradeBuildings[i]!.guardStrenght })),
@@ -846,6 +873,7 @@ export class ZoneFill {
     return placePriceList({
       size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
       points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, budget, list: this.priced(list),
+      caps: this.caps.size ? this.caps : undefined,
     }, c.rng);
   }
 

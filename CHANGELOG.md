@@ -59,7 +59,11 @@ after the zones runs as it did. Templates of ours are `.h5et` files — the
 game's format plus our fields, kept out of the game's own folder — and ship
 with the editor: the generator's dialog lists **Jebus Cross** beside the
 game's twenty-two. A template without the field is still the engine's map,
-byte for byte.
+byte for byte. A zone of ours can also NAME its objects, the way a Heroes
+III template does: `<Objects>` gives a building a floor (placed before the
+budgets are spent, with a guard if asked) and a ceiling (the budgets stop
+buying it; 0 forbids it) — Jebus Cross's middle carries one guarded Dragon
+Utopia and no second.
 
 **The generator reads the install the game reads.** Every document the port
 opens — the preset table, the templates, the tiles, every shared building,

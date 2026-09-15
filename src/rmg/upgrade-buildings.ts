@@ -34,6 +34,7 @@ import { mintName, setMonster } from './armies.ts';
 import type { DrawSource, Guard, GuardTables } from './armies.ts';
 import { EIGHT, ensureRoom, filterByRoom, isFree, stampFootprint, tryPlace, zoneTiles } from './placement.ts';
 import type { Footprint, Tile } from './placement.ts';
+import { capKey, spendCap } from './price-lists.ts';
 import { rotate } from './towns.ts';
 
 
@@ -144,6 +145,8 @@ export interface UpgradeBuildingsInput {
   multipliers: readonly number[];
   /** The race preset's NewUpgradeBuildings, file order, with footprints. */
   list: PricedEntry[];
+  /** OURS: per-document ceilings, see `PriceListInput.caps`. MUTATED. */
+  caps?: Map<string, number>;
   basicLeverGuardPower: number;
   monsterStrength: number;
   tables: GuardTables;
@@ -151,17 +154,21 @@ export interface UpgradeBuildingsInput {
 
 /** One zone's upgrade buildings — `0xEB96D0`, draws and all. */
 export function placeZoneUpgradeBuildings(input: UpgradeBuildingsInput, rng: DrawSource): PlacedUpgradeBuilding[] {
-  const { size, grid, border, occupancy, zoneIndex, list } = input;
+  const { size, grid, border, occupancy, zoneIndex, caps } = input;
   const candidates = input.tiles ?? zoneTiles(size, grid, zoneIndex);
 
   const mult = input.multipliers[input.multIndex] ?? 1;
   const budget = Math.trunc((candidates.length * Math.trunc(input.density * mult)) / 10000);
 
   const placed: PlacedUpgradeBuilding[] = [];
+  // A template's ceilings (ours) strike entries the way `placePriceList`'s do.
+  const within = (l: PricedEntry[]): PricedEntry[] =>
+    caps ? l.filter((e) => (caps.get(capKey(e.href)) ?? Number.POSITIVE_INFINITY) > 0) : l;
+  let list = within(input.list);
   if (list.length === 0) return placed;
 
   let spent = 0;
-  while (list[0]!.value + spent <= budget) {
+  while (list.length && list[0]!.value + spent <= budget) {
     // The affordable LEADING prefix — the scan breaks at the first element
     // over budget, so the shipped ascending order is load-bearing.
     let prefix = 0;
@@ -187,6 +194,8 @@ export function placeZoneUpgradeBuildings(input: UpgradeBuildingsInput, rng: Dra
 
     placed.push({ type: entry.href, name, x: tile[0], y: tile[1], q, guard });
     spent += entry.value;
+    spendCap(caps, entry.href);
+    list = within(list);
   }
   return placed;
 }
