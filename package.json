@@ -121,6 +121,7 @@
     "rmg-diff-draws": "node tools/rmg-diff-draws.ts",
     "rmg-decode-draws": "node tools/rmg-decode-draws.ts",
     "rmg-reference": "node tools/rmg-reference.ts",
+    "rmg-random-suite": "node tools/rmg-random-suite.ts",
     "rmg-map": "node tools/reverse/rmg-map.ts",
     "test-rmg-map": "node tools/reverse/rmg-map.ts --check",
     "test-doc-addresses": "node tools/test-doc-addresses.ts",

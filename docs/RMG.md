@@ -5910,6 +5910,10 @@ npm run test-rmg-heights   # the height plane: all three references' floor-0 pla
 npm run test-rmg-emit      # the map.xdb emitter: all three documents, byte for byte
 npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
 
+npm run rmg-random-suite -- --game <dir>                 # 3 orders a size, every input drawn; engine, then port
+npm run rmg-random-suite -- --game <dir> --suite-seed 42 # the same orders again
+npm run rmg-random-suite -- --game <dir> --dry           # the orders alone
+
 node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste
 
 npm run rmg-decode-draws -- --step mines   # the draws, with the objects they made
@@ -5918,6 +5922,20 @@ npm run rmg-decode-draws -- --from 18491 --to 18566 --count
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals
 ```
+
+**The random suite is the check the matrix cannot be.** Every block of the
+matrix was designed — three fixed seeds, one axis moved at a time — so
+`rmg-random-suite` draws everything instead: for each size but IMPOSSIBLE
+(the engine's own generator aborts on some of those), a coin for the
+underground, a template the dialog would OFFER for that size and floor count
+(`0xCF7B58`: the size's units inside `[MinMapSize, MaxMapSize]`, doubled with
+an underground and `MaxMapSize >= 10`), players inside the template's range,
+water as the checkbox records it or none, the monster level, both
+multipliers and both checkboxes. The engine makes them through `rmg-batch`
+alone, the port replays them after, and the run keeps everything in
+`_tmp/to_check_maps_new/<stamp>/`: `orders.txt` with the suite seed in its
+header (so the run repeats), a slot a map, `diff/<n>.txt`, and `diff.txt`
+with the verdict. Each run is new orders; that is the point.
 
 All of them need the **unwrapped** executable (`npm run unwrap-exe`); the
 shipped one ships its code encrypted and disassembles to noise. Where the game
