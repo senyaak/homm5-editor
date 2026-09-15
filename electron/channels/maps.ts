@@ -16,7 +16,7 @@ import { assetRootFor, historyState, state, syncMapTiles } from '#electron/state
 import type { Session } from '#electron/state.ts';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '#src/map/map-source.ts';
 import type { MapSource } from '#src/map/map-source.ts';
 import { ensureModDir, modDir, modFile } from '#src/game/mod-paths.ts';
@@ -95,9 +95,31 @@ function workspaceFor(archivePath: string): string {
  * is ours alone and is thrown away whole, while a shared root holds other maps
  * (and everything else) and only the map's own folder may go.
  */
-function unpackRoot(archive: string, key = archive): { root: string; shared: boolean } {
+export function unpackRoot(archive: string, key = archive): { root: string; shared: boolean } {
   const to = process.env.HOMM5_UNPACK_TO;
   return to ? { root: resolve(to), shared: true } : { root: workspaceFor(key), shared: false };
+}
+
+/**
+ * A folder of map files becomes a map of ours: a manifest, the `.h5m` in
+ * `<game>/H5E/`, and the manifest pointed back at that archive so Save writes
+ * into it. Shared by New Map and the random map generator, which both write
+ * a folder first and then need it to be a map the editor opened from an
+ * archive, like any other.
+ */
+export function landAsArchive(g: string, mapDir: string, archive: string, prefix: string): void {
+  initProject(mapDir); // a manifest, so status/pack work on it immediately
+  ensureModDir(g);
+  packProject(mapDir, archive, { prefix });
+  // From here it is a map opened from an archive, like any other, and Save
+  // already knows what that means.
+  const m = readManifest(mapDir);
+  m.source = { path: archive, hash: createHash('sha1').update(readFileSync(archive)).digest('hex') };
+  // Written down rather than worked out from where the folder happens to be:
+  // that folder moves with HOMM5_UNPACK_TO, and the path inside the archive
+  // must not.
+  m.archivePrefix = prefix;
+  writeManifest(mapDir, m);
 }
 
 /** Is this workspace still the unpacking of THIS archive, as it stands now? */
@@ -107,6 +129,21 @@ function sourceMatches(dir: string, archivePath: string): boolean {
     if (!src) return false;
     return src.hash === createHash('sha1').update(readFileSync(archivePath)).digest('hex');
   } catch { return false; }
+}
+
+/**
+ * What to call the open map. The folder's name, which is the map's for every
+ * map of ours — except one generated: the game's own generator and ours both
+ * put a map under `Maps/RMG/<guid>`, and a title that reads
+ * `3469EF88-1320-…` names nothing. A map opened from a `.h5m` of ours is
+ * called what the file is called, which is what the picker showed to open it.
+ */
+function displayName(mapDir: string): string {
+  try {
+    const src = readManifest(mapDir).source?.path;
+    if (src && /\.h5m$/i.test(src)) return basename(src, extname(src));
+  } catch { /* no manifest — a folder opened as it stands */ }
+  return basename(mapDir);
 }
 
 /** The folder holding the map inside an unpacked workspace, at any depth. */
@@ -246,18 +283,7 @@ export function registerMaps(): void {
     });
     mkdirSync(mapDir, { recursive: true });
     for (const f of files) writeFileSync(join(mapDir, f.path), f.data);
-    initProject(mapDir); // a manifest, so status/pack work on it immediately
-    ensureModDir(g);
-    packProject(mapDir, archive, { prefix });
-    // From here it is a map opened from an archive, like any other, and Save
-    // already knows what that means.
-    const m = readManifest(mapDir);
-    m.source = { path: archive, hash: createHash('sha1').update(readFileSync(archive)).digest('hex') };
-    // Written down rather than worked out from where the folder happens to be:
-    // that folder moves with HOMM5_UNPACK_TO, and the path inside the archive
-    // must not.
-    m.archivePrefix = prefix;
-    writeManifest(mapDir, m);
+    landAsArchive(g, mapDir, archive, prefix);
     console.log(`[new] ${archive} · ${p.tiles}×${p.tiles}${p.twoLevel ? ' two-level' : ''} · ${files.length} files`);
     return { mapPath: join(mapDir, 'map.xdb'), mapDir, archive };
   });
@@ -388,7 +414,7 @@ export function registerMaps(): void {
       scene: packed.payload,
       textures: packed.textures,
       info: {
-        name: basename(mapDir),
+        name: displayName(mapDir),
         mapPath,
         tileX: map.tileX, tileY: map.tileY,
         counts: map.typeCounts(),

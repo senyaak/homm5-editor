@@ -67,6 +67,10 @@ export const MADE = {
   PAINT_BURST: 'e2e Paint Burst',
   PLACE_OBJECTS: 'e2e Place Objects',
   PLACE_PRECISELY: 'e2e Place Precisely',
+  /** rmg.spec generates one through the Random Map dialog; its folder is
+   *  `Maps/RMG/<guid>` like the game's own, so the spec clears it by the name
+   *  inside map.xdb rather than by path. */
+  RANDOM_MAP: 'e2e Random Map',
   REACH: 'e2e Reach',
   RECONSTRUCT_C1M1: 'e2e Reconstruct C1M1',
   SCRIPT_EDITOR: 'e2e Script Editor',

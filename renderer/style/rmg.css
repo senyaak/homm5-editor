@@ -1,0 +1,12 @@
+/* Random Map dialog: the New Map chrome, a few more rows */
+#rmg { padding: 0; border: 0; background: transparent; max-width: 92vw; overflow: visible; }
+#rmg::backdrop { background: #0d1014cc; }
+.rmg-card { width: min(520px, 92vw); }
+.rmg-card .on-row span { flex: 0 0 82px; }
+.rmg-card .on-row select { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d;
+  color: #c9d1d9; padding: 4px 6px; border-radius: 4px; font: inherit; }
+.rmg-card .on-row select:focus { outline: none; border-color: #1f6feb; }
+.rmg-two { display: flex; align-items: center; gap: 16px; }
+.rmg-two .on-row { flex: 1; }
+.rmg-checks { display: flex; gap: 16px; flex-wrap: wrap; }
+.rmg-busy { font-size: 12px; color: #d29922; }

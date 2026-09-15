@@ -127,6 +127,69 @@ export interface NewMapResult {
   archive: string;
 }
 
+// --- the random map generator ---------------------------------------------
+//
+// The game's own generator, ported (src/rmg, docs/RMG.md) and held byte for
+// byte to the maps the engine writes. The dialog is the game's dialog: the
+// same lists, in the same units, read from the install rather than typed here.
+
+/** What the generator's dialog offers — `rmg:choices`. */
+export interface RmgChoicesResult {
+  /** `MapSize` names by index, with the side in tiles each stands for. */
+  sizes: { name: string; tiles: number }[];
+  water: string[];
+  monsterLevels: string[];
+  resourceMultipliers: string[];
+  expMultipliers: string[];
+  /** Every template the install mounts, with the ranges the filter reads. */
+  templates: RmgTemplateEntry[];
+}
+
+export interface RmgTemplateEntry {
+  /** The file name without `.xdb` — what an order names. */
+  file: string;
+  /** The document's own `<Name>`. */
+  name: string;
+  minPlayers: number;
+  maxPlayers: number;
+  minMapSize: number;
+  maxMapSize: number;
+}
+
+/** Payload of `rmg:templates` — which templates the dialog would offer for this size and floor count. */
+export interface RmgTemplatesPayload {
+  sizeIndex: number;
+  underground: boolean;
+}
+
+/** Payload of `rmg:generate` — an order in the dialog's own units (see `RmgOrder` in src/rmg/index.ts). */
+export interface RmgGeneratePayload {
+  mapName: string;
+  /** Left out: the generator draws one, the way the game's dialog does. */
+  seed?: number;
+  template: string;
+  sizeIndex: number;
+  underground: boolean;
+  water: number;
+  players: number;
+  monsterLevel: number;
+  resourceMultiplier: number;
+  expMultiplier: number;
+  grail: boolean;
+  randomTowns: boolean;
+  minimap: boolean;
+}
+
+/** Result of `rmg:generate` — the map, landed and packed like a new one, plus what the run cost. */
+export interface RmgGenerateResult extends NewMapResult {
+  seed: number;
+  draws: number;
+  objects: number;
+  /** Where the generator ran: its own process, or this one when no child could be forked. */
+  where: 'child' | 'main';
+  ms: number;
+}
+
 /** Result of `map:load`. */
 /** Which scene to open — its folder, as the game addresses it, and where from. */
 export interface SceneOpenPayload {
@@ -1873,6 +1936,12 @@ export interface EditorApi {
   listMaps(): Promise<MapsListResult>;
   openMapDialog(): Promise<OpenMapDialogResult>;
   newMap(p: NewMapPayload): Promise<NewMapResult>;
+  /** The generator's lists — sizes, water, monster levels, multipliers, templates. */
+  rmgChoices(): Promise<RmgChoicesResult>;
+  /** The templates the game's dialog would offer for a size and floor count. */
+  rmgTemplates(p: RmgTemplatesPayload): Promise<RmgTemplateEntry[]>;
+  /** Generate a map from an order and land it as a new map, packed and ready to open. */
+  rmgGenerate(p: RmgGeneratePayload): Promise<RmgGenerateResult>;
   /** `stock` takes ONE map out of the game's own archives, which hold many. */
   openArchive(path: string, inner?: string, stock?: boolean): Promise<OpenArchiveResult>;
   loadMap(path: string): Promise<MapLoadResult>;

@@ -28,6 +28,7 @@ import { registerReach } from '#electron/channels/reach.ts';
 import { registerHistory } from '#electron/channels/history.ts';
 import { registerLoc } from '#electron/channels/loc.ts';
 import { registerMaps } from '#electron/channels/maps.ts';
+import { registerRmg } from '#electron/channels/rmg.ts';
 import { registerModArtifacts } from '#electron/channels/mods-artifacts.ts';
 import { registerModBuildings } from '#electron/channels/mods-buildings.ts';
 import { registerModCreatures } from '#electron/channels/mods-creatures.ts';
@@ -149,6 +150,7 @@ function createWindow(): void {
 // "no handler registered" with nothing anywhere saying why.
 registerApp();
 registerMaps();
+registerRmg();
 registerScene();
 registerDialogScenes();
 registerObjects();

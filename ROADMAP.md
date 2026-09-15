@@ -1080,6 +1080,50 @@ Round-trip (load→save→identical) is the cheap complementary net.
 
 ---
 
+## Phase 10 — The random map generator
+
+The game's own generator, ported to TypeScript and held byte for byte to the
+maps the engine writes: same order and seed, same archive (`docs/RMG.md` —
+the reading, the corpus, the matrix, the random suite). Nothing in it is
+fitted and nothing is refused: every table comes out of the game's executable
+or its data, so a mod's templates, creatures and artifacts reach it.
+
+- [x] **The port** (`src/rmg/`): every phase read out of `H5_Game.exe`, the
+      corpus of 896 engine-made maps byte-identical, a random suite
+      (`npm run rmg-random-suite`) that draws every input anew each run ✅
+- [x] **One door for the application** (`src/rmg/index.ts`): the dialog's
+      lists from the install, the templates the game's dialog would offer
+      (its filter at `0xCF7B58`, read), an order in the dialog's units, a
+      `.h5m` out ✅
+- [x] **Random map… in the editor**: the game's dialog field for field —
+      size, two levels, a template list that narrows with them, players in
+      the template's range, water, monster level, both multipliers, random
+      towns, grail, minimap, a seed or a drawn one. Runs in a child process
+      (`electron/rmg-worker.ts`), lands like New Map (`<game>/H5E/<name>.h5m`,
+      opened from the archive). `e2e/rmg.spec.ts` ✅
+
+**Before it can be released — three things, in a chat of their own:**
+
+- [ ] **A visual template editor** (HotA's for Heroes III is the model): the
+      zones as circles with sizes and races, the connections between them with
+      their guard strengths, the template's size and player ranges — written
+      back as `RMG/Templates/<name>.xdb`, which the dialog then offers. What
+      the engine reads of a template and what it ignores is already written
+      down (`docs/RMG.md`, "Which fields the engine actually reads") ⬜
+- [ ] **Generate only from a whitelist.** A second dialog inside the
+      generator's: what the generator may place — creatures, dwellings,
+      artifacts, buildings — so a thing that lives as a mod (the sharpshooter,
+      say) can be kept off a map, or made the only one. And let a TEMPLATE
+      carry its own lists, for the whole map and per zone (HotA has something
+      of the kind; to be read before it is designed). The generator's pools
+      are all read from data now, so a list is a filter on those pools; the
+      one question is what the filter does to the draw stream, which decides
+      whether a whitelisted map is still the engine's map ⬜
+- [ ] **A mirrored "Outcast" template**, the way HotA's is: two players, the
+      same start, the same road, the same guards — and for a mirrored game the
+      same start hero for both and the map's hero list cut down to those two
+      (StartHero is a map property, not the generator's; noted 13.09) ⬜
+
 ## Open research questions
 
 - 🔬 **Per-submesh materials**: when a model has more than one

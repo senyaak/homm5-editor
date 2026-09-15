@@ -135,9 +135,11 @@ export interface GeneratedMap {
   objects: number;
 }
 
-// CoCreateGuid's shape, which is what the engine stamps into the map and
-// names the folder with. Ours is random the same way; nothing reads it back.
-function newGuid(): string {
+/**
+ * CoCreateGuid's shape, which is what the engine stamps into the map and
+ * names the folder with. Ours is random the same way; nothing reads it back.
+ */
+export function newGuid(): string {
   const hex = (n: number): string => Array.from({ length: n },
     () => '0123456789ABCDEF'[Math.floor(Math.random() * 16)]).join('');
   return `${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}`;

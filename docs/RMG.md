@@ -7364,3 +7364,45 @@ instruction boundary in the editor's larger `.text`; its ratchet is 5.
   found for in either build. The game is the same three instructions
   (`0xA51570`, 0xA519AC). One draw per world, then one per RANDOM slot;
   `worldPlayerRaces` had the count and now has the cause.
+
+## The button (15.09)
+
+**Random map…** sits beside New map… in the Map menu and on the map list.
+The dialog is the game's dialog, field for field, and every list in it is
+read from the install through the module's door (`rmg:choices`,
+`rmg:templates` in `electron/channels/rmg.ts`): the seven sizes with their
+tile counts, the five monster levels, the five rungs of each multiplier, and
+the templates — narrowed to what the game's own dialog would offer for the
+size and the floor count (`templatesOffered`, the filter at `0xCF7B58`), so
+the players field follows the template's range and a mod's template is
+offered beside the shipped ones. Water is the checkbox the game has (it
+records `WATER_ISLAND_MAP`); random towns, the grail and the minimap are the
+other three; the seed is typed or left blank for a drawn one.
+
+**A generation is a job in a child process** (`src/rmg/job.ts`,
+`electron/rmg-worker.ts`, forked through `utilityProcess` the way the scene
+builder is): the job carries paths — the game folder, the data root, the
+mount cache, the executable, the folder to write into — and the child mounts
+`<game>/H5E/` by the engine's rule, generates, and writes the sixteen files
+where it was told. A child that cannot be forked (`HOMM5_RMG_INLINE=1` forces
+it) runs the same job in the main process, slower to everyone and correct.
+Then the map LANDS the way a New Map does (`landAsArchive` in
+`electron/channels/maps.ts`, factored out of `map:new`): a manifest, the
+`.h5m` in `<game>/H5E/<name>.h5m`, the manifest pointed back at it, and the
+map opened from that archive like any other. Its folder inside the archive is
+`Maps/RMG/<guid>`, which is where the game's generator puts every map it
+makes — and which is why a map opened from a `.h5m` of ours is now titled
+after the FILE: the folder's name, for a generated map, is the GUID.
+
+`e2e/rmg.spec.ts` drives it: the lists come from the install, the template
+list narrows with the size and the floors, a tiny map on the reference
+template and seed comes back with that order in its `sRMGProps`, the run was
+the child's (the main process's log says so), and a taken name is refused
+with the dialog left open. The sandbox install it makes for itself
+(`_tmp/e2e-rmg`) holds only the unwrapped executable: the generator needs
+neither the extension nor a mod.
+
+**What the button does NOT do yet** is in ROADMAP.md, Phase 10: a visual
+template editor, a whitelist of what the generator may place (a dialog inside
+this one, and lists a template can carry for the map and per zone), and a
+mirrored two-player template with one start hero for both.
