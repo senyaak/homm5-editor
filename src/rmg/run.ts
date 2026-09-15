@@ -39,7 +39,7 @@ import {
 } from './statics-one-tile.ts';
 import { markPassability } from './passability.ts';
 import type { LakePaint } from './terrain.ts';
-import { buildTreasureBlocks, fillTreasureBlocks } from './treasure-blocks.ts';
+import { buildTreasureBlocks, fillTreasureBlocks, valueBlocksByRanges } from './treasure-blocks.ts';
 import type { ArtifactEntry } from './treasure-blocks.ts';
 import { RACE } from './load-template.ts';
 import { readTownShared } from './town-data.ts';
@@ -630,6 +630,19 @@ export function runFull(
       totalValue: tz.treasureBlocksTotalValue,
       distBetween: c.params.distBetweenTreasureBlocks,
     }, c.rng);
+    // OURS: a template's `<TreasureBlocks>` ranges overwrite the split of the
+    // total — the seats stay the engine's. A range the seats ran out for, or
+    // one rich beyond any artifact's window, is a warning, not a refusal.
+    if (tz.treasureBlocks.length) {
+      const short = valueBlocksByRanges(blocks, tz.treasureBlocks, hasTown, c.rng);
+      for (const s of short) {
+        c.warnings.push(`zone ${tz.index}: treasure blocks ${s.range.min}..${s.range.max} asked ${s.range.count}, seats for ${s.got}`);
+      }
+      const dearest = Math.max(...artifacts.map((a) => Math.trunc(a.cost / 5) * 7));
+      for (const r of tz.treasureBlocks) {
+        if (r.max >= dearest) c.warnings.push(`zone ${tz.index}: a treasure block above ${dearest - 1} admits no artifact — ${r.min}..${r.max} may come as piles alone`);
+      }
+    }
     step(`zone ${tz.index} blocks grown`);
     const result = fillTreasureBlocks({
       size: c.size, occupancy: fl.occ, blocks, artifacts,

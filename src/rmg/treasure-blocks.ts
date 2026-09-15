@@ -40,6 +40,7 @@ import { mintName, setMonster } from './armies.ts';
 import type { DrawSource, Guard, GuardTables } from './armies.ts';
 import { EIGHT } from './placement.ts';
 import type { Tile } from './placement.ts';
+import type { RmgTreasureRange } from './template.ts';
 
 const fl = Math.fround;
 
@@ -195,6 +196,37 @@ export function buildTreasureBlocks(input: BuildBlocksInput, rng: DrawSource): T
     }
   }
   return blocks;
+}
+
+/**
+ * OURS: the blocks' values from a template's `<TreasureBlocks>` ranges
+ * instead of the engine's split of one total. The seats are the engine's —
+ * `buildTreasureBlocks` found them and split the total over them, and that
+ * split is overwritten here. Farthest from the town first (a townless zone
+ * keeps its seat order), the richest range first: each range takes `count`
+ * seats and gives each a draw in `[min, max]`; seats no range reaches stay
+ * at 0 and are skipped by the fill, being under `MIN_BLOCK_VALUE`. A range
+ * the seats ran out for is reported, for the run's warnings.
+ */
+export function valueBlocksByRanges(
+  blocks: TreasureBlock[], ranges: readonly RmgTreasureRange[], hasTown: boolean, rng: DrawSource,
+): Array<{ range: RmgTreasureRange; got: number }> {
+  const seats = hasTown ? [...blocks].sort((a, b) => b.distToTown - a.distToTown) : [...blocks];
+  for (const b of seats) b.value = 0;
+  const richestFirst = [...ranges].sort((a, b) => b.max - a.max || b.min - a.min);
+  const short: Array<{ range: RmgTreasureRange; got: number }> = [];
+  let next = 0;
+  for (const range of richestFirst) {
+    let got = 0;
+    while (got < range.count && next < seats.length) {
+      const span = Math.max(0, range.max - range.min);
+      seats[next]!.value = range.min + (span ? rng.below(span + 1) : 0);
+      next++;
+      got++;
+    }
+    if (got < range.count) short.push({ range, got });
+  }
+  return short;
 }
 
 /** An artifact as the distributor's pool holds it: the id order, and a cost. */

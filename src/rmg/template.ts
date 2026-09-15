@@ -87,6 +87,27 @@ export interface RmgZone {
    * connection's `GuardStrenght`) nor the town's (`TownGuardStrenght`).
    */
   guardMultiplier: number;
+  /**
+   * OURS (`.h5et`): `<TreasureBlocks>` — the blocks' values as ranges with
+   * counts, Heroes III's `Low / High / Density`, instead of one total split
+   * by distance. Empty for the game's templates, and then the total rules.
+   * See `RmgTreasureRange` and `valueBlocksByRanges`.
+   */
+  treasureBlocks: RmgTreasureRange[];
+}
+
+/**
+ * One line of a zone's `<TreasureBlocks>`: `Count` blocks worth a draw in
+ * `[Min, Max]` each. The richest range takes the seats farthest from the
+ * town. A block's guard and artifact follow from its value the engine's
+ * way — 2.5× of power, the artifact whose cost fits the window — so the
+ * range is what decides between relics and trinkets: at 15000..30000 only
+ * the dear ones fit; above about 39000 nothing does, and the block is piles.
+ */
+export interface RmgTreasureRange {
+  min: number;
+  max: number;
+  count: number;
 }
 
 /**
@@ -174,6 +195,13 @@ function items(el: XmlElement, name: string, length = TIERS): number[] {
   return out;
 }
 
+/** `<TreasureBlocks><Item><Min>15000</Min><Max>30000</Max><Count>4</Count></Item>…</TreasureBlocks>`, ours. */
+function treasureRanges(z: XmlElement): RmgTreasureRange[] {
+  const holder = find(z, 'TreasureBlocks');
+  if (!holder) return [];
+  return findAll(holder, 'Item').map((r) => ({ min: int(r, 'Min'), max: int(r, 'Max'), count: int(r, 'Count') }));
+}
+
 /** `<Objects><Item><Href>…</Href><Min>1</Min><Max>1</Max></Item>…</Objects>`, ours. */
 function zoneObjects(z: XmlElement): RmgZoneObject[] {
   const holder = find(z, 'Objects');
@@ -230,6 +258,7 @@ export function parseTemplate(xml: string): RmgTemplate {
       buffPoints: int(z, 'BuffPoints'),
       objects: zoneObjects(z),
       guardMultiplier: childText(z, 'GuardMultiplier') === '' ? 1 : Number.parseFloat(childText(z, 'GuardMultiplier')) || 0,
+      treasureBlocks: treasureRanges(z),
     }));
 
   const connectionsEl = find(t, 'Connections');

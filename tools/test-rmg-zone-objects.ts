@@ -126,7 +126,11 @@ if (!game) {
   // start zones at 0.5; a variant at 1 everywhere is the control — the same
   // seed, the same mines and buildings, the armies' power the only
   // difference. The powers go through the engine's own SetMonster ladder,
-  // so what is compared is what the ladder answers with: creatures.
+  // so what is compared is the ladder's answer weighed the way it weighs
+  // it — creatures × each creature's power — and NOT a head count, which
+  // is not monotone in the power: a dearer tier comes in fewer heads, and
+  // a head count once passed this check by luck and failed it on the
+  // next template change.
   console.log('the guard multiplier, and the warning');
   {
     const flat = jebusXml
@@ -145,7 +149,7 @@ if (!game) {
       let n = 0;
       for (const o of run.objects) {
         if (!o.army || grid[o.y]![o.x] !== zone) continue;
-        for (const st of o.army.stacks) n += st.amount;
+        for (const st of o.army.stacks) n += st.amount * (run.c.tables.powerByName.get(st.creature) ?? 0);
       }
       return n;
     };
@@ -153,14 +157,14 @@ if (!game) {
       strong.c.template.zones.map((z) => z.guardMultiplier).join(',') === '2,0.5,0.5,0.5,0.5');
     check('one without them reads 1 everywhere', flatRun.c.template.zones.every((z) => z.guardMultiplier === 1));
     check('the middle\'s armies are bigger at 2 than at 1', creatures(strong, 1) > creatures(flatRun, 1),
-      `${creatures(strong, 1)} vs ${creatures(flatRun, 1)} creatures`);
+      `${creatures(strong, 1)} vs ${creatures(flatRun, 1)} of army power`);
     check('a start zone\'s are smaller at 0.5 than at 1', creatures(strong, 2) < creatures(flatRun, 2),
-      `${creatures(strong, 2)} vs ${creatures(flatRun, 2)} creatures`);
+      `${creatures(strong, 2)} vs ${creatures(flatRun, 2)} of army power`);
     check('a clean run warns of nothing', strong.c.warnings.length === 0, strong.c.warnings.join('; '));
     const many = runFull(install, { ...order, template: 'Jebus Thousand' });
     const utopias = countBy(many, UTOPIA).get(1) ?? 0;
     check('a thousand Utopias asked: what fits is placed, the rest is a warning, not a refusal',
-      utopias > 1 && utopias < 1000 && many.c.warnings.length === 1 && many.c.warnings[0]!.includes(`placed ${utopias}`),
+      utopias > 1 && utopias < 1000 && many.c.warnings.some((w) => w.includes(`Dragon_Utopia asked 1000, placed ${utopias}`)),
       `${utopias} placed; ${many.c.warnings.join('; ')}`);
   }
 }

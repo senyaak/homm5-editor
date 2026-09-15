@@ -3815,6 +3815,40 @@ before the shared candidate filter runs dry; twenty-two other buildings
 still fit after them). The order the engine would have lifted the size of
 goes there too, where it used to be a `console.warn` nobody read.
 
+### A zone's treasure blocks by ranges
+
+The engine values a zone's treasure blocks by splitting `TreasureBlocksTotalValue`
+over the seats it found along the roads — by distance from the town, far
+rich — and the block's value then decides everything: its guard (2.5× of
+power) and its artifact, whose cost has to fit `cost/5 + 500 < value <
+cost·7/5`. So one total cannot say "relics here": forty thousand over
+twenty seats is two thousand a block, which admits costs of 3000..7000
+and nothing dearer (measured over the 89-artifact pool: a block of 15000
+admits 11000..28000, one of 30000 admits two artifacts, one of 39200 or
+more none at all). A Heroes III zone says `Low / High / Density` instead,
+and so does ours:
+
+```xml
+<TreasureBlocks>
+  <Item><Min>15000</Min><Max>28000</Max><Count>3</Count></Item>
+  <Item><Min>6000</Min><Max>10000</Max><Count>4</Count></Item>
+  <Item><Min>2500</Min><Max>4000</Max><Count>6</Count></Item>
+</TreasureBlocks>
+```
+
+The seats stay the engine's (`buildTreasureBlocks`); `valueBlocksByRanges`
+then overwrites the split — the total is not read when ranges are present.
+Seats farthest from the town first (a townless zone in seat order), the
+richest range first, each range takes `Count` seats and gives each a draw
+in `[Min, Max]`; seats no range reaches stay at 0 and the fill skips them
+as under 600. `Count` rather than HotA's density because a count is what
+the author means and what the run can report on: a range the seats ran out
+for, and a range above the dearest artifact's window, are warnings
+(`test-rmg-treasure-ranges`: a hundred relic blocks asked gets the
+eighteen seats there are, all relics, and three lines saying so). On the
+shipped Jebus the middle's three dearest artifacts come out at 20000+ on
+both seeds tried, its start zones on their split totals never above 6400.
+
 What the Voronoi layout does NOT yet read, and HotA's templates do — noted
 for the template editor, not for now: a connection's TYPE (`teleport`
 against `ground` — ours would be a field on the connection, since the

@@ -5,8 +5,9 @@
      zone goes; the layout below reads the graph and puts the players at the
      edges and the treasure between them. An .h5et is our template format:
      the game's RMGTemplate plus the fields of our own the game's serialiser
-     does not know (ZoneLayout on the template; Objects and GuardMultiplier on
-     a zone: the middle guards at twice the power, the start zones at half). -->
+     does not know (ZoneLayout on the template; Objects, GuardMultiplier and
+     TreasureBlocks on a zone: the middle guards at twice the power and holds
+     the relics, the start zones guard at half). -->
 <RMGTemplate>
 	<NameFileRef href=""/>
 	<DescriptionFileRef href=""/>
@@ -52,6 +53,14 @@
 			<ResourceBuildingsDensity>80</ResourceBuildingsDensity>
 			<TreasureBuildingPoints>10</TreasureBuildingPoints>
 			<TreasureBlocksTotalValue>40000</TreasureBlocksTotalValue>
+			<!-- Ours: the blocks' values as ranges with counts, richest farthest from
+			     the town; the total above is then not read. 15000+ is where the
+			     relics live (the artifact's cost window follows the block's value). -->
+			<TreasureBlocks>
+				<Item><Min>15000</Min><Max>28000</Max><Count>3</Count></Item>
+				<Item><Min>6000</Min><Max>10000</Max><Count>4</Count></Item>
+				<Item><Min>2500</Min><Max>4000</Max><Count>6</Count></Item>
+			</TreasureBlocks>
 			<DenOfThieves>0</DenOfThieves>
 			<RedwoodObservatoryDensity>0</RedwoodObservatoryDensity>
 			<BuffPoints>0</BuffPoints>

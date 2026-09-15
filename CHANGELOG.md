@@ -67,7 +67,10 @@ Utopia and no second. And a zone can guard itself harder or softer
 (`<GuardMultiplier>`, on top of the map's monster level): Jebus's middle
 at twice, its start zones at half. A template asking for more than fits
 is not refused: the map is made with what fits, and the HUD line says
-what was left out.
+what was left out. And a zone's treasure blocks can be valued by ranges
+with counts, the way a Heroes III zone's are (`<TreasureBlocks>`), which
+is the lever between relics and trinkets: Jebus's middle holds three
+blocks of the relic range, its start zones none.
 
 **The generator reads the install the game reads.** Every document the port
 opens — the preset table, the templates, the tiles, every shared building,
