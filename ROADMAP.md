@@ -1226,7 +1226,7 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       (`Dwellings` runs none to seven) and `Shipyard` is written or not.
       The model then split (16.09): `template-game.ts` the game's three
       records with a described table of every field, `template.ts` ours
-      extending them, the dead fields in a `carried` bag off the records;
+      extending them, the dead fields in a second interface off the record types;
       the reader, the writer and the panel all walk the tables ✅
 - [ ] **Generate only from a whitelist.** A second dialog inside the
       generator's: what the generator may place — creatures, dwellings,

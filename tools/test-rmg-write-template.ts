@@ -65,15 +65,24 @@ const plain = readTemplate(join(dir, 'S1P2Z2M1.xdb'));
 check('S1P2Z2M1 reads Shipyard as absent', plain.zones.every((z) => z.shipyard === null));
 check('and names its text file', plain.nameFileRef === 'S1P2Z2M1.txt');
 
-// The dead fields ride in each record's `carried` bag and nowhere else —
-// a phase or a panel walking a record's keys never meets one.
-const dead = ['canBeWater', 'denOfThieves', 'redwoodObservatoryDensity', 'buffPoints', 'twoWay', 'guarded', 'wide', 'graalOnMap', 'underground'];
-const keysOf = (o: object): string[] => Object.keys(o);
-check('no dead field sits on a record', [plain, ...plain.zones, ...plain.connections].every((r) => !keysOf(r).some((k) => dead.includes(k))));
-check('the zone\'s four ride in carried', plain.zones.every((z) => keysOf(z.carried).sort().join(',') === 'buffPoints,canBeWater,denOfThieves,redwoodObservatoryDensity'));
-check('the connection\'s three', plain.connections.every((c) => keysOf(c.carried).sort().join(',') === 'guarded,twoWay,wide'));
-check('the template\'s two', keysOf(plain.carried).sort().join(',') === 'graalOnMap,underground');
-check('and they are read, not defaulted — TwoWay is true in the file', plain.connections.every((c) => c.carried.twoWay === true));
+// The dead fields are on the object a file is read into — not in its type
+// (`GameZoneDead` is a second interface) — so the writer finds them and the
+// file comes back; a record without them, one the editor made, is written
+// with the shipped files' values.
+const asDead = (o: object): Record<string, unknown> => o as Record<string, unknown>;
+check('a read connection holds TwoWay, as the file wrote it', plain.connections.every((c) => asDead(c).twoWay === true));
+check('and a read zone holds its four', plain.zones.every((z) => ['canBeWater', 'denOfThieves', 'redwoodObservatoryDensity', 'buffPoints'].every((k) => k in z)));
+{
+  const bare = { ...plain, zones: [{ ...plain.zones[0]! }], connections: [{ ...plain.connections[0]! }] };
+  for (const k of ['canBeWater', 'denOfThieves', 'redwoodObservatoryDensity', 'buffPoints']) delete asDead(bare.zones[0]!)[k];
+  for (const k of ['twoWay', 'guarded', 'wide']) delete asDead(bare.connections[0]!)[k];
+  for (const k of ['graalOnMap', 'underground']) delete asDead(bare)[k];
+  const written = writeTemplate(bare);
+  check('a record without them is written with the shipped values',
+    written.includes('<CanBeWater>false</CanBeWater>') && written.includes('<DenOfThieves>0</DenOfThieves>')
+    && written.includes('<TwoWay>true</TwoWay>') && written.includes('<Guarded>true</Guarded>') && written.includes('<Wide>false</Wide>')
+    && written.includes('<GraalOnMap>false</GraalOnMap>') && written.includes('<Underground>false</Underground>'));
+}
 
 console.log('\nJebus Cross, by meaning');
 const jebusPath = join(import.meta.dirname, '..', 'assets', 'rmg', 'RMG', 'Templates', 'Jebus Cross.h5et');

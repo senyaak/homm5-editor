@@ -18,11 +18,15 @@
 // EIGHT OF THESE FIELDS FEED NOTHING, and they are marked `dead` rather than
 // dropped: the format carries them, so a reader that skipped them would be a
 // reader of a different format, and a writer that dropped them would write a
-// file the game's parser has never seen. They are kept OFF the records
-// though, in a `carried` bag of each (`GameZoneCarried` and its two
-// siblings), so that a phase or a panel walking a record's keys never meets
-// one and nothing reads them by mistake. `GraalOnMap` and `Underground` are
-// read by no instruction in either executable; `RedwoodObservatoryDensity`
+// file the game's parser has never seen. They are kept OFF the record TYPES
+// though: each record has a second interface for them (`GameZoneDead` and
+// its two siblings), the reader puts them on the same object and hands it
+// back as the record type, and the writer takes them as optional with the
+// values the shipped files write — so `keyof GameZone` names only what
+// something reads, a phase or a panel walking a record's keys never meets
+// one, and a zone made in the editor need not spell them out at all.
+// `GraalOnMap` and `Underground` are read by no instruction in either
+// executable; `RedwoodObservatoryDensity`
 // and `DenOfThieves` are handed to the step that places those objects, which
 // never looks at them and decides both from the zone's tile count and a roll;
 // `CanBeWater` is read by nothing and was probed on an island map to no
@@ -71,8 +75,8 @@ export interface FieldSpec {
   doc: string;
   /**
    * Read by no instruction of the engine; carried because the format does.
-   * A dead field lives in the record's `carried` bag, not on the record —
-   * the reader puts it there and the writer takes it from there.
+   * A dead field is in the record's `…Dead` interface, not the record's own,
+   * and has a `default`: what the writer writes for a record that has none.
    */
   dead?: true;
   /**
@@ -82,8 +86,10 @@ export interface FieldSpec {
    */
   optional?: true;
   /**
-   * OURS only: what an absent tag reads as, and the value the writer leaves
+   * OURS: what an absent tag reads as, and the value the writer leaves
    * unwritten — so a template with nothing of ours writes as the game's file.
+   * DEAD: what an absent tag reads as, and what the writer writes for a
+   * record without the field (one the editor made) — the shipped files' value.
    */
   default?: number | boolean | string;
   /** The value's bounds, clamped on reading (`LayoutJitter` is 0..1). */
@@ -96,9 +102,6 @@ export interface FieldSpec {
    */
   after?: string;
 }
-
-/** A record's own keys, the `carried` bag aside — what a table names beside the bag's. */
-export type LiveKeys<T> = Exclude<keyof T, 'carried'>;
 
 /** A zone as the game's file describes it — one `<Item>` of `<Zones>`. */
 export interface GameZone {
@@ -136,16 +139,17 @@ export interface GameZone {
   resourceBuildingsDensity: number;
   treasureBuildingPoints: number;
   treasureBlocksTotalValue: number;
-  carried: GameZoneCarried;
 }
 
 /**
- * The zone's DEAD fields, kept out of the zone's own shape: they are read
+ * The zone's DEAD fields, kept out of the zone's own type: they are read
  * and written so the file comes back as it went, and that is all they are
  * for — no phase and no panel has business with them, so `keyof GameZone`
- * does not name them and nothing reaches them but by way of `carried`.
+ * does not name them. A zone read from a file holds them on the same
+ * object (`GameZone & GameZoneDead`); one the editor made holds none, and
+ * the writer fills in the table's `default` for each.
  */
-export interface GameZoneCarried {
+export interface GameZoneDead {
   /** Read by nothing, probed on an island map to no effect (docs/RMG.md). */
   canBeWater: boolean;
   /** The step rolls 2-in-10 for a den and never reads this. */
@@ -172,11 +176,10 @@ export interface GameConnection {
   destZoneIndex: number;
   /** How strong the army sitting on the passage is. */
   guardStrenght: number;
-  carried: GameConnectionCarried;
 }
 
-/** The connection's dead fields — see `GameZoneCarried`. */
-export interface GameConnectionCarried {
+/** The connection's dead fields — see `GameZoneDead`. */
+export interface GameConnectionDead {
   /** Varies across the shipped templates, and nothing reads it. */
   twoWay: boolean;
   /** True on all 150 shipped connections; false takes no guard off. */
@@ -206,11 +209,10 @@ export interface GameTemplate {
   maxMapSize: number;
   /** Read by the editor's template list, to hide a template from the dialog. */
   testTemplate: boolean;
-  carried: GameTemplateCarried;
 }
 
-/** The template's dead fields — see `GameZoneCarried`. */
-export interface GameTemplateCarried {
+/** The template's dead fields — see `GameZoneDead`. */
+export interface GameTemplateDead {
   /** Parsed, defaulted, copied, and branched on by no instruction. */
   graalOnMap: boolean;
   /** The ORDER decides the underground, never the template. */
@@ -221,7 +223,7 @@ export interface GameTemplateCarried {
 export const GAME_ZONE_FIELDS = {
   index: { tag: 'Index', kind: 'int', doc: 'The zone\'s number — what a connection names, 1-based; zones are built in ascending order.' },
   setting: { tag: 'Setting', kind: 'text', doc: 'RACE_RANDOM_TYPE draws a faction; a town name fixes one.' },
-  canBeWater: { tag: 'CanBeWater', kind: 'bool', dead: true, doc: 'Dead: no instruction reads it, and a probe with it flipped on every zone of an island map changed nothing — water is the order\'s, not the zone\'s.' },
+  canBeWater: { tag: 'CanBeWater', kind: 'bool', dead: true, default: false, doc: 'Dead: no instruction reads it, and a probe with it flipped on every zone of an island map changed nothing — water is the order\'s, not the zone\'s.' },
   size: { tag: 'Size', kind: 'int', doc: 'Relative, not tiles: the zones divide the map in proportion to these.' },
   canBePlayerStart: { tag: 'CanBePlayerStart', kind: 'bool', doc: 'A start zone: a player\'s town and hero go here.' },
   town: { tag: 'Town', kind: 'bool', doc: 'The zone holds a town.' },
@@ -241,20 +243,20 @@ export const GAME_ZONE_FIELDS = {
   resourceBuildingsDensity: { tag: 'ResourceBuildingsDensity', kind: 'int', doc: 'How densely the resource buildings are sown.' },
   treasureBuildingPoints: { tag: 'TreasureBuildingPoints', kind: 'int', doc: 'Points to spend on treasuries.' },
   treasureBlocksTotalValue: { tag: 'TreasureBlocksTotalValue', kind: 'int', doc: 'The zone\'s treasure blocks\' worth, split by distance from the town.' },
-  denOfThieves: { tag: 'DenOfThieves', kind: 'int', dead: true, doc: 'Dead: the step rolls 2-in-10 for a den and never reads this.' },
-  redwoodObservatoryDensity: { tag: 'RedwoodObservatoryDensity', kind: 'int', dead: true, doc: 'Dead: the step places the zone\'s tiles / 1000 + 1, whatever this says.' },
-  buffPoints: { tag: 'BuffPoints', kind: 'int', dead: true, doc: 'Dead: read, and handed to a worker whose whole body is `ret 4`.' },
-} as const satisfies Record<LiveKeys<GameZone> | keyof GameZoneCarried, FieldSpec>;
+  denOfThieves: { tag: 'DenOfThieves', kind: 'int', dead: true, default: 0, doc: 'Dead: the step rolls 2-in-10 for a den and never reads this.' },
+  redwoodObservatoryDensity: { tag: 'RedwoodObservatoryDensity', kind: 'int', dead: true, default: 0, doc: 'Dead: the step places the zone\'s tiles / 1000 + 1, whatever this says.' },
+  buffPoints: { tag: 'BuffPoints', kind: 'int', dead: true, default: 0, doc: 'Dead: read, and handed to a worker whose whole body is `ret 4`.' },
+} as const satisfies Record<keyof GameZone | keyof GameZoneDead, FieldSpec>;
 
 /** The connection's fields, in file order. */
 export const GAME_CONNECTION_FIELDS = {
   sourceZoneIndex: { tag: 'SourceZoneIndex', kind: 'int', doc: 'One end.' },
   destZoneIndex: { tag: 'DestZoneIndex', kind: 'int', doc: 'The other end.' },
-  twoWay: { tag: 'TwoWay', kind: 'bool', dead: true, doc: 'Dead: varies across the shipped templates, and nothing reads it.' },
+  twoWay: { tag: 'TwoWay', kind: 'bool', dead: true, default: true, doc: 'Dead: varies across the shipped templates, and nothing reads it.' },
   guardStrenght: { tag: 'GuardStrenght', kind: 'int', doc: 'How strong the army sitting on the passage is.' },
-  guarded: { tag: 'Guarded', kind: 'bool', dead: true, doc: 'Dead: true on all 150 shipped connections; false takes no guard off.' },
-  wide: { tag: 'Wide', kind: 'bool', dead: true, doc: 'Dead: false on all 150 shipped connections; true widens nothing.' },
-} as const satisfies Record<LiveKeys<GameConnection> | keyof GameConnectionCarried, FieldSpec>;
+  guarded: { tag: 'Guarded', kind: 'bool', dead: true, default: true, doc: 'Dead: true on all 150 shipped connections; false takes no guard off.' },
+  wide: { tag: 'Wide', kind: 'bool', dead: true, default: false, doc: 'Dead: false on all 150 shipped connections; true widens nothing.' },
+} as const satisfies Record<keyof GameConnection | keyof GameConnectionDead, FieldSpec>;
 
 /** The template's own fields, in file order — the zones and connections among them. */
 export const GAME_TEMPLATE_FIELDS = {
@@ -263,14 +265,14 @@ export const GAME_TEMPLATE_FIELDS = {
   name: { tag: 'Name', kind: 'text', doc: 'The template\'s name.' },
   zones: { tag: 'Zones', kind: 'zones', doc: 'The zones.' },
   connections: { tag: 'Connections', kind: 'connections', doc: 'Which zones are joined, and how strongly the passage is guarded.' },
-  graalOnMap: { tag: 'GraalOnMap', kind: 'bool', dead: true, doc: 'Dead: parsed, defaulted, copied, and branched on by no instruction — the order decides the grail.' },
+  graalOnMap: { tag: 'GraalOnMap', kind: 'bool', dead: true, default: false, doc: 'Dead: parsed, defaulted, copied, and branched on by no instruction — the order decides the grail.' },
   minPlayers: { tag: 'MinPlayers', kind: 'int', doc: 'The fewest players the template seats.' },
   maxPlayers: { tag: 'MaxPlayers', kind: 'int', doc: 'The most players the template seats.' },
   minMapSize: { tag: 'MinMapSize', kind: 'int', doc: 'The smallest map, in the dialog\'s units (tiles squared over a thousand).' },
   maxMapSize: { tag: 'MaxMapSize', kind: 'int', doc: 'The largest map, in the same units.' },
-  underground: { tag: 'Underground', kind: 'bool', dead: true, doc: 'Dead: the order decides the underground, never the template.' },
+  underground: { tag: 'Underground', kind: 'bool', dead: true, default: false, doc: 'Dead: the order decides the underground, never the template.' },
   testTemplate: { tag: 'TestTemplate', kind: 'bool', doc: 'Hidden from the dialog\'s list when true.' },
-} as const satisfies Record<LiveKeys<GameTemplate> | keyof GameTemplateCarried, FieldSpec>;
+} as const satisfies Record<keyof GameTemplate | keyof GameTemplateDead, FieldSpec>;
 
 /** The zone's Shipyard bit as the engine holds it: written, or the constructor's true. */
 export function shipyardOf(zone: GameZone): boolean {

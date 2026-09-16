@@ -3979,12 +3979,15 @@ with two more things per field: a `default` (what an absent tag reads
 as, and what the writer leaves unwritten) and an `after` (which field of
 the game's it is written behind). The reader and the writer both walk the
 tables — one description reads, writes, and will drive the template
-editor's panel. The dead fields are not on the records at all: each has a
-`carried` bag (`GameZoneCarried`, `GameConnectionCarried`,
-`GameTemplateCarried`) that the reader fills and the writer empties, so
-`keyof GameZone` names only what something reads, and nothing reaches
-`TwoWay` or `DenOfThieves` but by way of the bag. `CanBeWater` went into
-the bag with them: read by nothing, probed to no effect (below).
+editor's panel. The dead fields are not in the record TYPES: each record
+has a second interface for them (`GameZoneDead`, `GameConnectionDead`,
+`GameTemplateDead`); the reader puts them on the same object and hands it
+back as the record type, the writer takes them as optional and writes the
+shipped files' value (the table's `default`) for a record that has none —
+so `keyof GameZone` names only what something reads, a phase or a panel
+walking a record's keys never meets `TwoWay` or `DenOfThieves`, and a zone
+the editor makes need not spell them out. `CanBeWater` is among them: read
+by nothing, probed to no effect (below).
 
 ### Writing a template back — the editor's first brick
 

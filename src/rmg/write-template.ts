@@ -154,10 +154,11 @@ function writeField(w: Lines, depth: number, f: FieldSpec, value: unknown): void
  * each the fields of ours that follow it, when they speak.
  */
 function writeFields(w: Lines, depth: number, record: object, game: Record<string, FieldSpec>, ours: Record<string, FieldSpec>): void {
-  const values = record as Record<string, unknown> & { carried: Record<string, unknown> };
+  const values = record as Record<string, unknown>;
   for (const [key, f] of Object.entries(game)) {
-    // A dead field is kept in the record's `carried` bag (template-game.ts).
-    writeField(w, depth, f, f.dead ? values.carried[key] : values[key]);
+    // A dead field is on a record read from a file and absent from one the
+    // editor made; the table's default is the shipped files' value.
+    writeField(w, depth, f, f.dead && values[key] === undefined ? f.default : values[key]);
     for (const [ourKey, o] of Object.entries(ours)) {
       if (o.after === key && speaks(o, values[ourKey])) writeField(w, depth, o, values[ourKey]);
     }

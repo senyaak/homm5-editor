@@ -19,11 +19,11 @@
 import { childText, decodeEntities, find, findAll, parse, text } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
 import { GAME_CONNECTION_FIELDS, GAME_TEMPLATE_FIELDS, GAME_ZONE_FIELDS } from './template-game.ts';
-import type { FieldSpec, GameConnection, GameConnectionCarried, GameTemplate, GameTemplateCarried, GameZone, GameZoneCarried, LiveKeys } from './template-game.ts';
+import type { FieldSpec, GameConnection, GameConnectionDead, GameTemplate, GameTemplateDead, GameZone, GameZoneDead } from './template-game.ts';
 
 export { GAME_CONNECTION_FIELDS, GAME_TEMPLATE_FIELDS, GAME_ZONE_FIELDS, TIERS, shipyardOf } from './template-game.ts';
 export type {
-  FieldKind, FieldSpec, GameConnection, GameConnectionCarried, GameTemplate, GameTemplateCarried, GameZone, GameZoneCarried, LiveKeys,
+  FieldKind, FieldSpec, GameConnection, GameConnectionDead, GameTemplate, GameTemplateDead, GameZone, GameZoneDead,
 } from './template-game.ts';
 
 /** The template's `<ZoneLayout>`; absent means `Engine`. */
@@ -173,10 +173,10 @@ export const OUR_TEMPLATE_FIELDS = {
   diagram: { tag: 'Diagram', kind: 'diagram', after: 'testTemplate', doc: 'Where the template editor drew each zone — the picture only; the map is laid out from the graph.' },
 } as const satisfies Record<Exclude<keyof RmgTemplate, keyof GameTemplate | 'zones' | 'connections'>, FieldSpec>;
 
-/** The three records' fields, the game's and ours together — the dead ones (`carried`) among them, by their own keys. */
-export const ZONE_FIELDS: Record<LiveKeys<RmgZone> | keyof GameZoneCarried, FieldSpec> = { ...GAME_ZONE_FIELDS, ...OUR_ZONE_FIELDS };
-export const CONNECTION_FIELDS: Record<LiveKeys<RmgConnection> | keyof GameConnectionCarried, FieldSpec> = { ...GAME_CONNECTION_FIELDS, ...OUR_CONNECTION_FIELDS };
-export const TEMPLATE_FIELDS: Record<LiveKeys<RmgTemplate> | keyof GameTemplateCarried, FieldSpec> = { ...GAME_TEMPLATE_FIELDS, ...OUR_TEMPLATE_FIELDS };
+/** The three records' fields, the game's and ours together — the dead ones among them, by their own keys. */
+export const ZONE_FIELDS: Record<keyof RmgZone | keyof GameZoneDead, FieldSpec> = { ...GAME_ZONE_FIELDS, ...OUR_ZONE_FIELDS };
+export const CONNECTION_FIELDS: Record<keyof RmgConnection | keyof GameConnectionDead, FieldSpec> = { ...GAME_CONNECTION_FIELDS, ...OUR_CONNECTION_FIELDS };
+export const TEMPLATE_FIELDS: Record<keyof RmgTemplate | keyof GameTemplateDead, FieldSpec> = { ...GAME_TEMPLATE_FIELDS, ...OUR_TEMPLATE_FIELDS };
 
 // ---------------------------------------------------------------------------
 // Reading
@@ -220,7 +220,7 @@ function zoneObjects(holder: XmlElement | null): RmgZoneObject[] {
 function readField(el: XmlElement, f: FieldSpec): unknown {
   const child = find(el, f.tag);
   switch (f.kind) {
-    case 'int': return intText(childText(el, f.tag));
+    case 'int': return child ? intText(text(child)) : (f.default ?? 0);
     case 'float': {
       if (!child) return f.default ?? 0;
       let v = Number.parseFloat(text(child)) || 0;
@@ -247,12 +247,15 @@ function readField(el: XmlElement, f: FieldSpec): unknown {
   }
 }
 
-/** A record out of its element: every field of the table, by its kind — the dead ones into its `carried` bag. */
+/**
+ * A record out of its element: every field of the table, by its kind. The
+ * dead ones land on the same object — the type handed back does not name
+ * them (`GameZoneDead`), but the writer finds them there and the file comes
+ * back as it went.
+ */
 function readRecord<T extends object>(el: XmlElement, table: Record<string, FieldSpec>): T {
   const out: Record<string, unknown> = {};
-  const carried: Record<string, unknown> = {};
-  for (const [key, f] of Object.entries(table)) (f.dead ? carried : out)[key] = readField(el, f);
-  out.carried = carried;
+  for (const [key, f] of Object.entries(table)) out[key] = readField(el, f);
   return out as T;
 }
 

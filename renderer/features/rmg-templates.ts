@@ -62,7 +62,8 @@ const dialog = (): HTMLDialogElement => modDialog('rte');
  * two-player template — a start zone with a town, one mine of each kind but
  * gold, one tier-1 dwelling, and the densities every shipped template uses.
  * Copied here rather than read, because a new template must be possible
- * with nothing open; the numbers are the file's.
+ * with nothing open; the numbers are the file's. The dead fields are not
+ * here: the writer fills them in (`template-game.ts`).
  */
 function starterZone(index: number): RmgZone {
   return {
@@ -71,14 +72,13 @@ function starterZone(index: number): RmgZone {
     upgBuildingsDensity: 40, treasureDensity: 15, treasureChestDensity: 5, prisons: 0, landCartographer: 0,
     shopPoints: 10, shrinePoints: 10, luckMoralBuildingsDensity: 60, resourceBuildingsDensity: 80,
     treasureBuildingPoints: 10, treasureBlocksTotalValue: 10000,
-    carried: { canBeWater: false, denOfThieves: 0, redwoodObservatoryDensity: 0, buffPoints: 0 },
     guardMultiplier: 1, treasureBlocks: [], objects: [],
   };
 }
 
 /** A connection between two zones, guarded the way `S1P2Z2M1` guards its start zones' passages. */
 function starterConnection(a: number, b: number): RmgConnection {
-  return { sourceZoneIndex: a, destZoneIndex: b, guardStrenght: 3, carried: { twoWay: true, guarded: true, wide: false }, road: true };
+  return { sourceZoneIndex: a, destZoneIndex: b, guardStrenght: 3, road: true };
 }
 
 /** Two start zones joined — the least a playable template is. */
@@ -87,7 +87,6 @@ function starterTemplate(): RmgTemplate {
     nameFileRef: null, descriptionFileRef: '', name: 'New Template',
     zones: [starterZone(1), starterZone(2)], connections: [starterConnection(1, 2)],
     minPlayers: 2, maxPlayers: 2, minMapSize: 5, maxMapSize: 14, testTemplate: false,
-    carried: { graalOnMap: false, underground: false },
     diagram: [], zoneLayout: 'Engine', layoutJitter: 0, uniqueRaces: false,
   };
 }
