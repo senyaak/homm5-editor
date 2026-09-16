@@ -7,6 +7,7 @@
 //   4. Edit locality: moving one object changes only that object's bytes.
 //   5. Remove: dropping an object removes exactly its <Item>.
 
+// needs: data
 import { parse, serialize, childText } from '../src/format/xml.ts';
 import { loadMap } from '../src/map/map.ts';
 import { readFileSync, existsSync } from 'node:fs';

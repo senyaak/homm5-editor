@@ -6,6 +6,7 @@
 // install the checks that need it are skipped rather than failed — the repo's
 // unpacked data deliberately carries no Editor folder.
 
+// needs: data
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { dataDir } from './game-dir.ts';

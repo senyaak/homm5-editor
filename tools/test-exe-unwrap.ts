@@ -4,6 +4,7 @@
 // network and a .NET runtime on every run. What is checked here is the part
 // that decides whether to reach for either.
 
+// needs: game
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

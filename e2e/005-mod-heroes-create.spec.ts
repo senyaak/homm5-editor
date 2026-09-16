@@ -106,7 +106,7 @@ async function openWithDonor(page: Launched['page']): Promise<void> {
   await expect(page.locator('#he-model')).not.toHaveValue('', { timeout: 30_000 });
 }
 
-test('the dialog opens, and the donor decides the faction', async () => {
+test('the dialog opens, and the donor decides the faction', { tag: '@game' }, async () => {
   const { page } = ed;
   await openHeroes(page, 'Heroes');
   await expect(page.locator('#hm-list')).toContainText(/No heroes installed|Gem/);
@@ -131,7 +131,7 @@ test('the dialog opens, and the donor decides the faction', async () => {
 });
 
 /** The hero form's own refusal — the pair main names in as many words. */
-test('it will not build a hero who is missing what he needs', async () => {
+test('it will not build a hero who is missing what he needs', { tag: '@game' }, async () => {
   const { page } = ed;
   // Same as the other two: the form is modal over the list that holds New.
   if (await page.locator('#heroedit').isVisible()) await page.locator('#heroedit-cancel').click();
@@ -161,7 +161,7 @@ test('it will not build a hero who is missing what he needs', async () => {
 });
 
 /** The specialization form's own refusal — what addSpecialization throws for. */
-test('it will not build a specialization missing what it needs', async () => {
+test('it will not build a specialization missing what it needs', { tag: '@game' }, async () => {
   const { page } = ed;
   await openHeroes(page, 'Specializations');
   await page.locator('#hs-new').click();
@@ -181,7 +181,7 @@ test('it will not build a specialization missing what it needs', async () => {
   await expect(page.locator('#specedit')).toBeHidden();
 });
 
-test('authors the specialization Gem will hold', async () => {
+test('authors the specialization Gem will hold', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openHeroes(page, 'Specializations');
@@ -234,7 +234,7 @@ test('authors the specialization Gem will hold', async () => {
   ]);
 });
 
-test('authors Gem and installs her', async () => {
+test('authors Gem and installs her', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openWithDonor(page);
@@ -289,7 +289,7 @@ test('authors Gem and installs her', async () => {
   await expect(page.locator('#hm-list')).toContainText('offered by taverns');
 });
 
-test('the archive holds her, and nothing of the game\'s', async () => {
+test('the archive holds her, and nothing of the game\'s', { tag: '@game' }, async () => {
   const mod = readInstalledMod(GAME);
   const gem = (mod.heroes ?? [])[0];
   expect(gem, 'the manifest remembers her').toBeTruthy();
@@ -357,7 +357,7 @@ test('the archive holds her, and nothing of the game\'s', async () => {
   expect(bins.filter((n) => existsSync(join(dataRoot, n))), 'and none overwrites a shipped one').toEqual([]);
 });
 
-test('an installed hero opens for editing, whole', async () => {
+test('an installed hero opens for editing, whole', { tag: '@game' }, async () => {
   const { page } = ed;
   await openHeroes(page, 'Heroes');
   // The list is where editing starts: one row per hero, with the two things
@@ -399,7 +399,7 @@ test('an installed hero opens for editing, whole', async () => {
   expect(gem.specializationPicture).toBe(GEM.specPicture);
 });
 
-test('a specialization a hero still holds cannot be taken away', async () => {
+test('a specialization a hero still holds cannot be taken away', { tag: '@game' }, async () => {
   const { page } = ed;
   await openHeroes(page, 'Specializations');
   const row = page.locator('#hs-list .um-item', { hasText: GEM_SPEC.name }).first();
@@ -414,7 +414,7 @@ test('a specialization a hero still holds cannot be taken away', async () => {
   expect((readInstalledMod(GAME).specializations ?? []).length, 'and it is still there').toBe(1);
 });
 
-test('removing says what would break, and Cancel means no', async () => {
+test('removing says what would break, and Cancel means no', { tag: '@game' }, async () => {
   const { page } = ed;
   await openHeroes(page, 'Heroes');
   const row = page.locator('#hm-list .um-item', { hasText: 'Gem' }).first();
@@ -431,7 +431,7 @@ test('removing says what would break, and Cancel means no', async () => {
   expect((readInstalledMod(GAME).heroes ?? []).length, 'Cancel removed nothing').toBe(1);
 });
 
-test('and removing for real takes his files with him', async () => {
+test('and removing for real takes his files with him', { tag: '@game' }, async () => {
   const { page } = ed;
   const row = page.locator('#hm-list .um-item', { hasText: 'Gem' }).first();
   // Through settled(), like every other install: the note still holds the last
@@ -457,7 +457,7 @@ test('and removing for real takes his files with him', async () => {
   expect(names.filter((n) => n.includes('H3Gem'))).toEqual([]);
 });
 
-test('the executable is untouched — a hero moves no ceiling', async () => {
+test('the executable is untouched — a hero moves no ceiling', { tag: '@game' }, async () => {
   const exe = join(GAME, PATCHED_EXE);
   if (!existsSync(exe)) return; // nothing was patched, which is the same claim
   expect(readExe(readFileSync(exe)).limit).toBe(ceilingBefore);

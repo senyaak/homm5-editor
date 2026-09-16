@@ -112,7 +112,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('every building the mod adds is in the palette and goes on the ground', async () => {
+test('every building the mod adds is in the palette and goes on the ground', { tag: '@game' }, async () => {
   test.setTimeout(10 * 60_000);
   const { page } = ed;
   await newMap(page, NAME, '96');
@@ -129,7 +129,7 @@ test('every building the mod adds is in the palette and goes on the ground', asy
     .toHaveLength(BUILDINGS.length);
 });
 
-test('two sides, red and blue, each with a hero to start as', async () => {
+test('two sides, red and blue, each with a hero to start as', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
 
@@ -167,7 +167,7 @@ test('two sides, red and blue, each with a hero to start as', async () => {
   }
 });
 
-test('and it packs to a map the game can be pointed at', async () => {
+test('and it packs to a map the game can be pointed at', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   const archive = modFile(GAME, 'map', NAME);

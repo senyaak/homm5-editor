@@ -13,6 +13,7 @@
 //
 // Skipped without game data. Usage: `node tools/test-idle.ts`.
 
+// needs: data
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import * as THREE from 'three';

@@ -6,6 +6,7 @@
 //
 // Reads an UNWRAPPED executable — `npm run unwrap-exe` makes one.
 
+// needs: game
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

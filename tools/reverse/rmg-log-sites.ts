@@ -20,6 +20,7 @@
 // Landmarks, not constants — every address moves with the build, which is why
 // this is a tool and not a list.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 

@@ -10,6 +10,7 @@
 // COPY of a real executable in a temporary folder, so a failing test cannot leave
 // the install unable to start.
 
+// needs: game
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

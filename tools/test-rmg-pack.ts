@@ -7,6 +7,7 @@
 // matched (every entry carries the run's wall clock, and the engine's deflate
 // beats zlib -9 on the minimap by a thousand bytes).
 
+// needs: game
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 

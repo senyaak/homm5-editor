@@ -12,6 +12,7 @@
 // whether or not the extension happens to be installed — a test that only
 // passes before the first install is a test that stops being run.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 

@@ -16,6 +16,7 @@
 // file, down to the nesting that made `ref_table_num_objs` hard to splice (its
 // number sits in a <Data> inside a <Data>).
 
+// needs: data
 import { ABILITY_TABLE } from '../src/mods/ability-files.ts';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

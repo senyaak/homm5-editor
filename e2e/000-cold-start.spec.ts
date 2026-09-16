@@ -122,7 +122,7 @@ test.afterAll(() => {
   rmSync(HOME, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-test('from nothing to an open editor, through the setup window', async () => {
+test('from nothing to an open editor, through the setup window', { tag: '@game' }, async () => {
   // Steamless over a 14 MB executable plus an unpack: minutes, not seconds —
   // and live the unpack is every pak the game ships, not the 13 MB stand-in.
   test.setTimeout((LIVE ? 30 : 10) * 60_000);

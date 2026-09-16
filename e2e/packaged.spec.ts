@@ -45,7 +45,7 @@ async function launchPackaged(env: Record<string, string>): Promise<{ app: Elect
   return { app, userData };
 }
 
-test('the packaged app opens the editor when it knows where the data is', async () => {
+test('the packaged app opens the editor when it knows where the data is', { tag: '@game' }, async () => {
   test.setTimeout(120_000);
   const { app, userData } = await launchPackaged({ HOMM5_DATA: DATA });
   try {
@@ -61,7 +61,7 @@ test('the packaged app opens the editor when it knows where the data is', async 
   }
 });
 
-test('with nothing configured it asks where the game is', async () => {
+test('with nothing configured it asks where the game is', { tag: '@game' }, async () => {
   test.setTimeout(120_000);
   const { app, userData } = await launchPackaged({});
   try {
@@ -77,7 +77,7 @@ test('with nothing configured it asks where the game is', async () => {
   }
 });
 
-test('and finishing setup opens the editor, without a second launch', async () => {
+test('and finishing setup opens the editor, without a second launch', { tag: '@game' }, async () => {
   test.setTimeout(120_000);
   const { app, userData } = await launchPackaged({});
   try {

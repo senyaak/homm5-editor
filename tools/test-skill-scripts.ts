@@ -6,6 +6,7 @@
 // still have run its own declarations, and that neither global script loses a
 // line it came with.
 
+// needs: data
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

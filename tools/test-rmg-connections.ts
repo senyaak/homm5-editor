@@ -9,6 +9,7 @@
 // left it. Sixteen draws, three guards, three positions, three armies — all
 // read out of the reference map.xdb.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -19,6 +19,7 @@
 //
 //   node tools/test-heroes.ts [dataRoot]
 
+// needs: data
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { assets } from '../src/game/assets.ts';

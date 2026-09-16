@@ -17,6 +17,7 @@
 // map.xdb. The three together are the whole of the evidence, and none of them
 // is anybody's word.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

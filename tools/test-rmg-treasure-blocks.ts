@@ -14,6 +14,7 @@
 // the artifact and the piles. Both boundaries are asserted for every zone,
 // so a divergence names the half it happened in.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

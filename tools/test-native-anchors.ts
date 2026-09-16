@@ -18,6 +18,7 @@
 // been written, and one written some other way is reported as untested rather
 // than passed over in silence.
 
+// needs: game
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 

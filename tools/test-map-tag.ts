@@ -15,6 +15,7 @@
 //
 //   node tools/test-map-tag.ts
 
+// needs: data
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -10,6 +10,7 @@
 // must match byte for byte — the assertion test-rmg-terrain could only make
 // with a roads-in-waiting escape hatch.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

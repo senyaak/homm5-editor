@@ -38,7 +38,7 @@ function cleanup(): void {
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 
-test('every vertex of a fast burst lands', async () => {
+test('every vertex of a fast burst lands', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(600_000);
   const { page } = ed;

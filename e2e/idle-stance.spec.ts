@@ -50,7 +50,7 @@ test.afterAll(async () => {
   await ed?.app.close();
 });
 
-test('creatures take an animated body and the loop turns', async () => {
+test('creatures take an animated body and the loop turns', { tag: '@data' }, async () => {
   test.skip(!MAP, 'no shipped map with monsters under the data root');
   const { page, errors } = ed;
 
@@ -87,7 +87,7 @@ test('creatures take an animated body and the loop turns', async () => {
   expect(errors).toEqual([]);
 });
 
-test('the toolbar button cycles the three modes', async () => {
+test('the toolbar button cycles the three modes', { tag: '@data' }, async () => {
   test.skip(!MAP, 'no shipped map with monsters under the data root');
   const { page } = ed;
   const label = page.locator('#idlebtn');

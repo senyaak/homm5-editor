@@ -18,6 +18,7 @@
 //
 //   node tools/test-pandora.ts [dataRoot]
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -95,7 +95,7 @@ const AT = {
 // Without Custom the stack size is chosen by the map's difficulty, so the
 // original greys the Amount box out; ours does the same, driven by the schema's
 // x-enabledBy.
-test('a monster\'s Amount is disabled until Custom is on', async () => {
+test('a monster\'s Amount is disabled until Custom is on', { tag: '@data' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await ensureMap();
@@ -126,7 +126,7 @@ test('a monster\'s Amount is disabled until Custom is on', async () => {
 // "Tree…" button — which is why a garrison's army looked missing. Now the panel
 // lists each structured field under a "structures" heading with a count and an
 // Edit button that opens the (expandable) tree.
-test('the panel shows an object\'s structured fields with Edit → tree', async () => {
+test('the panel shows an object\'s structured fields with Edit → tree', { tag: '@data' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await ensureMap();
@@ -155,7 +155,7 @@ test('the panel shows an object\'s structured fields with Edit → tree', async 
 // modal <dialog> for room, and collapse (or Esc) docks it back. The point of
 // moving the SAME element — rather than a second copy — is that every selector
 // the other tests use keeps working.
-test('the object tree expands into a dialog and docks back', async () => {
+test('the object tree expands into a dialog and docks back', { tag: '@data' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await ensureMap();
@@ -192,7 +192,7 @@ test('the object tree expands into a dialog and docks back', async () => {
 // `src/objects.schema.json`, where `ArmySlot`, `Resources` and `Trigger` are
 // declared once in `$defs` and reused by every type that has them, so what this
 // really checks is that the schema drives the UI.
-test('a hero army is built through the object tree, from the schema', async () => {
+test('a hero army is built through the object tree, from the schema', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(300_000);
   const { page } = ed;
@@ -243,7 +243,7 @@ test('a hero army is built through the object tree, from the schema', async () =
 // panel's Specialization control: New → pick a bonus → the file is written into
 // the map, and the town points at it by HREF (not text, which the game would not
 // read), surviving a save.
-test('create a map-local specialization and link a town to it by href', async () => {
+test('create a map-local specialization and link a town to it by href', { tag: '@data' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await ensureMap();

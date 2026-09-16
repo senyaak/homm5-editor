@@ -11,6 +11,7 @@
 // and luck/morale's +40), so the boundaries alone carry most of the
 // weight; the tiles pin the candidate machinery.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -17,6 +17,7 @@
 // traced boundary is asserted and every named object is held to the
 // reference map.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

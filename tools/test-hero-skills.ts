@@ -8,6 +8,7 @@
 //
 //   node tools/test-hero-skills.ts [dataRoot]
 
+// needs: data
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {

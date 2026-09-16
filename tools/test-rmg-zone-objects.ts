@@ -11,6 +11,7 @@
 // shop every start zone must have twice — with the whole generator run and
 // the objects counted zone by zone off the finished map.
 
+// needs: game
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

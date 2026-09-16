@@ -10,6 +10,7 @@
 // run their entire fill on the same rng, every step held to its traced
 // boundary, down to the phase's last draw at 20039.
 
+// needs: game
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 

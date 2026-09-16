@@ -57,7 +57,7 @@ test.beforeAll(() => {
   test.skip(!existsSync(ARCHIVE), `nothing to read — no ${ARCHIVE}; run mod-001…mod-008 first`);
 });
 
-test('the archive carries what the run authored', () => {
+test('the archive carries what the run authored', { tag: '@game' }, () => {
   const found = readCreatureMod(ARCHIVE);
   expect(found, 'the archive has a manifest of ours').toBeTruthy();
   const mod = found!.mod;
@@ -117,7 +117,7 @@ test('the archive carries what the run authored', () => {
     .toBe(gem!.specializationName || ours!.name);
 });
 
-test('and the words a player reads are the ones we wrote', () => {
+test('and the words a player reads are the ones we wrote', { tag: '@game' }, () => {
   const files = members();
   for (const p of PIECES) {
     const name = `Artifacts/${p.file}/${p.file}_Name.txt`;
@@ -135,7 +135,7 @@ test('and the words a player reads are the ones we wrote', () => {
   }
 });
 
-test('the extension is told about every piece, and only about ours', () => {
+test('the extension is told about every piece, and only about ours', { tag: '@game' }, () => {
   const path = join(GAME, EFFECTS_FILE);
   expect(existsSync(path), `${path} — an artifact whose bonus is not in here grants nothing`).toBe(true);
   const rows = readEffects(readFileSync(path, 'latin1'));
@@ -170,7 +170,7 @@ test('the extension is told about every piece, and only about ours', () => {
     })));
 });
 
-test('the set brought its script, and the global one still loads it', () => {
+test('the set brought its script, and the global one still loads it', { tag: '@game' }, () => {
   const files = members();
   const script = files.get(`${SCRIPT_DIR}/${UNDEAD_KING.file}.lua`);
   expect(script, 'a set with a script contributes its own file').toBeTruthy();
@@ -184,7 +184,7 @@ test('the set brought its script, and the global one still loads it', () => {
   expect(common).toContain('function IsPlayerHeroesInRegion(');
 });
 
-test('the training spell reaches the game whole, from creature to question', () => {
+test('the training spell reaches the game whole, from creature to question', { tag: '@game' }, () => {
   const files = members();
   const common = files.get(COMMON_SCRIPT)?.toString('latin1') ?? '';
 
@@ -217,7 +217,7 @@ test('the training spell reaches the game whole, from creature to question', () 
   }
 });
 
-test('the creature is still wearing the paint mod-002 gave it', () => {
+test('the creature is still wearing the paint mod-002 gave it', { tag: '@game' }, () => {
   // Asked of the manifest, not of the mode: if a recolour was recorded, the
   // textures have to show it. Run the chain and mod-002 recorded one; run this
   // stage alone and the fixture's creature carries none, and there is nothing
@@ -240,7 +240,7 @@ test('the creature is still wearing the paint mod-002 gave it', () => {
   }
 });
 
-test('and the executable counts exactly what is installed', () => {
+test('and the executable counts exactly what is installed', { tag: '@game' }, () => {
   const found = readCreatureMod(ARCHIVE)!;
   const exe = join(GAME, 'bin', 'H5_Game_H5E.exe');
   expect(existsSync(exe), exe).toBe(true);

@@ -53,7 +53,7 @@ async function openRecolor(page: Launched['page']): Promise<void> {
 const palette = (): ReturnType<typeof extractPalette> =>
   extractPalette(creatureTextures(GAME).map((t) => t.rgba));
 
-test('the palette remaps one colour and leaves the rest', async () => {
+test('the palette remaps one colour and leaves the rest', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openRecolor(page);
@@ -84,7 +84,7 @@ test('the palette remaps one colour and leaves the rest', async () => {
   }
 });
 
-test('the Grey preset paints the whole creature, and the bytes say so', async () => {
+test('the Grey preset paints the whole creature, and the bytes say so', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openRecolor(page);

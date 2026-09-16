@@ -56,7 +56,7 @@ async function openWithDonor(page: Launched['page']): Promise<void> {
   await expect(page.locator('#um-shots')).toHaveValue('16'); // the preset settled
 }
 
-test('the dialog opens clean, and the donor loads as a preset', async () => {
+test('the dialog opens clean, and the donor loads as a preset', { tag: '@game' }, async () => {
   const { page } = ed;
   await page.locator('#unitsbtn').click();
   await expect(page.locator('#unitsmod')).toBeVisible();
@@ -93,7 +93,7 @@ test('the dialog opens clean, and the donor loads as a preset', async () => {
  * channel and came back "cannot resolve the donor (none)" — after a rebuild,
  * about a field the form never marked.
  */
-test('it will not build a creature that is missing what it needs', async () => {
+test('it will not build a creature that is missing what it needs', { tag: '@game' }, async () => {
   const { page } = ed;
   // The form is a modal ON TOP of the list, so New is unreachable until
   // whatever the last test left open is put away.
@@ -125,7 +125,7 @@ test('it will not build a creature that is missing what it needs', async () => {
   await expect(page.locator('#unitedit')).toBeHidden();
 });
 
-test('edits the difference and installs the creature', async () => {
+test('edits the difference and installs the creature', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openWithDonor(page);
@@ -197,7 +197,7 @@ test('edits the difference and installs the creature', async () => {
   await expect(page.locator('#unitsmod')).toBeHidden();
 });
 
-test('an installed creature opens for editing, whole', async () => {
+test('an installed creature opens for editing, whole', { tag: '@game' }, async () => {
   const { page } = ed;
   if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
   const row = page.locator('#um-list .um-item', { hasText: SHARPSHOOTER.name }).first();
@@ -242,7 +242,7 @@ test('an installed creature opens for editing, whole', async () => {
   await expect(page.locator('#unitsmod')).toBeHidden();
 });
 
-test('the dragon tag rides in the record, and the config names the ability', async () => {
+test('the dragon tag rides in the record, and the config names the ability', { tag: '@game' }, async () => {
   const { page } = ed;
   if (!(await page.locator('#unitsmod').isVisible())) await page.locator('#unitsbtn').click();
   const row = page.locator('#um-list .um-item', { hasText: SHARPSHOOTER.name }).first();
@@ -291,7 +291,7 @@ test('the dragon tag rides in the record, and the config names the ability', asy
   await expect(page.locator('#unitsmod')).toBeHidden();
 });
 
-test('a fresh map offers the new creature in the army picker', async () => {
+test('a fresh map offers the new creature in the army picker', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
 

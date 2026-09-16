@@ -72,7 +72,7 @@ async function openOnce(): Promise<void> {
   opened = true;
 }
 
-test('before any map, the fallback look', async () => {
+test('before any map, the fallback look', { tag: '@data' }, async () => {
   test.skip(!existsSync(MAP), 'no shipped maps under the data root');
   const { page } = ed;
   // Its three colours are the ends of the same mix a preset drives — sun and
@@ -83,7 +83,7 @@ test('before any map, the fallback look', async () => {
   expect(before.terrain.amb).toEqual([0.31, 0.31, 0.31]);
 });
 
-test('opening a map applies its AmbientLight preset', async () => {
+test('opening a map applies its AmbientLight preset', { tag: '@data' }, async () => {
   test.skip(!existsSync(MAP), 'no shipped maps under the data root');
   const { page, errors } = ed;
   await openOnce();
@@ -118,7 +118,7 @@ test('opening a map applies its AmbientLight preset', async () => {
 // window; what only exists in Electron is the DELIVERY — that a map's placed
 // objects actually grow playing systems: scene meta over map:load, baked keys
 // over map:fx as typed arrays, atlas + instanced quads in the renderer.
-test('placed objects grow playing particle systems', async () => {
+test('placed objects grow playing particle systems', { tag: '@data' }, async () => {
   test.skip(!existsSync(MAP), 'no shipped maps under the data root');
   const { page, errors } = ed;
   await openOnce();
@@ -158,7 +158,7 @@ test('placed objects grow playing particle systems', async () => {
 // normal facing away from the sun isolates Ambient, a white albedo proves the
 // clamp, and the whole thing moves if the space, the factor or the clamp is
 // touched.
-test('an object is lit by the game\'s own sum, not by three.js', async () => {
+test('an object is lit by the game\'s own sum, not by three.js', { tag: '@data' }, async () => {
   test.skip(!existsSync(MAP), 'no shipped maps under the data root');
   const { page, errors } = ed;
   await openOnce();
@@ -243,7 +243,7 @@ test('an object is lit by the game\'s own sum, not by three.js', async () => {
 // shadows.ts moves the agreement below from +0.995 to −0.945.
 //
 // LAST in the file: it takes the camera to plan view and zooms in on one corner.
-test('objects cast shadows, and they fall away from the preset\'s sun', async () => {
+test('objects cast shadows, and they fall away from the preset\'s sun', { tag: '@data' }, async () => {
   test.skip(!existsSync(MAP), 'no shipped maps under the data root');
   const { page, errors } = ed;
   await openOnce();
@@ -356,7 +356,7 @@ test('objects cast shadows, and they fall away from the preset\'s sun', async ()
 // suite. Last in the file, because it is the one test that ends with the scene
 // gone; it puts it back before it finishes, and that is the other half of what
 // it checks.
-test('closing a fully loaded map does not throw', async () => {
+test('closing a fully loaded map does not throw', { tag: '@data' }, async () => {
   test.skip(!existsSync(MAP), 'no shipped maps under the data root');
   const { page, errors } = ed;
   await openOnce();

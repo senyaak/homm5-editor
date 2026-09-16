@@ -19,6 +19,7 @@
 // Needs the unpacked data: an artifact's table, enum and script are the game's
 // own files, and there is nothing honest to stand in for them.
 
+// needs: data
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

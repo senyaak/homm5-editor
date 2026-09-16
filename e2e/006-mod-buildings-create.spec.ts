@@ -62,7 +62,7 @@ export function mockCase(name: string): string {
 test.beforeAll(async () => { ed = await launchEditor({ HOMM5_ROOT: GAME }); });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('the window is the classes, and the tab decides what New makes', async () => {
+test('the window is the classes, and the tab decides what New makes', { tag: '@game' }, async () => {
   const { page } = ed;
   await page.locator('#bldbtn').click();
   await expect(page.locator('#bldmod')).toBeVisible();
@@ -78,7 +78,7 @@ test('the window is the classes, and the tab decides what New makes', async () =
   await expect(page.locator('#bld-new')).toHaveText('New dwelling…');
 });
 
-test('it will not save a building that is missing what it needs', async () => {
+test('it will not save a building that is missing what it needs', { tag: '@game' }, async () => {
   const { page } = ed;
   await page.locator('#bld-tabs .mp-tab', { hasText: 'Dwelling' }).first().click();
   await page.locator('#bld-new').click();
@@ -110,7 +110,7 @@ test('it will not save a building that is missing what it needs', async () => {
   await expect(page.locator('#bldedit')).toBeHidden();
 });
 
-test('the form asks for a behaviour only where the class takes one', async () => {
+test('the form asks for a behaviour only where the class takes one', { tag: '@game' }, async () => {
   const { page } = ed;
   // The plain class picks one of the 128 compiled behaviours.
   await page.locator('#bld-tabs .mp-tab', { hasText: 'Building' }).first().click();
@@ -133,7 +133,7 @@ test('the form asks for a behaviour only where the class takes one', async () =>
   await page.locator('#bld-form-cancel').click();
 });
 
-test('one of every class, each from a shipped object of that class', async () => {
+test('one of every class, each from a shipped object of that class', { tag: '@game' }, async () => {
   // Sixteen builds, each copying an art closure and repacking the archive.
   test.setTimeout(20 * 60_000);
   const { page } = ed;
@@ -193,7 +193,7 @@ test('one of every class, each from a shipped object of that class', async () =>
  * given a hue of its own here, which both makes it its own building and is the
  * only test the building side of the recolour has.
  */
-test('each is repainted, so none of them is the shipped one under a new name', async () => {
+test('each is repainted, so none of them is the shipped one under a new name', { tag: '@game' }, async () => {
   test.setTimeout(20 * 60_000);
   const { page } = ed;
   const labels = await page.locator('#bld-tabs .mp-tab').allTextContents();
@@ -227,7 +227,7 @@ test('each is repainted, so none of them is the shipped one under a new name', a
   expect(hues.size, 'each building got a hue of its own').toBe((mod.buildings ?? []).length);
 });
 
-test('the archive carries one of each, every one owning its own art', async () => {
+test('the archive carries one of each, every one owning its own art', { tag: '@game' }, async () => {
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
     .map((e) => e.name.replace(/\\/g, '/'));
   const { page } = ed;

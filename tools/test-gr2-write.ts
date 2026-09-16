@@ -12,6 +12,7 @@
 //      editor uses on shipped rigs, plus the header arithmetic and the CRC.
 //   3. Does the clip we generate actually turn a bone? Sampled, not assumed.
 
+// needs: data
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { GrannyFile } from '../src/format/gr2.ts';

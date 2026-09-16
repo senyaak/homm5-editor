@@ -9,6 +9,7 @@
 // The run-3 numbers (366 draws, R = 15, k = 0.90) are predictions until the
 // counter hook is moved to the editor — marked as such in docs/RMG.md.
 
+// needs: data
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 

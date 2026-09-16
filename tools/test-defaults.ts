@@ -26,6 +26,7 @@
 //      why it does not replace the measurement; what it declares and our schema
 //      does not is listed at the end as work, not as a failure.
 
+// needs: data
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadMap } from '../src/map/map.ts';

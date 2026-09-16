@@ -12,6 +12,7 @@
 // warnings (seats running out, a range beyond any artifact's window) held on
 // variants written for the purpose.
 
+// needs: game
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

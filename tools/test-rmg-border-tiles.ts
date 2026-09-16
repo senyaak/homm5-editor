@@ -8,6 +8,7 @@
 // hand-computable, and the reference chain's table for shape, determinism
 // and the draw-free contract.
 
+// needs: game
 import { calcBorderTiles } from '../src/rmg/border-tiles.ts';
 import { createMap } from '../src/rmg/create-map.ts';
 import { fillZones } from '../src/rmg/fill-zones.ts';

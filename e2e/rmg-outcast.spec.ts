@@ -166,7 +166,7 @@ async function connect(page: Page, a: number, b: number, guard: number, road: bo
   await setSelect(page, 'Road', road ? 'true' : 'false');
 }
 
-test('Jebus Outcast, drawn click by click, saved, and generated from', async () => {
+test('Jebus Outcast, drawn click by click, saved, and generated from', { tag: '@game' }, async () => {
   test.setTimeout(10 * 60_000);
   const { page } = ed;
   cleanup();

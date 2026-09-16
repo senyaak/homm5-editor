@@ -79,7 +79,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('a hero carried across three missions, and the campaign packed for play', async () => {
+test('a hero carried across three missions, and the campaign packed for play', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(600_000);
   const { page } = ed;

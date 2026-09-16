@@ -8,6 +8,7 @@
 // suite does. The expected numbers are copied from the file, so this is the
 // reader being held to the data rather than to itself.
 
+// needs: data
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 

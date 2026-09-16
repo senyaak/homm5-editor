@@ -39,7 +39,7 @@ const cleanup = (): void => { if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursi
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 
-test('an object lands at an exact fraction of a tile, at an exact angle', async () => {
+test('an object lands at an exact fraction of a tile, at an exact angle', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(300_000);
   const { page } = ed;

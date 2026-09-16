@@ -5,6 +5,16 @@
 // (format round-trips, generators, schema) always run; suites that need game
 // content skip themselves when it is absent. Exits non-zero if any suite fails.
 //
+// THREE LEVELS, the e2e specs' three tags. A suite says what it needs in one
+// line near its top — `// needs: data` (the unpacked data) or `// needs: game`
+// (a real install: the executable, its archives) — and a suite that says
+// nothing needs nothing. `--level nodata|data|game` runs one level's suites
+// and that level's e2e (`test-e2e-<level>`) in place of the full e2e set;
+// `--only <text>` narrows to the suites whose name contains it (`rmg-` is the
+// generator's forty); `--list` says what would run and runs nothing. The
+// level is read from the file, not kept in a list here: a list would drift,
+// and a suite is the one that knows.
+//
 // Oracle byte-exact checks (the blank generators vs the editor's own output) run
 // when HOMM5_BLANKS points at a folder of pristine blanks and HOMM5_DATA (or
 // data-unpacked) has the game data; otherwise those checks are skipped, not
@@ -17,12 +27,50 @@ import { delimiter, join } from 'node:path';
 const root = join(import.meta.dirname, '..');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
 
-// Every `test-*` unit suite, in declaration order. `test-e2e` is excluded: it
-// launches the real Electron app (slower, needs a build) and runs on its own via
-// `npm run test-e2e`.
+const argv = process.argv.slice(2);
+const flag = (name: string): string | undefined => {
+  const i = argv.indexOf(`--${name}`);
+  return i >= 0 ? argv[i + 1] : undefined;
+};
+type Level = 'nodata' | 'data' | 'game';
+const level = flag('level') as Level | undefined;
+if (level && !['nodata', 'data', 'game'].includes(level)) {
+  console.error(`--level takes nodata, data or game, not ${level}`);
+  process.exit(2);
+}
+const only = flag('only');
+
+/** What a suite says it needs — its `// needs:` line, or nothing. */
+function needs(cmd: string): Level {
+  const file = /node (\S+)/.exec(cmd)?.[1];
+  if (!file) return 'nodata';
+  let text = '';
+  try { text = readFileSync(join(root, file), 'utf8'); } catch { return 'nodata'; }
+  return (/^\/\/ needs: (data|game)$/m.exec(text)?.[1] as Level | undefined) ?? 'nodata';
+}
+
+// Every `test-*` unit suite, in declaration order. Left out: `test-e2e` (the
+// release gate, on its own), the level and module runs (they are this file),
+// and the e2e levels (`playwright test --grep`), of which one is run below in
+// place of `test-e2e-fast` when a level is asked for.
+const isE2e = (_name: string, cmd: string): boolean => /playwright|tools\/e2e-/.test(cmd);
 const suites = Object.entries(pkg.scripts)
-  .filter(([name]) => name.startsWith('test-') && name !== 'test-e2e')
+  .filter(([name, cmd]) => name.startsWith('test-') && !/test-all\.ts/.test(cmd))
+  .filter(([name, cmd]) => !isE2e(name, cmd) || name === (level ? `test-e2e-${level}` : 'test-e2e-fast'))
+  .filter(([name, cmd]) => !level || isE2e(name, cmd) || needs(cmd) === level)
+  .filter(([name]) => !only || name.includes(only))
   .map(([name, cmd]) => ({ name, cmd }));
+if (!suites.length) {
+  console.error(`nothing to run${level ? ` at level ${level}` : ''}${only ? ` matching ${only}` : ''}`);
+  process.exit(2);
+}
+console.log(`${suites.length} suite(s)${level ? ` — level ${level}` : ''}${only ? ` — only ${only}` : ''}`);
+// `--list`: the suites and their levels, and nothing run — for checking what a
+// level would take before taking the minutes.
+if (argv.includes('--list')) {
+  for (const s of suites) console.log(`  ${s.name.padEnd(26)} ${isE2e(s.name, s.cmd) ? 'e2e' : needs(s.cmd)}`);
+  process.exit(0);
+}
 
 const blanks = process.env.HOMM5_BLANKS;
 const results: Array<{ name: string; ok: boolean; ms: number }> = [];

@@ -8,6 +8,7 @@
 //
 // Needs the unpacked data: types.xml and the spell table are the game's own.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

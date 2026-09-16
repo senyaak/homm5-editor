@@ -7,6 +7,7 @@
 // checked on the way: the terrain layer tile by tile, the darkening mask tile
 // by tile, the icon names and where each one lands.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

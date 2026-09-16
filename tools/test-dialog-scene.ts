@@ -16,6 +16,7 @@
 // original campaigns' scenes, the game root's UserMODs/*.h5u. Skips itself when
 // neither is there.
 
+// needs: game
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { childText, children, find, parse, serialize } from '../src/format/xml.ts';

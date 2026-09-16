@@ -98,7 +98,7 @@ const systemsOf = (page: Launched['page'], shared: string): Promise<
 // animation the glued system MOVES and the unglued ones do not — and the glued
 // one sits at head height, not at the creature's feet, which is the older
 // failure this whole path was built to avoid.
-test('the dragon\'s eye glow rides its head, and the mist does not', async () => {
+test('the dragon\'s eye glow rides its head, and the mist does not', { tag: '@data' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await ensureScene();
@@ -145,7 +145,7 @@ test('the dragon\'s eye glow rides its head, and the mist does not', async () =>
 // The recording's own peak is 131 particles alive (measured off
 // bin/effects/843D3851…). So: one copy breathes UNDER that plus a fading tail;
 // two overlapping copies reach for twice it. The threshold sits between.
-test('the fountain runs one copy of its effect, not two stacked', async () => {
+test('the fountain runs one copy of its effect, not two stacked', { tag: '@data' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await ensureScene();

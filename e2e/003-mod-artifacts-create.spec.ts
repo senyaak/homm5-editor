@@ -53,7 +53,7 @@ async function openWithDonor(page: Launched['page']): Promise<void> {
   await expect(page.locator('#am-cost')).toHaveValue('7000'); // the preset settled
 }
 
-test('the dialog opens clean, and the donor loads as a preset', async () => {
+test('the dialog opens clean, and the donor loads as a preset', { tag: '@game' }, async () => {
   const { page } = ed;
   await page.locator('#artsbtn').click();
   await expect(page.locator('#artsmod')).toBeVisible();
@@ -70,7 +70,7 @@ test('the dialog opens clean, and the donor loads as a preset', async () => {
 });
 
 /** The same refusal the units form makes, for the fields an artifact needs. */
-test('it will not build an artifact that is missing what it needs', async () => {
+test('it will not build an artifact that is missing what it needs', { tag: '@game' }, async () => {
   const { page } = ed;
   // New is in the list behind the form, so the form has to go first.
   if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();
@@ -98,7 +98,7 @@ test('it will not build an artifact that is missing what it needs', async () => 
   await expect(page.locator('#artedit')).toBeHidden();
 });
 
-test('edits the difference and installs the artifact', async () => {
+test('edits the difference and installs the artifact', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openWithDonor(page);
@@ -161,7 +161,7 @@ test('edits the difference and installs the artifact', async () => {
   await expect(page.locator('#artedit')).toBeHidden(); // a build closes the form
 });
 
-test('a second piece, so there is a set to make', async () => {
+test('a second piece, so there is a set to make', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openWithDonor(page);
@@ -201,7 +201,7 @@ test('a second piece, so there is a set to make', async () => {
   expect(readInstalledMod(GAME).artifacts[1]!.description).toBe(CLOAK.description);
 });
 
-test('and the third, so the set is the whole Cloak', async () => {
+test('and the third, so the set is the whole Cloak', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openWithDonor(page);
@@ -235,7 +235,7 @@ test('and the third, so the set is the whole Cloak', async () => {
   );
 });
 
-test('an artifact opened for editing comes back whole', async () => {
+test('an artifact opened for editing comes back whole', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();
@@ -302,7 +302,7 @@ test('an artifact opened for editing comes back whole', async () => {
   expect(back.effects).toEqual({ necromancy: AMULET.necromancy });
 });
 
-test('says whether the extension is there, so an effect cannot look live when it is not', async () => {
+test('says whether the extension is there, so an effect cannot look live when it is not', { tag: '@game' }, async () => {
   const { page } = ed;
   await openWithDonor(page);
   // Without the extension an effect is written and does nothing, and "it does
@@ -327,7 +327,7 @@ test('says whether the extension is there, so an effect cannot look live when it
  * checkboxes has nothing to put a star on — so the count is named under the
  * form instead.
  */
-test('it will not build a set that is missing what it needs', async () => {
+test('it will not build a set that is missing what it needs', { tag: '@game' }, async () => {
   const { page } = ed;
   if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();
   if (!(await page.locator('#artsmod').isVisible())) await page.locator('#artsbtn').click();
@@ -355,7 +355,7 @@ test('it will not build a set that is missing what it needs', async () => {
   await expect(page.locator('#setedit')).toBeHidden();
 });
 
-test('makes a set of all three, with an effect of our own', async () => {
+test('makes a set of all three, with an effect of our own', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   if (await page.locator('#artedit').isVisible()) await page.locator('#artedit-cancel').click();
@@ -479,7 +479,7 @@ test('makes a set of all three, with an effect of our own', async () => {
   expect(mod.artifacts.map((a) => a.id)).toEqual(PIECES.map((p) => p.id));
 });
 
-test('removing asks in a dialog of ours, and Cancel means no', async () => {
+test('removing asks in a dialog of ours, and Cancel means no', { tag: '@game' }, async () => {
   test.setTimeout(2 * 60_000);
   const { page } = ed;
   if (await page.locator('#setedit').isVisible()) await page.locator('#setedit-cancel').click();
@@ -499,7 +499,7 @@ test('removing asks in a dialog of ours, and Cancel means no', async () => {
   await expect(page.locator('#as-list')).toContainText(UNDEAD_KING.name);
 });
 
-test('refuses one of the game\'s own set effects', async () => {
+test('refuses one of the game\'s own set effects', { tag: '@game' }, async () => {
   const { page } = ed;
   // The previous test's install closed the form; open a fresh one and wait
   // for it, rather than assuming it is still up.

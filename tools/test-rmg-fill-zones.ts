@@ -10,6 +10,7 @@
 // phases before them — which is fine for properties; the true engine chain,
 // boundary by boundary, lives in test-rmg-load-template.ts.
 
+// needs: game
 import { existsSync } from 'node:fs';
 
 import { RmgRandom } from '../src/rmg/random.ts';

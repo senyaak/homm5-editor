@@ -9,6 +9,7 @@
 // the players' races. Held on the roster's shape, on the offer's rules, and
 // on a generated map's file.
 
+// needs: game
 import { join } from 'node:path';
 
 import { inFront } from '../src/game/assets.ts';

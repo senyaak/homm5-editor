@@ -13,6 +13,7 @@
 //
 // If the game is present it is read too, but only read.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gameDirIfAny } from './game-dir.ts';

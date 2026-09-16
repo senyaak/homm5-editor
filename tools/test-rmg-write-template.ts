@@ -11,6 +11,7 @@
 // file reads back to the same template — and the writer is fixed on its own
 // output. Skips itself when there is no unpacked data, the way the rest do.
 
+// needs: data
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

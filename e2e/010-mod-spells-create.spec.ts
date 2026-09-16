@@ -84,7 +84,7 @@ function tile(page: Launched['page'], x: number, y: number, w: number, h: number
   return page.locator('#sm-area-grid label').nth(index);
 }
 
-test('the window opens and offers the game\'s own lists', async () => {
+test('the window opens and offers the game\'s own lists', { tag: '@game' }, async () => {
   const { page } = ed;
   await page.locator('#spellsbtn').click();
   await expect(page.locator('#spellsmod')).toBeVisible();
@@ -110,7 +110,7 @@ test('the window opens and offers the game\'s own lists', async () => {
   await expect(page.locator('#sm-damage label').last()).toContainText('Expert');
 });
 
-test('it will not build a spell that is missing what it needs', async () => {
+test('it will not build a spell that is missing what it needs', { tag: '@game' }, async () => {
   const { page } = ed;
   await openForm(page);
 
@@ -135,7 +135,7 @@ test('it will not build a spell that is missing what it needs', async () => {
  * plays, spends its mana and touches nobody — which in game is indistinguishable
  * from a spell that does not work. The form says so before the press.
  */
-test('an area spell with no tiles is refused, and the grid is how they are given', async () => {
+test('an area spell with no tiles is refused, and the grid is how they are given', { tag: '@game' }, async () => {
   const { page } = ed;
   // The grid only exists for the reach that has tiles; the other two never see it.
   await expect(page.locator('#sm-area-grid')).toBeHidden();
@@ -170,7 +170,7 @@ test('an area spell with no tiles is refused, and the grid is how they are given
   await expect(page.locator('#sm-area-note')).toHaveText(/1 tile\(s\) covered.*1 outside the new grid dropped/);
 });
 
-test('builds the spell, and both halves of it land where they belong', async () => {
+test('builds the spell, and both halves of it land where they belong', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openForm(page);
@@ -273,7 +273,7 @@ test('builds the spell, and both halves of it land where they belong', async () 
   expect([...row!.spares].sort()).toEqual(NOT_LIVING.map((a) => abilities.get(a)!).sort());
 });
 
-test('a spell opened for editing comes back whole — the tiles included', async () => {
+test('a spell opened for editing comes back whole — the tiles included', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   if (await page.locator('#spelledit').isVisible()) await page.locator('#spelledit-cancel').click();
@@ -312,7 +312,7 @@ test('a spell opened for editing comes back whole — the tiles included', async
   expect(readInstalledMod(GAME).spells!.find((x) => x.id === SPELL.id)).toEqual(before);
 });
 
-test('one of the game\'s own spell names is refused', async () => {
+test('one of the game\'s own spell names is refused', { tag: '@game' }, async () => {
   test.setTimeout(2 * 60_000);
   const { page } = ed;
   await openForm(page);
@@ -341,7 +341,7 @@ test('one of the game\'s own spell names is refused', async () => {
  * through the form can say is that the field survives the payload, the archive
  * and being opened again.
  */
-test('a specialization can hand this spell to whoever holds it', async () => {
+test('a specialization can hand this spell to whoever holds it', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   const SPEC = { id: 'HERO_SPEC_E2E_ABILITY', name: 'Наставник' };
@@ -396,7 +396,7 @@ test('a specialization can hand this spell to whoever holds it', async () => {
  * edited. What none of that does is stand in the way: something you cannot
  * delete because something else names it is a trap, not a safeguard.
  */
-test('removing asks first — Cancel means no, and Remove means gone', async () => {
+test('removing asks first — Cancel means no, and Remove means gone', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   if (!(await page.locator('#spellsmod').isVisible())) await page.locator('#spellsbtn').click();

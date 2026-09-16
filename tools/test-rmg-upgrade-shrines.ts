@@ -15,6 +15,7 @@
 // trace confirmed: 11 points, an affordable prefix of six, exactly one
 // building. Their live run waits for the steps between.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

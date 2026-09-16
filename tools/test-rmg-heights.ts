@@ -15,6 +15,7 @@
 // per store) — see src/rmg/heights.ts; the surface plateau's 4,414 exact
 // 9.0 vertices are the proof the game's SSE codegen could not leave.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

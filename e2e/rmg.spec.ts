@@ -130,7 +130,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { if (ed) await closeEditor(ed); cleanup(); });
 
-test('generates a tiny map through the dialog and opens it', async () => {
+test('generates a tiny map through the dialog and opens it', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
 
@@ -264,7 +264,7 @@ test('generates a tiny map through the dialog and opens it', async () => {
   await expect(page.locator('#hud')).toContainText('1 heroes listed');
 });
 
-test('a name already taken is refused and the dialog stays open', async () => {
+test('a name already taken is refused and the dialog stays open', { tag: '@game' }, async () => {
   const { page } = ed;
   await bar(page, '#rmgbtn');
   // The second opening reads nothing: the lists are there before the spinner could show.
@@ -280,7 +280,7 @@ test('a name already taken is refused and the dialog stays open', async () => {
   await expect(page.locator('#rmg')).toBeHidden();
 });
 
-test('a fixed template with everything else random draws a size it fits', async () => {
+test('a fixed template with everything else random draws a size it fits', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   cleanup();
@@ -304,7 +304,7 @@ test('a fixed template with everything else random draws a size it fits', async 
   expect(xdb).toContain('<Players>2</Players>');
 });
 
-test('the template editor: a template drawn, saved, and generated from', async () => {
+test('the template editor: a template drawn, saved, and generated from', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   cleanup();
@@ -430,7 +430,7 @@ test('the template editor: a template drawn, saved, and generated from', async (
   expect(xdb.match(/\(AdvMapTownShared\)/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
 });
 
-test('the sabotage: read in the main process, the app goes deaf', async () => {
+test('the sabotage: read in the main process, the app goes deaf', { tag: '@game' }, async () => {
   test.setTimeout(120_000);
   // The editor of the suite is stopped for this: two editors on one sandbox
   // would both hold its H5E, and the measurement is about one process.

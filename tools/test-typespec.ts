@@ -12,6 +12,7 @@
 //
 //   node tools/test-typespec.ts [dataRoot]
 
+// needs: data
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { mapFilesUnder } from '../src/map/map-source.ts';

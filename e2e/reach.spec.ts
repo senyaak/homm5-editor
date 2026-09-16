@@ -80,7 +80,7 @@ async function reach(page: Launched['page']): Promise<string> {
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await closeEditor(ed); cleanup(); });
 
-test('the walk finds what the wall shut out, and says so again when it is gone', async () => {
+test('the walk finds what the wall shut out, and says so again when it is gone', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(600_000);
   const { page } = ed;

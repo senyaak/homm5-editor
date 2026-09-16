@@ -6,6 +6,7 @@
 //
 //   node tools/test-schema.ts [dataRoot]
 
+// needs: data
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { mapSchema, deref, controlOf, resolveRef } from '../src/schema/schema.ts';

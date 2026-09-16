@@ -7,6 +7,7 @@
 // reference: the GUID (CoCreateGuid at run time) and the MapName (typed
 // into the order dialog). Everything else is the run's.
 
+// needs: game
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 

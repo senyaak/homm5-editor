@@ -42,7 +42,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('the Lua editor highlights, completes from the map, and saves', async () => {
+test('the Lua editor highlights, completes from the map, and saves', { tag: '@nodata' }, async () => {
   test.setTimeout(10 * 60_000);
   const { page } = ed;
 

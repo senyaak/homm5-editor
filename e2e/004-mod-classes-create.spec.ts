@@ -71,7 +71,7 @@ async function openHeroes(page: Launched['page'], tab: 'Classes' | 'Skills'): Pr
   await expect(page.locator('#hm-legend')).toContainText(tab);
 }
 
-test('authors the class Gem will be', async () => {
+test('authors the class Gem will be', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openHeroes(page, 'Classes');
@@ -150,7 +150,7 @@ test('authors the class Gem will be', async () => {
     .toBe(SHIPPED_CLASSES + 1);
 });
 
-test('authors her racial skill, and gives it its weight', async () => {
+test('authors her racial skill, and gives it its weight', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   await openHeroes(page, 'Skills');
@@ -301,7 +301,7 @@ test('authors her racial skill, and gives it its weight', async () => {
  * skill is the case that would break quietly, and typing a zero is how a row
  * goes away. What the specs after this one build is left exactly as it was.
  */
-test('and a skill can carry a bonus the extension adds', async () => {
+test('and a skill can carry a bonus the extension adds', { tag: '@game' }, async () => {
   const { page } = ed;
   const effects = join(GAME, EFFECTS_FILE);
   const rows = (): ReturnType<typeof readSkillEffects> =>

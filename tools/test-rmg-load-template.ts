@@ -10,6 +10,7 @@
 // the template alone. That is a check no amount of self-consistency can
 // fake.
 
+// needs: game
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 

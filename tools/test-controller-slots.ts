@@ -21,6 +21,7 @@
 // assignments name themselves — and the engine's out of `CBaseDragStackController`'s
 // vtable. Both are disassembled to their first `ret`.
 
+// needs: game
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -6,6 +6,7 @@
 // nothing of the old names left in it, that it goes back byte for byte, and that
 // a build without them is refused rather than half-written.
 
+// needs: game
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

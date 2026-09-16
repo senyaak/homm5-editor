@@ -11,6 +11,7 @@
 // too. This is what caught the adoption offsets being applied to the wrong
 // axes in connections.ts. Then zone 1's whole step runs LIVE to its boundary.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

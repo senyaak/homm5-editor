@@ -13,6 +13,7 @@
 // candidate whose file is not there places nothing, silently, and that is
 // exactly the kind of typo a hand-written preset carries.
 
+// needs: data
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DENSITY_MAX, DENSITY_MIN, planFill, insetOf, rng, thicken } from '../src/fill/plan.ts';

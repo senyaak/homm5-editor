@@ -10,6 +10,7 @@
 // ZoneConnections, whose sixteen draws depend on which tiles still belong to
 // a zone by then.
 
+// needs: game
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 

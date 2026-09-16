@@ -36,7 +36,7 @@ function cleanup(): void {
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 
-test('a blended stroke sets its own weight and leaves the layer under it', async () => {
+test('a blended stroke sets its own weight and leaves the layer under it', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(300_000);
   const { page } = ed;

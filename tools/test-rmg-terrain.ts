@@ -8,6 +8,7 @@
 // match the file LAYER BY LAYER, byte for byte — the two road layers after
 // them belong to the roads phase and are not ours yet.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

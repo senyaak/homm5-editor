@@ -48,7 +48,7 @@ const ACROSS = GLADE.bake!.tiles * 2;
 test.beforeAll(async () => { ed = await launchEditor({ HOMM5_ROOT: GAME }); });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('a tier dwelling, off the town screen and onto the map', async () => {
+test('a tier dwelling, off the town screen and onto the map', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
 
@@ -88,7 +88,7 @@ test('a tier dwelling, off the town screen and onto the map', async () => {
   await expect(page.locator('#bld-list')).toContainText(GLADE.messages.name!);
 });
 
-test('it hires one stack and is guarded by three', async () => {
+test('it hires one stack and is guarded by three', { tag: '@game' }, async () => {
   const members = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   const at = (e: { name: string }): string => e.name.replace(/\\/g, '/');
   const doc = members.find((e) => at(e).endsWith(`${GLADE.file}.(AdvMapDwellingShared).xdb`))!
@@ -129,7 +129,7 @@ test('it hires one stack and is guarded by three', async () => {
   expect(tiles('holeTiles').count, 'nothing is cut out from under it').toBe(0);
 });
 
-test('the copy is the size it was asked for, and stands on the origin', async () => {
+test('the copy is the size it was asked for, and stands on the origin', { tag: '@game' }, async () => {
   const members = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   const slash = (n: string): string => n.split('\\').join('/');
   const geom = members.find((e) => slash(e.name)

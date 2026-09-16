@@ -10,6 +10,7 @@
 // draw either way), so the suite holds the pass's own boundary and every
 // water treasure against the reference map by minted name.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

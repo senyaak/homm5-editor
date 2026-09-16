@@ -12,6 +12,7 @@
 //
 //   node tools/test-fix-map.ts [--data <dir>]
 
+// needs: data
 import { dataDir } from './game-dir.ts';
 import { dataIsThere, mapComplaints } from '../e2e/map-checks.ts';
 

@@ -14,6 +14,7 @@
 //   2. Does a mesh built from nothing come back out correctly? Build the box,
 //      write it, and read it with the same decoder the editor uses.
 
+// needs: data
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { decodeGeometry, encodeGeometry, buildGeometry, boxGroup, groupBBox, rotateGroup, VERTEX_STRIDE } from '../src/scene/geometry-write.ts';

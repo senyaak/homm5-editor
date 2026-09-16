@@ -10,6 +10,7 @@
 // not yet taken: by a zone already made, or by a lobby slot still to be
 // seated. Held on LoadTemplate alone, seed by seed, against the flag off.
 
+// needs: game
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

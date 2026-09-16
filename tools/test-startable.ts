@@ -9,6 +9,7 @@
 //
 //   node tools/test-startable.ts [--game <dir>]
 
+// needs: game
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parse } from '../src/format/xml.ts';

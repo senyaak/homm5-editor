@@ -15,6 +15,7 @@
 // Skipped when the game data is not unpacked; set HOMM5_DATA or unpack into
 // data-unpacked. Usage: `node tools/test-gr2.ts [sampleSize]`.
 
+// needs: data
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { GrannyFile } from '../src/format/gr2.ts';

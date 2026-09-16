@@ -5,6 +5,7 @@
 // without being touched. Everything here is fake archives in a temp folder, so
 // it runs in milliseconds; the real install is read at the end, read-only.
 
+// needs: game
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';

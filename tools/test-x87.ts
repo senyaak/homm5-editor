@@ -11,6 +11,7 @@
 // A suite that only asked "does the minimap come out right" would pass on a
 // wrong sine and a compensating filter. These ask each function on its own.
 
+// needs: game
 import { readEngineSine, engineSin24 } from '../src/exe/sine-table.ts';
 import { add24, div24, mul24, parse24, parse53, sub24, tr24 } from '../src/exe/x87.ts';
 import { lanczos3 } from '../src/rmg/resample.ts';

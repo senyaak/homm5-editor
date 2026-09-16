@@ -10,6 +10,7 @@
 //
 // Skips itself when the game data is not unpacked.
 
+// needs: data
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseEffect } from '../src/scene/effects.ts';

@@ -6,6 +6,7 @@
 // tested on a fixture only proves it can read the fixture. Skips itself when
 // there is no unpacked data, the way the rest of the suite does.
 
+// needs: game
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -45,7 +45,7 @@ function cleanup(): void {
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 
-test('a tile maps to the pixel that picks it', async () => {
+test('a tile maps to the pixel that picks it', { tag: '@nodata' }, async () => {
   const { page } = ed;
   test.setTimeout(180_000);
 
@@ -87,7 +87,7 @@ test('a tile maps to the pixel that picks it', async () => {
   expect(missedZoomed, 'tiles that did not pick as themselves when zoomed in').toEqual([]);
 });
 
-test('clicking with the Raise brush moves exactly those vertices, into the file', async () => {
+test('clicking with the Raise brush moves exactly those vertices, into the file', { tag: '@nodata' }, async () => {
   const { page } = ed;
   test.setTimeout(180_000);
 
@@ -122,7 +122,7 @@ test('clicking with the Raise brush moves exactly those vertices, into the file'
   }
 });
 
-test('the brush force is the height one stroke adds, exactly', async () => {
+test('the brush force is the height one stroke adds, exactly', { tag: '@nodata' }, async () => {
   const { page } = ed;
   test.setTimeout(180_000);
 
@@ -161,7 +161,7 @@ test('the brush force is the height one stroke adds, exactly', async () => {
   }
 });
 
-test('the Vertex brush moves one corner, including the outermost row', async () => {
+test('the Vertex brush moves one corner, including the outermost row', { tag: '@nodata' }, async () => {
   const { page } = ed;
   test.setTimeout(180_000);
 

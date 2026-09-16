@@ -16,7 +16,7 @@ import { join } from 'node:path';
 import { closeEditor, launchEditor } from './launch.ts';
 import { ARCHIVE, FIXES_UNDER_TEST, GAME } from './fixes.ts';
 
-test('every rule fix is turned on, and the map from 001 is still there', async () => {
+test('every rule fix is turned on, and the map from 001 is still there', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   // The map is the constant of the experiment; without it this run has nothing
   // to be the second half of.

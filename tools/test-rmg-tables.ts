@@ -8,6 +8,7 @@
 // executable would fail here and that is right: the numbers below are the
 // shipped game's, and a build that says otherwise is a different game.
 
+// needs: game
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 

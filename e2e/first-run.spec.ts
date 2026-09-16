@@ -86,7 +86,7 @@ test.afterAll(() => {
   rmSync(HOME, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 
-test('a first run turns a bare install into one the editor can work in', async () => {
+test('a first run turns a bare install into one the editor can work in', { tag: '@game' }, async () => {
   // Unwrapping downloads Steamless the first time and runs it over a 14 MB
   // executable; unpacking is thousands of files. Minutes, not seconds.
   test.setTimeout(10 * 60_000);
@@ -129,7 +129,7 @@ test('a first run turns a bare install into one the editor can work in', async (
   expect(isReady(install), 'the editor can be opened on this install').toBe(true);
 });
 
-test('a second run finds everything already true and does nothing', async () => {
+test('a second run finds everything already true and does nothing', { tag: '@game' }, async () => {
   test.setTimeout(2 * 60_000);
 
   // Runs against what the first test left: the chain is the point — an install
@@ -147,7 +147,7 @@ test('a second run finds everything already true and does nothing', async () => 
   expect(readFileSync(join(HOME, PATCHED)).equals(before), 'and the executable is byte for byte what it was').toBe(true);
 });
 
-test('a folder that is not an install is refused before anything long starts', async () => {
+test('a folder that is not an install is refused before anything long starts', { tag: '@game' }, async () => {
   const nowhere = join(REPO_ROOT, '_tmp', 'e2e-first-run-nowhere');
   rmSync(nowhere, { recursive: true, force: true });
   mkdirSync(nowhere, { recursive: true });

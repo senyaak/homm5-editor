@@ -7,6 +7,7 @@
 // IN FRONT of the application's and the game's (a copy under a shipped name
 // shadows the shipped one), delete it, see the shipped one come back.
 
+// needs: data
 import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';

@@ -9,6 +9,7 @@
 // twice. Every template of the game's must come out with no box covering
 // another.
 
+// needs: data
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 

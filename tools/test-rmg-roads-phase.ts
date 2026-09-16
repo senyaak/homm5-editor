@@ -12,6 +12,7 @@
 // laid — sensitive at once to the seeds, both nearest-point scans (one
 // full, one sampled), the route directions and the growing lists.
 
+// needs: game
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 

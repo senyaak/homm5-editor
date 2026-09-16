@@ -54,6 +54,26 @@ whole output to a file and says so:
 Read that log, not the table. Its useful lines are `Error:` and the
 `N failed / N passed` at the end.
 
+## Three levels
+
+Every suite and every e2e test says what it needs, and the runs are cut by
+that: **nodata** (nothing — the checkout alone), **data** (the unpacked data),
+**game** (a real install: the executable, its archives).
+
+```bash
+npm run test-nodata      # the level's unit suites + test-e2e-nodata
+npm run test-data
+npm run test-game
+npm run test-rmg         # the generator's forty suites (--only rmg-)
+node tools/test-all.ts --level game --list   # what a level would run, nothing run
+```
+
+A unit suite carries one line near its top — `// needs: data` or
+`// needs: game` — and none means nodata; an e2e test carries the tag
+(`{ tag: '@game' }`, or `@nodata` in its title). The aggregator reads the
+line, it keeps no list. A new suite without the line runs at nodata, so a
+suite that then skips itself for want of the game is a missing line.
+
 ## Running one suite
 
 ```bash

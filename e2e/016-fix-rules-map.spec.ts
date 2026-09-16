@@ -184,7 +184,7 @@ const mainHeroRef = (id: string): string => `#xpointer(id(${id})/AdvMapHero)`;
 // and this file's `beforeAll` copies an executable before any of it runs. The
 // data-free door to these questions is `npm run test-fix-map`, which needs no
 // install and no fixture; this one is the gate in front of the build.
-test('the map spec is one the game can build', () => {
+test('the map spec is one the game can build', { tag: '@game' }, () => {
   // The last gate before an evening is spent on it. Every failure this catches
   // is SILENT — a perk the hero does not qualify for is dropped without a word,
   // the map is written, it loads, and the hero simply does not have it. That is
@@ -203,7 +203,7 @@ test('the map spec is one the game can build', () => {
 // which reads as the spell being wrong rather than as a line that was not
 // written. Checked in the install, by the number, because that is what both the
 // engine and the extension go by.
-test('the spells of ours carry their row into the install', () => {
+test('the spells of ours carry their row into the install', { tag: '@game' }, () => {
   const rows = readSpellRows(readFileSync(join(GAME, EFFECTS_FILE), 'latin1'));
   // BY THE NUMBER THE INSTALL GAVE IT, not by counting from the shipped 353.
   // The offsets held while the four were the only spells anybody added, and the
@@ -244,7 +244,7 @@ test('the spells of ours carry their row into the install', () => {
 // them wrong is a spell of the wrong shape, and it is wrong SILENTLY: the cast
 // goes through, something is damaged, and only what got hit says which branch
 // ran. Asserted in the archive the game reads, not in the fixture that wrote it.
-test('each spell of ours carries the two flags that pick its shape', () => {
+test('each spell of ours carries the two flags that pick its shape', { tag: '@game' }, () => {
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD)));
   for (const spec of OUR_SPELL_FIXTURES) {
     const want = spellPaths(spec).document.replace(/\\/g, '/');
@@ -267,7 +267,7 @@ test('each spell of ours carries the two flags that pick its shape', () => {
   }
 });
 
-test('the Rules Test map is built and packed, with every fix off', async () => {
+test('the Rules Test map is built and packed, with every fix off', { tag: '@game' }, async () => {
   test.setTimeout(10 * 60_000);
   const { page } = ed;
 

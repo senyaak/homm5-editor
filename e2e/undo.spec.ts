@@ -52,7 +52,7 @@ async function ensureMap(): Promise<void> {
   made = true;
 }
 
-test('an object comes off the map and goes back on', async () => {
+test('an object comes off the map and goes back on', { tag: '@data' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   await ensureMap();
@@ -91,7 +91,7 @@ test('an object comes off the map and goes back on', async () => {
   expect(ed.errors, 'the renderer threw nothing').toEqual([]);
 });
 
-test('the ground goes back where it was', async () => {
+test('the ground goes back where it was', { tag: '@data' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   await ensureMap();
@@ -117,7 +117,7 @@ test('the ground goes back where it was', async () => {
   expect(ed.errors, 'the renderer threw nothing').toEqual([]);
 });
 
-test('a paint stroke comes back', async () => {
+test('a paint stroke comes back', { tag: '@data' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   await ensureMap();
@@ -155,7 +155,7 @@ test('a paint stroke comes back', async () => {
 //
 // One object with both — a fountain, whose spray is a particle system and whose
 // body casts — undone and redone.
-test('the picture comes back with the objects: effects and shadows', async () => {
+test('the picture comes back with the objects: effects and shadows', { tag: '@data' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   await ensureMap();
@@ -206,7 +206,7 @@ test('the picture comes back with the objects: effects and shadows', async () =>
 // Reached through an undone layer, because that is what makes the tidy-up find
 // something to do: adding a layer names its tile, undoing takes the name back
 // out, and the session's list of layers does not walk back with it.
-test('a save does not break the undo stack', async () => {
+test('a save does not break the undo stack', { tag: '@data' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   await ensureMap();

@@ -3,6 +3,7 @@
 //
 //   node tools/test-registry.ts [dataRoot]
 
+// needs: data
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Registry } from '../src/schema/registry.ts';

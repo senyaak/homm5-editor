@@ -11,6 +11,7 @@
 // 1's remaining steps and the roads are ported; the boundary table in
 // docs/RMG.md is where it will be picked up.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

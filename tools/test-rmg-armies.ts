@@ -8,6 +8,7 @@
 // creature, count by count. Nothing here is simulated: the inputs come from
 // the log, the expectations from map.xdb.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

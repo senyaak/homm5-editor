@@ -568,7 +568,7 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('the whole ladder goes down through the palette, four boxes to a kind', async () => {
+test('the whole ladder goes down through the palette, four boxes to a kind', { tag: '@game' }, async () => {
   test.setTimeout(20 * 60_000);
   const { page } = ed;
   await newMap(page, NAME, '96');
@@ -595,7 +595,7 @@ test('the whole ladder goes down through the palette, four boxes to a kind', asy
     .toHaveLength(signposts().length);
 });
 
-test('one box is filled in through the window, the way a person would', async () => {
+test('one box is filled in through the window, the way a person would', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   // The first box of the first side: selected on the map, opened from the
@@ -622,7 +622,7 @@ test('one box is filled in through the window, the way a person would', async ()
   expect(back.worn, 'and the placement wears what it earned').toBe('Green');
 });
 
-test('the rest are filled in through the same channel, and every glow is earned', async () => {
+test('the rest are filled in through the same channel, and every glow is earned', { tag: '@game' }, async () => {
   test.setTimeout(10 * 60_000);
   const { page } = ed;
   const prices = pandoraPrices(singleRoot(DATA));
@@ -651,7 +651,7 @@ test('the rest are filled in through the same channel, and every glow is earned'
   }
 });
 
-test('two sides, each with a hero of their own', async () => {
+test('two sides, each with a hero of their own', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   const heroes = await twoHeroes(page);
@@ -820,7 +820,7 @@ test('two sides, each with a hero of their own', async () => {
   }
 });
 
-test('saving writes the block the game reads, and the texts it shows', async () => {
+test('saving writes the block the game reads, and the texts it shows', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const lua = readFileSync(join(MAP_DIR, 'MapScript.lua'), 'utf8');
   for (const b of BOXES) {
@@ -897,7 +897,7 @@ test('saving writes the block the game reads, and the texts it shows', async () 
     .toContain('exp = 20000');
 });
 
-test('and it packs to a map the game can be pointed at', async () => {
+test('and it packs to a map the game can be pointed at', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   const archive = modFile(GAME, 'map', NAME);
@@ -919,7 +919,7 @@ test('and it packs to a map the game can be pointed at', async () => {
     .toBe(false);
 });
 
-test('and the whole box is one tick in the Gameplay tab, both ways', async () => {
+test('and the whole box is one tick in the Gameplay tab, both ways', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   const archive = join(GAME, GAMEPLAY_ARCHIVE);

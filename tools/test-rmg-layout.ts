@@ -11,6 +11,7 @@
 // every start zone, each start zone holds a corner of its own, and the areas
 // are the template's proportions.
 
+// needs: game
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -11,6 +11,7 @@
 //      file rather than the item picked up that 10 and drew a knee-high gnome
 //      seventeen units tall — taller than a town, across half a dozen tiles.
 
+// needs: data
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildScene } from '../src/scene/scene.ts';

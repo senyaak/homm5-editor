@@ -10,6 +10,7 @@
 // hero class count is a `push imm8` (nine fits in a byte) and the skill count is
 // a `push imm32` (221 does not).
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {

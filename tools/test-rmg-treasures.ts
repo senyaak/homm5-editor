@@ -10,6 +10,7 @@
 // step must spend nothing: its density scales to zero objects here, and
 // the reference's 31 chests all come from the treasure-blocks phase.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

@@ -3,6 +3,7 @@
 //
 //   node tools/test-tree.ts [dataRoot]
 
+// needs: data
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadMap } from '../src/map/map.ts';

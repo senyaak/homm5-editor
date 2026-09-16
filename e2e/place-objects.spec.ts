@@ -103,7 +103,7 @@ function compare(mine: XmlElement, theirs: XmlElement, path: string, diffs: stri
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 
-test('objects placed in the app are saved at the measured defaults', async () => {
+test('objects placed in the app are saved at the measured defaults', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(300_000);
   const { page } = ed;
@@ -203,7 +203,7 @@ test('objects placed in the app are saved at the measured defaults', async () =>
   expect(saved.namesInUse().size).toBe(saved.objects.length);
 });
 
-test('a field the object does not carry can still be set, and lands in the file', async () => {
+test('a field the object does not carry can still be set, and lands in the file', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'types.xml')), 'needs the game type spec');
   test.skip(!existsSync(SOURCE_MAP), 'needs a shipped map whose objects predate a field');
   const { page } = ed;

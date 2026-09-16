@@ -6,6 +6,7 @@
 //   2. Project lifecycle: open -> pack -> status(clean) -> edit -> status(dirty).
 //   3. Version divergence: a manifest packed by an older editor version is flagged.
 
+// needs: game
 import { readEntries, readIndex, writeArchive } from '../src/format/pak.ts';
 import { openProject, packProject, status, readManifest, writeManifest } from '../src/map/project.ts';
 import { readFileSync, writeFileSync, appendFileSync, mkdirSync, statSync, rmSync, openSync, closeSync } from 'node:fs';

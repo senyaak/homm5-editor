@@ -11,6 +11,7 @@
 // exactly on the roads boundary, and every traced step boundary is
 // asserted.
 
+// needs: game
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 

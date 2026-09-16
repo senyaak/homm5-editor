@@ -17,6 +17,7 @@
 //
 // Needs the unpacked data: the enum and the sets table are the game's own files.
 
+// needs: data
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 

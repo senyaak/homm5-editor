@@ -8,6 +8,7 @@
 //      compare every file byte-for-byte. Pass a dir (argv[2] / HOMM5_BLANKS);
 //      game data via HOMM5_DATA or data-unpacked.
 
+// needs: data
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { buildNewMapProject } from '../src/map/new-map.ts';

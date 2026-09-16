@@ -22,6 +22,7 @@
 // address below moves. This is why the map is generated rather than typed —
 // the tool is the knowledge, the markdown is a snapshot of it.
 
+// needs: game
 import { existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 

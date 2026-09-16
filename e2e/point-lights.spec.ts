@@ -23,7 +23,7 @@ let ed: Launched;
 test.beforeAll(async () => { ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('the underground crystals pool light on the cave floor', async () => {
+test('the underground crystals pool light on the cave floor', { tag: '@data' }, async () => {
   test.skip(!existsSync(MAP), 'no shipped maps under the data root');
   const { page, errors } = ed;
 

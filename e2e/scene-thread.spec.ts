@@ -64,7 +64,7 @@ async function openWhilePinging(ed: Launched): Promise<Watch> {
   }, SCENE);
 }
 
-test('the app keeps answering while a scene is built', async () => {
+test('the app keeps answering while a scene is built', { tag: '@game' }, async () => {
   test.skip(!existsSync(CAMPAIGNS), 'the campaigns\' scenes are not on this install');
   test.setTimeout(180_000);
   const ed = await launchEditor();
@@ -91,7 +91,7 @@ test('the app keeps answering while a scene is built', async () => {
   }
 });
 
-test('…and the same measurement fails when the build is put back in the main process', async () => {
+test('…and the same measurement fails when the build is put back in the main process', { tag: '@game' }, async () => {
   test.skip(!existsSync(CAMPAIGNS), 'the campaigns\' scenes are not on this install');
   test.setTimeout(180_000);
   // The sabotage: same app, same scene, builder disabled.

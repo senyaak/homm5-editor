@@ -60,7 +60,7 @@ async function setDensity(page: Launched['page'], value: string): Promise<void> 
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await closeEditor(ed); cleanup(); });
 
-test('an area painted with the fill brush becomes a wood, in one undo step', async () => {
+test('an area painted with the fill brush becomes a wood, in one undo step', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(300_000);
   const { page } = ed;
@@ -152,7 +152,7 @@ test('an area painted with the fill brush becomes a wood, in one undo step', asy
     'and the whole turn is used').toBeGreaterThan(8);
 });
 
-test('the density slider says what it will plant, and then plants it', async () => {
+test('the density slider says what it will plant, and then plants it', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(300_000);
   const { page } = ed;
@@ -209,7 +209,7 @@ test('the density slider says what it will plant, and then plants it', async () 
   void before;
 });
 
-test('a preset of your own is made in the window, kept in H5E, and plants what it names', async () => {
+test('a preset of your own is made in the window, kept in H5E, and plants what it names', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(240_000);
   const { page } = ed;
@@ -291,7 +291,7 @@ test('a preset of your own is made in the window, kept in H5E, and plants what i
     'the rocks it planted are objects now, and stay').toBe(before + 9);
 });
 
-test('the brush adds and Shift takes away, without touching the map', async () => {
+test('the brush adds and Shift takes away, without touching the map', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, 'MapObjects')), 'needs the game data');
   test.setTimeout(180_000);
   const { page } = ed;

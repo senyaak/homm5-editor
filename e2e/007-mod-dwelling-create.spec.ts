@@ -32,7 +32,7 @@ const GAME = modGameRoot();
 test.beforeAll(async () => { ed = await launchEditor({ HOMM5_ROOT: GAME }); });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('a dwelling for a creature the game does not ship', async () => {
+test('a dwelling for a creature the game does not ship', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
 
@@ -86,7 +86,7 @@ test('a dwelling for a creature the game does not ship', async () => {
   await page.locator('#rc-close').click();
 });
 
-test('it hires the creature, wearing the elves\' art in its own colours', async () => {
+test('it hires the creature, wearing the elves\' art in its own colours', { tag: '@game' }, async () => {
   const members = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   const names = members.map((e) => e.name.replace(/\\/g, '/'));
   const doc = members

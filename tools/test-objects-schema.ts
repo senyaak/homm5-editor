@@ -2,6 +2,7 @@
 //
 //   node tools/test-objects-schema.ts [dataRoot]
 
+// needs: data
 import { readFileSync } from 'node:fs';
 import { mapFilesUnder } from '../src/map/map-source.ts';
 import { objectSchema, objectProps, resolveRef, controlOf, deref } from '../src/schema/schema.ts';

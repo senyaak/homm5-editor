@@ -12,6 +12,7 @@
 // The rest are the properties that hold whatever the constants are — the ones
 // that catch a typo rather than a misreading.
 
+// needs: game
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 

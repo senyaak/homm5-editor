@@ -5,6 +5,7 @@
 //
 //   node tools/test-rmg-world-race.ts
 
+// needs: game
 import { RACE } from '../src/rmg/load-template.ts';
 import {
   adler32, drawnDwellingRace, drawnTownRace, dwellingWorldRace, nameHash, seededBetween, townWorldRace,

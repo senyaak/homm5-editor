@@ -25,7 +25,7 @@ let ed: Launched;
 test.beforeAll(async () => { ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); });
 
-test('the editor opens a campaign scene and plays it', async () => {
+test('the editor opens a campaign scene and plays it', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(GAME, 'UserMODs')) && !existsSync(join(DATA, SCENE)),
     'the campaigns\' scenes are not on this install');
   const { page, errors } = ed;
@@ -381,7 +381,7 @@ test('the editor opens a campaign scene and plays it', async () => {
 // most of it lives in the addon's scenes.
 const MARCH = 'DialogScenes/A2C3/M4/S1';
 
-test('a scene walks its actors, and they stay where it leaves them', async () => {
+test('a scene walks its actors, and they stay where it leaves them', { tag: '@data' }, async () => {
   test.skip(!existsSync(join(DATA, MARCH)) && !existsSync(join(GAME, 'data')),
     'the addon\'s scenes are not on this install');
   const { page } = ed;

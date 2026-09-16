@@ -18,6 +18,7 @@
 // The game half is optional — a checkout with no install configured skips it
 // and says so, rather than inventing a path.
 
+// needs: game
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';

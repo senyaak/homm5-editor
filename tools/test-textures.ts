@@ -14,6 +14,7 @@
 //
 // The last section needs game data and skips itself without it.
 
+// needs: data
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { assets } from '../src/game/assets.ts';

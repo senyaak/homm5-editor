@@ -8,6 +8,7 @@
 //      original editor's pristine blanks. Pass a dir of blanks as argv[2] (or set
 //      HOMM5_BLANKS); the registry uses HOMM5_DATA or data-unpacked.
 
+// needs: data
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildBlankMap } from '../src/map/blank-map.ts';

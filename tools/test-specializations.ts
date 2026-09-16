@@ -16,6 +16,7 @@
 //
 //   node tools/test-specializations.ts [dataRoot]
 
+// needs: data
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';

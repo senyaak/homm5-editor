@@ -24,6 +24,7 @@
 // numbers cannot drift (both sides read `TRAINABLE`); the shape can, and only a
 // run of the game says otherwise. That is written down rather than hidden.
 
+// needs: data
 import {
   ARMY_SLOTS, SHARPSHOOTER, TRAINABLE, TRAINING_SPELL, type ArmyView, type Plan,
   planTraining, priceOf, questionFor, trainingLua,
