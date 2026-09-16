@@ -58,7 +58,11 @@ export function readCreatures(dataRoot: DataRoot): CreatureInfo[] {
     let tier = 0;
     let town = 0;
     if (href) {
-      const doc = find(parse(readText(dataRoot, href)), 'Creature');
+      // A mod's creature may be written INLINE — `<Obj href="#n:inline(Creature)">`
+      // with the record as the Obj's child, which is how the editor's own mods
+      // write theirs; the shipped table points every record at a file.
+      const obj = find(item, 'Obj')!;
+      const doc = href.startsWith('#') ? find(obj, 'Creature') : find(parse(readText(dataRoot, href)), 'Creature');
       power = doc ? Number.parseInt(childText(doc, 'Power'), 10) || 0 : 0;
       monsterShared = (doc ? find(doc, 'MonsterShared')?.attrs['href'] : undefined) ?? '';
       tier = doc ? Number.parseInt(childText(doc, 'CreatureTier'), 10) || 0 : 0;

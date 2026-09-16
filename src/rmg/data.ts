@@ -23,11 +23,21 @@ export function docPath(href: string): string {
   return href.replace(/#xpointer\(.*\)$/, '').replace(/#.*$/, '').replace(/^\/+/, '');
 }
 
-/** The document's text, or a refusal that names the path and the roots searched. */
+/**
+ * The refusal for a document no root has — a sentence, with the roots on
+ * the console rather than in it: a dialog shows this line, and eleven
+ * paths of mounted archives are not what it needs to say.
+ */
+function missing(data: Assets, rel: string): Error {
+  console.warn(`[rmg] ${rel}: not in any mounted root — searched ${data.roots.join(', ')}`);
+  return new Error(`the generator needs ${rel}, and neither the game's data nor any mounted archive has it (${data.roots.length} roots searched — the console lists them)`);
+}
+
+/** The document's text, or a refusal that names the path. */
 export function readText(root: DataRoot, rel: string, encoding: BufferEncoding = 'utf8'): string {
   const data = toAssets(root);
   const text = data.text(docPath(rel), encoding);
-  if (text === null) throw new Error(`${rel}: not in any mounted root (${data.roots.join(', ')})`);
+  if (text === null) throw missing(data, rel);
   return text;
 }
 
@@ -35,7 +45,7 @@ export function readText(root: DataRoot, rel: string, encoding: BufferEncoding =
 export function readBytes(root: DataRoot, rel: string): Buffer {
   const data = toAssets(root);
   const bytes = data.bytes(docPath(rel));
-  if (bytes === null) throw new Error(`${rel}: not in any mounted root (${data.roots.join(', ')})`);
+  if (bytes === null) throw missing(data, rel);
   return bytes;
 }
 
@@ -62,7 +72,7 @@ export function readEnumValues(root: DataRoot, typeName: string): Map<number, st
 export function filePath(root: DataRoot, rel: string): string {
   const data = toAssets(root);
   const p = docPath(rel);
-  if (!data.exists(p)) throw new Error(`${rel}: not in any mounted root (${data.roots.join(', ')})`);
+  if (!data.exists(p)) throw missing(data, rel);
   return data.path(p);
 }
 
