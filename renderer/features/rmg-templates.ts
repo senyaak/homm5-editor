@@ -30,6 +30,7 @@ import type { PlaceableObject, RmgTemplateEntry } from '#electron/ipc.ts';
 import { pickFromEntries } from '#features/inspector/refs.ts';
 import type { PickEntry } from '#features/inspector/refs.ts';
 import { layoutDiagram } from '#src/rmg/diagram-layout.ts';
+import type { DiagramSize } from '#src/rmg/diagram-layout.ts';
 import { RACE_BY_NAME } from '#src/rmg/load-template.ts';
 import { CONNECTION_FIELDS, TEMPLATE_FIELDS, ZONE_FIELDS, ZONE_LAYOUT_KINDS, OUR_CONNECTION_FIELDS, OUR_TEMPLATE_FIELDS, OUR_ZONE_FIELDS } from '#src/rmg/template.ts';
 import type { FieldSpec, RmgConnection, RmgTemplate, RmgZone, ZoneLayoutKind } from '#src/rmg/template.ts';
@@ -168,6 +169,30 @@ function zoneRows(z: RmgZone): Row[] {
 
 const boxHeight = (z: RmgZone): number => HEAD_H + zoneRows(z).length * ROW_H + PAD;
 
+/** Every box's size, for the layout to keep them apart. */
+const boxSizes = (): Map<number, DiagramSize> => new Map(t!.zones.map((z) => [z.index, { w: boxWidth(z), h: boxHeight(z) }]));
+const layout = (): Map<number, Point> => layoutDiagram(t!.zones, t!.connections, boxSizes());
+
+/**
+ * The view fits the picture: the boxes' bounding box with a margin, never
+ * smaller than the bare square, so a small template keeps its scale and a
+ * big one — seven zones with a dozen named objects each — is all on screen.
+ */
+function fitView(svg: SVGSVGElement): void {
+  let minX = Number.POSITIVE_INFINITY, minY = Number.POSITIVE_INFINITY, maxX = 0, maxY = 0;
+  for (const z of t!.zones) {
+    const p = centre(z.index);
+    const w = boxWidth(z), h = boxHeight(z);
+    minX = Math.min(minX, p.x - w / 2); maxX = Math.max(maxX, p.x + w / 2);
+    minY = Math.min(minY, p.y - h / 2); maxY = Math.max(maxY, p.y + h / 2);
+  }
+  if (!Number.isFinite(minX)) { svg.setAttribute('viewBox', '0 0 1000 1000'); return; }
+  const m = 40;
+  const w = Math.max(1000, maxX - minX + 2 * m);
+  const h = Math.max(1000, maxY - minY + 2 * m);
+  svg.setAttribute('viewBox', `${Math.min(0, minX - m)} ${Math.min(0, minY - m)} ${w} ${h}`);
+}
+
 function el<K extends keyof SVGElementTagNameMap>(name: K, attrs: Record<string, string | number> = {}): SVGElementTagNameMap[K] {
   const e = document.createElementNS(SVG_NS, name);
   for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
@@ -200,7 +225,7 @@ function textEl(x: number, y: number, s: string, cls = ''): SVGTextElement {
 function centre(index: number): Point {
   let p = pos.get(index);
   if (!p) {
-    pos = layoutDiagram(t!.zones, t!.connections);
+    pos = layout();
     p = pos.get(index) ?? { x: 500, y: 500 };
   }
   return p;
@@ -270,6 +295,7 @@ function render(): void {
     g.addEventListener('pointerdown', (e) => onZoneDown(e, z.index));
     svg.appendChild(g);
   }
+  fitView(svg);
   warn();
 }
 
@@ -310,7 +336,7 @@ function onZoneDown(e: PointerEvent, index: number): void {
     const next = { x: Math.round(from.x + now.x - start.x), y: Math.round(from.y + now.y - start.y) };
     if (!moved && Math.hypot(next.x - from.x, next.y - from.y) < 4) return;
     moved = true;
-    pos.set(index, { x: Math.min(1000 - BOX_W / 2, Math.max(BOX_W / 2, next.x)), y: Math.min(980, Math.max(20, next.y)) });
+    pos.set(index, next);
     render();
   };
   const up = (): void => {
@@ -356,7 +382,7 @@ function addZone(): void {
   t.zones.push(z);
   // Beside the last box, or wherever the springs put it when there is none.
   const near = last ? centre(last.index) : { x: 500, y: 500 };
-  pos.set(index, { x: Math.min(1000 - BOX_W / 2, near.x + BOX_W + 40), y: near.y });
+  pos.set(index, { x: near.x + (last ? boxWidth(last) : BOX_W) / 2 + BOX_W / 2 + 40, y: near.y });
   markDirty();
   select({ kind: 'zone', index });
 }
@@ -377,7 +403,7 @@ function removeSelected(): void {
 
 function arrange(): void {
   if (!t) return;
-  pos = layoutDiagram(t.zones, t.connections);
+  pos = layout();
   markDirty();
   render();
 }
@@ -705,7 +731,7 @@ function take(template: RmgTemplate, name: string, from: Source): void {
   $('rte-err').textContent = '';
   $input('rte-file').value = name;
   pos = new Map(t.diagram.map((n) => [n.index, { x: n.x, y: n.y }]));
-  if (t.zones.some((z) => !pos.has(z.index))) pos = layoutDiagram(t.zones, t.connections);
+  if (t.zones.some((z) => !pos.has(z.index))) pos = layout();
   $button('rte-remove').disabled = true;
   updateWhere();
   refreshList();
