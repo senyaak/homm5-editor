@@ -17,6 +17,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync 
 import { join } from 'node:path';
 import { CLEAN_EXE, SHIPPED_EXE, ensureCleanExe } from '../src/exe/exe-unwrap.ts';
 import { modFile } from '../src/game/mod-paths.ts';
+import { userTemplateFile } from '../src/rmg/user-templates.ts';
 import { DATA, REPO_ROOT, closeEditor, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { bar } from './bar.ts';
@@ -26,23 +27,29 @@ import { MADE } from './artifacts.ts';
 let ed: Launched;
 
 const NAME = MADE.RANDOM_MAP;
+/** The template the editor test writes, and the map generated from it. */
+const TEMPLATE = MADE.RANDOM_TEMPLATE;
+const NAME_FROM_TEMPLATE = MADE.RANDOM_MAP_FROM_TEMPLATE;
 /** A throwaway install of its own: the generator wants an executable, the suite's default has none. */
 const GAME = join(REPO_ROOT, '_tmp', 'e2e-rmg');
 /** Where the generated map's folder lands — `Maps/RMG/<guid>` under the unpack root, like the game's own. */
 const RMG_DIR = join(DATA, 'Maps', 'RMG');
 
 /** The folders under Maps/RMG holding a map of THIS name — the guid is drawn, so they are found by content. */
-function ourFolders(): string[] {
+function ourFolders(name: string = NAME): string[] {
   if (!existsSync(RMG_DIR)) return [];
   return readdirSync(RMG_DIR)
     .map((d) => join(RMG_DIR, d))
-    .filter((d) => existsSync(join(d, 'map.xdb')) && readFileSync(join(d, 'map.xdb'), 'latin1').includes(`<MapName>${NAME}</MapName>`));
+    .filter((d) => existsSync(join(d, 'map.xdb')) && readFileSync(join(d, 'map.xdb'), 'latin1').includes(`<MapName>${name}</MapName>`));
 }
 
 function cleanup(): void {
-  const archive = modFile(GAME, 'map', NAME);
-  if (existsSync(archive)) rmSync(archive, { force: true });
-  for (const d of ourFolders()) rmSync(d, { recursive: true, force: true });
+  for (const name of [NAME, NAME_FROM_TEMPLATE]) {
+    const archive = modFile(GAME, 'map', name);
+    if (existsSync(archive)) rmSync(archive, { force: true });
+    for (const d of ourFolders(name)) rmSync(d, { recursive: true, force: true });
+  }
+  rmSync(userTemplateFile(GAME, TEMPLATE), { force: true });
 }
 
 /**
@@ -194,4 +201,116 @@ test('a fixed template with everything else random draws a size it fits', async 
   const xdb = readFileSync(join(ourFolders()[0]!, 'map.xdb'), 'latin1');
   expect(xdb).toMatch(/<MapSize>MAP_SIZE_(TINY|SMALL)<\/MapSize>/);
   expect(xdb).toContain('<Players>2</Players>');
+});
+
+test('the template editor: a template drawn, saved, and generated from', async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  cleanup();
+
+  // The door: from the generator's dialog, over it.
+  await bar(page, '#rmgbtn');
+  await page.locator('#rmg-templates').click();
+  await expect(page.locator('#rte')).toBeVisible();
+  // The list is the generator's: the game's 22 and the editor's Jebus, each
+  // saying whose it is; the first opens with its picture laid out.
+  await expect(page.locator('#rte-list option')).toHaveCount(23);
+  await expect(page.locator('#rte-list option', { hasText: 'Jebus Cross' })).toHaveText(/the editor's/);
+  await expect(page.locator('#rte-svg .rte-zone').first()).toBeVisible();
+
+  // Jebus Cross, the editor's: every notion of ours has its glyph and number
+  // on the middle zone's box — the multiplier, the relic ranges, the Utopia
+  // with its ceiling and guard — and the back ways are the dashed lines.
+  await page.locator('#rte-list').selectOption('Jebus Cross');
+  await expect(page.locator('#rte-svg .rte-zone')).toHaveCount(5);
+  const middle = page.locator('#rte-svg .rte-zone[data-index="1"] text');
+  await expect(middle.filter({ hasText: /^×2$/ })).toHaveCount(1);
+  await expect(middle.filter({ hasText: '3× 15k–28k' })).toHaveCount(1);
+  await expect(middle.filter({ hasText: 'Dragon_Utopia 1..1 ⚔30' })).toHaveCount(1);
+  await expect(page.locator('#rte-svg .rte-conn')).toHaveCount(8);
+  await expect(page.locator('#rte-svg .rte-conn.roadless')).toHaveCount(4);
+  await page.locator('#rte .mp-card').screenshot({ path: join(REPO_ROOT, '_tmp', 'e2e-rmg-template-editor-jebus.png') });
+
+  // New: two start zones joined — and the picture says so.
+  await page.locator('#rte-new').click();
+  await expect(page.locator('#rte-svg .rte-zone')).toHaveCount(2);
+  await expect(page.locator('#rte-svg .rte-conn')).toHaveCount(1);
+  await expect(page.locator('#rte-panel h3')).toHaveText('Template');
+
+  // A third zone, not a start, bigger — through the panel, whose rows are
+  // the field tables' tags.
+  await page.locator('#rte-add-zone').click();
+  await expect(page.locator('#rte-svg .rte-zone')).toHaveCount(3);
+  await expect(page.locator('#rte-panel h3')).toHaveText('Zone #3');
+  const field = (tag: string) => page.locator(`#rte-panel .rte-row:has(> span:text-is("${tag}"))`);
+  await field('CanBePlayerStart').locator('select').selectOption('false');
+  await field('Size').locator('input').fill('20');
+  await field('Size').locator('input').press('Tab');
+  await expect(page.locator('#rte-svg .rte-zone[data-index="3"]')).not.toHaveClass(/start/);
+  await expect(page.locator('#rte-svg .rte-zone[data-index="3"] text', { hasText: /^20$/ })).toHaveCount(1);
+  // The warning line speaks, never refuses: #3 is joined to nothing yet.
+  await expect(page.locator('#rte-warn')).toContainText('joined to nothing: #3');
+
+  // Connect #1 to #3: the button, then the two boxes; the new line takes the panel.
+  await page.locator('#rte-connect').click();
+  await expect(page.locator('#rte-hint')).toContainText('first zone');
+  await page.locator('#rte-svg .rte-zone[data-index="1"] rect.head').click();
+  await page.locator('#rte-svg .rte-zone[data-index="3"] rect.head').click();
+  await expect(page.locator('#rte-svg .rte-conn')).toHaveCount(2);
+  await expect(page.locator('#rte-panel h3')).toHaveText('Connection 1 — 3');
+  await field('GuardStrenght').locator('input').fill('7');
+  await field('GuardStrenght').locator('input').press('Tab');
+  await field('Road').locator('select').selectOption('false');
+  await expect(page.locator('#rte-svg .rte-conn.roadless')).toHaveCount(1);
+  await expect(page.locator('#rte-svg .rte-conn.roadless text')).toContainText('7');
+  await expect(page.locator('#rte-warn')).toBeEmpty();
+
+  // The template's own fields, by clicking the background.
+  await page.locator('#rte-svg').click({ position: { x: 5, y: 5 } });
+  await expect(page.locator('#rte-panel h3')).toHaveText('Template');
+  await field('Name').locator('input').fill(TEMPLATE);
+  await field('Name').locator('input').press('Tab');
+  await field('UniqueRaces').locator('select').selectOption('true');
+
+  // The picture, for a human to look at after the run (the assertions above are the test).
+  await page.locator('#rte .mp-card').screenshot({ path: join(REPO_ROOT, '_tmp', 'e2e-rmg-template-editor.png') });
+
+  // Save as the install's own; the file is where the generator's chain reads.
+  await page.locator('#rte-file').fill(TEMPLATE);
+  await page.locator('#rte-save').click();
+  await expect(page.locator('#rte-where')).toContainText('yours', { timeout: 30_000 });
+  await expect(page.locator('#rte-err')).toBeEmpty();
+  const saved = userTemplateFile(GAME, TEMPLATE);
+  expect(existsSync(saved)).toBeTruthy();
+  const h5et = readFileSync(saved, 'utf8');
+  expect(h5et).toContain(`<Name>${TEMPLATE}</Name>`);
+  expect(h5et).toContain('<UniqueRaces>true</UniqueRaces>');
+  expect(h5et.match(/<Index>/g)).toHaveLength(3 + 3); // three zones, and the three of the picture
+  expect(h5et).toContain('<Road>false</Road>');
+  expect(h5et).toContain('<Diagram>');
+  await expect(page.locator('#rte-list option')).toHaveCount(24);
+  await expect(page.locator('#rte-list option', { hasText: TEMPLATE })).toHaveText(/yours/);
+
+  // Back in the generator's dialog the new template is on offer — and a
+  // tiny map comes out of it. 5..14 units, so Tiny fits.
+  await page.locator('#rte-close').click();
+  await expect(page.locator('#rte')).toBeHidden();
+  await expect(page.locator('#rmg')).toBeVisible();
+  await page.locator('#rmg-size').selectOption('0');
+  await page.locator('#rmg-two').selectOption('0');
+  await expect(page.locator('#rmg-template option', { hasText: TEMPLATE })).toHaveCount(1);
+  await page.locator('#rmg-template').selectOption(TEMPLATE);
+  await page.locator('#rmg-players').selectOption('2');
+  // Not random towns: the count below reads the town documents, and the
+  // dialog keeps what the previous test left in it.
+  await page.locator('#rmg-towns').selectOption('0');
+  await page.locator('#rmg-name').fill(NAME_FROM_TEMPLATE);
+  await page.locator('#rmg-seed').fill('1785351845');
+  await page.locator('#rmg-ok').click();
+  await untilGenerated(ed, 4 * 60_000);
+  await expect(page.locator('#title')).toContainText(NAME_FROM_TEMPLATE, { timeout: 60_000 });
+  const xdb = readFileSync(join(ourFolders(NAME_FROM_TEMPLATE)[0]!, 'map.xdb'), 'latin1');
+  expect(xdb).toContain(`<Template href="/RMG/Templates/${TEMPLATE}.h5et`);
+  // Three zones with a town each: three towns on the map.
+  expect(xdb.match(/\(AdvMapTownShared\)/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
 });

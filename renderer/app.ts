@@ -46,7 +46,8 @@ import { initSpellsMod } from '#features/mods/spells.ts';
 import { initArtifactSets } from '#features/mods/artifact-sets.ts';
 import { openCampaignList, initCampaigns } from '#features/campaigns.ts';
 import { initPandora } from '#features/pandora.ts';
-import { initRmg } from '#features/rmg.ts';
+import { initRmg, rmgListsChanged } from '#features/rmg.ts';
+import { initRmgTemplates } from '#features/rmg-templates.ts';
 import { initQol } from '#features/qol.ts';
 import { initPropertyPanel } from '#features/inspector/controls.ts';
 import { initRefs } from '#features/inspector/refs.ts';
@@ -1118,6 +1119,7 @@ initUnitsMod();
   initArtifactSets();
 initSpellsMod();
 initPandora();
+initRmgTemplates(rmgListsChanged);
 initRmg(loadMapPath, () => { void initPicker(); });
 initQol();
 

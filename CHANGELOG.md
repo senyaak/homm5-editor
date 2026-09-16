@@ -90,11 +90,25 @@ a named hero — a named one makes the player that race — and a map with
 any hero named offers only the heroes named (a slot left to the game keeps
 its whole race), in the lobby and in the taverns alike.
 
-**A template can be written, not only read** — the first brick of a
-template editor. The writer makes the file the game's own serialiser
-makes: each of the twenty-two shipped templates, read and written back,
-is the bytes it was, and a template of ours writes its own fields only
-where they say something (`docs/RMG.md`, "Writing a template back").
+**A template editor.** *Templates…* in the Random Map dialog opens the
+generator's templates — the game's, the editor's and your own — as a
+diagram: each zone a box with its number and race in the header and its
+properties as rows of a glyph and a number (a castle and its guard, a pick
+for the mines, a house for the dwellings, coins for the treasure, a gem for
+each relic range, a crate for each named object), each connection a line
+labelled with its guard, dashed when it carries no road, two lines for a
+pair written twice. Drag the boxes, add a zone, connect two, remove one;
+click a box or a line for its fields on the right, the background for the
+template's own — every field labelled as the file spells it, its meaning
+on hover, ours in their own colour. Nothing is refused: a line under the
+diagram says what the generator would warn about. Saving writes the
+install's own `<game>/H5E/RMG/Templates/<file>.h5et`, which the Random
+Map dialog lists in front of the editor's and the game's — so a game
+template saved under its own name is shadowed by yours, the way a mod's
+file shadows the shipped one — and the picture goes with the file. Under
+it, the writer makes the file the game's own serialiser makes: each of
+the twenty-two shipped templates, read and written back, is the bytes it
+was (`docs/RMG.md`, "The template editor").
 
 **The generator reads the install the game reads.** Every document the port
 opens — the preset table, the templates, the tiles, every shared building,

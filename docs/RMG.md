@@ -4014,6 +4014,58 @@ through the five XML entities both ways (`encodeEntities` /
 `decodeEntities` in `xml.ts`; `text()` stays verbatim for the round trips
 that keep bytes).
 
+### The template editor
+
+`renderer/features/rmg-templates.ts`, opened by "Templates…" in the Random
+Map dialog (over it; the dialog's lists follow a save). The diagram is
+SVG drawn from the model: a zone a box — `#index` and the race word in
+the header, a flag when it is a start zone, then one row per notion with
+a glyph drawn by code (`GLYPHS`, a 24-unit path each: area, castle, ×,
+pick, house, coins, gem, crate) and the number beside it; the box as wide
+as its longest row. A connection a quadratic between the two centres,
+labelled with its guard, dashed (`⋯`) without a road; a pair written more
+than once bows each line to its own side. The picture's positions come
+from `<Diagram>` when the file has one, else from `diagram-layout.ts` —
+a deterministic spring layout: start zones on an outer ring, the rest on
+an inner one, then repulsion between all, attraction along connections
+(one per record, so a doubled pair pulls twice), a push outward on the
+start zones, cooling; Jebus Cross opens as a cross, and the 22 shipped
+templates open with their boxes apart (`test-rmg-diagram-layout`).
+Dragging a box, Arrange, add, connect, remove all mark the template
+edited; Save writes the positions as `<Diagram>`.
+
+The panel is built from the field tables, not written by hand: for a
+zone, every live field of `ZONE_FIELDS` in table order — an `int` a
+number box, a `bool` a select (the optional `Shipyard` with a third
+choice, "not written"), `Setting` a select over `RACE_BY_NAME`, a `tiers`
+seven boxes (a list shorter than seven grows only as far as the tier
+edited, so the file's length stays the file's), a `float` a number box
+with the spec's bounds; the label is the tag, the tooltip the doc, ours
+in purple. The two structured lists of ours (`TreasureBlocks`, `Objects`)
+are small list editors under headings; an object's `Max` left blank is
+"no ceiling". A connection: its two ends as selects over the zones, the
+guard, `Road`. The template: name, the two ranges, `TestTemplate`, and
+ours. The index of a zone is not editable — it is the zone's name to
+every connection.
+
+Warnings, never refusals, on the line under the diagram: an index used
+twice, no zones, no start zone, more players than start zones, a range the
+wrong way round, a connection naming a missing zone or a zone itself, a
+zone joined to nothing, no name.
+
+Saving: `rmg:template-save` writes `<game>/H5E/RMG/Templates/<file>.h5et`
+(`user-templates.ts`), the root the generator's chain reads in front of
+`assets/rmg` and the mounted install, so a copy under a shipped name
+shadows the shipped one — the way a mod's file does — and "Delete"
+removes the user's copy only, the shipped one coming back. New starts
+from two start zones joined (the numbers `S1P2Z2M1`'s), and "+ Zone" copies
+the last zone with the next index. `e2e/rmg.spec.ts` opens the editor,
+reads Jebus's rows off the boxes, draws a three-zone template through the
+panel, saves it, and generates a tiny map from it.
+
+Not done: an object picker for `<Objects>` (the href is typed; the
+palette's picker is the door to add), and variants / packs (the roadmap).
+
 ## Which fields the engine actually reads
 
 A data format read out of an executable comes with a second question behind

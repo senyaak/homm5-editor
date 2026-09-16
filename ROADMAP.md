@@ -1192,7 +1192,16 @@ or its data, so a mod's templates, creatures and artifacts reach it.
 
 **Before it can be released — three things, in a chat of their own:**
 
-- [ ] **A visual template editor** — our own, a module of its own embedded
+- [x] **A visual template editor** — DONE 16.09 (`renderer/features/rmg-templates.ts`,
+      "Templates…" in the generator's dialog; `docs/RMG.md`, "The template
+      editor"): the zones as rectangles with glyph rows, connections as
+      lines with their guard (dashed without a road, bowed apart when a pair
+      is written twice), drag / add / connect / remove, a panel built from
+      the field tables, warnings under the diagram; saved as the install's
+      own `<game>/H5E/RMG/Templates/<file>.h5et`, listed in front of the
+      editor's and the game's. `e2e/rmg.spec.ts` draws one, saves it and
+      generates from it. Not yet: an object picker for `<Objects>` (an href
+      is typed), variants and packs (below). Our own, a module of its own embedded
       in the editor, writing `.h5et` (settled 16.09; HotA's editor and
       zomle's open reimplementation of it are the picture, not the code).
       The zones as RECTANGLES, the way an ER diagram draws an entity: index
@@ -1215,9 +1224,10 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       the model does not; `test-rmg-write-template`) — which taught the
       model two things the reader had folded: a tier list's LENGTH is data
       (`Dwellings` runs none to seven) and `Shipyard` is written or not.
-      Next: the module itself, then a "Templates…" door from the
-      generator's dialog, saving where the dialog lists from, and an e2e:
-      add a zone and a connection, save, generate from it ⬜
+      The model then split (16.09): `template-game.ts` the game's three
+      records with a described table of every field, `template.ts` ours
+      extending them, the dead fields in a `carried` bag off the records;
+      the reader, the writer and the panel all walk the tables ✅
 - [ ] **Generate only from a whitelist.** A second dialog inside the
       generator's: what the generator may place — creatures, dwellings,
       artifacts, buildings — so a thing that lives as a mod (the sharpshooter,

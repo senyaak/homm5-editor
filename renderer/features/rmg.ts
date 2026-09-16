@@ -20,6 +20,7 @@ import { $, $button, $input, $select, fillSelect } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import type { RmgChoicesResult, RmgResolvedOrder, RmgTemplateEntry } from '#electron/ipc.ts';
+import { openTemplateEditor } from '#features/rmg-templates.ts';
 
 const RANDOM = 'random';
 
@@ -236,6 +237,14 @@ async function submit(open: (path: string, archive: string) => Promise<void>, re
 let gate: { check: () => void };
 
 /**
+ * The template editor saved or removed one: the lists are a template out of
+ * date. Reread while the dialog is up; a closed dialog rereads on opening.
+ */
+export function rmgListsChanged(): void {
+  if (dialog().open) void fill();
+}
+
+/**
  * Wire the dialog. `openMap` is how the app opens what was made, `refresh`
  * tells the picker its list is one map out of date — both the app's own, so
  * this file does not reach into it.
@@ -250,6 +259,12 @@ export function initRmg(openMap: (path: string, archive: string) => Promise<void
   $('rmg-close').onclick = () => dialog().close();
   $('rmg-cancel').onclick = () => dialog().close();
   $('rmg-random').onclick = () => { void allRandom(); };
+  // The door to the template editor, on the template chosen here — over this
+  // dialog, which stays as it was and picks up what was saved.
+  $('rmg-templates').onclick = () => {
+    const chosen = $select('rmg-template').value;
+    void openTemplateEditor(chosen === RANDOM ? undefined : chosen);
+  };
   $('rmg-ok').onclick = () => { void submit(openMap, refresh); };
   $input('rmg-name').addEventListener('input', updateWhere);
   $select('rmg-size').addEventListener('change', () => { void refreshTemplates(); });
