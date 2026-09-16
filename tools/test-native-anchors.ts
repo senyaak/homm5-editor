@@ -113,13 +113,29 @@ if (!exePath || !existsSync(exePath)) {
 }
 const exe = PEFile.read(exePath);
 
+// TWO IMAGES, because two executables carry the extension. Anything an
+// instrument reads out of the MAP EDITOR is a different compilation of the same
+// source — the same shapes at different addresses — so checking an editor
+// anchor against the game would report a correct address as wrong. The name
+// says which image it belongs to: `_ED_` is the editor's, and the convention is
+// the oracle's own (`RMG_ED_NEXT_RVA`).
+const EDITOR_EXE = 'bin/H5_MapEditor_H5E.exe';
+const editorPath = game ? join(game, EDITOR_EXE) : null;
+const editor = editorPath && existsSync(editorPath) ? PEFile.read(editorPath) : null;
+
 for (const a of anchors.sort((x, y) => x.name.localeCompare(y.name))) {
-  const at = exe.offsetOf(a.rva + IMAGE_BASE);
+  const inEditor = a.name.includes('_ED_');
+  if (inEditor && !editor) {
+    console.log(`  skip  ${a.name} — no ${EDITOR_EXE}, so the editor's anchors went unchecked`);
+    continue;
+  }
+  const exe_ = inEditor ? editor! : exe;
+  const at = exe_.offsetOf(a.rva + IMAGE_BASE);
   if (at === null) {
     check(a.name, false, `0x${(a.rva + IMAGE_BASE).toString(16)} is not in the image (${a.file})`);
     continue;
   }
-  const found = [...exe.buf.subarray(at, at + a.head.length)];
+  const found = [...exe_.buf.subarray(at, at + a.head.length)];
   const same = found.every((b, i) => b === a.head[i]);
   const hex = (bs: number[]) => bs.map((b) => b.toString(16).padStart(2, '0')).join(' ');
   check(a.name, same, same
@@ -135,7 +151,7 @@ for (const a of anchors.sort((x, y) => x.name.localeCompare(y.name))) {
   // a function whose fifth is the first of a three-byte `mov` read perfectly.
   // This is the check that would have saved a launch.
   const boundaries = new Set<number>([0]);
-  for (const ins of disassemble(exe.buf.subarray(at, at + a.head.length + 16), a.rva + IMAGE_BASE)) {
+  for (const ins of disassemble(exe_.buf.subarray(at, at + a.head.length + 16), a.rva + IMAGE_BASE)) {
     boundaries.add(ins.address - (a.rva + IMAGE_BASE) + ins.length);
     if (ins.address - (a.rva + IMAGE_BASE) > a.head.length) break;
   }

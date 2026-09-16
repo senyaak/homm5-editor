@@ -19,6 +19,7 @@ import type { PandoraContents } from '../src/mods/pandora-contents.ts';
 import type { FillDraft } from '../src/fill/preset.ts';
 import type { ActorView, ShotView } from '../src/dialog/play.ts';
 import type { SceneSource } from '../src/dialog/scene-source.ts';
+import type { RmgTemplate } from '../src/rmg/template.ts';
 export type { PlaceableObject } from '../src/map/objects.ts';
 
 /**
@@ -125,6 +126,128 @@ export interface NewMapResult {
   mapDir: string;
   /** The `.h5m` it was packed into — the map, as the game will read it. */
   archive: string;
+}
+
+// --- the random map generator ---------------------------------------------
+//
+// The game's own generator, ported (src/rmg, docs/RMG.md) and held byte for
+// byte to the maps the engine writes. The dialog is the game's dialog: the
+// same lists, in the same units, read from the install rather than typed here.
+
+/** What the generator's dialog offers — `rmg:choices`. */
+export interface RmgChoicesResult {
+  /** `MapSize` names by index, with the side in tiles each stands for. */
+  sizes: { name: string; tiles: number }[];
+  water: string[];
+  monsterLevels: string[];
+  resourceMultipliers: string[];
+  expMultipliers: string[];
+  /** Every template the install mounts, with the ranges the filter reads. */
+  templates: RmgTemplateEntry[];
+  /** OURS: every hero the lobby would offer — href, `TOWN_*`, file name. */
+  heroes: { href: string; town: string; name: string }[];
+}
+
+export interface RmgTemplateEntry {
+  /** The file name without its extension (`.xdb` the game's, `.h5et` ours) — what an order names. */
+  file: string;
+  /** The document's own `<Name>`. */
+  name: string;
+  minPlayers: number;
+  maxPlayers: number;
+  minMapSize: number;
+  maxMapSize: number;
+  /**
+   * Whose file answered: the user's (`<game>/H5E/RMG/Templates`, where the
+   * template editor saves), the application's (`assets/rmg`, shipped with
+   * it), or the game's. The first shadows the second shadows the third.
+   */
+  source: 'user' | 'app' | 'game';
+}
+
+/** Result of `rmg:template-read` — the template as the generator would read it, and whose file it is. */
+export interface RmgTemplateReadResult {
+  file: string;
+  template: RmgTemplate;
+  source: RmgTemplateEntry['source'];
+}
+
+/** Payload of `rmg:template-save` — written as the user's `<file>.h5et`, whatever it was read as. */
+export interface RmgTemplateSavePayload {
+  file: string;
+  template: RmgTemplate;
+}
+
+export interface RmgTemplateSaveResult {
+  /** Where it landed. */
+  path: string;
+}
+
+/** Payload of `rmg:templates` — which templates the dialog would offer for this size and floor count. */
+export interface RmgTemplatesPayload {
+  sizeIndex: number;
+  underground: boolean;
+}
+
+/**
+ * Payload of `rmg:generate` — an order in the dialog's own units (see
+ * `RmgOrder` in src/rmg/index.ts), where any control but the name and the
+ * minimap may say `'random'` and main draws it: the size, then the floors,
+ * then a template the game's dialog would offer for those (and that takes the
+ * players, when they are fixed), then the players inside its range; the rest
+ * independently. What was drawn comes back in the result's `order`.
+ */
+export interface RmgGeneratePayload {
+  mapName: string;
+  /** Left out: the generator draws one, the way the game's dialog does. */
+  seed?: number;
+  template: string | 'random';
+  sizeIndex: number | 'random';
+  underground: boolean | 'random';
+  water: number | 'random';
+  players: number | 'random';
+  monsterLevel: number | 'random';
+  resourceMultiplier: number | 'random';
+  expMultiplier: number | 'random';
+  grail: boolean | 'random';
+  randomTowns: boolean | 'random';
+  minimap: boolean;
+  /**
+   * OURS: per player slot, `any` (the game's choice), `random` (one of the
+   * race, drawn) or a hero's href; the first `players` entries count. See
+   * `src/rmg/heroes.ts`.
+   */
+  heroes?: string[];
+}
+
+/** The order as it was generated — every `'random'` of the payload resolved. */
+export interface RmgResolvedOrder {
+  template: string;
+  sizeIndex: number;
+  tiles: number;
+  underground: boolean;
+  water: number;
+  players: number;
+  monsterLevel: number;
+  resourceMultiplier: number;
+  expMultiplier: number;
+  grail: boolean;
+  randomTowns: boolean;
+  /** The payload's hero choices, cut to the players; absent when all `any`. */
+  heroes?: string[];
+}
+
+/** Result of `rmg:generate` — the map, landed and packed like a new one, plus what the run cost. */
+export interface RmgGenerateResult extends NewMapResult {
+  seed: number;
+  order: RmgResolvedOrder;
+  draws: number;
+  objects: number;
+  /** Where the generator ran: its own process, or this one when no child could be forked. */
+  where: 'child' | 'main';
+  ms: number;
+  /** What the generator wanted said and did not stop for — shown, not thrown. */
+  warnings: string[];
 }
 
 /** Result of `map:load`. */
@@ -1873,6 +1996,18 @@ export interface EditorApi {
   listMaps(): Promise<MapsListResult>;
   openMapDialog(): Promise<OpenMapDialogResult>;
   newMap(p: NewMapPayload): Promise<NewMapResult>;
+  /** The generator's lists — sizes, water, monster levels, multipliers, templates. */
+  rmgChoices(): Promise<RmgChoicesResult>;
+  /** The templates the game's dialog would offer for a size and floor count. */
+  rmgTemplates(p: RmgTemplatesPayload): Promise<RmgTemplateEntry[]>;
+  /** Generate a map from an order and land it as a new map, packed and ready to open. */
+  rmgGenerate(p: RmgGeneratePayload): Promise<RmgGenerateResult>;
+  /** The template editor: a template by its file name, through the generator's chain. */
+  rmgTemplateRead(file: string): Promise<RmgTemplateReadResult>;
+  /** Save it as the user's `.h5et` — the game's are never written, only copied. */
+  rmgTemplateSave(p: RmgTemplateSavePayload): Promise<RmgTemplateSaveResult>;
+  /** Remove a user's template; false when there was none of that name. */
+  rmgTemplateDelete(file: string): Promise<boolean>;
   /** `stock` takes ONE map out of the game's own archives, which hold many. */
   openArchive(path: string, inner?: string, stock?: boolean): Promise<OpenArchiveResult>;
   loadMap(path: string): Promise<MapLoadResult>;

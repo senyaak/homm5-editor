@@ -42,6 +42,9 @@ const MASK47 = (1n << 47n) - 1n;
  */
 const SCALE = Math.fround(1 / 2 ** 31);
 
+import { DOUBLES } from './arith.ts';
+import type { Arith } from './arith.ts';
+
 /** One float32 and its bits — the hook's union, spelled in JavaScript. */
 const FLOAT_BITS = new Float32Array(1);
 const INT_BITS = new Int32Array(FLOAT_BITS.buffer);
@@ -59,11 +62,26 @@ export class RmgRandom {
    * `between` reports as `b` because the engine's own between draws through
    * below, and the trace mirrors what the detours see. For `f` the value is
    * the FLOAT'S BITS, matching the hook's union trick.
+   *
+   * `limit` comes with a `b` draw and is the half that identifies the call
+   * site: two sides drawing different numbers only disagree, while "one of 3
+   * against one of 30" names which loop they are in.
    */
-  onDraw: ((kind: 'n' | '6' | 'b' | 'f', value: number) => void) | null = null;
+  onDraw: ((kind: 'n' | '6' | 'b' | 'f', value: number, limit?: number) => void) | null = null;
 
   /** The seed as the map records it (`sRMGProps/RMGstartseed`). */
   readonly seed: number;
+
+  /**
+   * Which machine the one float draw is computed on.
+   *
+   * `betweenFloat` is the only arithmetic in this class, and it is the most
+   * seed-critical float in the generator: one ulp parted `S3-5P2Z7N2.2` at
+   * draw six. The editor computes it at double precision and rounds once at
+   * the store; a host running at `0x0C7F` rounds every step toward zero
+   * instead. See `arith.ts`.
+   */
+  arith: Arith = DOUBLES;
 
   constructor(seed: number) {
     this.seed = seed | 0;
@@ -104,7 +122,7 @@ export class RmgRandom {
   below(limit: number): number {
     if (limit === 0) return 0;
     const value = Number(((this.step() >> 16n) & MASK47) % BigInt(limit >>> 0));
-    this.onDraw?.('b', value);
+    this.onDraw?.('b', value, limit);
     return value;
   }
 
@@ -142,20 +160,45 @@ export class RmgRandom {
    * This is where `Zone #%d … k == %2.2f` comes from, so getting it exactly
    * right matters for the very first phase that grows anything.
    *
-   * The engine draws the same 31 bits as `next()`, scales by 1/2^31, and then
-   * does the interpolation in SINGLE precision — `cvtpd2ps` before the multiply
-   * and every operation after it a `ss`. JavaScript has only doubles, so each
-   * step is rounded back to float with `Math.fround`; skipping that gives
-   * answers that are right to seven digits and wrong afterwards, which is
-   * precisely the kind of drift that shows up a thousand draws later.
+   * The engine draws the same 31 bits as `next()` and interpolates — and the
+   * two builds do it differently, which is the trap this port has walked into
+   * four times now. The GAME (`0xEB14D0`, SSE) puts the draw through
+   * `cvtpd2ps` FIRST, so a 31-bit integer is squeezed into a float's 24-bit
+   * mantissa before anything else, and every step after it is an `ss`. The
+   * EDITOR (`0xCFD330`, x87) keeps the whole thing on the stack —
+   *
+   *     fild [esp]              ; the full 31 bits, no rounding
+   *     fld b; fsub a; fmulp    ; draw * (b - a)
+   *     fmul [1172694h]         ; * 2^-31, exact, a power of two
+   *     fadd a
+   *
+   * — and rounds once, where the caller stores the result. The reference maps
+   * are the EDITOR's, so this port speaks the editor's arithmetic: one
+   * `Math.fround` at the end and none in the middle. The difference is a
+   * single ulp and it is not cosmetic — it is what parted `S3-5P2Z7N2.2` at
+   * the second seed's water order, at draw SIX of the whole run.
    */
   betweenFloat(a: number, b: number): number {
     // The engine's betweenFloat steps the state itself rather than calling
     // next(), so the trace must show ONE 'f', not an 'n' inside an 'f' — the
     // draw is inlined here for the same reason.
     const draw = Number((this.step() >> 23n) & 0x7fffffffn);
-    const scaled = Math.fround(Math.fround(draw) * SCALE);
-    const value = Math.fround(a + Math.fround(scaled * Math.fround(b - a)));
+    // One instruction per step, in the order the disassembly above has them:
+    // `fsub`, `fmulp`, `fmul`, `fadd`, and the caller's store. Under DOUBLES
+    // that is `Math.fround(draw * (b - a) * SCALE + a)` to the bit — the
+    // operations are the plain ones and only the store rounds.
+    const ar = this.arith;
+    // THE GAME'S SHAPE IS NOT THE EDITOR'S UNDER ANOTHER ROUNDING (`0xEB14D0`,
+    // read instruction by instruction): the 31-bit draw goes `cvtdq2pd` then
+    // `cvtpd2ps` — squeezed to 24 bits BEFORE any arithmetic, which the
+    // editor's `fild` never does — and the scale is applied FIRST, `(draw *
+    // 2^-31) * (b - a) + a`, all `ss`, where the editor multiplies by `(b - a)`
+    // first. Either half alone moves the map angle's value by the one ulp the
+    // game's trace showed (1077830373 against 1077830374); both are needed
+    // in general. Under DOUBLES the line below is the editor's, untouched.
+    const value = ar === DOUBLES
+      ? ar.store(ar.add(ar.mul(ar.mul(draw, ar.sub(b, a)), SCALE), a))
+      : ar.store(ar.add(ar.mul(ar.mul(ar.store(draw), SCALE), ar.sub(b, a)), a));
     if (this.onDraw) {
       FLOAT_BITS[0] = value;
       this.onDraw('f', INT_BITS[0]);

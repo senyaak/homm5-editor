@@ -38,6 +38,8 @@
 // below. Single precision is marked with fround exactly where the code says
 // `ss`; the square roots and the /3.0 are genuinely double.
 
+import { DOUBLES } from './arith.ts';
+import type { Arith } from './arith.ts';
 import type { RmgRandom } from './random.ts';
 
 /** A zone as LoadTemplate leaves it: index, template Size, floor. */
@@ -67,38 +69,73 @@ export interface GeneratedZones {
 }
 
 /**
- * The order a floor's hash_map yields its zones in.
+ * The container the engine keeps these collections in, and the order it yields
+ * them in.
  *
- * The container is an STLPort-style hash_map: bucket = index % bucketCount,
- * insertion at the HEAD of a bucket, iteration buckets ascending. It starts
- * at 13 buckets and rehashes when an insert would push the count past the
- * bucket count — so the fourteenth zone grows it to 29, the thirtieth to 53
- * (the prime table at 0xF49470). Zones come in here in template file order,
- * the order LoadTemplate inserts them.
+ * It is an STLPort-style hash_map: bucket = key % bucketCount, insertion at the
+ * HEAD of a bucket, iteration buckets ascending. It starts at 13 buckets and
+ * rehashes when an insert would push the count past the bucket count — so the
+ * fourteenth key grows it to 29, the thirtieth to 53 (the prime table at
+ * 0xF49470).
  *
  * This order is load-bearing and not the obvious one: indices in shipped
- * templates reach 15, so on a small table zone 14 sits in bucket 1 and
- * iterates before zone 2 — but a template big enough to rehash holds its
- * zones in a 29-bucket table where indices up to 28 stop colliding at all.
+ * templates reach 15, so on a small table zone 14 sits in bucket 1 and iterates
+ * before zone 2 — while a collection big enough to rehash holds its keys in a
+ * 29-bucket table where indices up to 28 stop colliding at all and the order is
+ * plain ascending again.
  *
- * The one path this refuses: a collision in a table that has been rehashed.
- * Within-bucket order there depends on the order the rehash re-inserted the
- * old elements, which has not been read out of the executable — and no
- * shipped template reaches it (the suite checks). A named hole, not a guess.
+ * The rehash is read, not assumed (the floor's zone insert is `0xEB0CB0`,
+ * called from LoadTemplate at 0xEA26A3; FillZones' two containers inline the
+ * same template at 0xEA8DE1 and 0xEAA0EB): `insert_unique` first grows the
+ * table when `count + 1 > buckets` — `next_size(count + 1)` at 0x4E3D30 is a
+ * lower bound over the prime table — and moves the old nodes by walking the
+ * OLD buckets ascending, each chain from its head, hanging every node on the
+ * HEAD of its new bucket:
+ *
+ *     0xeb0d12  mov eax,[ecx+4]          ; node->key
+ *     0xeb0d17  div dword ptr [esp+14h]  ; % new bucket count
+ *     0xeb0d1b  mov eax,[ecx]            ; old[i] = node->next
+ *     0xeb0d1d  mov [esi],eax
+ *     0xeb0d1f  mov eax,[ebp+edx*4]      ; node->next = new[b]
+ *     0xeb0d23  mov [ecx],eax
+ *     0xeb0d25  mov [ebp+edx*4],ecx      ; new[b] = node
+ *
+ * then the new key goes to the head of its bucket (0xEB0DDE / 0xEB0DE3). So a
+ * bucket that collides after a rehash holds the moved keys in REVERSE of the
+ * order the old table yielded them, and anything inserted later in front.
+ * Growing the table live, exactly like this, is the only way to get that
+ * right — laying the final table out in one pass is not.
  */
-export function floorIterationOrder<T extends { index: number }>(seeds: T[]): T[] {
-  const bucketCount = [13, 29, 53].find((p) => seeds.length <= p);
-  if (!bucketCount) throw new Error('floorIterationOrder: >53 zones — grow the prime table when something needs it');
-  const rehashed = seeds.length > 13;
-  const buckets: T[][] = Array.from({ length: bucketCount }, () => []);
-  for (const s of seeds) {
-    const bucket = buckets[s.index % bucketCount]!;
-    if (rehashed && bucket.length) {
-      throw new Error('floorIterationOrder: bucket collision after a rehash — within-bucket order unverified');
+const HASH_PRIMES = [13, 29, 53] as const;
+
+export function hashMapOrder<T>(items: readonly T[], keyOf: (item: T) => number, what: string): T[] {
+  // The engine's hash takes the key as size_t, so a negative index wraps:
+  // the water carve's -1 (sea) hashes as 0xFFFFFFFF and lands in bucket 8
+  // of 13. Non-negative keys are untouched by the >>> 0.
+  const slot = (item: T, bucketCount: number): number => (keyOf(item) >>> 0) % bucketCount;
+  let buckets: T[][] = Array.from({ length: HASH_PRIMES[0] }, () => []);
+  let count = 0;
+  for (const item of items) {
+    if (count + 1 > buckets.length) {
+      const grownTo = HASH_PRIMES.find((p) => p >= count + 1);
+      if (!grownTo) throw new Error(`${what}: over ${HASH_PRIMES[HASH_PRIMES.length - 1]} keys — grow the prime table when something needs it`);
+      const grown: T[][] = Array.from({ length: grownTo }, () => []);
+      // Old buckets ascending, each chain head first, each node to the new head.
+      for (const chain of buckets) for (const node of chain) grown[slot(node, grownTo)]!.unshift(node);
+      buckets = grown;
     }
-    bucket.unshift(s);
+    buckets[slot(item, buckets.length)]!.unshift(item);
+    count++;
   }
   return buckets.flat();
+}
+
+/**
+ * The order a floor's hash_map yields its zones in. Zones come in here in
+ * template file order, the order LoadTemplate inserts them.
+ */
+export function floorIterationOrder<T extends { index: number }>(seeds: T[]): T[] {
+  return hashMapOrder(seeds, (s) => s.index, 'floorIterationOrder');
 }
 
 const fl = Math.fround;
@@ -111,10 +148,13 @@ const SQRT2 = fl(1.41421354); // the constant as the executable spells it
  * precision, the square root and the /3.0 genuinely double, truncated to int.
  * With `twoFloors` the result stretches by the executable's own sqrt(2).
  */
-export function zoneRadius(tiles: number, size: number, sizeSum: number, k: number, twoFloors: boolean): number {
-  const scale = fl(tiles * k);
-  let r = Math.trunc(Math.sqrt(fl(fl(size * scale) / sizeSum)) / 3.0);
-  if (twoFloors) r = Math.trunc(fl(r * SQRT2));
+export function zoneRadius(
+  tiles: number, size: number, sizeSum: number, k: number, twoFloors: boolean,
+  ar: Arith = DOUBLES,
+): number {
+  const scale = ar.store(ar.mul(tiles, k));
+  let r = Math.trunc(ar.div(ar.sqrt(ar.store(ar.div(ar.store(ar.mul(size, scale)), sizeSum))), 3.0));
+  if (twoFloors) r = Math.trunc(ar.store(ar.mul(r, SQRT2)));
   return r;
 }
 
@@ -136,6 +176,16 @@ export function generateGameZones(
   zones: ZoneSeed[],
   twoFloors: boolean,
   rng: RmgRandom,
+  ar: Arith = DOUBLES,
+  // WHICH DRAW IS WHICH AXIS. The two builds disagree, and it is visible in
+  // their own dumps: on one order and one seed, all eight zone centres come out
+  // of the game TRANSPOSED against the editor's — (49,118) where the editor has
+  // (118,49), zone for zone, with the same ids, the same radii and the same
+  // sizes. The draws are the same numbers in the same sequence; only which of
+  // the two coordinates each lands in differs. That is C++ leaving the
+  // evaluation order of two arguments unspecified and two builds taking it two
+  // ways, and it is the whole reason the same order gives two different maps.
+  swapAxes = false,
 ): GeneratedZones {
   const floorCount = twoFloors ? 2 : 1;
   const tiles = width * height;
@@ -143,13 +193,15 @@ export function generateGameZones(
   // Accumulated in FLOAT, element order and all — an int sum would be exact
   // where the engine's is rounded.
   let sizeSum = 0;
-  for (const z of zones) sizeSum = fl(sizeSum + fl(z.size));
+  for (const z of zones) sizeSum = ar.store(ar.add(sizeSum, ar.store(z.size)));
 
   // The candidate points, drawn once. below(W) feeds x, below(H) feeds y.
   const n = Math.trunc(tiles / 100);
   const points: Array<{ x: number; y: number }> = [];
   for (let i = 0; i < n; i++) {
-    points.push({ x: fl(rng.below(width)), y: fl(rng.below(height)) });
+    const first = fl(rng.below(width));
+    const second = fl(rng.below(height));
+    points.push(swapAxes ? { x: second, y: first } : { x: first, y: second });
   }
 
   const floors: ZoneSeed[][] = Array.from({ length: floorCount }, () => []);
@@ -174,7 +226,7 @@ export function generateGameZones(
     shuffle();
 
     const r = new Map<ZoneSeed, number>();
-    for (const floor of ordered) for (const z of floor) r.set(z, zoneRadius(tiles, z.size, sizeSum, k, twoFloors));
+    for (const floor of ordered) for (const z of floor) r.set(z, zoneRadius(tiles, z.size, sizeSum, k, twoFloors, ar));
 
     out.length = 0;
     let allPlaced = true;
@@ -192,9 +244,9 @@ export function generateGameZones(
           if (p.y < zr || p.y > height - zr) continue;
           let ok = true;
           for (const other of placedHere) {
-            const dx = fl(other.x - p.x);
-            const dy = fl(other.y - p.y);
-            const d = fl(Math.sqrt(fl(fl(dx * dx) + fl(dy * dy))));
+            const dx = ar.store(ar.sub(other.x, p.x));
+            const dy = ar.store(ar.sub(other.y, p.y));
+            const d = ar.store(ar.sqrt(ar.store(ar.add(ar.store(ar.mul(dx, dx)), ar.store(ar.mul(dy, dy))))));
             if (other.r + zr > d) { ok = false; break; }
           }
           if (ok) { placed = { ...z, x: p.x, y: p.y, r: zr }; break; }
@@ -204,7 +256,7 @@ export function generateGameZones(
     }
 
     const kUsed = k;
-    k = fl(k * K_DECAY); // decays whether or not the pass succeeded
+    k = ar.store(ar.mul(k, K_DECAY)); // decays whether or not the pass succeeded
     if (allPlaced) return { zones: out, passes, k: kUsed };
   }
 }

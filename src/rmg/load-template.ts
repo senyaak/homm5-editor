@@ -26,6 +26,11 @@
 // operator filled with a CONCRETE race wins over the drawn one, a slot left
 // RANDOM takes it.
 //
+// OURS, on top (`<UniqueRaces>` in an `.h5et`): the random draw is among the
+// races not yet taken — by a zone already made, or by a lobby slot still to
+// be seated — so no faction repeats and a middle zone is nobody's home
+// ground. The draw count is the engine's still; only the list shrinks.
+//
 // The underground's flavour: Dwarven when the map-setup roll's parity said
 // so, otherwise one unconditional coin decides Subterra against SubInferno —
 // for the whole map, not per zone. Water makes floor-0 zones WaterBordered
@@ -33,13 +38,15 @@
 // than the base one's single next() into zone+0x13C — the roll FillTerrain
 // later reads to pick the zone's ground tile.
 //
-// Named holes: the tie order of the Size sort is exact by construction but
-// no oracle has held a two-floor run to it yet; the concrete-race branch
-// appends a player entry without checking the operator's (nothing shipped
-// exercises it — port copies the reading); who pre-fills the player vector
-// upstream is unread.
+// Both former named holes are held now: the tie order of the Size sort by
+// block B of the matrix (every template with two floors, 66 of 66 byte for
+// byte), and the concrete-race arm by a map the game generated with three
+// slots set by hand (`ГСК-025`), which came out with those three races and
+// the fourth slot's draw on the same draw count. Who pre-fills the player
+// vector upstream is the LOBBY.
 
 import type { RmgRandom } from './random.ts';
+import { shipyardOf } from './template-game.ts';
 import type { RmgTemplate, RmgZone } from './template.ts';
 
 /** The Setting enum as the executable numbers it (strings at 0xFBD4D4). */
@@ -121,8 +128,12 @@ export interface LoadTemplateOptions {
   twoFloors: boolean;
   /** map+0x8C from the map-created step: the underground is the Dwarven caves. */
   dwarvenUnderground: boolean;
-  /** gen+0xA6 — floor-0 zones become WaterBordered. */
-  water: boolean;
+  /**
+   * gen+0xA6 — the WaterAmount byte (0/1/2); non-zero makes floor-0 zones
+   * WaterBordered. READ (14.09): the phase's one test of it is `cmp byte ptr
+   * [gen+0A6h],0; je` at 0xEA24B2 — zero against anything, 1 and 2 alike.
+   */
+  water: number;
   /** gen+0x28 — how many players CreateMap settled on. */
   playerCount: number;
   /** gen+0x64 as the operator left it: a race per slot, RACE.RANDOM to defer. */
@@ -131,6 +142,13 @@ export interface LoadTemplateOptions {
   mapSize: number;
   /** RMGParameters.PointLightParams.ZoneRadius — 40 in the shipped file. */
   pointLightZoneRadius: number;
+  /** The draw lists, read out of the executable (`src/exe/rmg-tables.ts`). */
+  races: {
+    surfaceRaces: readonly number[];
+    /** Joins the surface list when the map has one floor; null when the build adds none. */
+    surfaceRaceWhenOneFloor: number | null;
+    undergroundRaces: readonly number[];
+  };
 }
 
 export interface LoadedTemplate {
@@ -138,6 +156,8 @@ export interface LoadedTemplate {
   zones: LoadedZone[];
   /** The player races as the phase left them. */
   players: number[];
+  /** OURS: a `<UniqueRaces>` template with more zones than races says so here. */
+  warnings: string[];
 }
 
 export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions, rng: RmgRandom): LoadedTemplate {
@@ -167,15 +187,16 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
   // flavour — run 1 proved it by arithmetic.
   const subterra = rng.below(2) !== 0;
 
-  const surface: number[] = [RACE.HEAVEN, RACE.PRESERVE, RACE.ACADEMY, RACE.DWARF, RACE.INFERNO, RACE.NECROMANCY, RACE.STRONGHOLD];
-  if (!options.twoFloors) surface.push(RACE.DUNGEON);
-  const underground: number[] = [RACE.DUNGEON, RACE.INFERNO, RACE.DWARF, RACE.NECROMANCY];
+  const surface: number[] = [...options.races.surfaceRaces];
+  if (!options.twoFloors && options.races.surfaceRaceWhenOneFloor !== null) surface.push(options.races.surfaceRaceWhenOneFloor);
+  const underground: number[] = [...options.races.undergroundRaces];
 
   const players = options.players ? [...options.players] : [];
   let playerNo = 1;
   let slot = 0;
 
   const zones: LoadedZone[] = [];
+  const warnings: string[] = [];
   for (const t of byIndex) {
     const setting = RACE_BY_NAME[t.item.setting];
     if (setting === undefined) throw new Error(`loadTemplate: unknown Setting "${t.item.setting}"`);
@@ -197,7 +218,18 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
         playerNo++;
       }
     } else {
-      const list = t.floor === 0 ? surface : underground;
+      let list = t.floor === 0 ? surface : underground;
+      if (template.uniqueRaces) {
+        // OURS: the draw is among the races no zone has yet and no lobby
+        // slot still to be seated has fixed — so the middle of a star is
+        // never a player's own faction. A pool run dry falls back to the
+        // engine's whole list, with a line in the warnings.
+        const taken = new Set<number>(zones.map((z) => z.race));
+        for (let s = slot; s < players.length; s++) if (players[s] !== RACE.RANDOM) taken.add(players[s]!);
+        const free = list.filter((r) => !taken.has(r));
+        if (free.length) list = free;
+        else warnings.push(`zone ${t.item.index}: UniqueRaces asked, but every race of its floor is taken — drawn among all of them`);
+      }
       race = list[rng.below(list.length)]!;
       if (t.item.canBePlayerStart) {
         // Against the vector's LIVE count — an entry a concrete-race zone
@@ -224,7 +256,7 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
     }
 
     const kind: ZoneKind = t.floor === 0
-      ? (options.water ? 'waterBordered' : 'zone')
+      ? (options.water !== 0 ? 'waterBordered' : 'zone')
       : (options.dwarvenUnderground ? 'dwarven' : subterra ? 'subterra' : 'subInferno');
 
     const terrainRace = kind === 'subterra' ? RACE.DUNGEON
@@ -241,7 +273,7 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
       terrainRace,
       playerNo: assignedPlayer,
       kind,
-      shipyard: t.item.shipyard,
+      shipyard: shipyardOf(t.item),
       ctorRoll: rng.next(),
     });
   }
@@ -259,5 +291,5 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
     }
   }
 
-  return { zones, players };
+  return { zones, players, warnings };
 }

@@ -22,6 +22,8 @@ assets/
   specializations/   the icon a specialization shows on the hero screen
   skills/            the icon a skill shows, for skills we have yet to make
   maps/              reference maps the specs rebuild and compare against
+  rmg/               a data root of our own, in front of the game's: the random
+                     map generator's templates of ours (RMG/Templates/*.h5et)
 ```
 
 ### artifacts/

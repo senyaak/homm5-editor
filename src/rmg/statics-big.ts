@@ -1,0 +1,616 @@
+// Big statics — the surface CGameZone's vtable slot +0x34 (`0xEBBBD0`),
+// first of the two virtual steps the statics driver `0xEA5450` runs per
+// zone (template entry order, no prologue draw — the phase starts on the
+// roads boundary exactly).
+//
+// THREE PARTS, in the order the code runs them:
+//
+// The underground run opened the lakes for real (its zone 2 resolves to
+// HEAVEN) and rewrote most of this file's first reading; every claim
+// below is now held by that run's lockstep and by-name checks.
+//
+// LAKES (`0xEBC260`) — surface zones of the lake races only ({HEAVEN,
+// PRESERVE, NECROMANCY, INFERNO, DWARF, STRONGHOLD}), by the RESOLVED
+// race (`zone+0x18`): the surface reference's Inferno zone simply had
+// zero seed candidates, which a closed gate and an empty scan spell
+// identically. Room is recomputed with mask 0x3E = 0x3C plus the zone's
+// `+0x5C` stamped-blocked ledger (its writer is the stamp `0xEC2F90`
+// itself — every mine, dwelling, building, town and teleport feeds it;
+// a mine's piles and the treasures don't, they write their 2s directly).
+// A zone tile is a seed candidate when room > 5, border > 5 and it is a
+// local maximum of room over its 8 in-bounds neighbours (ties pass);
+// each candidate costs ONE betweenFloat(0,1) and is accepted when the
+// roll < 0.4 AND it sits >= 20.0 from every seed already accepted.
+// Seeds join `zone+0xB4` — never the room masks. The blob then grows
+// drawlessly: the scratch grid starts at 1000, seeds get 0 and
+// occupancy 2, and a chamfer wavefront (orthogonals +2, diagonals +3,
+// occupancy 0x80 on write) spreads over free in-zone tiles with
+// room > 2 and border > 2, while wave < 13 with an early exit when
+// 0 < count(wave) < wave; collection keeps room > 3. The lake painter's
+// tail then converts the DEEP WATER (see below), and the seed
+// decorations (`0xEC3B30`, OverLakeCenterObjects — jitter: the first
+// below(5) moves the pair's a field, the map file's Y) and the
+// over-lake one-tilers (`0xEC3E00`, OverLakeOneTileRandomObjects — a
+// self-closed <Item/> is a HOLE: picked for three draws, creates
+// nothing) mint without fit, stamp or occupancy.
+//
+// DEEP WATER (`0xECE680` → 0xecee65, drawless, two-phase): every level
+// cell in 1..dim-2 with at least three of its eight neighbours at
+// EXACTLY 0x80 turns 0x82 — which the fit's & 0x3E refuses. Statics may
+// stand on a lake's rim, never in its interior.
+//
+// PRESET MOUNTAINS (`0xEBCAF0`) — only when the preset's Mountains list
+// is non-empty. NO recompute: candidates are zone tiles with room > 4
+// on the grid the LAKES HEAD left (stale room when the lakes gate never
+// opened). Per candidate: at least 4.0 from every previously placed
+// mountain (local done-list), below(len) type FIRST, below(4) quadrant,
+// the fit (vt+0x44); success mints (two below), writes 0x100 per
+// blocked cell (invisible to the byte-wide fit — mountains overlap
+// freely within the pass) and raises the relief cone unconditionally.
+// AFTER the whole pass every accumulated blocked cell turns 2 — the
+// sweep behind it fails its fits over mountain footprints.
+//
+// THE SWEEP — recompute room with mask 0x3C (actives + all three road
+// lists), collect the zone's tiles with room > 1 ONCE, then outer loop
+// over the preset's BigStatics IN FILE ORDER (big->small in the shipped
+// tables), inner loop over the candidates IN LIST ORDER — there is no
+// tile draw. "Big" is blocked count n > 10. Per candidate: big craters
+// keep 15.0 from every big-position ledger point ("Crater" tested on the
+// shared's path); big entries try 4 free rotations (angle = attempt *
+// pi/2), small entries ONE drawn below(4) quadrant — the below-dominated
+// bulk of the phase. A passing fit costs one betweenFloat, accepted iff
+// roll < 1/(n+1); acceptance mints (two below), records, stamps the
+// standard three passes, appends big positions to the ledger, and a
+// "Mountain"-named static with n > 15 raises the relief cone
+// (`0xED1660`: height += 2*(3.5 - r) under each blocked offset with
+// r < 3.5). Placed candidates are NOT struck from the list — later types
+// simply fail the fit on their tiles.
+//
+// THE FIT (`0xEC39D0`, vtable +0x44 for every zone class, drawless):
+// per rotated blocked offset — in bounds; on floor 1 only, five tiles
+// from every map edge; occupancy byte & 0x3E == 0 (objects, guards,
+// roads and DEEP WATER 0x82 block; the rim's 0x80 and the mountains'
+// transient 0x100 pass); room >= 2 SIGNED — and NO zone test, which is
+// where the stale room of neighbouring zones becomes load-bearing.
+
+import type { DrawSource } from './armies.ts';
+import { mintName } from './armies.ts';
+import { DOUBLES, type Arith } from './arith.ts';
+import { coneRelief } from './heights.ts';
+import type { HeightPlane } from './heights.ts';
+import { carveMassif } from './massif-carve.ts';
+import type { VertexHeights } from './massif-carve.ts';
+import { EIGHT, recomputeRoom, zoneTiles } from './placement.ts';
+import type { Footprint, Tile } from './placement.ts';
+import { rotate } from './towns.ts';
+
+const fl = Math.fround;
+
+// The lake gate — which races' surface zones grow lakes, `0xEBC260`'s compare
+// chain — and the resource-name substrings each subterranean class hangs a
+// POINT LIGHT on (its `vt+0x3C`, a chain of `find` over the shared's resource
+// path: "Crystal" for Subterra, "Fakel"/"FireColumn" for Dwarven,
+// "Crater"/"Lavacrack"/"Hellpikes" for SubInferno) are both read out of the
+// executable (`lakeRaces`, `lightNames` in `src/exe/rmg-tables.ts`) and
+// arrive as inputs. The lava list was FITTED first: on a `S2-3P2Z7N2`
+// underground the engine's own map carried 198 lights split cleanly by
+// resource name — 25 lit (`Crater*`, `Lavacrack*`, `Hellpikes_*`) against 27
+// unlit — and the reading agreed with the fit exactly.
+
+export interface PlacedStatic {
+  /** The shared document's href path — the map file's identity. */
+  type: string;
+  name: string;
+  x: number;
+  y: number;
+  /** Radians — a quadrant multiple, or the map angle for FireDots. */
+  angle: number;
+  /**
+   * The subterranean point light (`vt+0x3C`) — two draws when the resource
+   * path matches the CLASS's own substrings — the input's `lightNames`, which
+   * are not shared between the three. The colour costs no draw and is not this
+   * record's: it is the zone's RACE PRESET's
+   * `PointLightParams.Colors[zoneIndex % count]`, taken where the run is
+   * assembled.
+   */
+  light?: { z: number; radius: number };
+}
+
+export interface BigStaticsInput {
+  /** The machine the relief cones compute on — see `coneRelief`. */
+  arith?: Arith;
+  size: number;
+  grid: Int32Array[];
+  border: Int32Array[];
+  /** MUTATED: stamps, lake seeds (2), lake blobs (0x80). */
+  occupancy: Int32Array;
+  /** MUTATED IN PLACE — the level's persistent room grid. */
+  room: Int32Array[];
+  /** MUTATED: stamped actives join the zone's `+0x68` points. */
+  points: Tile[];
+  zoneIndex: number;
+  /** 0 surface, 1 underground — gates the lakes and the fit's edge margin. */
+  floor: number;
+  /**
+   * `zone+0x18` — the RESOLVED race. The surface reference's Inferno
+   * zone showed no lake draws not because the gate was closed but
+   * because its seed scan had zero candidates; the underground run's
+   * HEAVEN zone opened the gate for real and pinned the reading.
+   */
+  settingRace: number;
+  /** The races whose surface zones grow lakes — the gate, read out of the executable. */
+  lakeRaces: ReadonlySet<number>;
+  /** The three road lists the roads phase built — the 0x3C room mask. */
+  roads: Tile[];
+  /**
+   * The zone's `+0x5C` stamped-blocked ledger — 0x3E's extra bit over
+   * 0x3C, read by the LAKES recompute alone; the sweep's own accepted
+   * stamps append to it. Measured on the underground run's zone-2 lakes:
+   * without it 27 seed candidates, the engine counts 14.
+   */
+  blockedList: Tile[];
+  /** MUTATED: `zone+0xB4` — lake seeds and big-static positions. */
+  bigPositions: Tile[];
+  /** The preset's BigStatics, resolved, in file order. */
+  bigStatics: Footprint[];
+  /**
+   * `SRMGParameters.PointLightParams` — the spans the point light's two draws
+   * come out of. Only a subterranean zone ever reads it.
+   */
+  pointLight?: { zMin: number; zMax: number; lightRadiusMin: number; lightRadiusMax: number };
+  /**
+   * Which resource paths this zone's class hangs a point light on — the
+   * substrings its `vt+0x3C` tests. Absent means none.
+   */
+  lightNames?: readonly string[];
+  /**
+   * The zone's CLASS, which `subterranean` alone cannot say: the three
+   * subterranean classes do not share a `+0x34`. Only Subterra and Dwarven
+   * carve; only Subterra and SubInferno run the sweep below at all.
+   */
+  zoneClass?: 'subterra' | 'subInferno' | 'dwarven';
+  /** The preset's Mountains, resolved, in file order. */
+  mountains: Footprint[];
+  /** The preset's OverLakeCenterObjects, resolved. */
+  overLakeCenterObjects: Footprint[];
+  /**
+   * The GAME's build: the seed decorations' two jitter draws land in the
+   * other two axes. The same unspecified-evaluation-order coin the zone
+   * centres toss (`generateGameZones`, `swapAxes`), tossed here the same
+   * way: the editor puts the first `below(5)` in the map file's Y and the
+   * game in its X. Read off a large game map where the first decoration
+   * with unequal jitters stood at (124,14) against the port's (127,11) —
+   * the same seed, the same two draws, the axes exchanged — and off a small
+   * one at (24,24) against (22,26).
+   */
+  swapJitterAxes?: boolean;
+  /** The preset's OverLakeOneTileRandomObjects, resolved (holes kept null). */
+  overLakeOneTileRandomObjects: Array<Footprint | null>;
+  /** `world+0x5C` — mapSetup's one betweenFloat(0, 2pi). */
+  mapAngle: number;
+  /** MUTATED when given: the floor's vertex height plane, for the relief cones. */
+  heightPlane?: HeightPlane;
+  /**
+   * The subterranean override (`0xEC4A70`, shared by Subterra, Dwarven's
+   * vt+0x40 and SubInferno's `0xEC92D0`): the massif carve replaces the
+   * lakes and mountains, and the accept path drops the relief cone and
+   * the "Mountain" test. The sweep itself is the base sweep verbatim.
+   */
+  subterranean?: boolean;
+  /** The floor's vertex height grids — required when `subterranean`. */
+  vertexHeights?: VertexHeights;
+  /**
+   * A water-bordered zone: the fit is the `+0x44` override (`0xECD840`,
+   * border >= 3 on every blocked tile) and the candidates come from
+   * `tiles` — the carve's rebuilt `+0xCC`, rim included (room 1000).
+   */
+  water?: boolean;
+  /** The rebuilt `+0xCC` when `water` — the grid no longer derives it. */
+  tiles?: Tile[];
+}
+
+export interface BigStaticsResult {
+  placed: PlacedStatic[];
+  /** The accepted lake seeds, in acceptance order. */
+  lakeSeeds: Tile[];
+  /** Every tile the lake blobs flooded (occupancy 0x80), for the painter. */
+  lakeTiles: Tile[];
+  /**
+   * Per lake tile, what the terrain painter reads AT THAT MOMENT — the
+   * room grid as the head left it and the border table. Snapshotted here
+   * because the layers the paints land on only exist once fillTerrain has
+   * been replayed, by which time every zone behind this one has recomputed
+   * the room grid. `paintLakes` / `stampZoneLakeRiver` in terrain.ts.
+   */
+  lakeRoom: Int32Array;
+  lakeBorder: Int32Array;
+}
+
+/** `0xED1660` — the mountain relief cone; drawless. */
+function raiseRelief(input: BigStaticsInput, at: Tile, q: number, blocked: readonly Tile[]): void {
+  if (!input.heightPlane) return;
+  coneRelief(input.heightPlane, at[0], at[1], q, blocked, input.arith ?? DOUBLES);
+}
+
+/**
+ * `0xEC39D0` — the statics fit: blocked tiles only, byte-wide, no zone test.
+ * The fit is the zone vtable's `+0x44`, and CGameWaterBorderedZone overrides
+ * it (`0xECD840`) with one more gate: **border >= 3** — the statics keep off
+ * the coast — and no floor margin (a water zone is floor 0 by construction).
+ */
+export function staticFits(
+  input: Pick<BigStaticsInput, 'size' | 'occupancy' | 'room' | 'floor' | 'water' | 'border'>,
+  blocked: readonly Tile[],
+  at: Tile,
+  q: number,
+): boolean {
+  const { size, occupancy, room } = input;
+  for (const off of blocked) {
+    const [dx, dy] = rotate(q, off);
+    const x = at[0] + dx;
+    const y = at[1] + dy;
+    if (x < 0 || x >= size || y < 0 || y >= size) return false;
+    if (input.floor === 1 && (x < 5 || x >= size - 5 || y < 5 || y >= size - 5)) return false;
+    if (input.water && input.border[y]![x]! < 3) return false;
+    if ((occupancy[y * size + x]! & 0x3e) !== 0) return false;
+    if (room[y]![x]! < 2) return false;
+  }
+  return true;
+}
+
+const dist = ([ax, ay]: Tile, [bx, by]: Tile): number =>
+  fl(Math.sqrt(fl((ax - bx) * (ax - bx) + (ay - by) * (ay - by))));
+
+interface GrownLakes {
+  seeds: Tile[];
+  blob: Tile[];
+  /** The blob's room and border readings, for the terrain painter. */
+  blobRoom: Int32Array;
+  blobBorder: Int32Array;
+  placed: PlacedStatic[];
+}
+
+/** The lakes prologue — `0xEBC260`; seeds, blob, decorations, one-tilers. */
+function growLakes(input: BigStaticsInput, rng: DrawSource): GrownLakes {
+  const { size, grid, border, occupancy, room, zoneIndex } = input;
+  const placed: PlacedStatic[] = [];
+
+  // Mask 0x3E — 0x3C plus the zone's stamped-blocked ledger (+0x5C).
+  recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads, ...input.blockedList]);
+
+  // The scan walks the zone's `+0xCC` (0xebc2c9 loads it and converts each
+  // float pair with `cvttss2si`), and its first test is the room — there is
+  // no zone test at all, so a tile the grid has since disowned is scanned
+  // like any other.
+  const seeds: Tile[] = [];
+  for (const [x, y] of input.tiles ?? zoneTiles(size, grid, zoneIndex)) {
+    const r = room[y]![x]!;
+    if (r <= 5 || border[y]![x]! <= 5) continue;
+    let localMax = true;
+    for (const [dx, dy] of EIGHT) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+      // Only a STRICTLY greater neighbour disqualifies (`jg` at
+      // 0xebc380) — a plateau is all maxima. Confirmed live by the
+      // underground run's zone 2 (ties-lose leaves 1 candidate of the
+      // measured 14).
+      if (room[ny]![nx]! > r) {
+        localMax = false;
+        break;
+      }
+    }
+    if (!localMax) continue;
+    const roll = rng.betweenFloat(0, 1);
+    if (roll >= fl(0.4)) continue;
+    if (seeds.some((s) => dist(s, [x, y]) < fl(20))) continue;
+    seeds.push([x, y]);
+    input.bigPositions.push([x, y]);
+  }
+
+  // The blob — drawless. Scratch 1000, seeds 0 + occupancy 2, chamfer
+  // wavefront marking 0x80.
+  const scratch = new Float32Array(size * size).fill(1000);
+  for (const [sx, sy] of seeds) {
+    scratch[sy * size + sx] = 0;
+    occupancy[sy * size + sx] = 2;
+  }
+  for (let wave = 0; wave < 13; wave++) {
+    let count = 0;
+    for (let x = 1; x < size - 1; x++) {
+      for (let y = 1; y < size - 1; y++) {
+        if (grid[y]![x] !== zoneIndex) continue;
+        if (scratch[y * size + x] !== wave) continue;
+        count++;
+        for (let k = 0; k < 8; k++) {
+          const [dx, dy] = EIGHT[k]!;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || nx >= size || ny < 0 || ny >= size) continue;
+          if (occupancy[ny * size + nx] !== 0) continue;
+          if (room[ny]![nx]! <= 2 || border[ny]![nx]! <= 2) continue;
+          scratch[ny * size + nx] = wave + (k < 4 ? 2 : 3);
+          occupancy[ny * size + nx] = 0x80;
+        }
+      }
+    }
+    if (count > 0 && count < wave) break;
+  }
+  const blob: Tile[] = [];
+  for (let x = 0; x < size; x++) {
+    for (let y = 0; y < size; y++) {
+      if (scratch[y * size + x] !== 1000 && room[y]![x]! > 3) blob.push([x, y]);
+    }
+  }
+
+  // What the terrain painter reads before anything behind it moves on.
+  const blobRoom = new Int32Array(blob.length);
+  const blobBorder = new Int32Array(blob.length);
+  for (let i = 0; i < blob.length; i++) {
+    const [bx, by] = blob[i]!;
+    blobRoom[i] = room[by]![bx]!;
+    blobBorder[i] = border[by]![bx]!;
+  }
+
+  // The lake painter's tail (`0xECE680` → 0xecee65): DEEP WATER. Every
+  // cell of the level (1..dim−2, own occupancy never tested) with at
+  // least THREE of its eight neighbours at EXACTLY 0x80 turns 0x82 in a
+  // second phase — and 0x82 & 0x3E = 2, so the fit that lets statics
+  // stand on the lake's rim refuses its interior. The two phases are
+  // load-bearing: converted cells no longer count as 0x80 for later
+  // scans, and a non-lake cell (roads included) surrounded by the blob
+  // is swallowed whole.
+  const deep: Tile[] = [];
+  for (let x = 1; x < size - 1; x++) {
+    for (let y = 1; y < size - 1; y++) {
+      let n80 = 0;
+      for (const [dx, dy] of EIGHT) {
+        if (occupancy[(y + dy) * size + (x + dx)] === 0x80) n80++;
+      }
+      if (n80 > 2) deep.push([x, y]);
+    }
+  }
+  for (const [x, y] of deep) occupancy[y * size + x] = 0x82;
+
+  // Seed decorations — `0xEC3B30`, gated on OverLakeCenterObjects: no
+  // fit, no stamp, no occupancy — just mints at jittered positions.
+  if (input.overLakeCenterObjects.length) {
+    for (const [sx, sy] of seeds) {
+      const n = rng.below(3) + 1;
+      for (let i = 0; i < n; i++) {
+        const q = rng.below(4);
+        // The first below(5) jitters the pair's FIRST field — the a
+        // axis, the map file's Y — the second the b/x axis (the port's
+        // decos landed transposed around their seeds until the
+        // reference said otherwise).
+        const ja = rng.below(5) - 2;
+        const jb = rng.below(5) - 2;
+        const entry = input.overLakeCenterObjects[rng.below(input.overLakeCenterObjects.length)]!;
+        const [jx, jy] = input.swapJitterAxes ? [ja, jb] : [jb, ja];
+        placed.push({
+          type: entry.path, name: mintName(rng),
+          x: sx + jx, y: sy + jy, angle: q * (Math.PI / 2),
+        });
+      }
+    }
+  }
+
+  // The over-lake one-tilers — `0xEC3E00`, iterating the COLLECTED LAKE
+  // TILES (the blob, room > 3), not the seeds; one below(10) per tile.
+  if (input.overLakeOneTileRandomObjects.length) {
+    for (const [tx, ty] of blob) {
+      // Three draws per rolled tile; a null href (a list hole) skips the
+      // creation and its mint. No occupancy is written here at all.
+      if (rng.below(10) > 5) continue;
+      const q = rng.below(4);
+      const entry = input.overLakeOneTileRandomObjects[rng.below(input.overLakeOneTileRandomObjects.length)];
+      if (!entry) continue;
+      placed.push({ type: entry.path, name: mintName(rng), x: tx, y: ty, angle: q * (Math.PI / 2) });
+    }
+  }
+
+  return { seeds, blob, blobRoom, blobBorder, placed };
+}
+
+/** The preset-Mountains pass — `0xEBCAF0`; empty list means zero draws. */
+function placePresetMountains(input: BigStaticsInput, rng: DrawSource): PlacedStatic[] {
+  const placed: PlacedStatic[] = [];
+  if (!input.mountains.length) return placed;
+  const { size, grid, room, occupancy, zoneIndex } = input;
+  // NO recompute here — the pass reads the room grid exactly as the
+  // LAKES HEAD left it (`0xEC28E0(0x3E,0)` before any seed existed);
+  // seeds, decorations and one-tilers never touch room.
+  const done: Tile[] = [];
+  const blockedCells: Tile[] = [];
+  // Two loops in the engine, and the first walks `+0xCC` (0xebcb18) keeping
+  // every entry whose room is above 4 — again with no zone test. The second
+  // is the one below: spacing, the two draws, the fit.
+  for (const [x, y] of input.tiles ?? zoneTiles(size, grid, zoneIndex)) {
+    if (room[y]![x]! <= 4) continue;
+    if (done.some((d) => dist(d, [x, y]) < fl(4))) continue;
+    const entry = input.mountains[rng.below(input.mountains.length)]!;
+    const q = rng.below(4);
+    if (!staticFits(input, entry.blocked, [x, y], q)) continue;
+    const name = mintName(rng);
+    for (const off of entry.blocked) {
+      const [dx, dy] = rotate(q, off);
+      const bx = x + dx;
+      const by = y + dy;
+      // The engine writes rows[x][y] with NO bounds check, and the
+      // grid's rows live in one contiguous x-major buffer — an
+      // out-of-range y WRAPS into the neighbouring row (buf[x*size+y]),
+      // while an out-of-range x leaves the buffer and is dropped here.
+      const flat = bx * size + by;
+      if (bx < 0 || bx >= size || flat < 0 || flat >= size * size) continue;
+      const xw = Math.floor(flat / size);
+      const yw = flat - xw * size;
+      // DURING the pass the engine writes 0x100 — invisible to the
+      // byte-wide fit, so mountains overlap freely and only the 4.0
+      // rule separates them. This grid's byte reads the same 0.
+      occupancy[yw * size + xw] = 0;
+      blockedCells.push([xw, yw]);
+    }
+    done.push([x, y]);
+    placed.push({ type: entry.path, name, x, y, angle: q * (Math.PI / 2) });
+    raiseRelief(input, [x, y], q, entry.blocked);
+  }
+  // AFTER the candidate loop (`0xebd114..0xebd169`) every accumulated
+  // blocked cell turns to 2 — the sweep behind this pass fails its fits
+  // over mountain footprints (and over any lake cell beneath them).
+  for (const [bx, by] of blockedCells) occupancy[by * size + bx] = 2;
+  return placed;
+}
+
+/** The whole slot-+0x34 step for one surface-class zone. */
+export function placeZoneBigStatics(input: BigStaticsInput, rng: DrawSource): BigStaticsResult {
+  const { size, grid, occupancy, room, zoneIndex } = input;
+  const placed: PlacedStatic[] = [];
+  let lakeSeeds: Tile[] = [];
+  let lakeTiles: Tile[] = [];
+  let lakeRoom: Int32Array = new Int32Array(0);
+  let lakeBorder: Int32Array = new Int32Array(0);
+
+  if (input.subterranean) {
+    // vt+0x40 (`0xEC4A50` for Subterra, `0xEC7050` for Dwarven — the same five
+    // instructions twice): `recomputeRoom(0x3C, all=1)` and then the carve as a
+    // tail jump. The sweep's own `recomputeRoom(0x3C, 0)` follows below, and all
+    // three are drawless.
+    //
+    // THE all=1 FLAVOUR IS LOAD-BEARING WHEN THE FLOOR HOLDS MORE THAN ONE
+    // ZONE, which is what the note here used to miss: it walks every cell of
+    // the level against THIS zone's lists, so a FOREIGN zone's cell is left
+    // holding a fresh distance from our points — and the all=0 recompute after
+    // it refreshes our own cells only, so those foreign cells still hold it
+    // when the fit reads them (the fit has no zone test). With one underground
+    // zone there is no foreign cell and the pass is invisible, which is why
+    // every earlier corpus map agreed without it. Seed 55 of `S1P2Z2M1` has two
+    // underground zones and one 5x5 column whose corner lands on a zone-3 cell:
+    // stale it reads 1 and the fit fails, fresh it reads 2 and the engine
+    // placed there, and from that one tile the whole underground parted.
+    //
+    // The carve is called by EVERY subterranean zone and no-ops after the first
+    // (its conversion pass turns the clean patches to blocked).
+    // A DWARVEN ZONE HAS NO SWEEP AT ALL: `0xEC7070` is `call [vt+0x40]`,
+    // `recomputeRoom(0x3C, 0)`, `ret`, where Subterra's and SubInferno's
+    // `+0x34` carry the lakes, the mountains and the sweep below. That is the
+    // early return further down, and it is no longer only READ: eight of the
+    // fourteen measured two-level runs come out dwarven (the flavour is one
+    // coin in LoadTemplate) and every one of them is byte-identical. See
+    // docs/RMG.md, "The three subterranean classes are three different zones".
+    //
+    // THE CARVE IS NOT EVERY SUBTERRANEAN CLASS'S. `0xED11D0` has exactly three
+    // references in the executable and all three are the tail jumps of the three
+    // `+0x40` slots; the only code that CALLS `+0x40` is `0xEC4A85` and
+    // `0xEC7075` — the `+0x34` of Subterra and of Dwarven. SubInferno's `+0x34`
+    // (`0xEC92D0`) goes straight to `recomputeRoom(0x3C, 0)`, so its `+0x40`
+    // (`0xEC92B0`) is a slot nobody dials and a lava underground is never carved.
+    // The class is one coin for the whole map, so this is a global yes or no.
+    //
+    // Read after a map whose four underground zones are SubInferno came out with
+    // 121 lattice cells raised against the engine's none, and its
+    // `UndergroundTerrain.bin` carrying only the initial frame.
+    if (input.zoneClass === 'subterra' || input.zoneClass === 'dwarven') {
+      recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads], true);
+      carveMassif(size, occupancy, input.vertexHeights!, input.arith ?? DOUBLES);
+    }
+  } else if (input.floor !== 1) {
+    if (input.lakeRaces.has(input.settingRace) && input.floor === 0) {
+      const lakes = growLakes(input, rng);
+      lakeSeeds = lakes.seeds;
+      lakeTiles = lakes.blob;
+      lakeRoom = lakes.blobRoom;
+      lakeBorder = lakes.blobBorder;
+      placed.push(...lakes.placed);
+    }
+    if (process.env['H5E_DEBUG_STATICS']) {
+      console.log(`  [big z${zoneIndex}] lakes done at ${(rng as { draws?: number }).draws}, seeds ${lakeSeeds.length}, blob ${lakeTiles.length}`);
+    }
+    placed.push(...placePresetMountains(input, rng));
+    if (process.env['H5E_DEBUG_STATICS']) {
+      console.log(`  [big z${zoneIndex}] mountains done at ${(rng as { draws?: number }).draws}`);
+    }
+  }
+
+  // The sweep. Room with mask 0x3C, candidates once, types in file order.
+  recomputeRoom(room, size, grid, zoneIndex, [...input.points, ...input.roads]);
+  // A DWARVEN ZONE STOPS HERE: its `+0x34` (`0xEC7070`) is the carve, this
+  // recompute and `ret` — no lakes, no mountains, no sweep, not one draw.
+  // The first map to produce one (a game map whose underground coin fell
+  // that way, seed 1788807597) shows the engine's "big statics" step for
+  // it spending exactly zero draws where the port's sweep spent 5,796.
+  if (input.zoneClass === 'dwarven') return { placed, lakeSeeds, lakeTiles, lakeRoom, lakeBorder };
+  const candidates: Tile[] = [];
+  for (const [x, y] of input.tiles ?? zoneTiles(size, grid, zoneIndex)) {
+    if (room[y]![x]! > 1) candidates.push([x, y]);
+  }
+
+  for (const entry of input.bigStatics) {
+    const n = entry.blocked.length;
+    const big = n > 10;
+    const isCrater = big && entry.path.includes('Crater');
+    for (const cand of candidates) {
+      if (isCrater && input.bigPositions.some((p) => dist(p, cand) < fl(15))) continue;
+      let q = -1;
+      for (let attempt = 0; attempt < (big ? 4 : 1); attempt++) {
+        const angle = big ? attempt : rng.below(4);
+        if (staticFits(input, entry.blocked, cand, angle)) {
+          q = angle;
+          break;
+        }
+      }
+      if (q < 0) continue;
+      const dbgDraws = (rng as unknown as { draws?: number }).draws ?? 0;
+      if (process.env['RMG_DBG']
+        && dbgDraws >= Number(process.env['RMG_DBG_FROM'] ?? 45310)
+        && dbgDraws <= Number(process.env['RMG_DBG_TO'] ?? 45330)) {
+        console.log(`    fitpass ${dbgDraws} zone ${zoneIndex} ${entry.path.split('/').pop()} n=${n} at ${cand[0]}:${cand[1]}`);
+      }
+      const roll = rng.betweenFloat(0, 1);
+      if (roll >= fl(1 / (n + 1))) continue;
+
+      const name = mintName(rng);
+      // `vt+0x3C` — the subterranean point light, and a BIG static takes it too.
+      // The note here used to say big objects never do; that was read off a map
+      // whose underground class hangs its light on names no big entry of its
+      // preset carries. A lava underground hangs it on Craters, Lavacracks and
+      // Hellpikes, and three of those are among the largest entries in the list.
+      let light: PlacedStatic['light'];
+      if (input.subterranean && input.pointLight
+        && (input.lightNames ?? []).some((sub) => entry.path.includes(sub))) {
+        const pl = input.pointLight;
+        light = {
+          z: pl.zMin + rng.below(pl.zMax - pl.zMin),
+          radius: pl.lightRadiusMin + rng.below(pl.lightRadiusMax - pl.lightRadiusMin),
+        };
+      }
+      if (big) input.bigPositions.push(cand);
+      // The standard stamp — statics carry no actives and a (0,0) marker,
+      // so in practice only the blocked pass writes.
+      for (const off of entry.blocked) {
+        const [dx, dy] = rotate(q, off);
+        const bx = cand[0] + dx;
+        const by = cand[1] + dy;
+        if (bx < 0 || bx >= size || by < 0 || by >= size) continue;
+        occupancy[by * size + bx] = 2;
+        input.blockedList.push([bx, by]);
+      }
+      for (const off of entry.active) {
+        const [dx, dy] = rotate(q, off);
+        const bx = cand[0] + dx;
+        const by = cand[1] + dy;
+        if (bx < 0 || bx >= size || by < 0 || by >= size) continue;
+        occupancy[by * size + bx] = 4;
+        input.points.push([bx, by]);
+      }
+      placed.push({
+        type: entry.path, name, x: cand[0], y: cand[1], angle: q * (Math.PI / 2),
+        ...(light ? { light } : {}),
+      });
+      // The subterranean sweep (`0xEC4A70`) has no relief cone and no
+      // "Mountain" test on its accept path.
+      if (!input.subterranean && entry.path.includes('Mountain') && n > 15) raiseRelief(input, cand, q, entry.blocked);
+    }
+  }
+
+  return { placed, lakeSeeds, lakeTiles, lakeRoom, lakeBorder };
+}

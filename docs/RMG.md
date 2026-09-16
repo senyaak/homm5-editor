@@ -19,14 +19,1310 @@ draw for draw; the two that do not draw are held to the engine's output
 instead — the terrain masks byte for byte, the towns and guards to their
 positions, armies, moods and minted instance names in `map.xdb`.
 
-**Next is `MainObjects`** — the per-zone fill, fourteen steps deep (mines,
-hero, dwellings, upgrade buildings, prisons, cartographer, shrines, resource
-and treasury buildings, luck/morale, shops, road, statics, then treasures
-and chests), and after it the roads, the additional objects, the treasure
-blocks and finally emitting the `.h5m`. The roads phase is also what closes
-the one open difference in the terrain masks: Inferno's Dead_Land is a
-secondary ROAD tile of land class, and it steals weight from Lava wherever a
-road runs.
+**The whole FIRST LOOP of `MainObjects` runs LIVE** — all four zones,
+every step, from the phase door to the loop's last draw at 20039
+(`test-rmg-road`): mines, dwellings, upgrade buildings, shrines, the four
+price-list steps, the treasures block and the zone ROAD, zone after zone
+on the one rng, each step landing on its traced boundary. Hero draws
+nothing ever; prisons and the cartographer cost zero by template.
+
+**The ROADS PHASE runs LIVE too** (`0xEBA690`, `test-rmg-roads-phase`):
+its 381 coins land on the traced 20420 across all four zones — town
+entries and passage points wired into the 0x08 network, mine actives
+into the 0x10 one, every tile of both kinds confirmed under the
+reference's painted road masks.
+
+**The STATICS run in FULL LOCKSTEP — all four zones** (`0xEA5450` →
+the zone vtable's `+0x34`/`+0x30`, `test-rmg-statics`): every one of
+the eight traced step boundaries lands, the phase ends on 89798, and
+all **1,325 statics stand where their minted names stand in the
+reference**, rotations included. Getting there took two live
+measurements (the oracle's `grids` and `field` dumps) and surfaced the
+biggest find of the port so far: **the game and the editor are
+different compilations with different float arithmetic in the road
+wave** — and the reference is the EDITOR's, so the editor's x87
+arithmetic is the one the port speaks (see the road section). Every
+road list of every zone is now byte-identical to the engine's own dump.
+**The TREASURE BLOCKS close the run** (`0xEA3AE0` → `0xEBA420`,
+`test-rmg-treasure-blocks`): all eight traced boundaries land — the
+growth and the fill of each zone — the phase ends on **92438, the whole
+reference run**, and its 58 treasures and 24 artifacts stand where their
+minted names stand in the reference map, each of the 28 blocks guarded.
+Additional objects cost nothing on a surface-only template, which the
+trace and the code agree on, so **every draw the reference run spends is
+now accounted for**.
+
+**The ROAD PAINTER closes the terrain** (`0xECE3E0`,
+`test-rmg-road-painter`): the road networks become the SandRoad,
+LavaRoad and Dead_Land layers, and with them the last open difference in
+the masks — Dead_Land's theft from Lava — falls in line. **All seven
+layers of the reference `GroundTerrain.bin` are now byte-identical, with
+no forgiveness clause left.**
+
+**The HEIGHT PLANE closes the float half of ALL THREE references — and
+of every template the port accepts** (`0xECF760` → `heights.ts`,
+`test-rmg-heights`, replaying through the shared full-run driver
+`src/rmg/run.ts`): every vertex of the surface, island and underground
+floor-0 planes — 24,147 across the three files — bit for bit, and
+**21 of 21 templates of the sweep, on BOTH seeds, BYTE-identical** — every
+entry of every map, not merely the planes and not merely inside a tolerance.
+The
+last debt was two errors in the base field that were only visible
+together — the noise's two indices swapped and the Inferno/Necromancy
+dig switched off on a measurement the swap had corrupted; the story is
+under "The bowl, closed" below, and the instrument that found it
+(`stages`, the pass cut into nine dumped steps) is worth reusing. The plane starts at the level constructor's
+6.0 (`0xEB2B60`), the statics add the mountain relief cones, and the
+late pass lays a sin/cos base field capped at +3.0 over it — the 9.0
+plateau is those two numbers — then dents roads and lakes, melts craters
+under Inferno towns (-1.0 within 8) and Inferno dwellings (-2.5 within
+2.5), flattens every non-static object's footprint to its average
+(Academy towns and dwellings hover and are skipped), floods each lake
+body to its corner minimum - 0.1, and smooths thrice. The pass needed
+the biggest arithmetic fact since the road wave, and it is visible in
+the file itself: **the reference is the EDITOR's x87 arithmetic** —
+double intermediates, one rounding per store — which is why the plateau
+survives the smoothing at exactly 9.0 where the game's own SSE kernel
+would drift it by 1.9e-6 per pass. Phase 15 below has the details.
+
+**The MAP.XDB EMITTER closes ALL THREE documents** (`emit.ts`,
+`test-rmg-emit`): 860,435 + 529,998 + 873,921 bytes, each byte for byte.
+The blank skeleton (`buildBlankMap`) is patched at its known value-level
+spots — the drawn ambient light (and the fixed Tests/underground light
+plus a second minimap thumbnail on two-level maps), the text refs, the
+active player slots, the emptied rosters, the live `sRMGProps`, the
+dialogs camera — and the objects render through one fixed body per
+AdvMap type, in the run's slot order, `Rot` as `%g` of the stored f32.
+Inputs that are not the generator's come from outside: the GUID
+(CoCreateGuid), the MapName (typed into the dialog), the dialogs camera
+and the shipyards' ShipTile (both derivations unread). The facing rules
+the byte-diffs taught: a mine's guard and piles record the seat walk's
+`(q + j) * pi/2` UNNORMALISED (a q=2 seat found straight ahead writes
+the full 2*pi); an upgrade building's guard records the building's own
+rotation; a teleport's guard the teleport's (8/8); a shipyard's guard
+one quarter BEHIND the facing (4/4). A tier >= 3 dwelling reuses
+descriptor 3 and writes `creaturesEnabled[tier - 3]` — the underground
+run's OrcishDwelling04 is the live case. Underground towns wear their
+four faction-coloured point lights and the lit crystals their one, both
+rendered from the run's records.
+
+**The GROUND FLAGS need no port.** The flags plane is `CTerrain+0x24` —
+the level's byte vertex grid the port already computes: a surface floor
+is the constructor's uniform 16 forever (`0xEB2B60`, the same call that
+fills the heights 6.0 — and whose underground branch turned out to be
+the long-missing writer of the massif frame `createVertexHeights` had
+reconstructed from measurement), and the underground floor is the massif
+carve's byte grid, which matches the reference plane 5,329/5,329.
+
+**The PASSABILITY plane is PORTED, and all four reference files are now
+byte-identical outright.** It cost two wrong verdicts before the right
+one, so the road is worth keeping.
+
+The first verdict said the game's RMG never writes the plane and that
+all-ones is therefore exactly what the generator produces. False: a map
+ordered from the GAME'S OWN in-game generator (it lands in
+`<game>/H5E/`, where the game writes, not `<game>/Maps/`, where the
+editor does) carries 1,874 zeros of 5,329. The second guess was that the
+derivation must be a 3D scene query, and that porting it meant a
+collision subsystem. Also false, and three fitted rules had already said
+the plane was not a function of anything the port held — the objects'
+declared footprints 79.6%, the occupancy grid 82.4% / 75.9%, the terrain
+slope 70.1% / 74.7%.
+
+What settled it was the oracle, not more reading: a `pass` probe that
+counts the plane's zeros at every step boundary. The plane reads ALL
+ONES on every boundary of the surface run — zones filled in, main
+objects, roads, all four zones' statics, additional objects, treasure
+blocks — and 3,930 zeros at "finished creating map", with the draw
+counter at 92,438 on both sides. One drawless window, between the log
+sites `0xEAC0C3` and `0xEAC21F`.
+
+The code in that window loops the LEVELS (stride 0x120), walks each
+level's chained table at `level+0xAC` / `+0xB0` — a pointer array of
+list heads, `[node]` the next link, `[node+8]` the payload — and calls
+the payload's virtual slot `+0x38` (`0xEAC185`). The payload is a
+**CGameZone**, read off the live object because no vtable in the
+executable would say so: not one AdvMap class implements `+0x38` with
+anything but a `ret` thunk, and a sweep of all 2,314 RTTI classes
+returns 201 small look-alikes. So this is a per-ZONE pass, which is
+exactly why no per-object rule could fit it.
+
+The slot itself (editor `0xBF9BC0`) recomputes the room grid with mask
+0x3C — the statics sweep's own list — then walks the zone's `+0xCC`
+tiles and marks
+
+    room > 2,   or   room <= 2 and border == 0
+
+where "mark" is `0x7949A0` on `map+0x60`, whose whole body is
+`plane_rows[floor][a][b] = 0`. A water-bordered zone overrides the slot
+(`0xC069E0`) with the same walk and the condition turned into an AND —
+`room > 2 and border > 1`, the coast left alone the way every other
+water rule keeps off it.
+
+Two things the byte comparison decided rather than the reading: the
+plane's rows are indexed the way the texture masks are (the engine's own
+indices are transposed against the file, as the river plane's already
+were), and the plane's sense is the opposite of its name — it starts at
+1 and this pass writes 0 into the OPEN ground. Ported in
+`passability.ts`; both halves of the rule were checked by sabotage (228
+and 117 bytes move for the base rule, 433 for the water one) and the
+suite no longer exempts anything but the single uninitialised engine
+byte.
+
+**GroundTerrain.bin ASSEMBLES WHOLE** (`emit-terrain.ts` — the blank
+writer generalised to N layers, its multi-layer counters read off the
+reference framing and verified to the byte: `E_i = 2N + 2·len_i + 53`
+per layer, a `01 E 02 F 01` bridge between layers, `D = 2·region + 1`):
+ALL FOUR reference terrain files — the surface one, the island one
+(water plane included), the underground run's surface floor and
+UndergroundTerrain.bin — are byte-identical but for ONE
+uninitialised byte: the 0x0e record's
+payload, the same byte the determinism check once caught flipping
+between identical runs.
+
+**The LAKE TERRAIN PAINTER is read and ported** (`0xECE680`, thiscall on
+the same CTerrainProcessor, called once per zone from the lakes head's
+tail at `0xEBCA90` and BEFORE the head's decorations; drawless). It is
+the same function whose own tail (`0xECEE65`) does the 0x82 deep-water
+conversion the statics already needed — that half stays in `growLakes`,
+the terrain half is `paintLakes` / `stampZoneLakeRiver` in `terrain.ts`.
+The documents are the PRESET'S, not the params': `WaterTile` (`+0x64`)
+and `WaterBottomTile` (`+0x70`) — Haven's are exactly the reference's
+two new layers, `/RMG/Tiles/Water/Water.xdb` and
+`/RMG/Tiles/Haven/River-bed_grass.xdb`, and the five races that name a
+WaterTile are the five the lakes gate opens for. (The offsets fall out
+of the Tiles block's own chain: the shared refs are 8 bytes with their
+`*Strenght` int behind each, so RoadTile 0x4C, SecondaryRoadTile 0x58,
+WaterTile 0x64, WaterBottomTile 0x70, OtherTiles 0x7C, WaterCoastTile
+0x88, OneTileSmallBlockers 0x90.)
+
+Per blob tile, in the head's collection order, the engine first counts
+how many of the four ORTHOGONAL neighbours are themselves blob tiles —
+a linear rescan of the whole vector per neighbour — and then:
+
+* paints the WaterTile at the four corners, the LITERAL 150 (0x96;
+  `TransitiveTileIntensity` is unread here too — and, it turns out,
+  everywhere). Water.xdb is priority
+  253 TT_SMALL_WATER and alone in its class, so a rim vertex painted
+  once keeps 150 and an interior one painted again overflows to 255 —
+  the reference's 28 and 129 on the nose;
+* stamps the river plane, but ONLY where room > 3 AND at least THREE
+  orthogonal neighbours are lake — the blob's interior, the rim left
+  dry. The 4x4 half-tile block at (2x, 2y) takes
+  `min(255, (min(room, border) - 1) * 60)`. Unlike the sea's stamp
+  there is NO guard against the plane's dimensions, and unlike the
+  sea's blur no `1 <= x,y <= size-3` either: a lake sits deep inside
+  its zone by construction, so the engine never needed one;
+* paints the WaterBottomTile at the same four corners at
+  `min(200, (min(room, border) - c) * k)` — c/k are 4/15 when the
+  setting race is RACE_NECROMANCY (`cmp [ebp+18h],7`) and 2/30 for
+  everyone else. Nothing clamps this from BELOW: a shallow tile asks
+  for a negative weight and PaintTile takes it down its subtract
+  branch.
+
+Then the blur, the sea's verbatim: `k = 0..2*count-1` over
+`list[k % count]`, two in-place sub-passes per tile (distance 2, then
+distance 1), each cell `(N + S + E + W + 2*C) / 6`.
+
+The room and border readings travel WITH the blob (`lakeRoom` /
+`lakeBorder` off the statics sweep) because the painter runs inside the
+statics while the layers only exist once fillTerrain has been replayed,
+and every zone behind this one recomputes the room grid. `zone+0xEC` —
+the value the painter hands `0xE9FF00` — is the ZONE'S OWN ID, not a
+race: the call is the zone lookup (the same one whose failure at
+`0xEA414A` skips a zone whole), and the preset comes from the resolved
+`zone+0x20`, which is the terrain-race entry FillTerrain paints the
+ground from. That was left open when the phase was first written down
+and is now settled; the oracle's grids dump reads the same field as an
+id (`native/rmg/oracle.c`, the zone-mismatch guard). Each of the three
+readings above was
+checked by sabotage: 4 bytes move for the 150, 198 for the bed ladder,
+551 for the river value, all of them inside the underground run's
+surface file and nowhere else.
+
+**The port is complete as a generator.** `npm run rmg-pack` orders a map and
+writes the `.h5m`, and against the reference **all 17 entries of the archive
+are byte-identical** — the one uninitialised engine byte in the terrain file's
+0x0e record is the only thing exempted, and it flips between two runs of the
+ENGINE.
+
+**Two things were decided next, and both are done.**
+
+1. **An oracle on demand.** Every order but the three references has no map
+   from the engine to be compared against, and that is what `S2-3P2Z7N2`
+   showing 15 of 20 means. The command line was the first place to look and it
+   has been read to the end: the editor takes no switch that generates
+   anything — but it carries a CONSOLE COMMAND that does, with parameters of
+   its own. "Ordering a generation from outside the dialog" below is what was
+   found, what it can be told, and what it still cannot.
+2. **What every template and params field is for** — "Which fields the engine
+   actually reads" below. Every field of `RMG/Params/Default.xdb`, of a
+   template and of its zones has been put to two questions: does any
+   instruction in either executable read it, and does changing it change the
+   map. **Sixteen of the parameters' fifty-five feed nothing**, along with the
+   template's `GraalOnMap` and `Underground` and its zones'
+   `RedwoodObservatoryDensity` and `DenOfThieves`; `BuffPoints` is read and
+   handed to a worker whose whole body is `ret 4`. All four of the claims that
+   were stated more strongly than they were earned — `TransitiveTileIntensity`,
+   both `*RoadTileStrenght`, the observatories' `&params[i]` — came out TRUE,
+   and are now settled over the whole image and against the engine rather than
+   over one function. Two things it left open: `CanBeWater` is unread by the
+   code and unreachable by the probe, because the console command has no water
+   switch; and a launch's SECOND order does not repeat its first, which is a
+   trap for the batch and an unexplained piece of engine state.
+
+**What is next, and it is a run rather than a reading.** The oracle exists now:
+any order can be given to the engine and the map it makes compared with the
+port's, byte for byte. What has never been done is asking it of the templates
+nobody has ordered — the port is held to THREE references and there are
+twenty-two templates.
+
+1. **The sweep.** Every template, one seed, no minimap, one launch per order:
+
+   ```bash
+   node tools/rmg-batch.ts --game <dir> --orders orders.txt
+   node tools/rmg-diff-map.ts --game <dir> game/bin/rmg-batch/<n>
+   ```
+
+   Each order reads `RMG/Templates/<name>.xdb -seed 1785351845 -size 1
+   -resource 1 -exp 1 -pokeb 148 0`, the last of which is the minimap tick.
+   No difference is exempt any more: the `caption-text` numbering was one and
+   belongs to the save path (below), the monster level was the other and is
+   now replayed from the order the map carries.
+
+2. **A second seed over every template that passed.** One seed is one path: a
+   template that agrees once is not a template that agrees. This is the same
+   trap that put two wrong numbers in the `-size` table, and it costs another
+   twenty-two launches to avoid.
+
+3. **The debts are paid.** The minimap's ten channel bytes were the last one,
+   and they were the editor's FPU: it runs at single precision, rounding toward
+   zero, and the port now does that arithmetic where the minimap needs it (see
+   "The editor's FPU is not at the defaults"). The `caption-text` counter
+   belonged to the save path; the monster level is the fifth item below. **The
+   whole reference `.h5m` is now byte-identical, all 17 entries.**
+
+   This entry used to carry a second claim, and the claim was WRONG. It said
+   the console command's minimap is not the picture a dialog SAVE writes —
+   about 1,270 pixels apart, five clusters each roughly an icon, all in one
+   corner — and left the reason unread. The reference has now been ordered
+   through the console with the minimap ON, and its `minimap_floor_01.dds` is
+   **byte-identical to the SAVE's**, md5 and all: the two paths draw the same
+   picture. The 1,270 pixels were the PORT's, on a template the reference
+   never tested, and they were two things:
+
+   - **the mask's big-water arm, which the port did not have.** `0x9EBAE0`
+     asks whether a `TT_BIG_WATER` layer covers the tile, tested at its four
+     corner vertices, and `0x9EC570` turns that into a set bit. It was written
+     down as inactive because the reference paints no water layer — a fact
+     about one template, not about the arm.
+   - **a water exemption the port had and the engine does not use.** The pass
+     was ported as `mask(tx, ty) and not 0x9EC3C0(tx, ty)`. The reference
+     cannot test that term (its river plane is empty on all 9,216 tiles), and
+     the two maps that can say it never fires.
+
+   With the arm added and the exemption dropped, three engine-generated maps
+   come out byte-identical including the minimap — the reference, a lava-lake
+   template and a `-water 2` sea (see "The minimap's water arms"). `-pokeb 148
+   0` is no longer needed to keep a sweep clean; it stays a way to make one
+   cheaper.
+
+4. **Water, as a second dimension — DONE.** `-water 2` orders it, both seeds
+   are swept, and **all 88 orders across the four sweeps** (two dry, two water)
+   are byte-identical.
+   It also reached a zone's `CanBeWater`, the last unsettled field of the
+   format: read by nothing, and changes nothing when it is turned on.
+
+5. **The monster level, as a third dimension — DONE.** `-monsters` orders it
+   and `rmg-diff-map` now replays the level the map itself records, so the
+   sweep is a comparison rather than a known exemption. `S1P2Z3K5.1` at all
+   five levels, then every template at WEAK and at IMPOSSIBLE: **48 more maps,
+   all byte-identical**, and the four earlier sweeps recounted against the same
+   code — **136 of 136**.
+   It cost three findings, and two of them are about `SetMonster` rather than
+   about the level: the town garrison has a scaling table of its own (two
+   values, not five), the guard setter's army branch **falls through to the
+   single stack** instead of returning an empty army, and there are three
+   refusals at a hundred rather than one. All three are invisible at MEDIUM,
+   which is the only level the reference maps had.
+
+### The sweep, run
+
+Twenty-two orders, twenty-two launches, seed 1785351845, no minimap. The engine
+made all twenty-two. It also **clamps the size**: `-size 1` came back as SMALL
+for the small templates, MEDIUM for `S2-*`, LARGE for `S3-*` and HUGE for
+`S6-*`/`S7-*`, so an order below a template's own range is raised to it rather
+than refused — the comparison is still honest because `rmg-diff-map` reads the
+size back out of the map it is given.
+
+This table is the state the sweep was FIRST read in, kept because the shape of
+what moved is the record of how it moved. What it says now is under it.
+
+| the template | what the port reproduced then |
+| --- | --- |
+| `S1P2Z2M1`, `S1-2P2-4Z4K1S`, `S1-3P2-4Z5V` | **everything.** 12 of 13 entries byte-identical, the 13th being the two `caption-text` bytes that were known |
+| `S0-1P2Z2K3.1T`, `.2T`, `T`, `S1P2Z3K5.1`, `S1-2P2Z7V2`, `S2-4P2Z7B2`, `S3-4P2-4Z4K1M` | **every object, every text, every terrain plane but one.** `map.xdb` differed by the known `caption-text` bytes alone; masks, ground flags, passability and the river plane identical; only HEIGHTS differed, by 4 bytes on `S1-2P2Z7V2` and by a few thousand on the rest |
+| the other eleven | `map.xdb` still differed wholesale — the object layer diverged |
+| `S7-22P2-8Z15K2.4c` | the port refused it: fifteen zones, and the fourteenth would rehash the queue whose order had never been read. It reproduces now — the refusal outlived its reason, and what actually parted was the neighbour scan's order |
+
+**Where it stands now: ALL FORTY-FOUR MAPS ARE BYTE-IDENTICAL, on both
+seeds.** `rmg-diff-map` over both sweeps' 44 orders reports 13 of 13 entries
+identical on every one of them — `map.xdb`, `map-tag.xdb`, all eleven texts,
+both minimap documents and `GroundTerrain.bin`, every byte — and the port
+refuses nothing any more.
+
+(`rmg-diff-map` exempts exactly one byte of a terrain file — the `0x0e`
+record's uninitialised payload, which flips between two identical runs of the
+engine itself.)
+
+Four findings closed the last of it, and each is written up below: the caption
+numbering belongs to the save path rather than to the generator; the relief cone
+is rounded in a different place by each of the two builds; the terrain paints
+have to read the zone grid AS FILLTERRAIN SAW IT, not as it stands when the
+chain ends; and the jitter's neighbour offsets go on the engine's two indices
+the other way round, which nothing under fourteen zones could see.
+
+##### The paints read the grid at the wrong MOMENT
+
+The last two maps to disagree — `S3-5P4Z12B4` at the first seed (31 bytes) and
+`S1-3P2Z7V3` at the second (10) — differed only in `GroundTerrain.bin`, and only
+in a blob of a few tiles where the engine paints a tile and the port paints
+nothing (which then reads as the neighbouring layer keeping its own paint).
+
+Nothing was wrong with the grid: the oracle's `grids` dump for the second of
+them comes back identical, 9,216 of 9,216 cells, the `-2`s included. What was
+wrong was WHEN. FillTerrain runs between `CalcBorderTiles` and `PlaceTowns`, and
+two later passes dent the grid under it — `FillDistToTowns` writes **-2** over
+the tiles a zone cannot reach from its centre, and the water carve takes the rim.
+The paints replay long after the chain has finished, and they were being handed
+the grid as it ENDS. A vertex whose zone no longer resolves is skipped by the
+walk rather than painted, so a disowned pocket comes out blank.
+
+The chain now keeps `gridAtFillTerrain`, a per-floor snapshot taken where
+FillTerrain runs, and every caller of `fillTerrain` reads it. It replaces
+`water.gridBeforeCarve`, which was the same idea reached for one floor and only
+on a water order — two doors to one fact, and the narrower one was the default.
+
+**This pocket had already been paid for once.** The comment on the zone tile
+list names it: `S3-5P4Z12B4` diverged 348 against 346 over "a disowned pocket at
+(71..72, 82) that FillDistToTowns had walled off", and the fix there was to take
+the zone's `+0xCC` where the engine takes it. The terrain consumer was the same
+bug in the same place, found from the other end a month later.
+- Everything else — masks, ground flags, passability, the river plane, the
+  minimap documents, all eleven texts, `map-tag.xdb` — is byte-identical
+  everywhere.
+
+**Ten of twenty-one, up from four**, and the four were every template whose
+towns matched its players. What moved the other six was one routine — the
+garrison below. The cartographer and the zero possession marker moved six
+more; the table above is the state before those two.
+
+**The standing count is TWENTY-TWO of twenty-two, on both seeds** — the whole
+object layer, the whole `map.xdb` and the whole terrain, byte for byte, on all
+forty-four maps. (Two intermediate states this paragraph used to record are gone
+and worth naming so the arithmetic below still parses: the ULP layer, 218 height
+vertices over the first sweep and 274 over the second, which the relief cone's
+rounding closed; and the refusal of `S7-22P2-8Z15K2.4c`, which the neighbour
+order closed.)
+
+##### The fifteen-zone template, closed: the neighbour scan's ORDER
+
+`S7-22P2-8Z15K2.4c` was the one template the port refused, and for a while the
+refusal was honest — the map really did come out different, and what made it
+different was not what the refusal guessed.
+
+**What it looked like.** The areas agreed with the port's on all fifteen zones
+for 33 sweeps; sweep 34 spent 394 jitter draws against the port's 380; and
+after it the engine's zone 2 held one tile MORE than the port's and its zone 15
+one tile FEWER. The candidate COUNT for that sweep was 1796 on both sides, and
+the areas the sweep divides — the ones from sweep 33 — were identical. So the
+ratio test could not be the thing that parted, and it was not.
+
+**Two readings that were wrong, and the shape of being wrong.** The first said
+"a fourteenth zone rehashes the queue, and the order is unverified" — guarding
+nothing, since each tile is queued at most once per sweep, so the queues'
+order cannot move a tile. The second said "no run past thirteen zones has ever
+been reconciled" — true, and useless as a cause. In between, a tie guard was
+tried and refused every template including the byte-identical ones.
+
+**What it was.** Not the totals — the CANDIDATES. Comparing the engine's own
+`gz` pairs against the port's list, pair for pair (which needs no attribution
+of draws to candidates, and so sidesteps the thing that could not be read),
+they part at sweep 27, on ONE candidate out of 1401: tile (95,140), owned by
+zone 13, whose best neighbour is zone 2 in the engine and zone 15 in the port.
+Both have two neighbours there. It is a tie, and the tie is broken by the
+container's iteration order.
+
+**And the container's order was right; the INSERTION order was not.** The
+counter is the same STLPort hash_map as everything else here — `0x989990`
+divides the key by the bucket count and walks the chain, `0x46E800` inserts at
+the bucket HEAD (`[eax] = buckets[i]; buckets[i] = eax`) — so a bucket yields
+its keys newest first. Zones 2 and 15 both land in bucket 2 of 13. Which of
+them is "newest" is decided by which the eight-neighbour scan meets first, and
+the port met them in the opposite order, because the offset table's two
+components were going on the wrong two indices:
+
+```
+0xcf38a1  mov esi,12BCED4h            ; the table, read as [esi-4] and [esi]
+0xcf38b4  fadd st,dword ptr [esi-4]   ; component 0 -> the FIRST index
+0xcf38d7  fadd st,dword ptr [esi]     ; component 1 -> the SECOND
+```
+
+and the engine's first index is the one its OUTER loop walks (`[esp+1Ch]`,
+stepped at `0xcf3bd5`/`0xcf3be3`), which is this port's `b`. The port was
+adding component 0 to `a`. The eight offsets are symmetric, so this visits the
+same eight tiles and counts the same counts — it only changes the ORDER they
+are met in, and that is invisible until two of the neighbours are zones whose
+indices share a bucket. Which needs a zone index of 14 or more. Which is one
+template out of twenty-two.
+
+**With the offsets on the right indices**: the engine's candidate pairs match
+for all **443 sweeps**, the `areas` dumps for all **444 snapshots**, the jitter
+draws per sweep for every sweep that has any, and the map is **byte-identical
+on both seeds**. The refusal and its `runUnreconciled` escape are gone, and
+`test-rmg-fill-zones` keeps three of the engine's own numbers for this template
+— the tie's candidate, sweep 34's 394 draws, and the phase's 383,555.
+
+**The oracle's `areas` keyword** is what made the divergence visible in the
+first place: `CollectOwnTiles` — the game's `0xEB7790`, the editor's `0xBFBF50`,
+found by fingerprint and by the chain of fields it walks (`+0xF4`, `+0x134`,
+`+0x34`, `+0xC8`/`+0xCC`, `+0xC4`, `+0xEC`) — logging `zc <zone> <tiles>` per
+zone per sweep. It needs no trace: the zone arrives as `this`.
+
+**A note on the ratio's precision, read while looking at this.** The editor
+computes both quotients on the x87 stack and compares them there —
+
+```
+0xcf3ad5  fidiv st,dword ptr [esp+14h]   ; area(best) / area(own)
+0xcf3adf  fidiv st,dword ptr [edi+144h]  ; size(best) / size(own)
+0xcf3ae5  fcompp
+```
+
+— so nothing rounds to float32 on the way, which is what the port used to do
+after reading the GAME's SSE build. The port stops rounding them. It changes
+no verdict anywhere measured (0 of 769,446 candidates on this template, the
+only one whose Sizes are not all equal), so it is a correction to the reading
+rather than to the output — the same split as the relief cone, caught before
+it could cost anything.
+
+##### The relief cone: the two builds round it in opposite places
+
+The last of the height debt was 492 vertices over the two sweeps, every one of
+them exactly one ulp, and it was not in the late pass at all — the pass replayed
+over the engine's own entry plane came out exact, so the difference was in the
+plane the pass STARTS from: the constructor fill plus the statics' relief cones.
+
+The cone adds `2 * (3.5f - r)` per blocked offset within 3.5 of the centre, and
+the two builds round that differently:
+
+| | the game, SSE (`0xED1660`) | the editor, x87 (`0x794A80`) |
+| --- | --- | --- |
+| the squares and their sum | single (`mulss`, `addss`) | from f32 slots, product in the FPU |
+| the sqrt | double (`sqrtsd`) | `fsqrt`, stays in the FPU |
+| the radius | **rounded back to single** (`cvtsd2ss`, 0xED1714) | never rounded |
+| `3.5f - r` and the doubling | single | in the FPU |
+| the term handed to the add | already single | **rounded once**, storing to the f32 slot (0x794b60) |
+
+The two disagree on every offset whose radius is irrational — r² of 2, 5, 8 and
+10, the diagonals — and a vertex stacks several of those, which is exactly the
+"one ulp on a handful of vertices per map" the census was reporting. The port
+follows the EDITOR, because the reference maps are the editor's: radius and `t`
+in double, one `fround` on the doubled term. The guard (`t <= 0`) is on the
+unrounded value, which is what `fcomp` at 0x794afc compares.
+
+**Finding it took reading the editor rather than the game, and the game's
+version is a convincing wrong answer.** Ported from the SSE disassembly — round
+the radius, keep everything single — the debt goes from two vertices to one on
+the probe map, and the vertex that survives is a DIFFERENT one: some vertices
+then match the single path and others the double, which is what a mixed rounding
+looks like from the outside and is really two wrong answers taking turns.
+
+`0x794A80` was located by its calls to the height add (`0x873F90`, ten callers
+in the whole executable) and confirmed by fingerprint against the game's cone —
+63%, and the same `ret 0Ch`.
+
+##### The caption numbering belongs to the SAVE PATH, not to the generator
+
+The two `caption-text` bytes rode along as a known exemption for months, and
+they were not a debt at all: they are the difference between the two ways of
+getting a map out of the engine, and the split is total.
+
+| | caption documents written | what `map.xdb` references |
+| --- | --- | --- |
+| the console command, all **44** maps of both sweeps | 2 | `caption-text-0`, `-1` |
+| the editor's own SAVE, all **11** maps under `_tmp/oracle` | 4 | `caption-text-2`, `-3` |
+
+Same seeds, same templates, same everything else; the two extra documents a
+dialog save writes are copies of the map name that nothing references. So the
+numbering is not the generator's to decide, and the port stops pretending it
+is: `RmgTextsInput.captionBase` says where the scenario captions start, 0 by
+default and 2 for the archive path. `rmg-pack` (which writes an `.h5m`, the
+thing a SAVE produces) and the reference-backed suites pass 2; `rmg-diff-map`
+takes it from the map under test — how many caption documents it carries, less
+one per player — because guessing from the path misjudges an unpacked archive,
+which is a folder that came out of a dialog. That does not make the numbering
+unchecked: the base only says how many documents exist, and whether `map.xdb`
+references the right ones is still a byte comparison.
+
+The port had hardcoded the dialog's 2, which is why it was exact against the
+three saved references and two bytes out against every map the batch ordered —
+a constant fitted to the only evidence anyone had looked at.
+
+**A debt the count hid, and where it went.** `S3-5P2-8Z8K2M` used to differ by
+five bytes, only two of them the `caption-text` numbering: three object AMOUNTS
+were off by one or two — a monster's 16 against 18, a treasure's 29 against 27
+and 12 against 13, in a map of 2.9 MB. Nothing was drawn there, so it was
+arithmetic, and it was the smallest handle on that arithmetic anyone had. It
+turned out to be the same single rounding as the guard below: `S3-5P2-8Z8K2M`
+and `S2-4P2Z7B2` both came down to two bytes with it, without either being
+looked at.
+
+#### A zone's PRESET is not always its race's
+
+`S3-5P4Z12B4` diverges in the towns pass, and the draw that disagrees is the
+decoration over a town's entrance: the engine draws `below(3)` where the port,
+reading `OverTownCenterObjects` as empty for that race, draws nothing.
+
+The zone is 12, its race is Dungeon, and Dungeon's list in the preset table IS
+empty — in both paks. So the list the engine drew from is not Dungeon's. The
+oracle now says whose it is: alongside the room points, `zp <zone> <preset>
+<count>` prints the pointer at `zone+0x20` and the length of its `+0xE4`. Two
+zones of one race share one preset, so the pointers identify the rows without
+reading a name, and they turn out to sit 488 bytes apart in race order:
+
+```
+zp 1 387397552 3     zp 5  387395600 3     zp 9  387398040 -1
+zp 2 387396088 -1    zp 6  387395600 3     zp 10 387397552 3
+zp 3 387396088 -1    zp 7  387398040 -1    zp 11 387395600 3
+zp 4 387396088 -1    zp 8  387398528 3     zp 12 387395112 3
+```
+
+Eleven zones hold the preset of their own race. Zone 12 holds `387395112`,
+one step BELOW Preserve's — race 3, Haven. And the decoration the engine
+placed over that town is `LeafDownBig`, which is Haven's list at index 2,
+exactly the `2 of 3` it drew.
+
+Its town and its garrison are Dungeon's all the same: the town document is
+`Dungeon`, and the guard it got is an Assassin, a Dungeon tier-1 creature. So
+the zone carries the race for its TOWN separately from the preset it PAINTS
+and decorates from, and the port has only one of the two.
+
+And the rule is in the code, at `0xeb4c70` — the zone's own setter, which
+fills BOTH pointers:
+
+```
+mov ecx,[esi+18h]              the zone's race
+call 0xBA18A0                  its preset row
+mov [esi+1Ch],eax              +0x1C = the race's own
+call 0xBA18A0
+cmp dword ptr [esi+18h],6      is the race DUNGEON?
+mov [esi+20h],eax              +0x20 = the same, by default
+jne done
+cmp dword ptr [esi+0F4h],0     is it on the SURFACE?
+jne done
+mov ecx,3                      then entry 3, HAVEN
+call 0xBA18A0
+mov [esi+20h],eax
+```
+
+The port already had that rule — `LoadedZone.terrainRace`, comment and all.
+What it did not have was the town pass READING it: `placeTowns` looked the
+preset up once, by the zone's own race, and used it for both the town
+prototype and the decoration. The prototype is right that way — zone 12
+builds a Dungeon town and a Dungeon creature guards it — and the decoration
+is not.
+
+The three subclass zones override the same slot wholesale: Subterra paints as
+Dungeon (`0xec4910`, `mov ecx,6`), and the Dwarven and SubInferno ones set
+their own constants at `0xec6ef6` and `0xec9170`.
+
+**What the first pass thought the line was.** Before the towns pass was read,
+the four templates that matched were exactly the four whose towns equal the
+order's players, and the count of ZONES looked like the divider because it
+happens to correlate. It was not: the divider was a town nobody owns, and the
+reference template has none. Two of anything is the case where a rule cannot be
+observed, and the reference had been the only witness for a long time.
+
+**And the near miss is one plane.** For the three `S0-1P2Z2K3*` maps the only
+difference in the whole file set is the height plane: 404 vertices of 9409 on
+`.2T` (max delta 0.065), 583 on `T` (0.565), 816 on `.1T` — and that last one
+is not noise. Around tile (43,76) the engine digs a bowl to 5.73 where the port
+leaves the plateau at 8.92, a 3.19 drop over a five-tile core with a wide
+skirt, while every other plane of the same file agrees. So the heights carry
+two separate debts: a smoothing pass that drifts in the third decimal, and at
+least one feature the port does not carve at all.
+
+#### A second seed, because one seed is one path
+
+Twenty-two more launches at seed 987654321, `game/bin/rmg-seed2/`. **All
+twenty-one templates the port accepts reproduce the object layer again** — every
+`map.xdb` byte-identical, once the caption numbering below stopped being read as
+the dialog's — and six of them come out byte-identical through the terrain as
+well. The twenty-second refuses in the port's own words
+(`HashQueue: a 14th zone would rehash`), which is the refusal working.
+
+This is what the first sweep could not say. A template that agrees once agrees
+on one path through the stream; the same template on another seed walks
+different zones, different races, different templates for its guards. The
+height plane moved with the seed as expected — 22888 bytes on
+`S6-11P2-8Z8K2.4a` against 4695 on the first seed, 1 byte on `S1-3P2-4Z5V` —
+and was the only thing that moved.
+
+**And the height plane now closes on this seed too**: 21 of 21, zero differing
+vertices, worst 0.0000, the same as the first sweep
+(`tools/rmg-census-heights.ts --dir game/bin/rmg-seed2 --seed 987654321`). That
+is the check the base-field fix needed, because a rule found on one seed and
+verified on that same seed is a rule fitted to its own evidence. This set is not
+even the same templates: it carries `S0-1P2Z2K3.1T`, which the first sweep's
+slots do not.
+
+The census was sabotage-checked before its zeros were believed — the same slot
+replayed at a deliberately wrong seed reports 8,278 differing vertices, worst
+6.86. A comparison that cannot go red proves nothing by staying green.
+
+**The heights, measured rather than described.** With the object layer settled
+the plane is the only thing left, and it holds two different debts — told apart
+by looking at the smallest case and the largest.
+
+- **The smallest is rounding.** `S1-2P2Z7V2` differs in FOUR vertices, each by
+  exactly one ulp and each one ulp HIGH: `0x412e32d9` against `0x412e32d8` at
+  (82,62), and three more in a row at y=64. Nothing to carve there — a product
+  or a sum landing on the other side of the last mantissa bit, the same shape
+  of thing as the guard budget above.
+- **The largest is a feature.** `S0-1P2Z2K3T` differs in 736 vertices, and they
+  are not scattered: they are one bell centred on vertex (36,80), 0.565 deep at
+  the peak and fading to nothing by eight tiles out — the exact shape the
+  smoothing pass makes of a single local dent. Our side reads a flat 9.0 across
+  the whole blob, so the engine dug something we never dug. What sits there is a
+  4x4 `Lava/Mountains/Hellpikes_4x4_1` static at (34,80), whose footprint covers
+  the peak — and the bowl at (43,76) on `.1T` (3.19 deep) is very likely the
+  same rule.
+
+##### The relief cone is not the rule: what the engine selects, read and measured
+
+The static that raises a cone was worth reading rather than guessing, and the
+reading clears the cone of both bells. The sweep's accept path
+(`0xebc123..0xebc152`) gates `0xED1660` on two tests and nothing else:
+
+- **`0xEB3120`** — `find("Mountain")` over the string at `SAdvMapStaticShared`
+  `+0x20`, the shared's own resource path (the helper tests that container for
+  empty first; the dynamic_cast at `0xebbe4d` names the class). It is the same
+  shape as `0xEB3180`, the `"Crater"` test the big spacing rule already uses —
+  so the discriminator is the PATH, not a family field, not the visibility
+  type, not the model.
+- **the count** — `((end - begin) & ~7) > 0x78` over the `+0x54` vector, which
+  is `blockedTiles` (the vector the fit and the `1/(n+1)` roll read as well).
+  The elements are 8 bytes, so the gate is exactly **more than 15 blocked
+  tiles**.
+
+Both are what the port already writes, and the note above was wrong on both
+halves: `/MapObjects/Lava/Mountains/Hellpikes_4x4_1.…xdb` DOES carry "Mountain"
+(the folder is `Mountains`), and it fails on the count — the shared declares 13
+`blockedTiles`, not the 16 its 4x4 name suggests (its `holeTiles` hold 16). The
+engine skips it for the same reason the port does.
+
+The natural experiment says the same from the other side. This run also places
+23 `Sand/Sandmountains/*` statics whose PATH has no "Mountain" (that folder is
+lower-case) while their model href and their `ObjectTypeFileRef` both do, six of
+the seven types with n > 15. If the engine read either of those strings, every
+one of them would carry a cone. Not one vertex differs anywhere near them.
+
+**And the bells are not cones at all.** Measured rather than described: the
+whole plane holds exactly TWO clusters, and adding or removing any single cone
+for any static within 20 tiles flattens neither.
+
+- (36,80), peak **-0.565**, 174 vertices, sum -17.5 — the engine sits LOWER
+  there, which no cone can do; a smooth bowl with no plateau.
+- (25,39), peak +0.27, 409 vertices, sum +36 — a **disc of exactly +0.161**,
+  radius ~8, soft-edged. That is the INFERNO TOWN CRATER at (26,40) setting its
+  disc to one value: both sides flatten the same 193 vertices, and the engine's
+  average is 0.161 higher — about 31 units of height it holds inside the disc
+  and we do not. What sits inside is road dents and cone slopes, so what the
+  crater's own walk sees of those is the next thing to read. The bowl at (36,80)
+  is a separate debt.
+
+`_tmp/bell-*.ts` hold the probes: the cluster walk, the cone toggle, and a
+Landweber inversion of the late pass (the pass is affine, so `theirs - ours` is
+the smoothed image of one delta added before it).
+
+##### The census: exactly what is left, template by template
+
+`tools/rmg-census-heights.ts` walks every map a sweep generated and reports the
+height plane's differing vertices as CLUSTERS, at a 1e-4 tolerance so one-ulp
+noise stays out of the way. It reads each slot's own folder rather than a table
+of templates — the template out of `map.xdb`, the size out of the plane, the
+underground flag out of whether the slot has a second terrain file — so a sweep
+taken with a different order file needs no edit. That is not tidiness: the
+hardcoded table it grew out of was already wrong for the second seed, whose
+slots are a different set in a different order.
+
+```bash
+node tools/rmg-census-heights.ts                                          # the first sweep
+node tools/rmg-census-heights.ts --dir game/bin/rmg-seed2 --seed 987654321
+node tools/rmg-census-heights.ts --slot 13                                # just that one
+```
+
+**Every line reports TWO numbers, because one of them hid the other.** The
+clusters are the 1e-4 view, which is the right lens for a debt with a shape;
+next to them sits BIT inequality with the worst distance in ulps. The first
+report this tool gave read "21 of 21, zero differing vertices" and was quoted
+as the plane being closed — true of the tolerance and false of the file, since
+28 of the 44 maps still wrote a different `GroundTerrain.bin`. What they carried
+was one-ulp vertices and nothing else:
+
+| | planes bit-identical | vertices one ulp out | worse than one ulp |
+| --- | --- | --- | --- |
+| seed 1785351845, before the cone's rounding was read | 8 of 21 | 218 | none |
+| seed 987654321, before | 6 of 21 | 274 | none |
+| **both seeds, after** | **21 of 21** | **0** | none |
+
+That layer was one rounding in the relief cone, below.
+
+| | the dig on the resolved race | the dig switched off | the base field read right |
+| --- | --- | --- | --- |
+| **byte-clean planes** | 9 of 21 | 10 of 21 | **21 of 21** |
+| **noise only (< 0.07)** | 4 | 4 | 0 |
+| **real debt** | 8 | 7, worst 5.73 | **0** |
+| **differing vertices, all 21** | 9,138 | 6,793 | **0** |
+
+The third column is where this ended. The first two are kept because the shapes
+they name are what the search followed, and because a census that improves in
+count is not, by itself, a census that has found the bug.
+
+Every one of the eight was one or two contiguous clusters, never scatter. Two
+shapes, and the second was the whole remaining story:
+
+1. **The crater plateaus** — a soft-edged disc offset by a constant, sitting on
+   an Inferno town. The disc is right (193 vertices on slot 3, and no radius,
+   centre or `>`/`>=` variant fits better); the AVERAGE it is set to differed,
+   so the debt was really shape 2 hiding inside the disc. It was.
+2. **Basins the base field digs.** On slot 13 the engine's plane falls to 3.0
+   where ours held 9.0 — a 30-tile bowl 5.25 deep. On slot 5 the sign was the
+   other way: WE dug to 7.0 where the engine holds a flat 9.0. Same term, both
+   directions — which is what a swapped pair of indices inside the dig looks
+   like, and what it turned out to be.
+
+**The base field WAS the bug**, and the reading that said otherwise was a
+reading of the wrong build. `0xECF9A0` in the game, line by line: the dist comes
+from `floor+0xE4` at `[min(inner, W-1)][min(outer, H-1)]`, the zone from
+`floor+0xC4` at the SAME pair, the sign flips when the zone object's `+0x18` is
+7 or 8 (`0xF4A9BC` is -1.0f), the divisors are 3, 10, 42, 13, 29, the noise is
+divided by the f64 0.15000000596046448, 12.0 is added and `minsd` caps at 3.0,
+the value lands at `(outer, inner)` and the road dent (`occ & 0x18`, read
+`occ[outer][inner]`) hits the TRANSPOSED corners. All of that is right, and none
+of it says WHICH index feeds which sine once the plane's own transpose is in
+play — which is the half that was wrong. The editor's `0x794F10` is the same
+function with x87 codegen: reciprocal multiplies where the game divides, and an
+f32 round on every intermediate the game keeps in a register. The port follows
+the editor, because the reference maps are the editor's.
+`CalcBorderTiles` writes `+0xE4` and `recomputeRoom` writes `+0xF4`, so the room
+grid does not overwrite the border table, and nothing else in the RMG range
+stores into `+0xE4`.
+
+Swapping the zone/dist READ to the mirrored tile was tried against all four
+combinations: it took slot 5 to ZERO and slot 10's worst from 3.04 to 0.63,
+while making slots 13 and 8 worse — near enough to be tempting and wrong in
+detail, because the transpose that mattered is in the NOISE, not in the two grid
+reads. Those were right all along.
+
+##### Everything the late pass adds, read rather than assumed
+
+Since the debt is additive — a plane 5 units lower cannot come from a smoothing
+mask, because smoothing a flat field leaves it flat — the whole additive chain
+was read out of the binary. It is all faithful:
+
+- **The craters (`0xED0240`) are complete.** Two sub-passes and no third: an
+  INFERNO town (the shared's `+0xFC` == 8) walks the floor's `0xC8`/`0xCC`
+  extent, takes `sqrt((obj+0x44 - (o+1))² + (obj+0x48 - (n+1))² + (obj+0x4C)²)`,
+  keeps the point when `8.0f` (`0xF4BB30`) is strictly greater, and hands the
+  list to `0xEB2420` with `-1.0f`; the dwellings (`+0xEC` in {0x48..0x4B}, all
+  four compared one after another) do the same with **no** minus-one, radius
+  `2.5f` (`0xFAFE90`) and `-2.5f`. `0xEB2420` sums with `addss`, divides by the
+  point count, adds the delta and writes back, indexing `rows[second][first]` —
+  which is what `setToAverage` does.
+- **The border test (`0xEA90D0`) marks what the port marks.** Each of the four
+  orthogonal neighbours is bounds-checked first and an out-of-range one jumps to
+  the SAME "this is a border" target as a differing zone, so the map edge does
+  make a border tile; the reads are `grid[r±1][c]` and `grid[r][c±1]` against
+  the tile's own zone, with no off-by-one anywhere.
+- **The port's grid convention is the engine's.** Asked of the mines rather than
+  assumed: on `S3-4P2-4Z4K1M` every mine of the southern group reads `grid[y][x]
+  == 4` and `grid[x][y] == 1`, and zone 4's centroid under `[y][x]` is where
+  those mines are. So rows are y, the base field's `min(inner)` IS y, its
+  `min(outer)` IS x, and the value lands on the vertex's own tile.
+
+**What the debt actually looked like.** Landweber-inverting slot 13's late pass
+(80 iterations, residual rms 5.5e-4) recovers the delta that would have to be
+added BEFORE the pass. It came back as one smooth cone: centred on (123,45),
+about 19 tiles across, 5.4 deep, slope near 1/3 — and read back through
+`-dist/3` it said the engine behaved as if `dist` there were 45 where our table
+said 28. The inversion was right about the SHAPE and misleading about the cause:
+the shape is what `dist/3` makes, and the reason our table did not produce it
+was not the table.
+
+Ruled out along the way, so nobody retries them: a missing or extra relief cone
+(toggling every static within 20 tiles moves nothing), a lake (slot 5 has no
+lake tiles at all and carried the same shape; slot 13's lakes sit 20 tiles west
+of its bowl), and the preset-Mountains pass (its cones are unconditional and its
+objects are in the matching layer, so both sides raise them).
+
+##### The bowl, closed: two errors that were only visible together
+
+**The plane is now bit-identical on every template.** Twenty-one of twenty-one,
+zero differing vertices, worst 0.0000 — the census that read 6,793 vertices
+across seven maps, the deepest bowl 5.73 units out, now reads nothing at all.
+Two mistakes made it, and neither could be seen while the other stood.
+
+**One: the noise's two indices were swapped.** The base field multiplies four
+trigonometric terms — `sin(·/10)` and `sin(·/42)` hoisted out of the engine's
+OUTER loop, `cos(·/13)` and `sin(·/29)` computed in the inner one. The engine's
+outer index is this port's SECOND, because the plane's two conventions are
+transposed against each other: the engine writes `rows[outer][inner]`, the
+oracle's dump indexes rows by that same first component, and the dump's rows
+line up with our second index. The port had it the other way round.
+
+**Two: the dig was switched off.** The `-dist/3` a NECROMANCY or INFERNO zone
+gets instead of `+dist/3` had been removed on a measurement — over the 21
+templates it cost 2,345 differing vertices — and that measurement was real. It
+was taken with the noise swapped, which is the only reason it came out that way:
+the swap is INVISIBLE while every vertex clamps to the 3.0 plateau, and the dig
+is the only thing that can lift a vertex off that plateau. Switch the dig on
+with the noise wrong and the wrongness appears; switch it off and the plane goes
+flat and hides both. Each error was the other's alibi.
+
+**Three, smaller, and needed for bit equality.** The engine multiplies by
+RECIPROCALS held as f32 (`1/42`, `1/10`, `1/29`, `1/13`, `1/3`, `1/0.15`, read
+straight out of the editor's `.data`) rather than dividing; it rounds the two
+hoisted sines and the dist term to f32 before use; and it stores the capped
+value into an f32 slot before passing it to the add, so the value rounds TWICE.
+With divisions and one rounding the plane is 91 vertices out by an ulp; with the
+reciprocals and both roundings it is exact.
+
+##### How the pass was cut open: the editor's own stages
+
+The bisection that found this needed the engine's plane after each step, and
+that needed the EDITOR's addresses. `stages` in the oracle first patched the
+game's, and all eight refused with "that call does not go where we think" — the
+two builds do not share this layout. The editor's boundary table locates the
+pass: between "treasure blocks set" (`0x8FA477`) and "finished creating map"
+(`0x8FA500`) sits `0xCEFC20`, which walks each level's chained table at `+0xA8`
+calling a virtual `[vt+0x38]` per entry — that is the PASSABILITY pass, the
+editor's counterpart of the game's `0xEAC185`, already ported as
+`markPassability` — then calls the road painter (`0x7951F0`), and then
+**`0x796E00` — the late pass**.
+
+It is the same pass, stage for stage. Fingerprinted against the game's
+(`tools/reverse/match.ts fingerprint`) and read side by side:
+
+| the game | the editor | |
+| --- | --- | --- |
+| `0xECF760` | `0x796E00` | the orchestrator |
+| `0xECF9A0` | `0x794F10` | base field + road dents |
+| four inlined `0xEB1800` | `0x7944E0` | the four lake dents |
+| `0xED0240` | `0x7966B0` | craters (79%) |
+| `0xED06D0` | `0x796A90` | flatten, called twice (79%) |
+| `0xECFE40` | `0x794BA0` | lake flatten (79%) |
+| `0xEB2580` | `0x8744F0` | the smoother, called three times |
+| `0xEB1800` | `0x873F90` | one add into the plane |
+
+The ONE structural difference is codegen: where the game inlines four calls to
+the height add, the editor keeps them in a helper. So "the editor is not the
+game" was true about the layout and false about the behaviour — a lead worth
+following that explained nothing, and the seven templates were one bug in the
+port after all.
+
+`tools/rmg-diff-stages.ts` reads the dump and names the FIRST stage that
+diverges, after which every later step merely carries the error forward:
+
+```bash
+# 1. `trace` and `stages` on their own lines in <game>/bin/homm5-editor-rmg.txt
+# 2. one order per launch
+node tools/rmg-batch.ts --game <dir> --order "RMG/Templates/S3-4P2-4Z4K1M.xdb -seed 1785351845 -size 1 -resource 1 -exp 1 -pokeb 148 0"
+# 3. read what the launch left in <game>/bin/homm5-editor-rmg.log
+node tools/rmg-diff-stages.ts --template S3-4P2-4Z4K1M --size 176
+```
+
+The dump numbers the steps in running order — 0 base field, 1 dents, 2 craters,
+3 flatten 1, 4 smooth 1, 5 smooth 2, 6 flatten 2, 7 lake flatten, 8 smooth 3 —
+plus **9, the plane on ENTRY**, written before anything of the pass runs. Stage
+9 is what makes the first stage's verdict trustworthy: `heights` writes the
+plane at "treasure blocks set", but `0xCEFC20`'s hash-map walk and the road
+painter sit between that boundary and the pass, so without an entry dump a
+difference AT stage 0 cannot be told from one made BEFORE it. Measured, those
+two touch the plane not at all: entry against "treasure blocks set" is 0
+vertices, and entry against the port's own pre-pass plane is 0 as well.
+
+##### What the inputs turned out to be, and what was eliminated on the way
+
+All of this was read or measured while the bowl was still open. None of it was
+the cause; all of it is now settled, and the search should not repeat it.
+
+- **The border table and the zone grid are the engine's own, at the moment the
+  base field reads them.** `grids` dumps them at "roads created"
+  (`tools/rmg-diff-grids.ts`), and the late-pass entry hook dumps them again as
+  `be` and `ze` — identical both times, 30,976 of 30,976 cells on
+  `S3-4P2-4Z4K1M`, 9,216 of 9,216 on `S1-2P2-8Z8K2S`. So the table is not
+  recomputed between the two boundaries, and it is ours.
+- **The plane going into the pass is exact.** `heights` writes it at "treasure
+  blocks set", each value as the INT its bits are: bit-identical on both problem
+  maps, 31,329 and 9,409 vertices. The constructor fill and every relief cone
+  are right.
+- **The writers of `floor+0xE4` are the ones already listed — and the first
+  sweep for them was a bad instrument.** All 65 sites in the RMG range that load
+  a `floor+0xE4` row array were decoded and the code after each checked for a
+  store through the pointer. The first pass reported "nobody writes", which was
+  the scanner's fault: its pattern matched `mov [` and the engine writes
+  `mov dword ptr [`. Corrected, it finds exactly `0xEBA613`, `0xEBA66B`,
+  `0xEC1F4E`, `0xEC1FD4` planting **1** on a passage mouth and `0xECB855`
+  planting **-1** in the water-bordered override, and nothing else.
+  One divergence fell out of that re-read, unrelated to the heights: the
+  neighbour-side dent `0xEBA66B` writes with **no bounds test**, and the level's
+  rows are one flat buffer, so on a mouth at the map edge the engine's write
+  wraps into the adjacent row while `openMouth` bounds-checks and skips.
+- **`CalcBorderTiles` has two guards, and the port already has both.** A cell
+  whose value is 0 is skipped outright (`0xEA9390`) — that is how the border
+  tiles the first sub-pass zeroed keep their 0 — and the computed minimum is
+  stored ONLY when the cell still reads `-1` (`0xEA9443`), so a cell holding
+  anything else is walked and thrown away. `border-tiles.ts` writes both.
+- **It is not stale state between maps.** `rmg-batch` launches the editor once
+  per order for exactly this reason: a second generation in one process does not
+  repeat what the first would have made alone.
+- **No stage of the port is spurious.** Replaying the pass with each stage left
+  out — base field, lake dents, craters, both flattens, all three smooths, the
+  mask refill — made the final plane worse every time. That was right, and it
+  pointed the search at what a stage computes rather than at which stages run.
+- **`+0x18` is the resolved race, and the branch reads the right zone.** A
+  sibling caller prints "no zone found with index %d" when the lookup comes back
+  empty; `[zone+0x20]` is the preset the road painter takes its texture from,
+  reached through this very lookup with a key from this very grid, and our road
+  masks are byte-identical; and the lakes gate `0xEBC260` reads the same `+0x18`
+  against exactly {3,4,7,8,9,10}, our `LAKE_RACES`. Keying the dig on the
+  template's declared `Setting` instead was tried, and this is what killed it.
+
+##### Two orientation traps, both of which produced convincing lies
+
+Both cost an afternoon, and both are now defended against in the tools.
+
+**The heights dump read the wrong way round.** Compared in the other orientation
+the pre-pass planes disagreed on 1,764 vertices, and the deltas were 7.00, 5.00,
+4.17, 3.00, 2.53 in matched plus/minus pairs — exactly `2·(3.5 − r)`, the cone
+profile, reading irresistibly as relief cones placed one tile off. They were
+nothing of the kind. `rmg-diff-heights` and `rmg-diff-stages` now try both and
+name the one that fits.
+
+**The grids dump read the wrong way round** gave 19,508 of 30,976 cells
+differing in a PERFECTLY symmetric plus/minus histogram — which is the signature
+of a transpose, and the reason to suspect one before believing the numbers.
+`rmg-diff-grids` tries both orientations too.
+
+A note for whoever picks up the plane again: `tools/diff-terrain.ts` compares
+with a 1e-4 tolerance and will call a one-ulp plane "ok", while `rmg-diff-map`
+counts bytes and will not. Both are right; use the byte count to find that there
+is something, and the plane comparison to find out what.
+
+#### One guard of eleven thousand: where a float rounds and the engine does not
+
+`S6-11P2-8Z8K2XL` was the last template to disagree, and the disagreement was
+**one object**. Its map holds 11222 of them; a field-by-field comparison of the
+two object lists — kind, id, position, shared href, every amount — found a
+single row apart:
+
+```
+ours    AdvMapMonster item_-444688924 (183,231) Stronghold/Hag        10 10 20 34
+theirs  AdvMapMonster item_-444688924 (183,231) Necropolis/Lich_Master 5  5 12
+```
+
+Same tile, same rotation, same minted id — so every draw around it landed the
+same way, and the two sides were choosing from the SAME position in the stream.
+The trace says what they chose among:
+
+```
+#655526  tb 33 of 106  |  tb 1 of 107
+```
+
+A treasure-block guard, the army branch: `below(candidates)` over the army
+templates whose `[MinPower, MaxPower]` contains the scaled power. The engine
+had 106 of them and the port 107.
+
+**The budget is recoverable from the stacks**, without guessing. Theirs is
+`race_TOWN_NECROMANCY_tier5.3` (Lich_Master 1, Nosferatu 1, Poltergeist 2,
+weighted 2960): amounts 5/5/12 mean `k = 5` and a remainder of two
+Poltergeists, so its budget was in `[15462, 15793)`. Ours is
+`race_TOWN_STRONGHOLD_tier4.5` (weighted 1517) with `k = 10` and four extra
+Goblin Defilers — budget exactly **15489**. And 15489 is, to the unit, the
+`MinPower` of `race_TOWN_DUNGEON_tier5` — the 107th candidate, the one the
+engine did not have.
+
+**So the question was one unit of arithmetic**, and the chain is short:
+
+```
+value  = trunc(d * TreasureBlocksTotalValue / sum)   = 7649
+power  = trunc(value * 2.5f + 0.5f)                  = 19123
+scaled = trunc(power * 0.9f)                         = 17210
+budget = trunc(scaled * 0.9f)                        = 15489 or 15488
+```
+
+`17210 * 0.9f` is `15488.99958968…`, and the nearest float to that is 15489
+exactly — so a port that rounds the product to a float before truncating gets
+15489 and one candidate more. This one did, on that line alone: the line above
+it, the strength scaling, had been written the other way years earlier, with a
+comment explaining why (the reference run's Familiar guard is 23 strong, and
+`2000 * 0.9f` truncates to 1799 unrounded and 1800 rounded). The two lines now
+agree, and the map agrees with the engine.
+
+**What was ruled out first, and how.** The value could have been wrong instead
+— it comes from the block's distance to its town over the zone's sum of those
+distances. Biasing that sum by one for the zone did fix this guard and broke
+two others (`(211,188)` and `(225,189)`), and the arithmetic of THOSE two pins
+the sum at exactly the port's 1608: no integer distance and no sum near it can
+give both. So the value was right and the scaling was not.
+
+One honest tension is left. In the GAME executable this multiply is
+`mulss` + `cvttss2si`, which rounds — but every measured run here is the
+EDITOR's, and both of the readings that touch it (the Familiar guard in the
+reference and this guard in `S6-11P2-8Z8K2XL`) say the editor's build
+truncates the product where it lands. The port follows the measurement.
+
+#### The zone's tile LIST is not the zone's tiles
+
+The pool a step draws from is `zone+0xCC`, and it is **built once**: `0xEB7790`
+walks the level grid and keeps every cell of the zone, its one caller is the
+tail of FillZones (`0xeaa609`, right after the sweep's grow and flip lists are
+painted back into the grid), and nothing rebuilds it afterwards. The port
+derived it from the grid instead, at the moment each step ran — which is the
+same list only until something dents the grid, and two later phases do:
+
+- **FillDistToTownsTable disowns** (`0xEC06E0`'s tail): every tile of a zone
+  its wavefront never reached is written **-2** in the grid. The list keeps it.
+- **the water carve takes the rim** — already modelled, because the island run
+  forced it; the carve edits the list in place, which is why `water.kept` was
+  the port's only `tiles` until now.
+
+So the engine draws from a pool that includes tiles the grid says belong to
+nobody, and a port that rebuilds the pool has a SHORTER one with no differing
+draw to say why. That is exactly how `S3-5P4Z12B4` diverged: 348 candidates
+against 346 at zone 1's first dwelling, both sides at threshold 16, and 15
+would have given 404 — so the threshold was never the question.
+
+**Read, not inferred.** The oracle's `points` dump now also prints the list:
+`zt <zoneId> <count>` and `ztt` with the tiles, fifty to a line (they are FLOAT
+pairs — `cvtdq2ps` at 0xeb7858). Against the port's own `zoneTiles` the answer
+was flat: nine zones identical to the tile, and zones 1, 3 and 6 exactly two
+tiles longer — six tiles in all, every one of them reading -2 in the port's
+grid, and all six inside one 3x3 pocket at (71..73, 80..82) that the towns'
+wavefront had walled off.
+
+**Which steps read the list, and which do not.** Every step that says "the
+zone's tiles" in this document means `+0xCC` unless it is one of the two below:
+
+| walks `+0xCC` | walks the GRID |
+| --- | --- |
+| dwellings, prisons, cartographers, the price lists, upgrade buildings, treasures and chests | the mines (`0xeb5cd0`: two counted loops over the grid dims, `[+0xC4]` compared to `zone+0xEC`, border `[+0xE4] > 1`) |
+| the lakes' seed scan (`0xebc2c9`), the preset mountains' first loop (`0xebcb18`), the big-statics sweep, the one-tile bucket scan and its border fence (`0xEBAA70`) | the lake blob's wavefront and the road relaxation, which are grid sweeps in both |
+
+The cheapest witness is the one-tile **fence**, because its difference is
+DRAWN: the pass spends a `below(4)` on every entry of the list before any test,
+so two extra tiles are two extra draws. That is what caught it — the engine at
+draw 186583 drawing one more quadrant than the port had.
+
+**And it moved the divergence four times in a row**, each fix uncovering the
+next place the same reading had been missed: 158277 (dwellings) → 165184 (the
+big-statics sweep) → 186583 (the one-tile fence) → 239928 (the preset
+mountains) → **none**. `S3-5P4Z12B4` now replays all 354661 draws of the
+engine's trace and writes a `map.xdb` that differs in the two `caption-text`
+bytes alone; 57 bytes of its height plane remain, which is the standing debt of
+sixteen other templates.
+
+### Where each template's run first turns differently
+
+`tools/rmg-diff-draws.ts` now takes the order out of a generated map
+(`--from <run>`), replays the chain or the whole run (`--full`), and prints
+**the limit each `below()` was called with** beside its value. That last part
+is what made the rest readable: "the engine drew 2 and the port drew 5" says
+only that they disagree, while `tb 2 of 3 | tb 5 of 30` says what each side
+was choosing among, and the phase counters say where it was standing.
+
+Eighteen of the twenty-two were traced this way, one launch each. **Seven have
+a chain that matches the engine draw for draw**, limits included:
+`S0-1P2Z2K3.1T`, `.2T`, `T`, `S1P2Z2M1`, `S1-3P2Z7V3`, `S2-3P2Z7N2`,
+`S3-5P2Z7N2.2`. The other eleven diverge inside the towns pass. The split is
+exact, and it is not the zone count the sweep first suggested:
+
+| | towns declared | chain |
+| --- | --- | --- |
+| the seven | exactly 2, the same as the order's players | matches to the last draw |
+| the eleven | 3 or more | diverges in the towns pass |
+
+#### What the four draws are: a town nobody owns is GUARDED
+
+Read, not inferred. `PlaceTowns` itself draws nothing — every draw between
+"Rnd Counter(PlaceTowns)" and "at %g towns placed" is made inside
+`CGameZone::PlaceTown` (the editor's vt+0x20, `0xc04120`) — so the oracle now
+brackets that call, and `SetMonster` (`0xed2330` in the game, `0x792bc0` in the
+editor, found by its own complaint "no monster set at town, power: %d") with
+it. On `S1P2Z3K5.1` the brackets say:
+
+```
+pt  13779 1000     town 1, PLAYER_1   ─┐ 13 draws
+pto 13792 1                            ┘
+pt  13792 1000     town 2, PLAYER_2   ─┐  7 draws
+pto 13799 1                            ┘
+pt  13799 20000    town 3, PLAYER_NONE ┐ 11 draws
+sm  13805 20000      SetMonster        │  ── 4 of them, drawing 20, 3, 20, 3
+smo 13809 1                            │
+pto 13810 1                            ┘  and then the specialisation, of 20
+```
+
+So the port was not four draws short of a specialisation — it was missing a
+whole call, and its specialisation landed four draws early. The two agreed at
+draw 13806 by accident: the engine's `below(20)` there is `SetMonster`'s spread
+and the port's is the specialisation pick, and two different routines drawing
+the same limit produce the same number.
+
+**The condition is the owner, and it is in the code**: at `0xeb577f` the game
+reads `cmp dword ptr [edi+0F0h],0` and skips the guard when it is not zero —
+zone `playerNo` 0 means nobody, and only that town is guarded. The power is the
+caller's first argument, and the two values seen say what it is made of:
+`zone.townGuardStrenght × params.basicLeverGuardPower` — the template's zones
+carry 1, 1 and 20, the parameter is 1000, and the brackets show 1000, 1000 and
+20000. Both fields are already read by the port.
+
+**But this is NOT the `setMonster` the port has.** The ported one opens with a
+`betweenFloat` and can spend `10 + below(30)`; the town's guard spends
+`below(20)`, `below(candidates)`, twice, and no float at all. `0xed2330` is its
+own routine — the log string says "at town".
+
+**Ported, in `src/rmg/town-guard.ts`.** One stack per tier from 1 up, stopping
+at seven or when the power runs out:
+
+```
+spread = below(20)
+count  = ((spread + 20) * (9 - tier)) >> 1     -- a shift, so an odd product
+pool   = creatures of THIS tier and THIS race, in table order,   loses its half
+         minus ids 0, 89 and 114
+count  = min(count, power / creature.power)    -- and this is the last tier
+power -= creature.power * count
+```
+
+The race the pool filters on is the zone's own: the engine's switch at
+`0xeb5788` maps races 3..10 to town types 3..10, which is the identity — the
+two enums in `types.xml` are the same list, and the one place their NAMES
+differ is 9, `RACE_DWARF` against `TOWN_FORTRESS`.
+
+**And the monster level scales this power with a table of its own** — two
+values where the guard setter has five. Straight after the `cmp eax,64h`
+refusal, at the editor's `0x792c4f`:
+
+```
+mov eax,[esi+34h]     the map's monster level, the setter's own field
+cmp eax,ebx           ebx is 0
+jne  ...              level 0  -> fmul 0.7f, truncated toward zero
+cmp eax,2
+jne  ...              level 2  -> fmul 1.5f, truncated toward zero
+                      anything else -> the power, unchanged
+```
+
+So MEDIUM, VERY_STRONG and IMPOSSIBLE all leave a town's garrison exactly as
+`TownGuardStrenght × BasicLeverGuardPower` made it, and a town guard is the one
+place on the map where IMPOSSIBLE is no worse than MEDIUM. `S1P2Z3K5.1`
+ordered at all five levels says it from the other side: the Marble Gargoyle
+stack is **0, 34, 89, 34, 34** as the level runs 0 to 4 and NOTHING else in the
+map moves, and 0.7 and 1.5 are the only pair of numbers that gives that series
+(`trunc(20000·0.7f)` is 13999, which leaves 139 after the Saboteurs and buys no
+Gargoyle at 180; `trunc(20000·1.5f)` is 30000, which leaves 16140 and buys 89).
+
+The level is written once, at `0x793de0`, and read in exactly two places in the
+whole class — here and in the guard setter's five-way switch. That is the
+search done rather than the absence assumed.
+
+**The other table, the guard setter's**, is a real switch — `cmp eax,4 / ja` and
+a jump table at `0x793a84`, one arm per level, each `fild` the power, `fmul`
+one constant and `fistp` it back with the control word set to truncate:
+
+| level | 0 WEAK | 1 MEDIUM | 2 STRONG | 3 VERY_STRONG | 4 IMPOSSIBLE | above |
+| --- | --- | --- | --- | --- | --- | --- |
+| × | 0.4f | 0.9f | 1.7f | 4.0f | 12.0f | unchanged |
+
+`STRENGTH_MULTIPLIER` in `armies.ts` had these five numbers already, but only
+`0.9f` had ever been measured — every reference map is MEDIUM. They are now
+read out of the editor's own jump table, in the order the table indexes them,
+and the four ordered levels of `S1P2Z3K5.1` leave every guard on the map
+untouched, which is the same statement from the data.
+
+It is checked against the map, not just the draw count. `S1P2Z3K5.1`'s Academy
+town draws 13 and 15 of twenty: `(13+20)*8/2` is 132 Gremlin Saboteurs at 105
+each, `20000 - 105*132` is 6140, and `6140/180` is 34 Marble Gargoyles — which
+is that town's garrison in the engine's own file, slot for slot. The whole run
+now matches draw for draw, all 90 364 of them, and the map differs by the two
+`caption-text` bytes and the height plane.
+
+**A town nobody owns costs the engine two draws the port does not spend.** On
+`S1-2P2-4Z4K1S` (4 towns, 2 players) the extra pair — `below(3)` then
+`below(20)` — appears after the specialisation draw of the THIRD and FOURTH
+towns and after neither of the first two, and those are exactly the two whose
+`playerNo` is 0. On `S1P2Z3K5.1` (3 towns, 1 of them unowned) the same pair
+appears twice rather than once, so the trigger is established and the COUNT is
+not: what the pair is drawing is a reading of the towns pass that has not been
+done. Until it is, every template with more towns than players is stopped at
+its first unowned town, and nothing downstream of that can be judged.
+
+#### The cartographer, and a possession marker that is not one
+
+Two more steps of the same sweep, each found the same way and each closing
+several templates.
+
+**`0xEBD4B0`, the cartographer**, between the prisons and the shrines: the
+prisons placer's twin — the same 0xEC1500 candidate helper, the same attempt
+loop, the same two draws minting the name — with the template zone's
+`LandCartographer` (+0x4C, the field right after Prisons) for a count and a
+fixed `AdvMapCartographerShared` for an object. Five of the twenty-two
+templates ask for one, in exactly one zone each, and the reference asks for
+none, which is why a whole step of MainObjects was missing without a single
+suite noticing. Its `Cost` of 4000 is the type's default and is not drawn.
+
+**A possession marker of (0,0) is no marker.** `S1-2P2-8Z8K2S` diverged with
+nothing in the trace to explain it: seven zones identical draw for draw, then
+zone 8 drew a tile from a pool of 447 where the engine drew from 511. A pool
+is not drawn, so the trace could only say that the two disagreed.
+
+What decides a pool is the room, and what decides the room is the zone's
+`+0x68` point list — the distances are measured FROM it, and it never costs a
+draw. So the oracle dumps it: `points` in the config writes `rp <zone>
+<count>` and the pairs at "connections created", the one boundary where the
+list is the input MainObjects will read. (They are floats, unlike the ints
+every other dump carries.)
+
+Seven zones matched point for point. Zone 8 held four points in the engine and
+five in the port, and the extra one was the town's possession marker — a
+Stronghold, the one shipped town whose marker offset is (0,0), which is the
+town's own tile. The engine neither marks it nor counts it. Measured, not
+derived: the engine's own list says so and the instruction that refuses it has
+not been found.
+
+**The three that were worse than they looked.** `S1-3P2Z7V3`, `S2-3P2Z7N2` and
+`S3-5P2Z7N2.2` had a chain that matched completely and still wrote a map that
+differed wholesale — a SECOND bug, downstream of everything the chain does.
+`--full` named it for the first of them, and it was the cartographer:
+
+```
+FIRST DIVERGENCE at draw 33971, in the port's zone 5 resourceBuildings → treasuryBuildings
+  engine: tb 243 of 258        a tile, straight away
+  port:   tb 0 of 7            an item picked from a list of seven
+```
+
+A priced-list step draws `below(count)` for the item, then tile and rotation
+per attempt, then two draws to mint the name — the port's zone 1 shows the
+shape and the engine agreed with it there. In zone 5 the port spends NOTHING
+between the mines and the treasury, while the engine places one more thing
+first: tile, rotation, a retry, a mint, and no item pick at all. So the port
+is skipping a step the engine runs, and the step it skips does not choose from
+a list.
+
+**The four biggest are untraced.** `S6-11P2-8Z8K2.4a`, `S6-11P2-8Z8K2XL`,
+`S7-15P2-8Z9K2.4b` and `S7-22P2-8Z15K2.4c` are 256-tile maps, and a traced run
+of one writes tens of megabytes and outlives a five-minute clock. They declare
+8, 8, 9 and 14 towns against two players, so the rule above PREDICTS the towns
+pass for all four — predicts, not measures.
 
 **The reference the suites compare against** is an ordered editor run of
 seed 1785351845 (template S1P2Z2M1, small, 2 players, no underground, no
@@ -43,9 +1339,1754 @@ when the oracle config says `trace`) is what `npm run rmg-diff-draws`
 replays, and it is the instrument to reach for the moment a phase's counter
 disagrees.
 
-**A new phase needs a new trace** once it draws past 18491: the log the
-current suites lean on ends there, so measuring MainObjects means another
-ordered editor run with `trace` on.
+**A SECOND reference exists for the underground.** The same seed ordered on
+template **S0-1P2Z2K3.1T** (tiny 72×72, 2 players, underground on, no
+water) — templates carry an explicit `<Underground>` flag and the dialog
+filters by it, so the surface template could not simply be re-ordered. The
+run is 70,799 draws and it measures what the surface one never enters:
+floor balancing (zone 1 lands underground), the underground terrain
+(`UndergroundTerrain.bin`, laid out beside the other two files), the
+PRISONS step (8 and 6 draws — always zero before), additional objects
+live (85 draws: zone 1's treasures and chests, played late behind the
+floor gate) and the two-floor treasure blocks (3,103). Lay it out with
+`npm run rmg-reference -- --underground <map.h5m>` into
+`_tmp/oracle/reference-underground/`; a heavier acceptance run of the same
+seed on S2-3P2Z7N2 (245,577 draws, four underground zones) is saved in
+`game/Maps/1785351845uuu.h5m` and stays in the log for later.
+
+**A THIRD reference exists for water.** The same seed on the same surface
+template, with the ONE remaining setting flipped: the dialog's water
+CHECKBOX. Checking it records `WaterAmount = WATER_ISLAND_MAP` — the enum
+is tri-state (`NONE`/`PRESENT`/`ISLAND_MAP`) but the dialog can only order
+0 or 2; the middle `WATER_PRESENT` arises only when water is left to the
+`below(2)` coin, which no ordered run can do. Unlike the underground,
+water is a per-order parameter, not a template flag — `RMGTemplate` has no
+water field, and no shipped template has a zone with `CanBeWater=true`,
+which does NOT stop the water from coming (so `CanBeWater` gates something
+narrower, still unread). The run is 65,421 draws (`1785351845w.h5m`,
+boundaries in `_tmp/oracle/island-run-boundaries.txt`, trace archived as
+`_tmp/oracle/log-water-island-run.log`); the map places Shipwrecks — the
+first live sighting of a `WaterTreasures` consumer — and its terrain
+carries the water layers (188,739 bytes against the surface run's
+169,757). Lay it out with `npm run rmg-reference -- --water <map.h5m>`
+into `_tmp/oracle/reference-water/`.
+
+**The island run is in FULL LOCKSTEP — all 65,421 draws**
+(`test-rmg-water`): every draw matches the trace in kind and value, every
+traced boundary lands (the first loop per zone, the roads phase at
+20,511, all eight statics boundaries, the blocks' growth and fill per
+zone), and every named object of the run — 834 checked — stands on its
+reference tile: water treasures, monoliths, shipyards, the loop's
+objects, 638 statics (rotations included) and the treasure blocks. The
+shipyards wire into the road networks through `+0xC0` with
+`roads-phase.ts` unchanged, and the island's road lists came out
+byte-identical to the oracle's grids dump — all twelve, the unpainted
+0x20 corridors included. The occupancy grid at the roads boundary
+matches the dump in ALL 9,216 cells. Water changes NOTHING through FillZones and the towns (the
+supplied WaterAmount costs one discarded draw either way); what it adds,
+read out of the executable and ported:
+
+- **The water border pass** (`water-border.ts`) — the block at 0xEABB1D
+  between "towns placed" and the dist-to-towns tables: a SEA DEPTH by
+  size index (the 0xEAC3C0 jump table: 2/3/4/5/7/8/10 for indices 0..6,
+  else 3 — the small run's index 8 falls to the default 3), then every
+  floor-0 zone's vtable `+0x24` — a one-instruction ret on CGameZone,
+  the carve on CGameWaterBorderedZone (0xECB7D0). The carve is drawless:
+  tiles with border < depth leave the zone grid (-1) into a sea vector,
+  EVERY zone tile's border takes += (1 - depth), the `+0xCC` list is
+  rebuilt keeping adjusted border >= 0 (the border == depth-1 RIM stays
+  listed while the grid disowns it — the grid alone no longer derives the
+  list, so the chain carries it), and the rest goes to the `+0x148` water
+  ledger. The treasure tail (0xECDB20) spends exactly five draws per
+  placement, count = trunc(len(rebuilt `+0xCC`) / 200): candidates are
+  sea tiles inside [1, dim-2] and at least 5.0 from every earlier
+  placement (`+0x154`), then below(candidates), below(len(WaterTreasures
+  — params `+0x210`)), below(4) x pi/2, and the mint. All 36 landed.
+- **Island connections** — the land digger finds no adjacency across the
+  sea (0 draws, all three template connections unconnected), so the
+  second sweep serves them: the vtable's `+0x2C`, which on
+  CGameWaterBorderedZone (0xECCB30) is the UNDERGROUND TELEPORT PASS
+  (0xEB7C60 — `teleports.ts`, reused verbatim: Monolith_Two_Way pairs on
+  GroupID with guards) plus, under the zone's `+0x164` Shipyard bit, ONE
+  SHIPYARD (0xECC0A0 — `shipyards.ts`). The shipyard: candidates from
+  the rebuilt list with border in [2,3] strictly inside depth+3 margins,
+  room (the shared ensureRoom) filtered by trunc(4*max/5) with
+  0xEC2EB0's gates (a border-2 tile counts toward the pool but not the
+  maximum); ONE below per fit attempt — the facing is not drawn, the
+  shipyard TURNS toward the town entry (or the zone's tile centroid,
+  singles arithmetic) by quadrant; the stamp's actives join the zone's
+  `+0xC0` connection points (the roads phase will wire the shipyard in),
+  a 5x5 halo turns occupancy 0 into 1, and the guard seats from the last
+  active through the shared EIGHT table from 2q — power =
+  BasicLeverGuardPower x ConnectionGuardLevel x 20, the 20 an immediate
+  (0xECC901), not a read of ShipyardGuardsLevelCoef. The seat joins
+  `+0x98`.
+
+**What the carve does to the first loop.** The rebuilt `+0xCC` is the
+candidate list every list-fed step reads, and after the carve the grid
+no longer derives it: the RIM (original border == depth-1) keeps list
+membership with grid -1 — and the room recompute writes zoneless cells
+1000, so a rim tile passes EVERY room threshold and sits in every pool
+until the fit's zone test rejects it. The placers now take an optional
+`tiles` list (`ZoneFill` serves the carve's kept list on water runs;
+no-water runs still derive from the grid, which is the same list there
+by construction). Two more water-only facts, each found as a one-draw
+divergence: the shipyard's stamp pushes its actives and marker into the
+zone's `+0x68` like every 0xEC2F90 stamp (the mines' room sees the
+shipyard), and the budget denominators (`resourceBuildings`,
+`luckMorale`) count the LIST, rim included.
+
+**The statics with a sea.** The big sweep is the BASE code — the
+WaterBordered `+0x34` slot is `0xEBBBD0` itself — but the FIT it calls is
+the vtable's `+0x44`, and there the water zone answers with `0xECD840`:
+the base tests plus **border >= 3 on every blocked tile** (the statics
+keep off the coast) and no zone test or floor margin. Candidates come
+from the rebuilt `+0xCC`. The one-tile step IS overridden (`+0x30` →
+`0xECCB50`): the base cascades, constants and strictness included, with
+NO border fence pass and a bucket gate of occupancy exactly 0 AND border
+at least 3 (`statics-one-tile.ts` / `placeWaterOneTileStatics`). The
+lakes head runs and finds zero seed candidates on every island zone —
+the carved borders never reach its border > 5 gate.
+
+**The blocks and the two facts the last draw taught.** The treasure
+blocks run on the shared machinery with the kept lists and the sextant
+in the artifact pool (its id-10 gate is the water flag). Zone 4 ran one
+draw short until the oracle's occupancy dump named the cause — of all
+9,216 cells exactly FOUR differed, the four shipyard guard seats:
+**the shipyard's guard writes NO occupancy** (unlike the price-list
+guards' 4), so the halo's 1 stays and a free room-1 cell beside the
+shipyard road hands the seed scan one more (gate-rejected) below(8).
+And the room recompute is LIST-driven (`0xEC28E0` reads the zone's
+vectors), so a RIM tile in the list gets its real distance, not the
+zoneless 1000 — only the blocks' seed scan can see the difference,
+every other reader hides the rim behind a border gate.
+
+**The water terrain — the whole of the island's GroundTerrain.bin, byte
+for byte** (`test-rmg-water`'s terrain tail): all NINE texture layers
+(the surface seven plus the two the water adds) and the river plane,
+12,597 wet half-vertices. The 19 KB the file grew by is exactly the two
+extra mask blocks; everything else rides in planes both files carry. The
+writers, read from the executable:
+
+- **The carve's own marks** (inside 0xECB7D0, per tile in `+0xCC` order,
+  right after the border adjustment): adjusted border in (-depth, 0)
+  paints the params' **DeepWaterBottom** (`+0x158` — River-bed) on the
+  tile's four corner vertices, adjusted border in {0,1} (the unsigned
+  `cmp ..,1 / ja` at 0xECBADE) paints the PRESET's **WaterCoastTile**
+  (`+0x88` — Inferno's is its Dead_Land, the same document its
+  SecondaryRoadTile names; the shipped table has one empty entry and the
+  fallback is DeepWaterBottom, 0xECBB79). Both bands push the LITERAL
+  200 — TransitiveTileIntensity is never read here either, nor anywhere
+  else in the image. The paint
+  arithmetic makes the reference bytes: the bottom tile's priority 20
+  puts the zone tile's own 255 in its class-0 base, so one 200 clamps to
+  255 and steals 400 — River-bed is {0,255} and the water fringe loses
+  its other land layers — while the coast tile's priority 60 usually
+  finds base 0 and keeps the bare 200. Port: `WaterMark`s recorded by
+  `carveWaterBorder`, replayed by `terrain.ts`'s `paintWaterMarks`.
+- **The sea layer and the river plane** (`0xECF080` — the terrain
+  processor's sea half, called once per zone from the carve's tail at
+  0xECBD2A with that zone's sea vector, before the `+0xCC` rebuild).
+  Per sea tile: the params' **DeepWaterTile** (`+0x150` — Water.xdb) at
+  the four corners, the literal 200 again — interior vertices reach 255
+  on their second paint, the one-vertex ring around the deep sea keeps
+  200; then the river-plane stamp: the 4x4 half-tile block at (2x, 2y)
+  takes `v = 7 - border` (adjusted, so the sea always lands the > 5
+  branch = 255; the v*80 ladder is dead code on this path). Then the
+  blur: `k = 0..2*count-1` walks the vector TWICE (`list[k % count]`),
+  skipping tiles outside 1 <= x,y <= size-3 (the guard that keeps the
+  unguarded kernel reads in bounds); per tile two in-place sub-passes
+  over its block, cells row-major — a DISTANCE-2 kernel (the four
+  neighbours one full TILE away on the half-grid), then a distance-1
+  kernel, both `(N + S + E + W + 2*C) / 6` unsigned (the 0xAAAAAAABh
+  magic). The engine's in-memory plane came out TRANSPOSED against the
+  file; the kernels and visit order transpose with it, so the port
+  (`stampZoneSeaRiver`) holds the plane in file orientation. The stamp
+  must run at carve time — the seed reads the border as the carve just
+  adjusted it, and the connections dent the grid later — so the chain
+  stamps per zone inside the water block while the corner paints replay
+  at fillTerrain time (`paintSeaCorners`; the two touch disjoint state).
+
+The late pass `0xECF760` (called at 0xEAC206, after the road painter)
+turned out NOT to be about the sea: it is the surface HEIGHT plane —
+Phase 15, now ported (`heights.ts`, bit-identical on the surface
+reference). The vertex WATER KIND — a DIFFERENT plane from passability,
+which the RMG fills in its own last pass (above) — is derived
+from the painted texture classes at terrain-build time (0xA20143:
+classes 3/4 → 1, land/road → 0).
+
+**The dialogs camera is not a hole — it is a CONSTANT.** All three
+ordered references carry the same Rod/Pitch/Yaw and the same anchor at
+96 tiles and at 72, with water and without, and a map ordered from the
+GAME's own generator carries it too (to the digits its build prints).
+The anchor settles it: (94.785, 59.4308) sits OFF a 72-tile map and is
+written there all the same, while a hand-made Nival map carries a
+completely different camera. `RMG_CAMERA` in `emit.ts`; the suite no
+longer lifts it from the reference.
+
+**The shipyards' ShipTile is PORTED — nothing is lifted from a
+reference any more.** The placer (`0xECC0A0`) averages the zone's `+0xCC`
+tiles into a centroid, takes the shipyard minus it and picks a quadrant
+angle off the dominant axis (pi/2 when dx <= 0, 3pi/2 when dx > 0, 0 when
+dy >= 0, pi when dy < 0, all plus pi/2). That angle never reaches the
+search — it is stashed for the object's own Rot, which the port already
+reproduced.
+
+`0xCB1960` is a SEARCH, not a formula: 46 entries of 16 bytes at
+`0x10918E0`, each an OUTER offset pair and an INNER one a step back
+toward the yard, ordered as a ring — the ±4 rows first, then the corners,
+then the sides. It returns the OUTER pair of the first entry whose outer
+tile is water and whose inner tile is neither water nor a transition;
+finding nothing drops the shipyard candidate outright, so a placed yard
+always has one.
+
+The predicate looked like four tests and collapses to one. `0x9EC3C0`
+reads the four corner vertices of the GROUND FLAGS plane (`+0x24`,
+clamped to `[0, dim-2]`): all zero takes an early exit, otherwise it asks
+whether they DIFFER (`0x9EB9E0`, the same four bytes — that is the
+"transition" arm) and whether a texture layer of the right class covers
+the vertex (`0x9EBAE0`, a walk of the same 0x18-byte layer records
+PaintTile keeps). A surface floor's flags are the constructor's uniform
+16 forever, so they are never all zero, never differ, and the layer arm
+is unreachable — which is also what spares the port from having to build
+its texture layers mid-run. What is left is the river half-grid, sampled
+at the tile's CENTRE cell (2y+1, 2x+1) against 0x8C.
+
+Ported in `shipyards.ts` as `shipTile`, and all three map.xdb stay
+byte-identical with it computed instead of read back. Each part was
+checked by sabotage: reversing the ring moves 7 lines, dropping the
+inner-tile condition moves 3, and the threshold turns the water run red
+at 0x80 and at 0xC0 — ±1 around 0x8C does not move, so the reference
+pins the constant to a band and the exact byte comes from the
+instruction. The float plane at `+0x54` guards the predicate's tail
+(`> 0.0` refuses) but its dims gate the read and no generated map
+allocates it; that arm and the two flag arms are named as unexercised
+rather than claimed.
+
+**The minimap DDS is DATA, and now it is READ.** `minimap_floor_%02d.dds`
+is 256x256 BGRA8, uncompressed, one mip. The statistics said "data" —
+9,997 distinct RGB against four distinct alphas, top colours a unit apart
+(1a1b26 and 1b1c27), a flat area wobbling 126/127 with a period of three
+— but statistics could not say WHICH data, and the fit that tried
+("dominant layer's MinimapColor, halved, sampled linearly from the vertex
+grid") peaked at 74.9% over all eight orientations and settled nothing.
+Everything below is disassembly instead, and it explains every one of
+those statistics.
+
+**The chain.** `0xEA30D0` is the RMG's minimap step (its only caller is
+`0xEA7DFD`, its own only callees below are `0xDD0C70` and `0xDD1BD0`). It
+builds a `CSimplePosConverter` (RTTI locator `0x103DA28`) over the map,
+calls `0xDD0C70` to DRAW, `0xDD1BD0` to WRITE the `.dds` and its
+`Texture` `.xdb`, and patches `thumbnailImages` into both documents.
+
+**Two layers per floor, not one.** `0xDD0C70` sizes two images per floor
+through `0xDCFD40` — the image is `+0x18` buffer, `+0x1C` row pointers,
+`+0x20`/`+0x24` width/height, `+0x28` side, `+0x2C` dirty:
+
+- the TERRAIN layer, square of side `N = desc[+0x4C] - 2 * desc[+0x1DC]`,
+  one pixel per playable tile;
+- the ICON layer, square of side 256, zero-filled, where the objects go
+  (`Town_%d`, `Mine_%d`, `Object_%d`, `UnderworldExitEnter`, placed by
+  `0xDD3440` and `0xDCFDE0`).
+
+**The terrain pass** is `0xDD0660`, small enough to state whole. With
+`A = desc[+0x4C]`, `B = desc[+0x1DC]`, `N = A - 2B`, for pixel `(x, y)`:
+
+```
+tile = (tx, ty) = (B + x, B + (N - 1 - y))        ; row index is N-1-outer
+
+colour = 0xFF000000                               ; opaque black
+if terrain[+0x64] and byteGrid[ty][tx] > 0x15:    ; leave it black
+elif water(0x9EC480, tx, ty):  colour = this[+0x14]        ; one flat colour
+else:
+    rec = tileDoc(0x9EB800, tx, ty)
+    colour = 0xFF<<24 | trunc(rec[+0x64]*255)<<16
+                      | trunc(rec[+0x68]*255)<<8
+                      | trunc(rec[+0x6C]*255)
+if askMask(0xAD13C0) and not 0x9EC3C0(tx, ty):  R, G, B >>= 1
+```
+
+`rec[+0x64]` is the `MinimapColor` triple (`AdvMapTile+0x64`, named at
+`0x9EECF5`); the multiplier is the float 255.0 at `0xF4A1E8` and the
+convert (`0x949FF0`) is `cvttss2si` — TRUNCATION, not rounding. So the
+colour does not arrive halved: the halving is a per-tile DARKENING of
+`R`, `G` and `B` (`>>1` each, alpha untouched), applied where the bit
+mask from `0xAD13C0` says to ask and `0x9EC3C0` answers no. Reading a
+zone's flat colour as "MinimapColor / 2" was right by accident — both
+zones sampled happened to be darkened ones, and the reference carries the
+undarkened form of the very same terrains as well.
+
+**The sampling is Lanczos-3, not linear.** `0xDD1BD0` copies both layers
+into one 0x20-byte pair (terrain at `+0x00`, icons at `+0x10`), then
+resamples EACH to 256x256 through `0x9743A0` with mode 6. The filter
+table at `0x975154` sends 6 to `0x975800` with support 3.0 (`0xF4C7B8`),
+and `0x975800` is `sinc(x) * sinc(x/3)`, pi at `0xFA3DD8`. The icon layer
+is already 256, so `0x9743A0` takes its equal-size early exit into a
+plain copy; the terrain layer is the one that scales — 94 into 256 on the
+reference run, measured below, which is where the wobble comes from.
+
+**Then the two merge, icon over terrain**, one pixel at a time at
+`0xDD2590`: `out = icon.a ? icon : terrain`, bytes kept in place. Terrain
+pixels always carry alpha 0xFF and the icon layer starts at zero, so an
+alpha the resample cannot account for belongs to an icon — which is what
+"four distinct alphas" was.
+
+**The mapping the icons use** is the pos converter's `0xDCFB00`, and it
+agrees with the terrain pass:
+
+```
+out.x =       (in.x - B) * 256 / (A - 2B)
+out.y = 256 - (in.y - B) * 256 / (A - 2B)
+```
+
+— the same border offset, the same y flip. North is up, as
+[MAP_PROPERTIES.md](MAP_PROPERTIES.md) has it.
+
+**Which tile document a tile gets** is `0x9EB800`, and it is two walks of
+the same list. `0x9ED3E0` goes over the tile's texture layers from the TOP
+down, keeps a running transparency (`remaining *= 1 - coverage/255`) and
+scores each layer by `remaining_before * coverage`; the best score wins and
+its document is returned. Only layers whose `Type` is 10 or 11 are
+considered — `TT_SMALL_WATER` and `TT_BIG_WATER` by `types.xml`. If the
+winner's score does not beat 32.0 of 255 (`0xF4BB38`), `0x9ED2A0` runs the
+identical walk with the gate INVERTED — every layer that is NOT water — and
+that answer is used instead. So: the dominant WATER layer if it covers
+more than about an eighth of the tile, otherwise the dominant land layer.
+Coverage itself (`0x9ED7D0`) is a bilinear sample of the layer's byte mask
+at the tile CENTRE (`+0.5` on both axes, `0xF4A0B0`), each fetched byte
+first widened as `b >= 0x80 ? 0xFF : b * 2` — so the mask is a vertex grid
+and the centre reads as the average of four.
+
+**Two of the three arms are dead on generated maps — but only on those.**
+`0x9EC480` returns true when the float plane at `terrain[+0x58]` is at
+most 0.0 AND all four of the tile's ground-flag corners are zero, and flag
+0 is SEA ([TERRAIN_FORMAT.md](TERRAIN_FORMAT.md)). A generated floor never
+digs one: the flags plane of BOTH references — the surface run and the
+WATER run — is 16 at all 9409 vertices, because the RMG's water is
+texture layers of `TT_SMALL_WATER`/`TT_BIG_WATER` over ordinary ground,
+which the tile-document rule picks up by itself. The black arm needs a
+flag above `0x15` = 21 in that same plane, and 16 is not. So what remains
+for an RMG map is the tile document's `MinimapColor`, halved or not —
+and the water reference bears that out: its minimap is 1906 pixels of
+`027cf9`, exactly `trunc(Water.xdb's MinimapColor * 255)`, while the flat
+colour the in-game path passes (`0xFF027DF9` at `0x108E8CC`) shows up 17
+times in 65536, which is blend spatter and not a fill.
+
+On an AUTHORED map with a real dug sea the arm does fire, so the editor's
+own minimap will need the colour the RMG path never reaches for.
+
+**And the halving predicate is one the port already has.** `0x9EC3C0` is
+the shipyard's water test, ported as `shipTile` in `shipyards.ts`. So the
+rule reads: a tile is darkened when the mask bit is set and the tile is
+NOT water.
+
+**The darkening mask is the PASSABILITY PLANE.** `0xAD13C0` returns
+`container[+0x20] + floor * 0x58 + 0x10` — the first of three 0x18-byte
+bitmasks in a per-floor record (`+0x10`, `+0x28`, `+0x40`; the second has
+its own accessor at `0xAD13D0`, the third a bit setter inside `0xAD12A0`).
+`0xAD0F50` is what writes the first two, and `0xA4F6D0` is what calls it:
+a double loop over every tile of a floor that builds a small descriptor
+`{ type, ?, kind, …, flag }` and hands it over. The first mask ends up SET
+when
+
+- the tile is in the border ring — the bounds test against
+  `terrain[vtbl+0x68]()` jumps straight to `kind 5`;
+- `0x9EBCB0` says `terrain[+0x6C][ty][tx] == 0` — `kind 3`;
+- `0x9EC570` says the tile's four ground-flag corners are all zero, or
+  `0x9EBAE0` finds a layer of its class over the vertex — `kind 2`, and
+  the descriptor's type is written as 11, `TT_BIG_WATER`;
+- `0x9EB9E0` says the four corners DIFFER — `kind 3` again;
+- the type is 9, `TT_NONE`, or the descriptor's `+0x10` is 1,
+
+and CLEAR for `kind 1` (plain ground) and `kind 4` (the tile fell inside
+some object's footprint list, `[obj+0xBC]`). `0xAD2530` sets a bit,
+`0xAD2160` clears one — the two look identical to a fast read and are
+opposites.
+
+`terrain[+0x6C]` is the plane allocated at `0x9EC1C0` on `([+0]+1) ×
+([+4]+1)`, a vertex-sized u8 grid ADDRESSED PER TILE — which is exactly
+the passability plane of
+[TERRAIN_FORMAT.md](TERRAIN_FORMAT.md), 0 blocked and 1 walkable, and
+exactly how `classifyTiles` in `src/terrain/passability.ts` already reads
+it. So the minimap darkens impassable tiles, and the port already holds
+the grid it needs.
+
+**Checked against the reference**, `game/Maps/178535184522222.h5m` (the run
+`_tmp/oracle/reference/` was built from — its `map.xdb` and
+`GroundTerrain.bin` hash equal):
+
+- the SOURCE SIDE IS 94, measured, not assumed. Scoring every candidate N
+  by how well the "pure colour" columns line up with `(i + 0.5) * 256 / N`
+  gives 16.1 for 94 against about 2 for every other N from 88 to 100 —
+  and 94 is `TileX - 2 * BorderSize` = `96 - 2`. So `desc[+0x4C]` is
+  `TileX` and `desc[+0x1DC]` is `BorderSize`. The old "256/96 = 8/3" was
+  the right shape and the wrong numbers.
+- the top colours are `trunc(MinimapColor * 255)` EXACTLY, in both forms:
+  Dunes full `ffd854` (359 px) and halved `7f6c2a` (3226), Sand_Cracked
+  `af9574` / `574a3a`, InfernoBricks `4d3634` / `261b1a`. Both forms of the
+  same terrain appear, which is what proves the halving is per-tile and not
+  a property of the colour. Truncation is what makes them exact —
+  the earlier "one unit off in R" was rounding in the reading, not in the
+  engine.
+- the four alphas are 253, 254, 255 and 11: the terrain layer's uniform
+  0xFF comes back off the Lanczos pass as 253/254 (the filter runs on all
+  four channels and the result is truncated), and 11 is 18 pixels of icon.
+- and the darkening IS the passability plane. Of the 3010 tiles whose
+  pixel is a pure colour, "halved exactly when the plane reads 0" holds
+  for 95.4% — and every one of the 138 misses is the same way round: a
+  tile the plane calls walkable that came out darkened anyway, which is
+  what the mask's OTHER set arms (border ring, `TT_NONE`, the layer arm)
+  are for. Not one tile the plane calls blocked came out undarkened, so
+  the `kind 4` arm — the one that would brighten an object's footprint —
+  never fires on a generated map, and is named as unexercised rather than
+  claimed.
+
+**And then the engine was asked directly.** `native/rmg/minimap-probe.c`
+puts four detours on the editor's image — the build, the terrain pass, the
+flat-colour predicate and the icon lookup — under the `minimap` word in
+`homm5-editor-rmg.txt`, and logs only between the build's entry and exit so
+the editor's own minimap panel stays out of it. One ordered run turned four
+inferences into readings:
+
+- **the side and the border are the engine's own numbers.** `mm side 94`,
+  `mm border 1`. The 94 that was scored off the reference picture, and the
+  border that pinned `desc[+0x4C]` and `desc[+0x1DC]`, are now stated
+  rather than fitted.
+- **the flat colour is 0x00000000.** Not the `0xFF027DF9` the in-game
+  callers pass: the RMG's owner never fills its `+0xA0`, so the argument
+  arrives zero. The last unread value in the whole drawer, and it is
+  nothing.
+- **the flat-colour arm is dead, measured.** `mm sea test calls 8836` —
+  94², every tile — against `mm sea test true 0`. Not one tile in a whole
+  map, which is what "the ground flags are 16 everywhere" predicted.
+- **the icon lists pair as read.** 22 names in order: `Town_1`, `Town_2`,
+  then eighteen `Mine_0` with two `Object_0` among them, and no
+  `UnderworldExitEnter` on a one-floor map. One list, drained once, with
+  the name chosen per object — exactly the count and the kinds that
+  matching icon pixels against the reference had found.
+
+**The mask is the passability plane, and it is more than that.** The probe
+dumps the mask the pass was handed, 96x96. Against the passability plane of
+the map that same run produced: 7706 tiles of 9216 agree, **1510 are set
+where the plane says walkable, and NOT ONE is clear where the plane says
+blocked**. So the mask CONTAINS the blocked tiles exactly and adds to
+them — which is the shape the code has, `0x9EBCB0` being one of five arms
+that set. 1069 of the extra 1510 touch a blocked tile, so most of the
+surplus is a rim; 441 are away from one and 157 sit within four tiles of
+the map edge. What is left to name is which arm draws that rim — on a
+generated map only the border ring, the layer walk `0x9EBAE0` and a
+`TT_NONE` tile can, since uniform-16 flags rule out the other two. A
+count per `kind` inside `0xAD0F50` is one hook and one more run.
+
+**The widened probe closed the terrain half outright.** Two windows — the
+build and the write — with the mask, the ground flags, the plane at
+`terrain[+0x6C]` and the finished 94x94 LAYER all dumped, plus the icon
+blits and the resampler's arguments. One run:
+
+- **`terrain[+0x6C]` IS the passability plane**: 9409 bytes equal, 0
+  different, against the plane of the map that same run wrote. The 95.4%
+  the picture could support is now an identity.
+- **the ground flags are 16 on all 9409 vertices**, which is the premise
+  two of the arguments above rest on, now stated for this map rather than
+  carried over from two others.
+- **the colour rule is exact.** Of 8836 tiles in the layer, every one is
+  either a `MinimapColor` truncated at 255 (3776) or exactly its half
+  (5060). No third case, no black, and alpha is 0xFF on all of them.
+- **the halving rule is exact.** "Darkened exactly when the mask bit is
+  set" holds for 8836 tiles of 8836. Tile for tile, not sampled through a
+  resample. (The water exemption is not exercised here — this template
+  has none, and there turned out to be no exemption to exercise: see
+  "The minimap's water arms".)
+- **the resample is the engine's own statement**: `dst 256 256, src 94 94,
+  filter 6` for the terrain layer and `256 256, 256 256, filter 6` for the
+  icon layer, which is the equal-size early exit taken as a copy.
+- **the icon anchor is confirmed to the pixel.** `mm blit at 59 171` and
+  `179 95` for the two towns are exactly the centres the Town_1 and
+  Town_2 stamps were found at by matching pixels, and `84 201` is the
+  first mine's.
+
+So the mask is the only thing left with a gap in it: it CONTAINS the
+blocked tiles exactly (0 clear-only) and adds 1510 more. Those extra tiles
+are not a terrain kind — they carry the same documents in the same
+proportion as the rest of the map — so what draws them is positional: the
+border ring, the layer walk `0x9EBAE0`, or a `TT_NONE` tile, the three
+arms uniform-16 flags leave open.
+
+**The surplus is OBJECTS, and the tile pass alone never could have made
+it.** Reading the last two arms out of `0xA4F6D0`'s chain finished the
+list and then contradicted it:
+
+- `0x9EBAE0` walks the tile's texture layers, casts each to `SAdvMapTile`
+  and, for any whose `Type` is 0x0B (`TT_BIG_WATER`), tests that layer's
+  mask at the tile's four corners — so it is "does big water cover this
+  tile". It feeds `kind 3`, not `kind 2`; the earlier reading had it under
+  the wrong one.
+- `0x9EC570` is three tests, not one: all four ground-flag corners zero,
+  OR `0x9EBAE0`, OR the RIVER half-grid at the tile's centre cell
+  `(2y+1, 2x+1)` above `0x8C` — the same river reading the shipyard
+  predicate ends on. It alone gives `kind 2`, and writes `TT_BIG_WATER`
+  into the descriptor's type.
+- `0x9EB4D0`, which fills that type on the ordinary path, returns the
+  winning layer's `Type` or 9 (`TT_NONE`) when the point is out of bounds
+  or no layer wins at all.
+
+On the run's map every one of those is inactive — **on the run's map**, which
+is the whole of what the paragraph below establishes, and it was later read as
+though it were a statement about the arms themselves. It is not: the big-water
+one wakes up on the first template that paints a water layer. See "The
+minimap's water arms".
+
+The seven painted layers
+are Sand-Dunes, Sand_Cracked, Dead_Land, Lava, DarkGround, SandRoad and
+LavaRoad — no `TT_BIG_WATER` among them; the flags are uniformly 16, so
+neither the all-zero corners nor `0x9EB9E0` nor `0x9EBAC0` can fire; no
+tile is a river tile, or the halving would have disagreed somewhere and it
+agreed 8836 times out of 8836; and every tile got a real colour, so
+nothing came back `TT_NONE`. The border ring fits at NO width: scored for
+margins 0 to 16, every width from 2 up leaves walkable tiles inside the
+ring with the bit CLEAR, which a ring cannot do.
+
+So the per-tile pass cannot be the whole story, and it is not: `0xAD12A0`
+has six callers besides it, and `0xAD0F50`'s FIRST arm — before any
+`kind` is looked at — sets BOTH masks when the descriptor's `+0x10` is 1.
+`0xA4FF00` is one of those callers and it does set a 1 into the descriptor
+it passes. That is object registration, and the measurement agrees: of the
+1510 surplus tiles 33% sit exactly ON an object's position and 87% within
+one tile of one, against 7% and 51% for the walkable tiles that stay
+clear.
+
+So the mask a port has to reproduce is **the blocked tiles of the
+passability plane, plus the tiles the map's objects occupy** — with the
+water, river and border arms there for maps that have them. Named as
+measured rather than read: which `+0x10` the caller sets, and how far an
+object's registration reaches beyond its `Pos`, are the two pieces still
+taken from the correlation instead of the code.
+
+**AND THEN IT WAS READ, AND IT IS EXACT.** The two pieces above that were
+taken from correlation are now taken from the code, and the result checks
+against the engine's own mask dump with nothing left over.
+
+Virtual slot `+0xB4` is the **blocked**-tiles list. All the AdvMap classes
+reach it through the same virtual-base vtable, where every slot is an
+adjustor thunk onto a one-instruction getter: `+0xA4` is `0xAD0700`
+(`lea eax,[ecx-78h]`, the packed key), `+0xB4` is `0xAD06F0`
+(`lea eax,[ecx-68h]`) and `+0xB8` is `0xAD0800` (`lea eax,[ecx-5Ch]`) — two
+adjacent `{begin, end, capacity}` vectors of signed (dx, dy) byte pairs.
+Which of the two is which comes from what they stamp: `CWorld`'s register
+(`0xA55C10`, vtable `+0x14C`) calls `0xA4FF00` on the `+0xB4` list, which
+writes `descriptor+0x10 = 1`, and then `0xA500D0` on the `+0xB8` one, which
+writes 2 (or 3 when the object's own `[vt+0x3C]` says it is not currently
+interactive). `0xAD0F50` sets BOTH of the first two masks for type 1 —
+the same path naturally impassable terrain takes — while only type 2 reaches
+the third mask (`0xAD1344`), which is the active/entrance one. So the mask
+the minimap darkens by is the BLOCKED footprint, and the entrance tiles are
+not in it.
+
+Nothing rotates those pairs on the way out: every consumer — `0xA4FF00`,
+`0xA500D0`, `0xAD2970`, `0xAD9EF0`, `0xADA100`, `0xADB172`, `0xCB1545`,
+`0xC05DF2` — does `movsx` on the byte and adds it straight to the object's
+tile. The vector is a per-INSTANCE member (the document sits behind its own
+pointer at `-0x70`), so the rotation is baked in when it is filled, and the
+port gets there by turning the shared document's `blockedTiles` the same way
+the height pass does.
+
+The registration is also LIVE rather than cumulative. `CWorld` pairs
+`+0x14C` (register) with `+0x150` / `+0x154`, and `0xA55C60` is a real
+unregister: it copies the tile's descriptor, writes the owner and the type
+back to 0 and puts it back, which sends `0xAD0F50` down its clearing path.
+The movers call them around a move (`0xB296A2`/`0xB296B8` and again at
+`0xB29930`, `0xB32760`). So the mask holds the objects that are STANDING —
+which on a freshly generated map is all of them, but the port should not
+read it as "every object ever placed".
+
+**Checked**: the port's mask — the passability plane's zeros plus every
+floor-0 object's rotated blocked footprint, statics included — against the
+probe's 96x96 dump of the mask the terrain pass was handed: **9,216 tiles of
+9,216, not one either way**. The statics matter: they are 1,325 of the
+1,556 objects and their footprints are 1,078 of the mask's 1,510 tiles over
+the plane, and since the run record carries no blocked list for a static the
+port reads it from the shared document (`Chain.footprint`). With that mask
+the terrain layer stands at **8,783 tiles of 8,836 identical to the
+engine's**, and the 53 that are left are the document question above, not
+the darkening.
+
+Proven: every address, offset and arithmetic step above is read out of
+`bin/H5_Game_H5E.exe`, and the four points above are measured off the
+reference file.
+
+### The three subterranean classes are three different zones
+
+A template with FOUR underground zones on a LAVA floor was the first order to
+tell them apart, and it turned three readings inside out. All three are read out
+of the executable, not fitted.
+
+**The massif carve is not every subterranean class's.** `0xED11D0` has exactly
+three references in the image and all three are the tail jumps of the three
+`+0x40` slots; the only code that CALLS `+0x40` is `0xEC4A85` and `0xEC7075` —
+the `+0x34` of Subterra and of Dwarven. SubInferno's `+0x34` (`0xEC92D0`) goes
+straight to `recomputeRoom(0x3C, 0)`, so `0xEC92B0` is a slot nobody dials and a
+lava underground is never carved. The class is one coin for the whole map, so
+this is global. The port carved on "is this zone subterranean", raised 121
+lattice cells where the engine raised none, and one of the tiles it wrongly
+blocked is what made the big-statics sweep skip a `Mountains_8x12` and take
+everything after it differently.
+
+**Big statics DO take the point light — in SubInferno only.** `0xEC92D0` and
+Subterra's `0xEC4A70` are the same code but for four instructions at `0xEC97B4`
+(`lea ecx,[esp+48h]; mov eax,[edi]; push ecx; call [eax+3Ch]`), which Subterra
+does not have and Dwarven has no sweep to put them in. So `0xEC97BD` is the one
+call to `+0x3C` from a big-statics step anywhere in the image.
+
+**Each class tests its own names.** The predicate behind `+0x3C` is a
+case-sensitive substring of the SHARED resource's path, and there is one per
+class: `0xEB2EF0` "Crystal" (Subterra), `0xEB2FB0` then `0xEB3010` "Fakel" or
+"FireColumn" (Dwarven), `0xEB3070` "Crater" or "Lavacrack" or "Hellpikes"
+(SubInferno). The engine's own map agrees exactly — 25 lit paths against 27
+unlit, no resource on both sides.
+
+**The light's COLOUR is the zone's preset's, not the params'.** The two draws
+take their spans from `SRMGParameters.PointLightParams` (zMin 2, zMax 7, radius
+20..25 — every RACE preset says zMin 3 zMax 3, and the maps show z = 2 +
+below(5)), but the colour is drawless and comes from
+`[[zone+0x20]+0x1D4]` — the RACE PRESET's own `PointLightParams.Colors`, indexed
+`zoneIndex % count`. Only three races have one: SPECIAL five lava colours,
+DUNGEON nine and NO_TYPE four — which is exactly the three an underground floor
+is ever painted as. The global list in `/RMG/Params/Default.xdb` is thirteen
+entries, DUNGEON's nine followed by NO_TYPE's four, so reading a Dungeon
+underground's colour out of it agrees BY ACCIDENT and a lava one's not at all.
+
+**A DWARVEN underground has no big-statics sweep at all.** `0xEC7070` is ten
+instructions — `call [vt+0x40]` (the whole-level room recompute and the carve),
+`0xEC28E0(0x3C, 0)`, `ret` — where Subterra's and SubInferno's `+0x34` carry the
+lakes, the preset mountains and the sweep. The flavour is one coin in
+`LoadTemplate` (`0xEA25D4`) unless `map+0x8C`'s parity already said Dwarven.
+
+**MEASURED as of 10.09**, and this paragraph used to say the opposite ("READ and
+NOT PORTED — no template in the corpus has produced a dwarven underground
+yet"): the coin lands on Dwarven often, and eight of the fourteen two-level runs
+now in the corpus are dwarven (`S1P2Z2M1` seeds 33, 44, 77, 88; `S1-2P2-8Z8K2S`
+101; `S2-3P2Z7N2` 202; `S1P2Z3K5.1` 303; `S3-5P2-8Z8K2M` 404) — all
+byte-identical in every entry. Subterra (seed 55) and SubInferno (11, 22, 66,
+505, 606) are covered too, so all three subterranean classes are held by real
+runs rather than by a reading.
+
+**And a connection guard keeps its floor.** It was emitted with the default 0
+because every guarded passage until now was on the surface. The map file records
+a floor per object, and two of this map's passages are underground.
+
+With those, that order is **18 of 18 byte-identical** and so is every other map
+in the corpus, the two-level dialog SAVEs at 20 of 20 among them.
+
+### The three ways of ordering a map disagree about the multipliers
+
+`ResourceMultiplier` and `ExpMultiplier` are not labels and not cosmetic, and
+the three paths that can ask for a map ask for three different rungs:
+
+| ordered by | Resource | Exp |
+| --- | --- | --- |
+| the editor's dialog, as the references were set | LITTLE | LITTLE |
+| the console command, on its constructor's defaults | NORMAL | NORMAL |
+| **THE GAME** | **MISERABLE** | **MISERABLE** |
+
+Which is why a map the GAME generates could not be compared at all until now:
+the port had LITTLE written into two call sites as the literal `1`.
+
+**What they change.** Both index the same `{0.2, 0.5, 1, 2, 4}` ladder, and
+three steps read it — the treasures off `generator+0xA8` (RESOURCE), the chests
+and the UPGRADE BUILDINGS off `+0xB0` (EXP). The upgrade-buildings note already
+said "`generator+0xB0` — 1 in every traced run, what writes it is unread"; this
+is what writes it. The effect is not small and not local: the same order at
+MISERABLE spends 93,631 draws against LITTLE's 92,438, because a step that
+places fewer treasures leaves an emptier zone for every step behind it.
+
+Ordering the reference both ways and diffing the two oracle logs step by step is
+what named it — `1 treasures` is the first boundary that parts, nine draws at
+LITTLE against four at MISERABLE — and the port now takes both out of the map's
+own `sRMGProps`, so nothing is typed.
+
+**The whole scale is checked, both dials.** Seven orders of the reference: each
+of the five rungs with both set to it, plus the two crossed corners that prove
+they are two separate dials rather than one.
+
+| resource / exp | draws | entries |
+| --- | --- | --- |
+| MISERABLE / MISERABLE | 93,631 | 15 of 15 |
+| LITTLE / LITTLE | 92,438 | 15 of 15 |
+| NORMAL / NORMAL | 91,468 | 15 of 15 |
+| LOTS / LOTS | 89,595 | 15 of 15 |
+| MUCH / MUCH | 86,614 | 15 of 15 |
+| MISERABLE / MUCH | 90,378 | 15 of 15 |
+| MUCH / MISERABLE | 92,104 | 15 of 15 |
+
+The count FALLS as the dials rise, which is the opposite of the obvious guess
+and is the cascade rather than the step: a zone that gets more treasures has
+less room left for everything behind them, and the steps behind them are where
+the draws are.
+
+### Is the GAME's generator the console's? Not answered
+
+Two maps the GAME made sit in `<game>/H5E/` from July. One of them —
+`S0-1P2Z2K3.1T`, tiny, `-water 2`, WEAK, MISERABLE — has the SAME order recorded
+as a console run of it, field for field, GUID and typed map name aside. The
+console run is **15 of 15 byte-identical** with the port. The game's file is not,
+and the two engine maps differ from EACH OTHER at the very first object: the
+first town stands at 13,42 in one and 54,25 in the other.
+
+That is either a third ordering path that differs the way the console's
+`caption-text` numbering differs, or it is the file's age: those two were
+generated in July and this copy of the game has been cleaned to vanilla since,
+so the generator may simply have been reading other data. Nothing on disk can
+tell the two apart.
+
+**The experiment that would**: generate one map IN THE GAME now, order the same
+template, seed, size, water and monster level through `rmg-batch`, and diff the
+two ENGINE maps against each other. Same map means the game's path is the
+console's and everything here applies to it; different means a path to read.
+
+**It was run on 07.09, and the two paths part at the sixth phase.** The game was
+asked for `S1-2P2-8Z8K2S`, medium (136x136, read out of the terrain files the run
+left in `data/RMGTemp/CurrentMap`), underground, island water, VERY_STRONG, four
+players, resources 2 and experience 4. The seed hook wrote its seed down —
+1788775876 — and the same order went through the console:
+
+|         | phase 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
+| ------- | --- | - | - | -- | --- | ----- | ----- | ----- | ----- | ----- | ----- | ----- |
+| game    | 0 | 3 | 9 | 64 | 981 | 81291 | 81291 | 81291 | 81719 | 81719 | 81892 | 81892 |
+| console | 0 | 3 | 9 | 64 | 981 | 81125 | 81125 | 81125 | 81541 | 81541 | 81718 | 81718 |
+
+The first five agree to the draw — the template loads, the size and the players
+and the start points are the same request — and `FillZones` then draws 166 more
+numbers in the game than in the editor. So it is not the file's age and not the
+`caption-text` kind of difference: the same order gives two different maps, and
+the divergence is inside zone filling.
+
+What is NOT ruled out: the game's screen sets four things the console line has no
+switch for (Tears of Asha, hide-minimap, random towns, and which player is the
+human), and one of those reaching `FillZones` would look exactly like this. The
+next step is `-poke` on the request's remaining fields, not another launch of the
+game.
+
+**And the game CRASHED on that map**, in the twelfth phase, placing the first
+zone's main objects — an access violation outside both the executable and the
+extension. The editor generated the same order to the end. The two are not the
+same map after phase 6, so this says nothing about the settings being bad; it
+says the game walked into something the editor's map does not contain. The crash
+report now names the module an address belongs to (`native/core/faults.c`), so
+the next one says whose bytes those are.
+
+### The game and the editor do not round the same way
+
+This is the answer to the section above, and it was hiding in plain text.
+
+Take the decimals a generated `map.xdb` is full of — rotations and the colours
+the presets hand out — and count how often each appears. A map the EDITOR made
+holds `1.5708`, `4.71239`, `0.294118`, `0.760784`. A map the GAME made holds
+`1.57079`, `4.71238`, `0.294117`, `0.760783`. Every one of the game's is the
+editor's with the last digit taken off rather than rounded, and every one of the
+editor's is the value the data itself carries: `RMGPresetTable.xdb` says
+`0.294118`, and pi/2 is 1.5707963.
+
+That is the x87 ROUNDING MODE, and the oracle now reads the control word beside
+the seed and again at every phase boundary, writing a line only when it MOVES.
+
+**The word is a moment, not a process.** This section first said "the editor is
+0x027F" and that was too coarse: the same editor reads 0x027F at the seed hook
+and 0x0C7F inside the minimap's resampler (the table above, measured earlier).
+Both readings are true, of different moments. What the boundary-by-boundary
+reading settles is the moment that matters here:
+
+    run seed 1 0
+    x87 control word 639 0     0x027F — double precision, round to nearest
+    phase 1 … phase 12         and not one line after it: it never moved
+
+So the EDITOR'S GENERATOR runs the compiler's default from end to end, and the
+editor's minimap does not. That is exactly the division `src/exe/x87.ts` was
+already built along — the minimap speaks 24-bit toward zero, the generator
+doubles — and it is why 136 reference maps came out right on doubles.
+
+**The game's generator has not been read yet.** Its map files say what to
+expect — every float in them is the data's value truncated rather than rounded,
+which is round-toward-zero — and 0x0C7F is what a process with a Direct3D device
+usually carries. The oracle will print it on the next launch, and until it does,
+"the game generates at 0x0C7F" is the hypothesis and not the reading.
+
+If it holds, the two hosts compute differently and not just print differently:
+the same control word governs every float the generator evaluates, which would
+explain the 166 extra draws the game spends in `FillZones` on an order the
+editor spends fewer on.
+
+**What this costs.** Reproducing a map made in the GAME is not a matter of
+finding a missing switch: it needs the generator's arithmetic run in the single
+precision, toward-zero mode. That was on the list as a tidiness job ("the port
+would stop being right by accident"); it is not — it is the price of the game's
+maps, and it must be a MODE rather than a conversion, because turning it on
+everywhere would break the editor corpus that is currently green.
+
+### Two machines, and what the second one does NOT explain
+
+`src/rmg/arith.ts` makes the generator's arithmetic a choice. `DOUBLES` is what
+every reference map was checked against — the plain operators, with `store`
+being `Math.fround`, which is what every `fl(...)` in this generator already
+meant. `X87` routes the same expressions through `src/exe/x87.ts`: each
+operation lands on 24 bits and always toward zero, and a store truncates
+instead of rounding. `ChainOptions.arith` picks one, the default is `DOUBLES`,
+and the whole 22-map corpus comes back with the same byte counts it had before
+the option existed — the two files that differed still differ by 2702 and 795.
+
+Threading it needed no rewriting, because the port already marks every place
+the engine drops a value into a `float`. `fl(a * b)` becomes
+`store(mul(a, b))`, which is `Math.fround(a * b)` on the first machine and
+`mul24(a, b)` on the second.
+
+**It is wired, it is live, and on the one map the game has given us it changes
+nothing.** That is not a guess — the mode was checked by sabotage:
+
+| asked | answer |
+| --- | --- |
+| `zoneRadius` over 4,050 plausible shapes | **7** differ between the machines |
+| `betweenFloat(0,1)`, 200,000 draws | **96,139** differ |
+| ...and land on opposite sides of FillZones' `0.4` gate | **0** |
+| the map's zone areas, both machines | identical, zone for zone |
+| `fillZones` draws, both machines | 78,287 either way — and the game spent 78,322 |
+
+The third row is the reason for the fourth and fifth: a draw's truncated float
+and its rounded float straddle a constant only when the exact value is within
+an ulp of it, which over a run of this size happens zero times. So the jitter
+takes the same decisions, the grid grows the same way, and the phase costs the
+same number of draws.
+
+**So the game's 35 extra draws in `FillZones` are still unexplained**, and the
+text evidence is weaker than it looked: it proves the game's map WRITER runs
+toward zero, not that its generator does. The editor is the proof that those
+can be two different moments in one process — its generator is at 0x027F and
+its minimap resampler at 0x0C7F. The game's map file is written at the end of
+the run, and the same split would produce exactly what we see.
+
+**The reading came back, and it is 0x0C7F.** A map generated in the game on
+07.09 (`3223.h5m`, `S6-11P2-8Z8K2.4a`, large, three players, underground, WEAK)
+prints `x87 control word 3199` at the seed and never another line — so the
+GAME'S GENERATOR runs at single precision, toward zero, from end to end, and it
+is not only the writer.
+
+And the same order through the console settles the rest:
+
+| | phase 4 | 5 | 6 | 9 | 11 |
+| --- | --- | --- | --- | --- | --- |
+| the game, 0x0C7F | 80 | 1622 | **127259** | 127331 | 127424 |
+| the editor, 0x027F | 80 | 1622 | **127034** | 127104 | 127188 |
+| the port, doubles | 80 | 1622 | **127034** | 127104 | 127188 |
+
+Two runs of the same engine on the same seed, agreeing to the draw for five
+phases and parting by 225 in the sixth, with the control word as the only known
+difference between them. The port sits exactly on the editor.
+
+**So the cause is settled and the SITE is not.** Everything the port's FillZones
+decides on a float was checked against this map and none of it moves: the paint
+pass compares an integer radius against the square root of a sum of integer
+squares (a flip needs the sum to be a perfect square, and then both machines
+answer the same), the ratio test is an integer over an integer at magnitudes
+where a 24-bit quotient cannot cross 1, every zone in this template has size 10
+so `sizeRatio` is exactly 1, and the jitter gate does not flip in 200,000 draws.
+The zone radii come out 26 on both machines at all three values of `k`.
+
+And then the disassembly said the control word is not the cause AT ALL.
+
+**The game is an SSE build and the editor is an x87 build.** `FillZones` in
+`H5_Game_H5E.exe` holds 74 floating-point instructions and every one of them is
+SSE — `divss`, `mulss`, `comiss`, and a `sqrtsd` whose answer goes straight back
+through `cvtsd2ss`. The single `fstp` in the whole function only unloads a value
+the callee had already rounded to single. None of its direct callees hold an x87
+arithmetic instruction either. PC and RC do not reach SSE, so the word this
+process carries **cannot move anything in this function**.
+
+So the two findings are separate, and the neat story was wrong:
+
+| what | why |
+| --- | --- |
+| the game's map file truncates its decimals | the control word, reaching the `printf` that still runs on x87 |
+| the game's generator draws 225 more | the build — every SSE intermediate lands on a float32 where the editor's x87 keeps its stack |
+
+`src/rmg/arith.ts` grew a third machine for that, `SSE`, which rounds after every
+operation and takes the root the way `cvtps2pd; sqrtsd; cvtsd2ss` does. **It does
+not explain the gap either**: the same order comes back 127034 on all three
+machines.
+
+Nor can it, at this site, and the arithmetic says why. Every zone in this
+template has Size 10, so the ratio test's `sizeRatio` is exactly 1.0 on any
+machine; the areas are integers around 5,000-15,000, where the nearest quotient
+to 1.0 that is not 1.0 sits 6.7e-5 away and a float32 ulp is 1.2e-7, so no
+rounding crosses the compare. The paint gate needs a perfect square to sit on
+its boundary, and there both builds answer the same. The radii come out 26 with
+their pre-truncation values 0.68 and 0.87 away from the nearest integer.
+
+**And they do not differ in behaviour either.** Both functions were disassembled
+end to end and compared as logic, and every guard, immediate, loop bound and
+draw site pairs up one for one:
+
+- three draw sites in each, in the same places under the same guards — two
+  unconditional `below(2)` coins at the top of every sweep, first driving the
+  outer loop, and one `betweenFloat(0,1)` reached only after the cell is owned,
+  the 6-tile margin passes, the neighbour map holds no `-1` and is not empty,
+  the winner beats a count of 2, and `sizeRatio > areaRatio`;
+- the neighbour threshold is `> 2` in all four places in both;
+- the border margin is 6 in both, and the SWAP is in both — bounds are checked
+  against `+0x10`/`+0x0C` and the margin against `+0x0C`/`+0x10`;
+- the sweep constant is the same `0x3FDDB3D7` and the count is 305 at size 176
+  in both (their products are 304.84094238 and 304.84093666, which bracket no
+  integer at any size from 24 to 176);
+- the areas are rebuilt once per sweep at the end of the body, by the same
+  routine, in both;
+- the neighbour-count hash has the same 13 buckets from byte-identical prime
+  tables, so even the tie-breaking among equal counts is the same.
+
+Two real differences were found and both are too small to matter here. The
+game's `betweenFloat` rounds the raw 31-bit draw to a float32 before scaling and
+multiplies in a different order, which moves the `0.4` gate for **30 values out
+of 2^31** — seven orders of magnitude short of 225. And the sweep product
+differs in its last bits, which changes no sweep count.
+
+**So FillZones is the same program on the same inputs, and it is not.** The
+remaining suspect is the state it is HANDED: the zone centres at `+0xE4`/`+0xE8`
+are float32 and both builds truncate them in pass 1, and a centre that comes out
+`27.0000002` in one build and `26.9999998` in the other moves a whole seed disc
+by a tile — after which every sweep diverges. The radii (26, with 0.68 and 0.87
+of room) and the sizes (all 10) are already ruled out; the centres are not.
+
+**The instrument for that is built.** `zones` in `<game>/bin/homm5-editor-rmg.txt`
+detours FillZones itself — `push ebp; mov ebp,esp; and esp,-8`, six bytes and
+three whole instructions with no relocation in EITHER build, `this` in ECX with
+no stack arguments — and prints the grid dimensions and then every zone the
+phase is handed: floor, id, the two centre floats AS BITS, the radius and the
+Size. And the per-sweep line the editor already logged is now hooked in the game
+too (`0xaa9866` reaching `0x4de080`, the same `__cdecl (fmt, sweep)` arity as the
+editor's `0x8f333e`/`0xa8b510`; the game's `% 10` is a magic multiply where the
+editor's is an `idiv`, which is codegen and not logic).
+
+The editor's side of the reading, on the order both engines have run:
+
+    fill zones dims 176 176
+    floor 0: zone 2 (71, 103) r26 size10   zone 3 (149, 98)  r26 size10
+             zone 5 (144, 46) r26 size10   zone 8 (87, 40)   r26 size10
+    floor 1: zone 1 (144, 46) r26 size10   zone 4 (45, 70)   r26 size10
+             zone 6 (59, 143) r26 size10   zone 7 (115, 145) r26 size10
+
+Every centre is a whole number, so on the editor's side there is no rounding
+fuzz to lose — which makes the comparison sharp.
+
+**The game's eight are the editor's eight TRANSPOSED.** On one seed, zone for
+zone, with the same ids, the same radii and the same sizes:
+
+| zone | the game | the editor |
+| --- | --- | --- |
+| 1 | (49, 118) | (118, 49) |
+| 3 | (118, 70) | (70, 118) |
+| 4 | (79, 31) | (31, 79) |
+| 6 | (132, 131) | (131, 132) |
+| 2 | (114, 98) | (98, 114) |
+| 5 | (79, 31) | (31, 79) |
+| 7 | (31, 112) | (112, 31) |
+| 8 | (140, 28) | (28, 140) |
+
+The centres come from two `below()` draws each, and the draws are the same
+numbers in the same sequence — only WHICH OF THE TWO AXES each one lands in
+differs. That is C++ leaving the evaluation order of two arguments unspecified
+and the two builds taking it two ways. No rounding, no control word, no
+behaviour difference in FillZones: a coin that was never anyone's to call.
+
+**And it is the whole answer.** `swapZoneAxes` puts the second draw in x and the
+first in y, and the port lands on the game's own numbers:
+
+| map | phase 6 | 9 | 11 |
+| --- | --- | --- | --- |
+| `3223`, seed 1788787445 | 127259 = **127259** | 127331 = **127331** | 127424 = **127424** |
+| `0123456`, seed 1788783469 | 78322 = **78322** | 78755 = **78755** | 78916 = **78916** |
+| `32232`, seed 1788789832 | 128442 = **128442** | 128519 vs 128512 | 128583 vs 128578 |
+
+Two of the three follow the game to the draw through eleven boundaries where
+they had been 225 and 35 apart. The third meets it at the sixth and drifts by
+seven later — and that one also spends a draw between its seventh and eighth
+boundaries that neither of the others does, so its residue is a separate thread.
+
+The editor corpus is untouched: the option is off by default and the 22 maps
+come back with the same counts they had.
+
+### How a game map parts, and where
+
+`rmg-diff-map --game-build` rebuilds `3223.h5m` to 15 of 23 entries, and the
+difference splits cleanly into one thing solved and one thing found.
+
+**The decimals were the first difference and are now exact.** `map.xdb` parted
+at byte 644, on `0.733333` against `0.733332` — the writer, not the generator.
+`%g` hands the value to the C runtime and the runtime makes its digits on the
+x87, so under a word whose precision is SINGLE and whose rounding is TOWARD ZERO
+the conversion is not "the exact decimal, cut": every step of it lands on 24 bits
+and always nearer zero. Normalise into `[1,10)` with one divide, then six times
+take the leading digit and step (`mul24(sub24(m, d), 10)`), and the digits come
+out the game's. Cutting the exact decimal instead is right for most values and
+wrong exactly where the float sits within an ulp above its own six-digit prefix.
+
+Measured on the 511 decimals of the 635 objects the two maps agree on object for
+object: **the exact cut reproduces 503, this reproduces 511**. `emit.ts` writes
+it when `truncateFloats` is on, which `--game-build` sets.
+
+**And the objects part at the statics.** The first 635 — every town, mine,
+dwelling, shrine, treasure and guard, on both floors — are identical in type, id
+and position. Number 636 is the first `AdvMapStatic`, on the underground floor, a
+`Crater_12x10`: ours at 58,94 and the game's at 46,154. The ids keep matching
+for a while after, so the draw stream is still in step and it is the placement
+that has moved; the game accepts three of that first crater where the port
+accepts two. Of ~6,300 statics per side only 1,954 positions are shared.
+
+The underground terrain follows from it — 1.7% of the `Dead_Land` mask, in pairs
+two tiles apart, which is what a lake seeded from a different tile looks like.
+
+### The statics part because of OUR bug, not the build's
+
+The obvious next suspect was another coin like the zone axes — a candidate order
+the two builds take the other way round. It is not, and the check that says so
+is the cheap one that should have come first: **the port does not match the
+EDITOR on this map either.** Same order through the console, 15 of 20 entries,
+and the first object it gets wrong is number 993 — the underground ONE-TILE
+statics, where the port puts a `LavaStone_10` at 174,108 that the engine puts
+nowhere.
+
+174 is two tiles from the edge of a 176 map, and that is the whole story. An
+underground floor's vertex grid carries a height and a ground-flag byte, and at
+the FAR edge the engine leaves ROCK — height 36, flag 32 — where the port leaves
+open ground at 18 and 16:
+
+| map | the wall the engine has and the port does not |
+| --- | --- |
+| 176 tiles (177² vertices) | columns **174 and 175**, rows 174 and 175, indices 3..175 |
+| 136 tiles (137² vertices) | column **135**, row 135, indices 3..135 |
+
+Two wide on the larger map, one on the smaller, and in both the disagreement
+starts at index 3 and stops short of the last vertex. This is the same debt the
+four-player map showed as "265 vertices at the far edges" — it was written down
+as a crumb and it is not one: the one-tile pass tests that byte
+(`rock(x, y) = bytes[y * (size + 1) + x] > 0x10`), so a vertex the port thinks is
+open is a tile the port puts an object on, and one extra object desynchronises
+every draw after it. On this map the id stream survives 645 objects and then
+almost nothing matches.
+
+It also explains why the game comparison looked like a statics mystery: the
+port's first underground crater sits at 58,94 and the game's at 46,154, but the
+editor's is somewhere else again. Two bugs were being read as one.
+
+The lava underground is the case that makes it visible — that class is never
+massif-carved, so the wall cannot be the carve's doing and has to come from
+whatever fills the grid before it. It does, and the rule is arithmetic.
+
+**The level grid's constructor** (`0x874120` in the editor, `0xEB2B60` in the
+game) runs once per floor at map-create time, long before any zone exists, and
+its third argument is the surface flag — `push 1` for floor 0 and `push 0` for
+floor 1 (`0x8744C0`). It fills every vertex with the floor's own value: the
+surface 0x10 / 6.0, the underground 0x20 / 36.0, which is ROCK. The surface is
+then left alone. The underground is lowered, and the lowering is what leaves the
+wall:
+
+- both loops run `0 .. size-1`, so the vertex line at `size` is never written;
+- a vertex whose `min(vx, vy)` is under 3 takes the low-edge ramp — bytes
+  32/26/21, floats 36/30/24 — ungated;
+- every other vertex is opened to 0x10 / 18.0 **only while both indices are
+  below `3 * floor(size / 3)`** (`sub eax,edx` on `a % 3`, then `jge` past the
+  write at `0x874448`).
+
+So the last `size mod 3` lines of each axis keep the constructor's rock: two at
+size 176, one at 136, none at a size divisible by three. The carve only ever
+raises to rock, so the band survives it.
+
+`createVertexHeights` now does that, and the map that was 15 of 20 against the
+editor is **20 of 20**. The four-player map's `UndergroundTerrain.bin` debt —
+the "265 vertices" — is gone with it, taking that map from 20 of 22 to **21 of
+22**, and the whole 22-template corpus stays byte-identical.
+
+### What is left between the port and a GAME map
+
+With the wall paid, the port and the game agree on the SHAPE of the run: exactly
+**8247 objects each**, the id stream agreeing for 645, and the first 635 objects
+identical in type, id and position. What still differs is which tile the
+underground statics take — the port's first crater at 58,94 and the game's at
+46,154, minted by the SAME draw. A different tile at the same draw can only be a
+different candidate ORDER, since a difference in the fit test would move the
+rolls and the ids with them.
+
+The `zones` instrument now dumps that order: after FillZones returns it walks
+each zone's `+0xCC .. +0xD0` vector — the pairs of floats `CollectOwnTiles`
+rebuilds every sweep, which is the list the statics sweep later walks — and
+prints its head. The editor's is x-outer, y-inner:
+
+    zone tiles 1 1 7721  80,0  80,1  81,0  81,1  81,2
+
+which is what `zoneTiles` does, and is why the port matches the editor. The
+game's head is the reading still missing, and one generation with an underground
+is enough to take it — the pattern is visible in the first five pairs whatever
+the seed.
+
+Two orders have already been ruled out by trying them: sorting the candidates
+y-outer puts the first crater at 70,95 (not 46,154) and drops the object count
+to 8173, where the port's own order gives the game's 8247 exactly.
+
+**And the order is not it — the game's is x-outer too.** Its own tile vector,
+read from a run of its own, goes `84,146 | 85,144 | 85,145 | 85,147 | 86,128`,
+which is the same walk. So is the FIT: both builds' `+0x44` was read instruction
+for instruction and every guard, immediate, grid offset and branch sense pairs
+up, the underground margin included — 5.0f in both, with the same dimension
+swap, `jb` against `fcomp/test ah,1` and `jbe` against `test ah,41h`. So are the
+room recompute, the carve and the rotation helper.
+
+The reasoning that pointed at the order was wrong, and worth writing down: a
+difference in the FIT does not move the draw stream. The roll is drawn once per
+FITTING tile and the acceptance is the first roll under the threshold, so the
+ordinal is fixed by the roll VALUES alone — which tile each roll is attached to
+is free. The port accepts at fit #73 on 58,94; the game accepts at its #73 on
+46,154, which is the port's #59. The game simply has **14 more tiles fitting**
+in that stretch, and the ids match all the way regardless.
+
+**It is the ROAD ROUTER, the one phase whose divergence the draw counter cannot
+see.** The walk spends one coin per tile, so two corridors of equal length cost
+the same coins and the route can move while the stream stays in step. The
+editor's cost step multiplies by `0.01f` on the x87 stack and rounds once at the
+store (`fmul st,[0x10DFA10]` at `0xBFB4E3`, `0xBFB626`); the game DIVIDES, one
+`divss` per operation (`0xEC0DB4`, `0xEC0ED7`). Roads write occupancy
+`0x08/0x10/0x20`, all three inside the fit's `& 0x3E` mask and inside the room
+recompute's `0x3C`, and underground the carve reads the same occupancy and turns
+whole 9x9 patches from clean to blocking — which is how a couple of moved road
+tiles become fourteen crater placements.
+
+`RoadInput.arith` now carries the choice, and `--game-build` asks for the SSE
+one. The first crater moves from **58,94 to 44,154**, against the game's
+**46,154** — the same row, two tiles along, where it had been on the other side
+of the map. So the site is right and the model of it is not yet exact; the
+object count also drifts (8294 against 8247) where the editor's arithmetic gave
+8247 on the nose. The editor corpus is untouched: 20 of 20, 21 of 22, 13 of 13.
+
+The measurement that would finish it is the `grids` instrument, which already
+dumps the engine's road lists and all four level grids at the roads boundary and
+proved the port byte-exact against the editor. Run it against the GAME on one
+order and diff the road lists.
+
+### A second, much cheaper divergence: a shipyard's facing
+
+Two more game maps arrived, both island water with an underground — a small
+96x96 and a medium 136x136, 13 of 20 entries each. The small one is the cheapest
+reproduction anyone has: it parts at object **49**, and the object is a
+shipyard's guard.
+
+    48  shipyard  18,60  rot 3.14159 (ours)   rot 4.71238 (the game)
+    49  guard     19,59  (ours)               19,61 (the game)
+
+So it is the shipyard's FACING, `q`, and the guard walks eight directions from
+`2q`. `q` comes from `|dx| > |dy| ? (dx > 0 ? 0 : 2) : (dy < 0 ? 3 : 1)` against
+a reference point: the zone's town entry when it has one, otherwise the centroid
+of its tiles.
+
+**And this one is not an ulp.** The port's reference for that shipyard is the
+centroid `50.234, 71.404`, giving `dx = -32.23` and `dy = -11.40` — `|dx|` is
+nearly three times `|dy|`, so `q = 2` with room to spare. The game's `q = 3`
+needs `|dx| <= |dy|` and `dy < 0`, which no rounding reaches from those numbers:
+its reference point is somewhere else entirely, near the shipyard in x and well
+below it in y — which is what a TOWN ENTRY looks like where the port took the
+centroid.
+
+Reading the reciprocal as a divide (the road router's difference) was tried on
+the centroid and changes nothing, as it cannot: the gap is 20 tiles wide, not an
+ulp. So the question here is which reference the engine takes, not how it
+rounds it — and the port matches the editor on a water-and-underground map
+(21 of 22), so whatever it is, it is not simply "the port picks the wrong one".
+
+**It is the same centroid, multiplied.** Both builds read the same two fields
+off the shipyard's own zone — `+0xC/+0x10` under the `+0xF8` flag, else the sum
+over `+0xCC..+0xD0` divided by `1/n` — and both compile the same bug: the
+centroid's running sum is an uninitialised local that nothing zeroes. What
+differs is codegen. The editor's facing is a routine of its own (`0xC06830`,
+called per attempt at `0xC07083`), and its frame is overwritten by the fit and
+`shipTile` calls between attempts, so every attempt reads a sum that stands at
+zero — the one-shot centroid the corpus matched. The game INLINED it
+(`0xECC3FC..0xECC427`): the sum lives in the placer's own frame at `+0x44/+0x48`,
+the stores at `0xECC421/0xECC427` write it back, the failed-attempt path
+(`0xECC598 → 0xECC3A5`) re-enters ABOVE the summing block, and none of the
+thirty-seven stack stores in the placer touch those two slots. So attempt `k`
+adds the whole tile list a `k`-th time and faces `k × centroid`.
+
+Which reproduces the numbers exactly. Shipyard (18,60), centroid
+(50.234, 71.404): `k = 1` gives `dx = −32.23, dy = −11.40`, `q = 2`, the port's
+π; `k ≥ 2` gives the reference (100.47, 142.81), `dx = −82.47, dy = −82.81`,
+`|dx| ≤ |dy|` and `dy < 0`, `q = 3`, the game's 3π/2. `ShipyardInput.centroidSum`
+carries the accumulator with the same lifetime as `framed` (the placer's frame,
+across both attempts of a >100 map), and `ChainOptions.gameBuild` is now one
+flag for the three things the game's build does differently — the swapped
+axes, the SSE arithmetic, and this. With it both of the small map's shipyards
+face the way the game's do, and the map parts at its first STATIC instead
+(a crater at 26,61 against the port's 26,60) — the roads thread, same as the
+large map. `test-rmg-water` is unchanged: the editor path computes what it
+computed.
+
+### What one four-player island map found
+
+The map the game was asked for on 07.09 — `S1-2P2-8Z8K2S`, 136x136, underground,
+island water, four players — was the first order in the corpus that was none of
+the things every earlier one had been: not two players, not one floor, not dry.
+Ordered through the console and diffed, it came back **20 of 22 entries
+byte-identical**, and each of the three things it broke was the port's, not the
+engine's.
+
+**`rmg-diff-map` never passed the player count.** `runFull` takes `players` and
+the order records it; the diff tool left it to the chain's default of 2. Four
+zones the engine gave start towns to came back with two owners, and the first
+read of player 3's race threw. Invisible while every map compared was a
+two-player one.
+
+**A water map kept only its surface layers.** `replayTerrain` built the terrain
+layer set from `[gridAtFillTerrain[0]]` when the map had water, which is the
+same array on a one-floor map and one floor short on a two-floor one;
+`paintRoads` then asked for `layers[1]` and got nothing. Water and an underground
+had never been ordered together.
+
+**The point-light colour table had one entry.** An underground Necropolis wears
+four lights at `0.560784, 0.360784, 0.439216`, read off this map. The table grows
+by observation, one faction per reference (`src/rmg/run.ts`).
+
+**And `<Birds>` is a DRAW, not a setting.** The engine writes
+`<Birds href="/MapObjects/_(AdvMapBirds)/Pigeons_Adv.xdb#xpointer(/AdvMapBirds)"/>`
+on some maps and an empty `<Birds/>` on others, and the port always writes the
+empty one. Four launches say which: same template, same size, with and without
+water, with and without an underground, two players and four — birds every time
+at seed 1788775876, and no birds at seed 987654321. Nothing but the seed moves
+it, and all 22 templates of the one-seed sweep agree with each other, so the pick
+happens early, before the stream has diverged. With the href pasted in, this
+map's `map.xdb` is **byte-identical** — one line is the whole difference.
+
+The last entry is still open: `UndergroundTerrain.bin` differs at **265 vertices,
+which is exactly the two far edges** (x = 135 for y = 3..135 and y = 135 for
+x = 3..135, sharing their corner). The engine has height 36 and ground flag 32
+there where the port has 18 and 16 — a wall the carve leaves standing along the
+last row and column, and the port stops one short of it
+([[one-object-differs-means-a-boundary]]).
+
+### Two traps in the oracle itself
+
+Both cost a wrong diagnosis before they were named, and neither is about the
+generator.
+
+**A saved map may have been EDITED after it was generated.** A sweep over the
+maps in `game/Maps` reported three divergences; two of them were brush strokes.
+`H5E Random 20260902.h5m` differs from the port in 397 bytes, all of them the
+height plane, 123 vertices inside one small box — and the same order put through
+the console comes back **byte-identical**, so what the diff was reading was a
+hand-painted hillside. `123456788.h5m` is the same story. Nothing in the file
+says "edited", so `rmg-diff-map` now prints the order to re-generate whenever it
+reports a difference: the fresh map is the only thing that can tell the two
+apart.
+
+**`bin/homm5-editor-rmg.log` APPENDS across runs.** A step-comparison script
+that takes the first occurrence of each label reads SOMEONE ELSE'S ORDER, and
+what comes back is a coherent, confident and entirely fictional story — in this
+case "the port spends 39 draws in `loadTemplate` where the engine spends 10",
+when both spend 48. Cut the log at the `cli: RMG/Templates/...` line of your own
+order before parsing it.
+
+### The minimap's water arms
+
+Everything above was measured on the reference, and the reference is a dry
+inland template: no water layer, an empty river plane. Two statements were
+carried over from it as though they were about the drawer rather than about
+that one map, and both were wrong.
+
+**The claim that started it.** The same seed ordered through the console and
+saved from the dialog appeared to give two different pictures — about 1,270
+pixels, five icon-sized clusters in one corner — and the difference was
+filed as "the console path draws something else", with the icons as the
+suspect. It was neither. Ordering the REFERENCE through the console with the
+minimap on gives a `minimap_floor_01.dds` byte-identical to the SAVE's, so
+the two paths draw the same picture; and the icons were never in it, because
+the probe's `mm icon` / `mm blit at` lines and the port's list agree on all
+32 names, in order, to the pixel. The 1,270 pixels were the port's, on a
+lava-lake template the reference does not resemble, and they decompose
+exactly: **38 tiles the port refused to darken and 8 it did not know to
+darken.**
+
+**The 8: `0x9EBAE0` is a live arm.** It walks the tile's texture layers,
+keeps the ones whose `Type` is 0x0B (`TT_BIG_WATER`) and tests that layer's
+mask at the tile's FOUR CORNER vertices; `0x9EC570` answers kind 2 on it and
+the bit is set. The reference paints no water layer, so the arm was written
+down as inactive — a fact about one template. A lava LAKE is painted as
+`TT_BIG_WATER` with a lava texture over it (its `MinimapColor` is the orange
+`(1, 0.286, 0.110)`, which is why the differing pixels were all one colour),
+and so is an ordinary sea. Added to the port, the mask matches the probe's
+own dump at **9,216 tiles of 9,216, none either way** — the same standard the
+plane-and-objects mask was held to. What the two maps cannot separate is
+whether the corner test is "painted at all" or "painted past a threshold":
+every corner either layer touches, it touches at 0x80 or more.
+
+**The 38: there is no water exemption.** The pass was ported as
+`mask(tx, ty) and not 0x9EC3C0(tx, ty)` — the shipyard's water test, which
+on a generated surface collapses to the river half-grid's centre cell above
+0x8C. On the reference the river plane is empty on all 9,216 tiles, so that
+term is a constant false and the file is byte-identical with it or without
+it. Two maps put tiles under it — 38 on the lava lake, 26 on the sea — and
+the engine halves every one of them. Dropped, both maps come out
+byte-identical; kept, they do not. What stays open is WHY: either the pass
+does not consult that predicate, or the engine's river half-grid is not the
+port's at minimap time. Nothing the port writes turns on the answer, and
+`shipyards.ts` keeps the river reading it was measured with.
+
+**Checked, with the fix off as well as on.**
+
+| order (all `-seed 1785351845 -size 1 -resource 1 -exp 1`) | arm off, exemption on | arm on, exemption off |
+| --- | --- | --- |
+| `S1P2Z2M1` (the reference, dry) | 0 bytes | 0 bytes |
+| `S1P2Z3K5.1` (a lava lake) | 3,184 bytes | **0 bytes** |
+| `S0-1P2Z2K3.1T -water 2` (a sea) | 2,638 bytes | **0 bytes** |
+
+Each half alone leaves the map red — the arm without the drop lands at 2,015
+and 1,571 bytes, the drop without the arm at 1,851 and 1,516 — so neither is
+an alibi for the other. `rmg-diff-map` now reports **15 of 15** on all three,
+minimap included, and `tools/test-rmg-minimap.ts` says in its own output that
+it is blind to this arm, because the reference is.
+
+### An underground minimap, and the arms only a cave floor wakes
+
+Everything above was measured on SURFACE floors, whose ground flags are the
+constructor's uniform 16 forever. A two-level order is the first map where that
+plane carries anything else — the massif carve's bytes, 32 for solid rock, 26
+and 21 for the two ramp steps down, 16 for open cave floor — and three readings
+that had been true of every map so far stopped being true.
+
+**The terrain pass has a first arm, and it is most of the picture.** A tile
+whose ground flag is over `0x15` is left BLACK, before any document is looked
+up. Ported, an underground floor goes from 82,368 differing bytes to 29,344 —
+which is to say the black is most of a cave map and the port had been drawing
+terrain through the rock.
+
+**The mask has a fourth arm**, `0x9EB9E0`: do the tile's four ground-flag corner
+vertices DIFFER. It feeds kind 3 and sets the bit, and what it draws is the
+shading along every cave wall and ramp. 29,344 bytes down to 2,228.
+
+With it the port's mask is the engine's own `mmk` dump EXACTLY on both floors of
+a 72x72 two-level order — 5,184 tiles of 5,184, none either way — which is the
+same standard the surface mask was held to and the reason the last 2,228 bytes
+could be blamed on something else with confidence.
+
+**The river half-grid belongs to the SURFACE.** Those last 2,228 bytes were
+thirteen cave tiles the halving spared. The generator stamps one river plane,
+from floor 0's lakes and its sea; an underground floor has none, and the
+thirteen tiles were exactly the ones sitting under the surface lake. The port
+was handing floor 0's plane to floor 1.
+
+**And the icon collector's second list is what a second level adds.** The
+subterranean gates — `BUILDING_SUBTERRA_GATE`, two per floor — were named in the
+notes and not ported, on the reasoning that the reference's icon list was
+complete. It is complete for a one-level map. The three lists drain one after
+another, so a gate stamps over a flaggable icon and never under it.
+
+**Which buildings carry a flag, read out of the factory.** The last icon missing
+was a Den of Thieves drawn `Object_0` — a plain building in the FIRST list.
+Flaggability is not a field and is not decided inside `CAdvMapBuilding`: it is
+decided when the object is built. `0xB526A0` switches on the shared document's
+`Type` (`add eax,-0Ch`, `cmp eax,73h`, a 116-byte index table at `0xB53984` into
+nine cases at `0xB53960`), and exactly one case — `0xB526C3` — allocates 0x138
+bytes and calls `CAdvMapBuildingFlagged`'s constructor `0xD30FC0`. That
+constructor has ONE caller, so there is no other way to make one; its vtable
+`+0x04` is `0xAD0230` (`lea eax,[ecx-44h]`) where every other building class has
+`0x4797F0` (`xor eax,eax`). Two `Type` values reach it: `BUILDING_LIGHTHOUSE`
+(0x1A) and `BUILDING_DEN_OF_THIEVES` (0x26). The same read named the other two
+constants in the collector: `0x27` is the gate and `0x63`/`0x64` are
+`BUILDING_BIARA_CITADEL` and `BUILDING_DEMON_SOVEREIGN_CITADEL`.
+
+**Where it lands.** A two-level order is **20 of 20 byte-identical**, both
+minimaps included, whether it comes from the console or from a dialog SAVE — and
+the two write the same `minimap_floor_02.dds` down to its md5, which is the
+second independent map saying the two paths draw the same picture.
+
+**The icons are the game's own art, copied pixel for pixel.** `0xDD00E0`
+first collects the objects worth an icon, and the drawer then runs a loop
+per collected list.
+
+WHICH objects, and into which of THREE lists — one per loop, each with
+its own name:
+
+- `[obj+0x04]()` hands back a component whose `[+0x08]()` says yes — the
+  OWNERSHIP one, the thing that lets a player flag the object. These are
+  the `Town_%d` / `Mine_%d` / `Object_%d` ones.
+- else the shared document dynamic-casts to `SAdvMapBuildingShared` and
+  its `Type` (`+0xEC`, the field the registrar at `0xADFCA3` names and
+  stamps with the class id `0x16130CC1`) is 0x27 —
+  `BUILDING_SUBTERRA_GATE` by `types.xml`. These get
+  `UnderworldExitEnter`.
+- and a list of its own for `Type` 0x63 and 0x64, the two campaign
+  citadels, drawn with a fixed `Town_1`.
+
+That is the whole rule, and it is why the reference's third dwelling gets
+no icon: a refugee camp cannot be flagged. The gate list is NOT dead
+either — the underground reference carries one `Subterranean_Gate_In` and
+one `Subterranean_Gate_Out`, and its two minimaps carry exactly one
+`UnderworldExitEnter` stamp each, matching all 60 pixels.
+
+Worth knowing for the port: the drawer gets those runtime components at
+all because `0xDD0C70` BUILDS A GAME first — it fills a creation record
+(the name `no-id`, seed `0x75BCD15` = 123456789) and calls `0xB8D020`,
+`0xB8CE10` and `0xB90140`, saying `Failed to initialize players!` when
+that goes wrong. That is also why the darkening mask exists by the time
+the terrain pass runs. A port has no such instance and has to compute the
+same grids itself.
+
+The NAME is built with `sprintf` and looked up by string:
+
+- `Town_%d` when the object's shared document answers `[vtbl+0x3C]`;
+- else `Mine_%d` when `[vtbl+0x8C]()->[vtbl+0x24]()` gives `0x16130CC3`
+  or `0x16130CC5` — the class ids the registrars stamp right after the
+  names `AdvMapMineShared` (`0xAE4073`) and `AdvMapAbanMineShared`
+  (`0xAE49E6`), so the test is "is this an ordinary or an abandoned mine";
+- else `Object_%d`.
+
+`%d` is the owner from `[obj+0xC]`, and an owner above 8 skips the object
+outright — 0 neutral, 1..8 the players. `0xDD3440` resolves the name
+against the `SWindowRelated` resource's named list (`[+0x44]..[+0x48]`,
+0x18 bytes an entry, `strncmp` at `0xF415D8`), which on disk is
+`UI/AdventureScreen-FPP-2/MinimapTextures.(WindowRelatedTextures).xdb` —
+55 entries pointing into `Textures/AdventureScreen-FPP-2/MinimapIcons/`.
+All of them are uncompressed BGRA8 with one level: `Town_%d` 15x16,
+`Hero_%d` 10x10, `Mine_%d` and `UnderworldExitEnter` 9x9, `Object_%d`
+6x6, plus `Caravan_%d` and `Caravan_stopped_%d`.
+
+The ANCHOR is the object's footprint centroid, not its `Pos`.
+`0xDCFF70` takes the object's world point (`[obj+0xA0]`), halves it —
+world units are two to the tile — and `floor`s it (`0x94AC3A` is the CRT
+`floor`), then adds the mean of the offsets in its two footprint lists
+(`[obj+0xB4]` and `[obj+0xB8]`, `i8` pairs). That point goes through the
+pos converter of `0xDCFB00`.
+
+The BLIT is `0xDCFDE0`: the icon's top-left lands at
+`(trunc(px) - trunc(w/2), trunc(py) - trunc(h/2))`, and each pixel whose
+own alpha byte is non-zero is copied as a whole dword — no blending, no
+scaling — with the destination clipped per pixel against the image's side.
+That is why the file's alphas are the icons' own.
+
+**Checked**: the reference map holds 18 `AdvMapMine` and 2 `AdvMapTown`,
+and the reference minimap holds exactly 18 `Mine_0` stamps and one
+`Town_1` and one `Town_2`, each matching all 60 (or 178) of its
+non-transparent pixels EXACTLY, at exactly one place in the image. Feeding
+each mine's own `Pos` through the converter and the anchor rule lands
+within a pixel or two of where its stamp is — the mines' footprints are
+symmetric, so their centroid is their `Pos`; the two towns sit about a
+tile off, which is the centroid term doing its work. `Object_0` matches
+twice — the Imp Crucible and the Workshop, both flaggable dwellings —
+and nothing else matches at all: not the third dwelling, a refugee camp,
+and no heroes, caravans or underworld entrance on a one-floor map.
+
+**THE RESAMPLE IS PORTED, and it is exact.** `0x9743A0` turned out to be
+Schumacher's zoom.c with the half-pixel correction, and it is now
+[`src/rmg/resample.ts`](../src/rmg/resample.ts) line for line: contribution
+tables per axis, `center = (i + 0.5) / scale - 0.5`, `left = ceil(center -
+width)` (`0xF044CD`), `right = floor(center + width)` (`0x94AC3A`), a
+REFLECTING edge (`j < 0` mirrors to `-j`, `j >= n` to `2n - j - 1`),
+horizontal into a (dst.width x src.height) image and then vertical, every
+channel `trunc(sum + 0.5)` clamped to a byte. The weights are never
+normalised, which is exactly why a layer of uniform alpha 255 comes back as
+253 and 254.
+
+The filter needed one more thing read. `0x975800` is
+`sinc(x) * sinc(x/3)`, but its sine is NOT the CRT's: `0x9573B0` is a
+513-entry table at `0xFA2898` with linear interpolation, scaled by the float
+512/(2*pi) at `0xF4DC88`. The entries are not `(float)sin(...)` either —
+entry 1 is 0.012271500 where the correctly rounded value is 0.012271538,
+five ulps out — so the table has to be READ rather than recomputed, and five
+ulps is worth a few hundred pixels of a 256x256 image. It is
+[`src/exe/sine-table.ts`](../src/exe/sine-table.ts), and it is the one thing
+in the port that reads the executable to GENERATE rather than to patch.
+
+**Checked against the reference, and it holds byte for byte.** Feeding the
+ENGINE'S OWN 94x94 layer — the probe's `mmi` dump — through the port's
+resampler and comparing with `minimap_floor_01.dds` out of
+`178535184522222.h5m`: **64,018 pixels of 65,536 identical**, and the 1,518
+that differ form 26 blobs that are precisely the icon stamps the engine
+merges afterwards and this comparison leaves out — two 15x15 towns of 178
+pixels, eighteen 9x8 mines of 60, two objects of 38 and 36. Eight stray
+single-channel pixels remain, and their sums sit 2e-2 to 3e-1 away from a
+rounding boundary, which no floating-point difference could move: they are
+the probe run's layer against the reference run's, one uninitialised byte
+apart.
+
+**The tile-document walk is ported too**, coverage and all: `0x9ED7D0`'s
+bilinear with its byte widening, `0x9ED3E0` / `0x9ED2A0` with the running
+transparency, the 32.0 water gate. Two things the comparison settled that
+had been carried on trust:
+
+- **the plane's orientation is `plane[y * (size + 1) + x]`** — the port's
+  `markPassability` output against the probe's dump of `terrain[+0x6C]`,
+  9,409 equal and 0 different, where the transposed reading gives 3,212
+  different;
+- **a tile is darkened exactly where that plane reads 0**, and the 1,509
+  tiles the engine darkens on top of those are the objects — the same
+  surplus the mask dump showed, now seen from the other side, with not one
+  tile darkened by us that the engine leaves bright.
+
+**What is still open is 53 tiles of 8,836**, and it is worth stating
+narrowly. Our walk and the engine's picture disagree on 53, every one of
+them at a zone boundary and every one of them resolving to Sand-Dunes, the
+LOWEST-priority layer of the seven. The engine's own numbers rule out the
+obvious explanations: the reference file's layer order is ascending priority
+(read out of `GroundTerrain.bin`), the roads prove the walk visits the
+highest priority first (at a road tile SandRoad 255 beats Sand-Dunes 255,
+which only a descending walk gives), and **searching ALL 5,040 permutations
+of the layer vector under both scorings — `remaining * coverage` and
+coverage alone — the best any fixed order achieves is 33 wrong, never 0**.
+So the difference is not the order and not the tie-break: it is in what the
+drawer SEES. The likeliest candidate is that the minimap is drawn from the
+masks before something the save then normalises, and the one measurement
+that would settle it is a probe that logs, for a named disputed tile, each
+layer's coverage as `0x9ED7D0` returns it. That is one hook and one run.
+
+**AND THE 53 WERE THE BASE LAYER.** The probe was widened onto the vector the
+drawer actually walks — every record's document and its whole mask plane —
+and one run said it outright: **six of the seven masks are byte-identical to
+`GroundTerrain.bin`'s, and the seventh, the lowest-priority one, reads 255 on
+all 9,409 vertices where the file has it on 4,668.** The map is created with
+one ground under all of it and the zones paint on top; nothing carves the
+base back, because the painter only takes from layers of the same class at a
+DIFFERENT priority once a vertex would pass 255, which a single 255 never
+does. The file then stores the base cut down to where it still shows. So the
+live terrain and the saved file disagree about exactly one layer, and the
+drawer reads the live one.
+
+That is worth 53 tiles and not one more: at a zone boundary the top layer
+covers two corners of four — coverage 127, score 127 — and the base, taken at
+the transparency the top layer left, scores 255 * 0.50196 = 128. Which is why
+the base wins there and only there, and why no order of the seven could ever
+have fitted it: with the file's masks the base has nothing to win with.
+**The terrain layer is now 8,836 tiles of 8,836 against the engine's own.**
+
+Two things the same run settled about the ICONS:
+
+- **the anchor is the mean over BOTH footprint lists.** Feeding each object's
+  tile plus the mean of its rotated `blockedTiles` AND `activeTiles` through
+  the converter lands all 22 of the run's blits exactly; blocked alone lands
+  8, and the two lists' means summed lands 1. (The blit's own arguments are
+  the CENTRE — the half-size subtraction happens inside `0xDCFDE0`.)
+- **the flaggable gate is two calls and a switch, and it is READ.** The run
+  places three `AdvMapDwellingShared` objects and the engine draws two icons:
+  the REFUGEE CAMP is passed over, and nothing in the data separates it — not
+  `PossessionMarkerTile` (every building has one, Windmill and Temple
+  included), not `EffectWhenOwned` (Windmill and Temple have one, Crypt does
+  not), not `RandomType`, not any field of the instance in `map.xdb`, and
+  there is no ownership table in `GameMechanics/RefTables`. The executable
+  says why. `[obj+0x04]` is `GetFlagged()` (`0xAD0230`, the subobject at
+  `+0xC8`; null for monsters, treasures, statics and heroes). Then `[+0x18]`
+  is `GetDwelling()`, and a TOWN's and a MINE's return null (`0xAC0309` /
+  `0xD2A40C`, both `jmp 0x4797F0`) — a null ACCEPTS, which is why they always
+  carry an icon. Only a dwelling reaches the predicate `0xD0F960`, whose whole
+  body is a dynamic_cast to `SAdvMapDwellingShared` and three subtractions on
+  the `Type` at `+0xEC`: `0x54` BUILDING_FIRE_LAKE, `0x5E`
+  BUILDING_REFUGEE_CAMP, `0x5F` BUILDING_ELEMENTAL_CONFLUX all return false,
+  everything else true. A literal set in the code, kept nowhere — the
+  predicate re-reads the document every call — and the same three appear again
+  in `CAdvMapDwelling`'s constructor at `0xD0F1D5`. They are the three neutral
+  "buy creatures here" dwellings. The shipped `types.xml` agrees with the three
+  literals to the number — BUILDING_FIRE_LAKE 84, BUILDING_REFUGEE_CAMP 94,
+  BUILDING_ELEMENTAL_CONFLUX 95 against `0x54`, `0x5E`, `0x5F`, with
+  BUILDING_IMP_CRUCIBLE 73 and BUILDING_WORKSHOP 85 outside the set — so the
+  port can key on the names and the data says the same thing the code does.
+
+**THE WHOLE FILE, THEN** (`test-rmg-minimap`): 262,272 bytes against the
+reference's, the **header byte-identical** — the engine declares its single
+mip in the flags and the caps as well as the count, so `writeDDS` learned to
+say so when asked — and, since the FPU below, **every channel byte of the
+262,144 as well**. `test-rmg-pack` says the same of the whole archive: 17
+entries of 17, no allowance left in either suite.
+
+#### The editor's FPU is not at the defaults, and that was the last ten bytes
+
+Ten channel bytes of the minimap held out for weeks, each a single channel by
+one: three horizontal intermediates came out 4e-5 above a `.5` boundary where
+the engine had them below, and the vertical pass spread each over its column.
+Everything named as a suspect was checked and cleared — the filter's shape,
+the sine table (both builds carry the same 513 entries byte for byte), the
+sine's argument, the summation (the disputed sum is 200.50003562139992 under
+exact compensated summation, the same to the last bit as the port's). The
+conclusion each time was that the difference was smaller than any arithmetic
+the port could name. It was, and that was the clue.
+
+**The editor runs with an x87 control word of `0x0C7F`.** Bits 8-9 are the
+precision and bits 10-11 the rounding, so that word is **precision SINGLE
+(24-bit) and rounding TOWARD ZERO** — not the compiler's `0x027F`, which is
+double and to-nearest. Every `fmul`, `fadd`, `fsub` and `fdiv` in the editor
+therefore lands on a **float**, and always the float **nearer zero**. A
+Direct3D device is the usual reason a Windows process is not at the defaults,
+and the editor makes one before it reads its command line.
+
+It was not deduced. `native/rmg/minimap-probe.c` hooks three things and logs
+them for one minimap build — with `minimap` in `<game>/bin/homm5-editor-rmg.txt`
+AND a build that was asked for the probe's lines, which is a compile-time
+switch and not a run-time one:
+
+```bash
+npm run build-native -- --log rmg/minimap-probe,core/detour
+```
+
+(`core/detour` because a detour that refuses says so under its own file's
+switch, and a probe that reports "NOT installed" with no reason costs a
+launch to work out.)
+
+
+| hook | what it logs | the port against it |
+| --- | --- | --- |
+| the table sine, editor `0xED3A80` | argument and answer, bit for bit | **6208 of 6208** exact under this arithmetic; **8** under doubles |
+| the Lanczos filter, editor `0x7911C0` | argument and answer | **3072 of 3072** exact; **0** under doubles |
+| the resampler, editor `0x791330` | `fnstcw` — the control word itself | `0x0C7F` |
+
+The first two are the measurement and the third is the reason. `src/exe/x87.ts`
+is the arithmetic: every operation computes its EXACT result (Dekker's
+splitting for the product, a remainder test for the quotient) and truncates
+that to 24 bits, because truncating a double that has already been rounded to
+53 is not the same answer — with an argument like `x * (1/3)`, where a third
+of a dyadic x is often exactly a 24-bit number, it is wrong about a quarter of
+the time.
+
+Two more things came out of reading the resampler in that light, both of which
+the port had as divisions:
+
+- the centre is `(i + 0.5) * (1/scale) - 0.5`, with the reciprocal computed
+  ONCE at `0x791680` and multiplied per output;
+- the downscaling branch multiplies by `1/fscale` twice per tap (`0x791595`,
+  `0x7915a9`, `0x7915b8`) rather than dividing by `fscale`.
+
+**What the picture is actually sensitive to**, by turning each piece off and
+counting (a measurement, not a guess): the accumulator's truncation is worth
+**4 bytes**, the sine's **1**, and the product's truncation and the reciprocal
+are worth **none** on this map — they stay because they are what the
+instructions do, and the next map is not this one.
+
+**And the generator's own arithmetic is deliberately left in doubles.** The
+same FPU state was in force for the road wave, the height plane and every
+float the generator computes — but what those hand on is an integer or a tile
+index, 136 reference maps agree with them as they are, and a rewrite there is
+a change nothing has asked for. `engineSin` keeps the double version for them
+and `engineSin24` is the minimap's. That is a real inconsistency, named here
+rather than papered over: if a generator value is ever found sitting on a
+boundary, this is the first thing to try.
+
+Still unread: where `this[+0x14]`'s flat colour comes from on the RMG path
+(`0xEA30D0` copies it from its owner's `+0xA0`). It costs the `.h5m`
+nothing, because the arm that would use it never fires on a generated map
+— but it is not a hole the EDITOR can leave open, since an authored map
+with a dug sea reaches it.
+
+Worth more than the `.h5m` alone: the editor needs the same picture.
+
+Named holes: what a failed 0xEB43D0 creation skips; the water hash
+detail that made `floorIterationOrder` take its key as size_t (the
+sea's -1 hashes to bucket 8 of 13).
+
+What remains of the water reference is the `.h5m` emission for all three
+references — the ground flags and the passability derivation (the
+heights closed on all three runs, sea band included: the base field
+reads the carve-adjusted border and the seaward dist term digs below the
+plateau exactly as the file has it).
+
+**The underground run is in FULL LOCKSTEP — all 70,799 draws**
+(`test-rmg-underground`): the chain to 4475 —
+which took four finds the surface run could not make — then every step
+boundary of all three zones' first MainObjects loop, with all 106 named
+objects on their reference tiles. What the run surfaced, each proven by
+its boundary:
+
+- **an underground town wears four point lights.** The subterranean zone
+  subclasses put a WRAPPER in vt+0x20 (`0xEC6250`/`0xEC84C0`/`0xECAAB0`)
+  around PlaceTown, and a successful placement pays two draws for the set:
+  `z = 5 + below(3)`, `Radius = 12 + below(10)` — the reference town's
+  z 6 and Radius 12 are those two draws verbatim (`towns.ts`);
+- **teleports** (`teleports.ts`, `0xEB7C60`): each endpoint zone places
+  its own half, paired by nothing but GroupID = min·100 + max; the type
+  is floors alone — Monolith_Two_Way on one floor, Gate_In above and
+  Gate_Out below across floors. Candidates are the zone's tiles at
+  border 3..9 (LITERALS — the Teleport*BorderDistance params are never
+  read) filtered by room > 2max/3; the guard takes the connection's
+  power over sqrt(2), rounded to nearest. The pair lands tile-for-tile
+  with the reference, guards included;
+- **prisons** (`prisons.ts`, `0xEBD1C0`): the 0xEC1500 family with a
+  fixed shared, no guard, RandomHero written true and the hero itself
+  never drawn — and an exhausted pool skips the instance where dwellings
+  abandon the step;
+- **the price lists buy from the TERRAIN race.** `[zone+0x20]` is the
+  terrain preset — the same one that paints the ground — so the
+  underground zone's dwarven town buys from the DUNGEON lists while its
+  dwellings stay dwarven (`[zone+0x1C]`). On the surface the races
+  agree, which is why four zones of lockstep never told them apart: the
+  treasury boundary here is what did (an affordable prefix of 7 where
+  the dwarven list holds 6);
+- **abandoned mines** (`0xEBD700`, in `mines.ts`): their own worker
+  after the ordinary mines, fed by the zone record's AbandonedMines
+  (`+0x2C`) and the preset's AbandonedMine shared. Candidates once —
+  frame, border > 1, and under the town flag the ring
+  `Mine3LevelMin/MaxRadius` (25..45, strict) — then per instance a room
+  threshold of `trunc(4*max/5)`, the only 4/5 in the family. No guard,
+  no piles, AvailableResources = [0,0,1,1,1,1,1] drawlessly, actives
+  into the roads' mine vector;
+- an underground zone runs **no observatories mark and no treasures**:
+  the observatories spend their draws unmarked between "shops" and the
+  road boundary, and treasures/chests wait for additional objects.
+
+**The underground STATICS run in FULL LOCKSTEP — all three zones**
+(6471 → 67611, three quarters of the run): every traced boundary lands
+and all 1,190 statics stand where their minted names stand, point-lit
+crystals included. The subterranean overrides came apart into four
+finds, each measured live (details in Phase 12):
+
+- **the massif carve** (`0xED11D0`, drawless): the underground floor is
+  vertex-height rock (byte/float grids, floor 18.0, rock 36.0, an edge
+  ramp) carved into massifs wherever a 9×9 occupancy patch is clean —
+  the port's float grid came out byte-identical to the reference
+  `UndergroundTerrain.bin`, all 5,329 vertices;
+- **Subterra's `+0x34`** is the base sweep behind the carve; its `+0x30`
+  is the base one-tile skeleton plus a rock filter, survival pre-rolls
+  (0.7/0.6/0.9/0.9) and two-draw point lights on Crystals;
+- **the LAKES ran for real** (zone 2 resolves HEAVEN): they exposed the
+  `+0x5C` stamped-blocked ledger (the room masks' bit 0x02, written by
+  the stamp itself), the DEEP WATER pass (blob interiors turn 0x82 and
+  refuse the fit), the deco jitter's axes, list HOLES (a self-closed
+  `<Item/>` draws but creates nothing), the mountains' transient 0x100
+  and their end-of-pass conversion to 2 — and re-read `zone+0x18` as the
+  RESOLVED race (the surface's Inferno zone merely had zero seed
+  candidates).
+
+Still ahead of the underground run: additional objects (85 draws) and
+the two-floor treasure blocks (3,103), then emitting the `.h5m`.
+
+**That trace now exists, and the whole run is measured.** Seed 1785351845 end
+to end is **92,438 draws**, and where they go is no longer a guess:
+
+| | draws |
+| --- | --- |
+| everything through ZoneConnections — ported | 18,491 |
+| MainObjects, fourteen steps in each of four zones | 1,548 |
+| roads | 381 |
+| statics, the second loop over the zones | **69,378** |
+| treasure blocks | 2,640 |
+
+The statics are three quarters of the generator's whole number stream, which
+is worth knowing before deciding what to port in what order.
+
+That log ended there for a reason that was in our own code, not the engine's:
+the trace switched itself off at the twelfth counter reading, and the twelfth
+reading is the door of MainObjects. **It now ends where the run does** — at
+`at %g temp db destroyed`, the last line the generator prints.
+
+**And the run is now read step by step.** The twelve counter readings say
+nothing about the inside of MainObjects, so the oracle reads the generator's
+own narration instead: all 34 "at %g …" lines go through one formatter, and
+each of those calls is patched to take the draw counter on the way past. A
+run therefore writes
+
+```
+step <draws so far> <zone, or -1> <what just finished>
+```
+
+for every phase tail and for every one of the fourteen steps in every zone —
+which is what turns MainObjects from one number into fourteen. The addresses
+are generated and checked, never typed: `npm run test-rmg-log-sites` holds the
+table in `native/rmg/oracle.c` to what the editor executable actually says,
+address and arity both, and `--c` prints the table to paste when a build moves.
 
 ## Where everything is
 
@@ -93,6 +3134,401 @@ so a typed seed reaches `run seed` in the log and the map alike. Phase draw
 counts from an ordered editor run — the thing runs 3–5 could not give — land
 in the same `bin/homm5-editor-rmg.log`.
 
+### Ordering a generation from outside the dialog
+
+Every order but the three references is unverifiable, and the reason has
+always been the same: an order costs a person clicking through the generator
+screen. So the question was whether the editor can be TOLD to generate. It
+can — just not the way it was looked for.
+
+**The editor's own command line is one token wide, and it is not ours.**
+`H5_MapEditor_H5E.exe` is an MFC application: `WinMainCRTStartup` (`0xf46536`)
+hands `AfxWinMain` (MFC71 ordinal 1207) the command line, and
+`CEditorApp::InitInstance` — vtable `0x1180dfc` slot `+0x30`, the function at
+`0xde6d40` — reads `m_lpCmdLine` from `[this+0x48]` exactly ONCE, at
+`0xde6e2e`. What it does with it is the whole surface: strip surrounding
+quotes, and then
+
+- empty → start normally;
+- non-empty and another instance is running → forward it by `WM_COPYDATA`
+  (`0x96ee40`) and exit;
+- `-reg` (`0x4892e0` is `operator!=` against the literal at `0x1180eec`) →
+  nothing here; the string is consumed by the association registration at
+  `0xde5d60` instead;
+- anything else → `0xdede00`, which is either "open this document" or, when
+  the config value `map_editor_mode` is set, "open this `.xdb`".
+
+`GetCommandLineA` has a single caller in the whole image (`0x52d227`, inside
+`0x52d200`) and uses it only to derive the executable's own folder. So the
+absence is proved the way this document requires absences to be proved: not
+"no switch was found" but "the only reader of the command line was read, and
+both of its branches go elsewhere".
+
+**What exists instead is a console command.** `rmg`, aliased `generatemap`,
+registered at `0x73d2d0` (a static initialiser, so it is there from startup in
+BOTH executables) against the handler at `0x73ce20`. Its parameters are wide
+strings and its parser is `0x73c910`:
+
+| written | field | default | what it is |
+| --- | --- | --- | --- |
+| the first non-switch word | the template href | — | `#xpointer(/RMGTemplate)` is appended when absent; "Couldn't find template " if it does not resolve |
+| `-players <n>` | `props+0x20` | 2 | |
+| `-size <n>` | `props+0x28` | 2 | |
+| `-underground <n>` | `props+0x25` | 0 | stored as a bool; reaches the request's `+0x0D`, which is also what the dialog's template filter reads |
+| `start` | `props+0x2C` | absent | play the map once it exists |
+
+The handler copies those into the settings struct the generator takes (built
+by `0x467e10`, no vtable, ~0xA8 bytes, size at `+0x10`, underground at
+`+0x11`, players at `+0x1C`) and calls `CRandomMapGenerator::GenerateMap`
+straight — the editor's vtable `0x117203c` slot `+0x4`, the function at
+`0xcf9930`, which is the same `[esi+0x90]`-then-`time()` seed region the
+oracle already detours. **There is no seed parameter** — but the map IS saved,
+which reading the handler did not say and running it did: the engine's own
+narration ends "map saved", and the sixteen documents are in
+`data\RMGTemp\CurrentMap\`.
+
+**And a line can be said to the console without a person.** `0xe342b0` executes
+one, and its `this` IS the `std::wstring` holding it — the cleanest door in the
+image. 79 commands are registered through `0xe33010`, `rmg` and `generatemap`
+among them. Its neighbour `0xe345f0` executes a whole cfg — it prints
+`Executing `, and `InitInstance` calls it three times before anything else, on
+`..\profiles\startup.cfg` (which does not exist on disk), `editor_a2.cfg` and
+`p2pdir.cfg` — but a cfg only SETS VALUES: `setvar map_editor_mode = 1` through
+it lands, `rmg` and `exit` through it do nothing at all. Measured both ways;
+see the four traps below.
+
+**So the shape of the oracle is settled, and its one real gap is named.** The
+engine will generate on command, with the template, the players, the size and
+the floor count all ordered, and it saves what it made — but the three cfg
+files run at the TOP of `InitInstance`, before the data storage exists, which
+is too early for a template to resolve, and the command takes no seed. Both are
+ours to close from the extension already imported into the editor: `0xdede00`
+is the same command line arriving at the END of `InitInstance`, and the seed
+hook is already installed.
+
+**All three are closed** — `native/rmg/cli.c`. The engine's own map beside any
+order, and **one launch under every map**:
+
+```
+H5_MapEditor_H5E.exe --rmg
+```
+
+with `bin/homm5-editor-rmg-orders.txt` holding THE order — several maps are
+ordered by `tools/rmg-batch.ts`, which relaunches the editor for each and keeps
+them in `bin/rmg-batch/<n>/`:
+
+```bash
+node tools/rmg-batch.ts --game <dir> --orders orders.txt
+```
+
+A file holding several lines has its first one run and the rest reported
+untouched, which is the mechanism refusing the mistake rather than a comment
+asking the reader not to make it. One order to a line:
+
+```
+RMG/Templates/S1P2Z2M1.xdb -seed 1785351845
+RMG/Templates/S1P2Z2M1.xdb -seed 1785351845 -size 1
+```
+
+Each order is the engine's own `rmg` line plus our `-seed`, `-resource` and
+`-exp`, all three taken out before the line is handed over (an unknown switch
+would be read as part of the template's name). The DLL reads the ask off `GetCommandLineA` at load — early
+enough to turn the oracle on for the run, which is why a batch never comes back
+with no readings in it — and says the lines from a detour on `0xdede00`, the
+moment the editor was going to open a document. Then the process ends.
+
+Four addresses, all the editor's, all checked against their bytes first —
+written here as this document writes them, and in the C file as RVAs, which is
+what a detour takes: `0xdede00` (the argument site, seven bytes and two whole
+instructions, the second one's operand relocated), `0xe342b0` (`Execute`, whose
+`this` IS the wide string), `0x407d00` (`wstring(begin, end)`), `0x4031d0` and
+`0xe33520` (a narrow string and the engine's named-value lookup, which are the
+self-test). Neither string is freed afterwards, deliberately: the deleter is
+behind an import thunk the loader rewrites, and a wrong free in a process about
+to exit costs more than the buffer.
+
+**And the command does not order the same map the dialog does — until it is
+made to.** The first CLI order of the reference's own seed and template came
+out 970 draws short and a different map, and the two `sRMGProps` blocks
+differed in exactly two lines: `RESOURCE_NORMAL`/`EXP_NORMAL` against the
+reference's `RESOURCE_LITTLE`/`EXP_LITTLE`.
+
+That is not a property recorded after the fact. The console handler builds the
+RMG request with `0x467E10` and fills three of its fields — the size at
+`+0x10`, the underground at `+0x0D`, the players at `+0x18` — leaving the rest
+at the constructor's defaults, and two of those defaults are the multipliers at
+`+0x98` and `+0xA0`, both **NORMAL**. The enum runs MISERABLE, LITTLE, NORMAL,
+LOTS, MUCH from zero, so NORMAL is 2 and the constructor's `mov [esi+98h],edi`
+with `edi = 2` is where the difference comes from. The record lives on the
+handler's stack, so nothing outside can reach it — which is why `-resource` and
+`-exp` are applied by a detour on that constructor (`native/rmg/cli.c`), the
+values stashed while the order is parsed and written the moment the request is
+built.
+
+**With them said, the batch reproduces the reference exactly.** The same order
+with `-resource 1 -exp 1` lands on **92438**, the reference's own count, and
+`rmg-diff-map` puts the port's map against the engine's at **15 of 15 entries
+byte-identical**, `GroundTerrain.bin` and the minimap among them. It read 13 of
+15 when this was written, the two being the minimap and a numbering difference;
+the minimap's is closed in "The minimap's water arms" and the numbering is
+taken from the map under test. The numbering was the port's:
+the engine's CLI-ordered run emits two caption texts and calls the objectives'
+`caption-text-0/1`, while the port, fitted to a dialog-ordered reference that
+emitted two more before them, calls the same two `caption-text-2/3`. The
+counter should follow what is actually emitted; it does not yet.
+
+**The rest of that record, put to the engine one field at a time.** `-poke
+<offset> <value>` and `-pokeb` write any offset of the request (decimal), which
+turns a guess about a field into a launch instead of a rebuild — and it earned
+its place immediately, because the first four offsets derived from the copy
+gave three right answers and one wrong one.
+
+| request | field | how it was shown |
+| --- | --- | --- |
+| `+0x0D` | underground | the console handler writes it; the generator reads `+0x1D` |
+| `+0x10` | map size | generator `+0x20`, the index into the size table at `0xFF291C` |
+| `+0x18` | players | the handler writes it |
+| `+0x50` | monster strength | `-monsters 2` records `MONSTER_LEVEL_STRONG`; default 1 is MEDIUM |
+| `+0x94` | minimap | poked to 0, the map records `<Minimap>false` |
+| `+0x95` | random towns | poked to 1, the map records `<RandomTowns>true` |
+| `+0x98` `+0xA0` | the two multipliers | they reproduce the reference exactly |
+| `+0xA5` | grail | poked to 1, the map records `<Grail>true` |
+| `+0x48` | the WATER AMOUNT | `-water 2`, the map records `<WaterAmount>WATER_ISLAND_MAP` and its terrain grows the two water layers |
+| `+0x96` | the water FLAG the description reads | with the amount alone the prose says "no water" over a map full of water |
+
+##### The water is two fields, and the handler zeroes both
+
+**Water IS in that record — at `+0x48`, with a flag beside it at `+0x96`** —
+and the reason a whole dimension looked absent is worth more than the offsets.
+
+The earlier reading said the generator takes its water from `GenerateMap`'s
+first stack ARGUMENT, off `0xCF9B9E`'s `mov esi,[ebp+8]` followed by a read of
+`+0x58`. The two instructions are real and the conclusion is not: the `mov` is
+in the FAILURE branch, which builds two empty strings into the return buffer
+(`[ebp+8]` is the hidden return pointer — the function is `ret 0Ch` for three
+stack arguments, of which the request is the SECOND) and returns. The read of
+`+0x58` is at `0xCF9BDE`, on the other side of a `jne`, where `esi` is still
+the generator. So it is a field of the generator, and the generator's record is
+the request copied field for field into `+0x10` (`0xCFB500`, same offsets) —
+generator `+0x58` is request `+0x48`.
+
+**Why eleven pokes could not find it.** `-poke` used to be applied in a detour
+on the request's CONSTRUCTOR, and the console handler writes its own fields
+after the constructor returns — including two zeroes, `mov [esp+0F4h],ebx` at
+`0x73cef0` (`+0x48`) and `mov [esp+142h],bl` at `0x73cee9` (`+0x96`). Every
+poke into those two was erased before the generator saw it. The instrument was
+blind in exactly the place the answer was, and it reported the blindness as an
+absence. So the application moved to `GenerateMap` itself
+(editor `0x8F9930`, head `push ebp; mov ebp,esp; and esp,-8`), which is the
+last moment before the record is read and the only one nothing overwrites.
+
+**And the amount alone is not enough.** With `+0x48` said and `+0x96` left at
+the handler's zero, the map comes out with every water layer, the carve, the
+shipyards and `<WaterAmount>WATER_ISLAND_MAP` — and a description reading "без
+водных пространств", no water. The description is composed from the REQUEST,
+and `+0x96` is what it reads; the generator's own copy at `+0xA6`, which
+`GenerateMap` sets from the amount at `0xCF9BF1`, is a copy and reaches
+nothing. `-water` says both, which is what the dialog leaves behind.
+
+With both said, a command-ordered island map is **13 of 13 entries
+byte-identical** to the port's on `S1P2Z2M1` — the same order the dialog-made
+water reference was given.
+
+##### The water sweep, first run
+
+Twenty-two orders, the same seed and templates as the dry sweep with `-water 2`
+on each, kept in `bin/rmg-water/`. It began at three byte-identical maps and
+**closed at twenty-two** — every water order the sweep gives, byte for byte,
+`map.xdb`, `GroundTerrain.bin`, the texts and the minimap documents alike.
+
+**And then a SECOND water seed**, 987654321, in `bin/rmg-water2/`, because one
+seed is one path — the rule that has already caught this port twice. It found
+two more, and both were general rather than watery:
+
+- **`%g` goes scientific under 1e-4, and MSVC pads the exponent to three
+  digits.** One artifact of `S7-22P2-8Z15K2.4c` sits at a rotation of
+  3.80096e-005; the engine writes exactly that and this port wrote
+  `0.0000380096`, because JavaScript's own `String` keeps writing digits down
+  to 1e-6. Eight bytes of one map, and the only reason they were ever seen is
+  that a second seed was run. `fmtRot` implements the rule now, and still
+  refuses `%g`'s large-exponent half — a rotation is an angle and no run has
+  produced one to check a reading against.
+- **`betweenFloat` is the fourth place the two builds diverge**, and this one
+  is at the root of everything. The GAME (`0xEB14D0`, SSE) puts the 31-bit
+  draw through `cvtpd2ps` FIRST — squeezing it into a float's 24-bit mantissa
+  — and every step after it is an `ss`. The EDITOR (`0xCFD330`, x87) keeps the
+  whole interpolation on the stack: `fild` the full 31 bits, `fld b; fsub a;
+  fmulp`, `fmul` by 2^-31 (exact, a power of two), `fadd a`, and one rounding
+  where the caller stores it. The port had ported the game's version. It is a
+  single ulp; on `S3-5P2Z7N2.2` at the second seed it moved the first
+  divergence from draw SIX to draw 108674, and it changes no byte of the 44
+  dry maps or the 22 first-seed water maps.
+
+##### A shipyard needs somewhere to put the ship
+
+That seed's last order, `S3-5P2Z7N2.2`, put zone 6's two shipyards elsewhere —
+the engine's at (166,95) and (155,161), the port's at (165,100) and (157,167),
+with the other twelve of the fourteen identical. **The gate is the ship.**
+
+The candidate list was never in doubt once it was checked properly: the zone
+tile lists are identical entry for entry on all seven zones (the oracle's `zt`
+dump against the port's), and the pool arithmetic reconstructs exactly. The
+engine draws `2 of 24`, `3 of 23`, `18 of 22`, `6 of 21`, `9 of 20`; splicing
+each pick out of the port's own 24-entry pool names O2, O4, O20, O8 and then
+**O12** — and O8 is (165,100), which the port accepts, while O12 is (166,95),
+which the engine takes. Same pool, same picks, one different verdict.
+
+And on those two tiles every gate `0xEC3510` has reads the SAME: both sit at
+border 3, both have all five blocked cells free and in the zone, two of them at
+border 2 either way, both face `q = 3` from a centroid the two sides agree on
+to the last bit. What separates them is the river plane — `shipTile`'s ring
+walk answers `null` for (165,100) and `[-1,-4]` for (166,95). The engine will
+not seat a shipyard where the ship cannot float, and refuses the tile at the
+seat loop rather than placing one and leaving it dry.
+
+The port asks the same question in the same place now, and the order lands on
+the engine's own **240384 draws**, byte for byte. `test-rmg-water` keeps the
+two positions; taking the gate out reddens it.
+
+**Five findings.** The first was hiding behind a convention: the zone grid at
+the roads boundary had 586 cells where the engine says **−2** and the port said
+−1 — the sea tiles the carve leaves ON the zone's `+0xCC` list (adjusted border
+exactly 0) while taking them OUT of the grid. `FillDistToTown` walks the LIST,
+finds them unreachable and disowns them; the port derived its walk from the
+GRID instead, where they no longer are, so nothing disowned them. The
+derivation is the same set on every run with no water and different the moment
+a carve happens — which is the "zone's tile LIST is not the zone's tiles" rule
+again, in a place that had never been tested by a carve.
+
+`fillDistToTowns` now takes the list from the caller, and the caller hands it
+the post-carve one, transposed into the grid's own convention. Both grids match
+after that, and the dry sweep is untouched — the list and the derivation agree
+there by construction, order included.
+
+**The second was a patch fitted to the island reference, and the three tiles
+above are what named it.** `recomputeRoom` used to give a rim tile — one the
+carve took out of the grid but left on the zone's list — its real distance
+instead of the zoneless 1000, on the reading that the walk is list-driven. It
+is not: `0xEC28E0` reads the ZONE GRID cell by cell (`+0xC4`, `test eax,eax;
+jns`), writes 1000 wherever it is negative, and never touches a list. Those
+three tiles were rim tiles at −2 reading room 1, and they were the three extra
+`below(8)`. With the walk as the engine walks it, `S0-1P2Z2K3T` lands on the
+engine's own **64933 draws** and is byte-identical, and the island reference
+that the patch was fitted to still passes without it.
+
+**The third was a placeholder that a 96-tile map could not see.** The carve's
+sea depth is chosen by the map's SIZE INDEX out of `[2, 3, 4, 5, 7, 8, 10]`,
+and the chain asked for `waterDepth(8)` — out of range, so it fell through to
+the fallback 3, which is what index 1 (96 tiles) wants anyway. Every larger
+island order carved the wrong ring. With the index said, a 136-tile order's
+border table and zone grid come back identical to the engine's; with 3 or 5
+instead, 17,473 of its 18,496 border cells differ. `MAP_SIZES` moved to
+`src/rmg/create-map.ts`, where the table it mirrors lives.
+
+##### Two shipyards on a big map, out of one uncleared vector
+
+**A water-bordered zone gets `1 + (dim > 100)` shipyards**, and the second one
+draws from a candidate list the first one left behind. Those two facts, read
+out of `0xECC0A0`, close every water order past 96 tiles.
+
+How it was cornered, since the draw trace alone could not say it. The runs
+agreed draw for draw to 66233 and parted at 66234 on the same placement —
+zone 2's first teleport seat — measured over pools of 38 and 139. That pool is
+the zone's ring after `filterByRoom`, whose threshold is `2·max/3`: a smaller
+engine pool means a bigger `max`, which means FEWER room points, and no
+threshold over the port's own ring of 513 yields 38 at all. The oracle's
+`points` dump settled it — **every zone had exactly one more room point in the
+engine** (6/6/8/8/4/4/6 against 5/5/7/7/3/3/5), one per zone, and every zone
+gets exactly one shipyard. `diff-objects` then said it outright:
+**AdvMapShipyard 14 against 7** on a seven-zone map.
+
+Two readings of "one more point" were tried and are recorded because they are
+wrong: pushing a `(0,0)` PossessionMarkerTile into the room points for every
+stamp (it breaks the dry sweep — dry `S2-3P2Z7N2` falls from 13 of 13 to 11),
+and doing it for the shipyard alone (no change once the real cause was in; the
+marker sits on the active's own tile and moves no distance). The count comes
+from a second SHIPYARD.
+
+**The count, read.** `0xECC0A0` opens with
+
+```
+0xecc0d5  cmp dword ptr [eax+0Ch],64h   ; the level's dim against 100
+0xecc0e1  setg cl
+0xecc0e4  inc ecx                       ; 1 + (dim > 100)
+0xecc0e5  mov [esp+7Ch],ecx
+```
+
+and its whole body — from `0xECC0F0` — is a loop against that slot
+(`0xECCAE0`). So 72 and 96 tiles get one shipyard and 136 up get two. The
+water-bordered zone's `vt+0x2C` (`0xECCB30`) is ten instructions and calls the
+placer once, so the doubling is inside the placer and nowhere else.
+
+**And the second pass is not a fresh one.** The candidate vector is zeroed at
+the function HEAD (`0xECC0A9`), OUTSIDE the loop, so the second pass scans the
+zone's tiles into the vector the first pass already filled: its pool is the
+first pass's entries plus its own, duplicates and all. The port carries the
+list between attempts for exactly that reason, and the numbers are the check —
+zone 1 draws from 43 then 38 where a fresh vector gives 43 then 19, zone 2 from
+12 then 100 against 12 then 50. With both in, `S2-3P2Z7N2` lands on the
+engine's own **128471 draws** and is byte-identical.
+
+(The oracle grew `blocks` for the treasure-block question above: the same four
+grids as `grids`, dumped at "additional objects set" instead of "roads
+created", which is the last boundary before the blocks read the occupancy. It
+is what showed the occupancy and the room were already right, and left the room
+recompute as the only suspect.)
+
+**Four things this cost, each of them a measurement rather than a guess, and
+each of them a trap the next person would fall into.**
+
+- **A SPACE in the editor's command line kills it.** `H5_MapEditor_H5E.exe foo`
+  puts up "Can't load foo file"; `"foo bar"` dies at `0x5f9d22` with every
+  register zero, long before the argument reaches anything of ours — proved by
+  running the same line with the detour deliberately not written. That is why
+  the orders live in a file and the command line is the bare `--rmg`.
+- **The return value of `Execute` means nothing.** It answers -1 to `help`, to
+  `rmg`, and to a `setvar` that demonstrably lands. So the batch does not read
+  it; it asks a question with two engine-owned halves instead — `setvar h5e_door
+  = 7` through the door, then the engine's own `0xe33520` lookup — and writes
+  `door 7` before the first order. Without that check the first three sessions
+  read "the door does not work" off a number that never meant it.
+- **A cfg is not a way to run a command.** `0xe345f0` executes
+  `..\profiles\*.cfg` and is the path `map_editor_mode` itself arrives by, but
+  it only *sets values*: `setvar` through it lands, `exit` and `rmg` through it
+  do nothing at all.
+- **The template is a PATH, not a name.** `rmg S1P2Z2M1` does nothing;
+  `rmg RMG/Templates/S1P2Z2M1.xdb` generates. A leading slash also does nothing.
+
+**And the command saves.** `rmg` writes the map itself, to
+`data\RMGTemp\CurrentMap\` — the same sixteen documents a `.h5m` holds, loose,
+overwritten by the next order. So each order's files are copied to
+`bin\rmg-runs\<n>\` before the next one runs, which is the byte comparison the
+port had for exactly one order until now.
+
+**The first thing the batch answered.** Seed 1785351845 on `S1P2Z2M1` at three
+sizes, ONE LAUNCH EACH:
+
+| `-size` | what the map records | draws |
+| --- | --- | --- |
+| 0 | `MAP_SIZE_TINY` | 50,150 |
+| 1 | `MAP_SIZE_SMALL` | 91,468 |
+| 2 (the default) | `MAP_SIZE_MEDIUM` | 200,217 |
+
+So **`-size` is the dialog's own MapSize index**, and the conversion `vt+0x18`
+that `rmg-pack`'s `--size` is guarded behind is a conversion of that index — the
+question the guard names is answered on the ordering side, whatever the reading
+of `vt+0x18` turns out to say.
+
+**Two of those three numbers were wrong the first time, and the way they were
+wrong is the whole argument for one launch per order.** The first version of
+this table came out of ONE launch of three orders, and read 49,660 / 91,114 /
+200,217. Re-measured a launch at a time, only the row that had been that
+launch's FIRST order survives — MEDIUM, 200,217, unchanged — while SMALL and
+TINY, which had been its second and third, move to 91,468 and 50,150. A batch
+that shares a process reports its first order honestly and every one after it
+with the previous run's leavings mixed in, and the numbers it gives are
+plausible, stable and wrong. The table above is the re-measurement.
+
 **The data, on the other hand, is already ours** — plain XML under
 `data-unpacked/RMG/`, unpacked from `a2p1-data.pak`:
 
@@ -124,6 +3560,918 @@ A template is a declaration and nothing more. `S1P2Z2M1.xdb`, the smallest:
 and packs them as `Maps/RMG/<GUID>/…` inside a `.h5m`. That is the format the
 editor already reads and writes, so the port needs no new file work — only the
 decisions that fill it.
+
+**AND THE ARCHIVE IS WRITTEN.** `tools/rmg-pack.ts` orders a map and produces
+the `.h5m`:
+
+```bash
+npm run rmg-pack -- --game <dir> --seed 1785351845
+npm run rmg-pack -- --game <dir> --seed 7 --template S0-1P2Z2K3.1T --size 72 --underground
+```
+
+The step between the phases and the archive is `src/rmg/build.ts`, and it
+exists because three suites had each grown their own copy of the same replay —
+fill the terrain, paint the water marks and the sea corners, then the lakes,
+then the roads, then run the height late pass. That is one function now, and
+the file list it returns is the whole map: `map.xdb`, `map-tag.xdb`, the
+eleven texts, `GroundTerrain.bin` (and the underground one), a minimap `.dds`
+and `.xdb` per floor, and the empty `1.test` the engine writes as a marker.
+The two values the generator does not make come in as arguments — the GUID
+(`CoCreateGuid`) and the map's name (typed into the dialog).
+
+**Checked entry by entry** (`test-rmg-pack`): ordered with the reference's own
+GUID and name, **all 17 entries are byte-identical**, the one uninitialised
+byte in `GroundTerrain.bin`'s 0x0e record excepted — and that one is the
+engine's own, differing between two runs of it. That holds through the archive
+as well as before it: packing the map and reading the entries back out gives
+the same seventeen.
+
+The archive's own bytes are not the engine's and are not aimed at, for the two
+reasons above: one DOS stamp per run, and a deflate stream zlib -9 cannot
+reach. What the game reads is the entry set, their names and their contents,
+and those are the engine's.
+
+**AND ANY GENERATED MAP IS NOW AN ORACLE.** A map carries its own order —
+`sRMGProps` records the seed, the template, the size, the water, the players,
+the GUID and the name — so `npm run rmg-diff-map -- <map.h5m>` reads all of it
+back, replays the run and says which of the entries the port reproduces. No
+seed has to be typed and no reference has to be laid out: order a map in the
+editor, save it, point this at it.
+
+What it says about the maps to hand:
+
+- three separately saved maps of the REFERENCE order come out **17 of 17**
+  (they were 16 until the minimap's last ten bytes closed);
+- a fourth of the same order comes out 14 of 17, and the two extra are
+  `caption-text-0/1.txt`: that map carries a localised default string where
+  the others carry the map's name. Something about how it was saved, not
+  about what was generated — worth knowing, not yet read;
+- **`S2-3P2Z7N2`, 96x96, seven zones, two floors — an order the port has
+  never been checked against — runs to completion** (240,548 draws, 1,945
+  objects) and writes all 20 entries, with the texts and the map tag
+  byte-identical; `map.xdb`, both terrain files and both minimaps do not
+  match. So the port is exact on what it was built against and diverges on a
+  template it has not seen, which is what an untested claim looks like when
+  it is finally tested.
+- two of the maps carry no `<Template>` at all, so they were not made by this
+  path — the in-game generator's output is a thread of its own.
+
+**The SEED is a parameter now, and that is worth saying plainly.** Until this
+step the chain was hard-wired to 1785351845 — the port had never been run on
+anything else, because every check it has is against that one order.
+`ChainOptions.seed` opens it, and six other seeds generate end to end without
+a stumble, each a different map (54,344 to 100,281 draws where the reference
+spends 92,438). What that does NOT say is that those maps are the engine's:
+there is no oracle for them short of ordering the same seed in the editor and
+diffing. So `test-rmg-pack` asks of two of them only what can be asked without
+one — the run completes, the seventeen entries are there, the terrain parses
+with its passability plane, the minimap is a 256x256 surface — and the rest is
+named as unchecked rather than assumed. (The startable rules flag every RMG
+map, the ENGINE'S OWN included, for having no player colours: a random map is
+coloured when it is started, so that check says nothing here either way.)
+
+**The archive itself cannot be byte-identical, and should not be aimed at.**
+Both references are 17 entries in case-insensitive name order, every one
+deflated (method 8) with general-purpose flags 0x2, made-by 0x14, version
+needed 20, external attributes 0x20, no extra fields and no comments. Two
+things then put it out of reach. Every entry carries the SAME DOS stamp —
+the wall clock of the run, `5d18:98b8` on the surface reference and
+`5d1a:ba11` on the water one — so two runs of the same seed differ. And
+the deflate stream is not zlib's: sweeping level, strategy, memLevel and
+windowBits over both references matches the stored bytes on nothing, and
+on the minimap DDS the game's encoder BEATS zlib -9 (128,145 bytes against
+129,368), so it is a stronger encoder rather than a differently-tuned
+zlib. The bar for `packProject` is therefore the entry set, their names,
+their order and their CONTENTS byte for byte — which is what the game
+reads — not the archive's own bytes.
+
+### What of an ORDER the port actually honours
+
+The template is not the question: `template.ts` reads it whole — every zone's
+Size, Town, Mines, Dwellings, Prisons, AbandonedMines, Shipyard, CanBeWater,
+CanBePlayerStart, Wide, its TreasureDensity, TreasureChestDensity,
+TreasureBlocksTotalValue, ShrinePoints, ShopPoints, BuffPoints,
+UpgBuildingsDensity, ResourceBuildingsDensity, RedwoodObservatoryDensity,
+LuckMoralBuildingsDensity, LandCartographer, DenOfThieves, GraalOnMap and
+TownGuardStrenght, plus MinPlayers/MaxPlayers, MinMapSize/MaxMapSize,
+Underground and every connection with its GuardStrenght, Guarded and TwoWay.
+Those fields are the generator's input — **most of them.** Five of the ones
+named above reach nothing at all: `GraalOnMap`, `Underground`,
+`RedwoodObservatoryDensity`, `DenOfThieves` and, in the sense that matters,
+`BuffPoints`. "Which fields the engine actually reads" below is the sweep that
+settled it, on the code and then on the engine.
+
+The ORDER — what the dialog around the template asks for — is a different
+matter, and until now most of it was pinned to the references' values without
+saying so:
+
+| the dialog asks | the port |
+|---|---|
+| seed | ordered (`--seed`) |
+| template | ordered (`--template`) |
+| underground | ordered (`--underground`) |
+| water | ordered (`--water`, 0/1/2) |
+| players | ordered (`--players`) — a DRAWN value, and it feeds zone loading |
+| monster level | ordered (`--monsters`) — it scales every guard, by one table in the guard setter and another in the town setter |
+| water | **ordered from the command too** (`-water`) — it took two fields, `+0x48` and `+0x96`; see "The water is two fields, and the handler zeroes both" and "The water sweep, first run" below. Swept over all 22 templates on two seeds, byte for byte |
+| **map size** | **ordered** (`--size`; `-size` takes the index) — the tile count goes back through the engine's own table (`0xEADE20`/`0xEADE90`, both read; `create-map.ts`) and the chain warns when a template's units would lift it. The nine size probes and block C's sample are what it was read from |
+| **ResourceMultiplier, ExpMultiplier** | **ordered** (`-resource`, `-exp`) — and they are not cosmetic: see below |
+| monster level | **ordered** (`-monsters`) — and replayed: `rmg-diff-map` takes the level out of the map's own `sRMGProps` and hands it to the chain, so a map ordered at any of the five is compared at that one |
+| RandomTowns, Grail | **ordered** (`-pokeb 149 1`, `-pokeb 165 1`) and replayed — `rmg-diff-map` reads both off the map's `sRMGProps`; see the 10.09 and 11.09 entries at the end |
+| StartHero | **not the generator's** — no dialog of the game's offers it; `<StartHero>` is a map property any map can carry, the generator writes it empty, and `recorded-order.ts` treats a map with one as edited after generation, which is what it is |
+
+And an ordered setting is checked only where a map from the engine stands
+against it — the corpus in `RMG_TEST_MATRIX.md`'s "What has been measured so
+far". `npm run rmg-diff-map` is what turns any other order into a check — order it in the
+editor, save it, point the tool at the file.
+
+## Laying the zones out our way
+
+The engine's layout is two phases and no opinion: `GenerateGameZones` draws
+`tiles/100` random points and hands each zone the first that fits, `FillZones`
+grows circles from them into blobs. A five-zone star — one rich zone joined to
+four start zones and to nothing else, which is what Heroes III players know
+as Jebus Cross — comes out of it as five blobs anywhere, the rich one as
+likely in a corner as in the middle. The template cannot say otherwise: it
+carries sizes, connections and densities, and not one coordinate (neither
+does HotA's — its `Image settings` are the template editor's picture, and
+its layout comes from the generator listening to the graph).
+
+So the zones now go through ONE DOOR, `layoutZones` in `src/rmg/layout.ts`,
+and the template says which way through it with `<ZoneLayout>`:
+
+- **`Engine`** — the two phases above, untouched, byte for byte; the default,
+  and what every template without the field gets. `test-rmg-layout` holds
+  the door to them draw for draw, and the boundary chain (`test-rmg-load-template`)
+  still lands on 3, 9, 22, 388, 18459.
+- **`Voronoi`** — ours, `src/rmg/layout-voronoi.ts`, and nothing in it is read
+  out of an executable: a map laid out this way is our map. Two classical
+  steps. CENTRES BY RELAXATION: every zone is a disc of its share of the map
+  (`Size` over the floor's sum), moved three hundred times by three springs
+  — joined zones pull together until they touch, overlapping discs push
+  apart, start zones (`CanBePlayerStart`) push each other away regardless,
+  which is what sends them to the corners; the map's edge is a wall. TILES
+  BY WEIGHTED VORONOI: a tile belongs to the zone whose centre is nearest in
+  units of that zone's weight, then twelve rounds of Lloyd (a centre steps
+  halfway to its cell's centroid) and of weight correction (a cell short of
+  its share reaches further), so the areas land on the template's
+  proportions exactly — the engine's jitter does the same job by a hundred
+  thousand coin flips. Two draws a zone, the starting point, nothing else.
+  Floors are laid out one at a time; a connection across floors is not a
+  spring, it becomes a gate pair later as it always did.
+
+Everything downstream takes the grid and the radii and nothing else, which
+was a claim about the code and is now a test: the whole run on Jebus Cross —
+four players seated, a town in every zone, four passages each joining the
+middle to a start zone, none left for a teleport, three thousand objects,
+a `map.xdb` out — is the last section of `test-rmg-layout`, and `--png`
+draws the layouts and the finished map to `_tmp/` for looking at. The
+picture is HotA's: four wedges in the corners, a rounded square between
+them.
+
+**The resting place is not always the picture** (16.09). The springs have
+more than one rest: started from the wrong points a star settles with its
+hub in a corner and two of its arms touching it at a point — seen on the
+fourth seed tried, after three had happened to come out right — and the
+two connections then have no border to be dug on and fall to monoliths.
+So the relaxation runs from eight starts and the rest with the least
+strain is kept (joined pairs apart, pairs overlapping, start pairs near,
+squared and summed; `RESTARTS`). Twenty seeds, every one the picture, is
+in `test-rmg-layout` — and with one start it is nineteen, so the check is
+awake.
+
+**Rough borders, always** — or the passages have nowhere to go. The engine
+digs on a straight stretch of border: a tile with exactly one foreign zone
+among its eight neighbours, seen 3 to 5 times, eight such tiles at least.
+A Voronoi border is a line and a line in a grid is a staircase, whose
+tiles qualify or not by the line's slope — measured: a border with 4
+candidates where its neighbour's had 40, and the connection went undug.
+The engine's blobs are ragged everywhere and never have this problem. So
+the cut is DOMAIN-WARPED by a fine value-noise field (a 3-tile lattice, up
+to 2.5 tiles of offset): each tile looks its zone up from a point a tile
+or two away, the shapes stay, and every border grows dozens of qualifying
+stretches (fewest over twenty seeds: 43) so the passage's draw lands
+somewhere else each seed — which is what "the exits are always in the
+same spot" (played) had asked for, without the shapes changing.
+
+**Jitter, optional.** `<LayoutJitter>` (0..1, 0 when absent — the author's
+shapes are the author's, played and asked for): every centre scattered by
+a draw of up to 8 % of the side at 1, and a coarse 6×6 noise field bending
+the borders by up to 10 %, so the same template is a different map each
+seed; the areas still converge. Every draw is spent whatever the jitter,
+so the stream is one stream.
+
+Start zones MAY touch in it — the diamond's tips reach the edge — and that
+is fine, because a border no passage opens gets the engine's border fence
+(`statics-one-tile.ts`, pass 1: a blocker on every border tile), which is
+how the engine's own layout keeps unjoined neighbours apart too.
+
+**`.h5et`, our template format**, is the game's `RMGTemplate` with the fields
+of our own that its serialiser would not know — `ZoneLayout` so far. It
+lives in a file of its own extension so the game's generator, which lists
+`RMG/Templates/*.xdb`, never meets one. Ours ship in `assets/rmg`, a root the
+application puts IN FRONT of the mounted install (`inFront` in
+`src/game/assets.ts`; the generator's job carries it as `ownRoot`), so the
+dialog lists `Jebus Cross` beside the game's twenty-two and an order names
+it the way it names theirs. `templateFile` resolves a name to whichever
+spelling the chain has first, ours winning; the generated `map.xdb` records
+the file as it resolved, `/RMG/Templates/Jebus Cross.h5et`, and a replay of
+that order (`recorded-order.ts`) reads either spelling back. Whether the
+GAME dereferences that href when it loads a generated map is not known;
+its own maps carry one that names a file in its data, ours names a file
+that is not there. To be watched when such a map is first played.
+
+### A second passage, and one without a road
+
+The engine digs ONE passage per pair of neighbouring zones and marks the
+pair done from both sides, and the roads phase wires every mouth it dug
+into the zone's road network. A Heroes III template writes a pair as
+often as it wants passages and says of each whether it carries a road
+(`Road +/-`); so does ours: a pair written twice in an `.h5et` is two
+passages, the second drawn among the border's candidates left eight tiles
+or more clear of the first, each with its own record's guard — and
+`<Road>false</Road>` on a record keeps its passage off the roads phase
+(`ConnectionsResult.roadless`), dug and guarded all the same. Jebus Cross
+gives every start zone a road into the middle at 25 and a harder guarded
+back way at 35 without one. A template of the game's writes every pair
+once and no `Road`, so its loop runs once and draws what it drew
+(`test-rmg-connections`, `test-rmg-pack`); `test-rmg-layout` holds the
+two mouths apart, the roaded one a road tile and the roadless one not.
+
+### A zone's named objects
+
+The game's zone says how many mines and dwellings by tier and how many
+points to spend by category — treasuries, shops, shrines, upgrade
+buildings, resource and luck/morale buildings — and each budget is spent
+over the zone's race's pool in `RMGPresetTable.xdb` by the draw: forty
+treasury points may or may not buy the Dragon Utopia (40). A Heroes III
+template names the building (`+95 0 d d d 3 d`: object 95, at least three);
+the game's format cannot. Ours can, on a zone of an `.h5et`:
+
+```xml
+<Objects>
+  <Item><Href>/MapObjects/Dragon_Utopia.(AdvMapBuildingShared).xdb</Href>
+        <Min>1</Min><Max>1</Max><GuardStrenght>30</GuardStrenght></Item>
+  <Item><Href>/MapObjects/Crypt.(AdvMapBuildingShared).xdb</Href><Max>0</Max></Item>
+</Objects>
+```
+
+`Min` is placed BEFORE the budget steps (`zone-objects.ts`, a step of its own
+in the run's ledger, `zone N objects`), through the very placer the budgets
+use — the shared candidate helper, the fit, the stamp, the mint — with a
+one-entry list priced at 1 and a budget of `Min`, so it lands exactly that
+many times or runs out of room the way the borrowed step does. A
+`GuardStrenght` seats a guard beside each the way an upgrade building's is
+seated (`seatGuard`, the 0xED3200 wrapper), at that × `BasicLeverGuardPower`;
+absent, the object comes unguarded, the way treasuries and shops do from
+the engine. `Max` becomes a CAP — how many more of that document the budget
+steps may take, the forced ones subtracted — which `placePriceList` and
+`placeZoneUpgradeBuildings` honour by striking a capped-out entry from the
+list for the rest of the step (a departure from the engine's fixed prefix,
+taken only when a cap exists); `Max` 0 strikes it from the start. Absent,
+no ceiling. The dwellings and mines are not in this — they have their own
+counts by tier — and neither are the treasures.
+
+Held by `test-rmg-zone-objects` on the whole generator: the shipped Jebus
+Cross puts one guarded Utopia in the middle and none elsewhere; a variant
+gives every start zone exactly two Trading Posts and forbids the middle a
+Crypt — and the ceiling is checked by sabotage, on a seed where the
+shipped template's budget DOES buy a Crypt there (seed 100) and the
+variant's does not. Templates of the game's carry no `<Objects>`: no step,
+no caps, the corpus untouched (`test-rmg-pack` still lands on 92438).
+
+### A zone's guard multiplier, and what a run says instead of refusing
+
+`<GuardMultiplier>` on a zone (ours; 1 when absent) is HotA's `Monsters:
+weak / strong` as a number: a factor on the power of every guard the zone
+seats for ITSELF — its mines (`mines.ts`), its upgrade buildings, its
+treasure blocks, its named objects — applied to the power BEFORE the map's
+own monster level scales it inside SetMonster (`× [0.4, 0.9, 1.7, 4.0,
+12.0]`), so the two multiply: a `2` in the middle of a `strong` map is
+3.4× the base. The guards between zones (passages, teleports — the
+connection's `GuardStrenght`) and the town's (`TownGuardStrenght`) are not
+in it. Jebus Cross's middle guards at 2, its start zones at 0.5, which is
+what its `.h3t` says in words. Measured on one seed: the middle's armies
+1393 creatures against 1120 at 1, a start zone's 331 against 451.
+
+A template that asks for more than fits is NOT refused — its author's
+business, and the map is still worth having. It gets what fits and a line
+in `Chain.warnings`, which the generator's result carries (`GeneratedMap`,
+the job, the IPC result) and the editor shows on the map's HUD line and
+in full on the console: `zone 1: Dragon_Utopia asked 1000, placed 40 — no
+room for more` (measured: forty is what a Medium map's middle has room for
+before the shared candidate filter runs dry; twenty-two other buildings
+still fit after them). The order the engine would have lifted the size of
+goes there too, where it used to be a `console.warn` nobody read.
+
+### A zone's treasure blocks by ranges
+
+The engine values a zone's treasure blocks by splitting `TreasureBlocksTotalValue`
+over the seats it found along the roads — by distance from the town, far
+rich — and the block's value then decides everything: its guard (2.5× of
+power) and its artifact, whose cost has to fit `cost/5 + 500 < value <
+cost·7/5`. So one total cannot say "relics here": forty thousand over
+twenty seats is two thousand a block, which admits costs of 3000..7000
+and nothing dearer (measured over the 89-artifact pool: a block of 15000
+admits 11000..28000, one of 30000 admits two artifacts, one of 39200 or
+more none at all). A Heroes III zone says `Low / High / Density` instead,
+and so does ours:
+
+```xml
+<TreasureBlocks>
+  <Item><Min>15000</Min><Max>28000</Max><Count>3</Count></Item>
+  <Item><Min>6000</Min><Max>10000</Max><Count>4</Count></Item>
+  <Item><Min>2500</Min><Max>4000</Max><Count>6</Count></Item>
+</TreasureBlocks>
+```
+
+The seats stay the engine's (`buildTreasureBlocks`); `valueBlocksByRanges`
+then overwrites the split — the total is not read when ranges are present.
+Seats farthest from the town first (a townless zone in seat order), the
+richest range first, each range takes `Count` seats and gives each a draw
+in `[Min, Max]`; seats no range reaches stay at 0 and the fill skips them
+as under 600. `Count` rather than HotA's density because a count is what
+the author means and what the run can report on: a range the seats ran out
+for, and a range above the dearest artifact's window, are warnings
+(`test-rmg-treasure-ranges`: a hundred relic blocks asked gets the
+eighteen seats there are, all relics, and three lines saying so). On the
+shipped Jebus the middle's three dearest artifacts come out at 20000+ on
+both seeds tried, its start zones on their split totals never above 6400.
+
+### Every zone its own faction
+
+`<UniqueRaces>true</UniqueRaces>` on a template of ours, `loadTemplate`,
+`test-rmg-unique-races`. The engine draws every random zone's race from
+one list — surface `[HEAVEN, PRESERVE, ACADEMY, DWARF, INFERNO,
+NECROMANCY, STRONGHOLD]`, plus DUNGEON with one floor — with no memory
+of what it drew before, so a five-zone star repeats a faction on 33 seeds
+of 40, and its middle is one player's own faction as often as not. That
+matters since the move cost was read (Phase 14's coda): a hero pays a
+terrain penalty everywhere but on his class's ground, so a middle zone
+of somebody's faction is a middle zone that player crosses for free.
+
+With the flag the draw is among the races NOT YET TAKEN: by a zone
+already made (ascending index, so Jebus's middle draws first and the
+starts avoid it), or by a lobby slot still to be seated whose race the
+operator fixed. The draw count is the engine's still — one `below` on a
+shorter list — so the stream after LoadTemplate is untouched. Two
+players fixed to the same faction is the lobby's business and stays;
+every other zone still avoids it. A pool run dry (nine random zones on
+one floor against eight races) draws among the whole list and says so in
+the warnings, with the map still made — 40 seeds of 40 five factions,
+the middle a player's on none. The flag is per map, not per floor: an
+underground list of four runs dry fast under a surface of seven, and
+the warning says which zone.
+
+Still not Heroes III's sand: a middle that draws Haven or Sylvan is
+grass, which costs nobody anything. The ground everyone wades through
+wants a ground of its own — "New grounds" in the roadmap.
+
+### The heroes a map offers — an order's choice
+
+A generated map writes `<AvailableHeroes/>` — every hero that is not a
+scenario's, the lobby lets each player pick among their race's and the
+taverns hire from the rest (a shipped multiplayer map, `A2M3`, lists 71 of
+the 118 by hand). Ours can say who: per player slot, `any` (the game's
+choice), `random` (one of the player's race, drawn from the seed on a
+stream of its own, so the engine's stream and the map are untouched) or a
+hero's href — and `AvailableHeroes` becomes the union, a slot left to the
+game contributing its whole race so a restricted map still offers that
+player a choice. `HeroInTown` stays true: the lobby still picks, from the
+list. A named hero names the player's race (`playerRaces`, the concrete
+slot the lobby would have set). The roster (`heroes.ts`): every
+`AdvMapHeroShared` whose `ScenarioHero` is not true and whose `Class` is
+not `HERO_CLASS_NONE` (the EntryPoint under `Utility/` is one and is not a
+hero), by its `TownType` — eight a race, the dwarves under
+`MapObjects/Dwarves/`, a mod's beside them. The dialog shows a select per
+player slot, grouped by race; `test-rmg-heroes` holds the roster, the
+choice and the file, `e2e/rmg.spec.ts` drives the select and reads the
+map. Played on `Jebus Heroes` (16.09): the lobby offers exactly the heroes
+listed, one per slot, and the TAVERNS are empty — every hero the map lists
+is seated at the start, and nobody is left to hire. Two slots naming ONE
+hero get one hero between them, the second slot starting without; that is
+a warning now, and a mirrored two-player map will want two documents of
+one hero (the Outcast's business). A map that should still hire wants the
+list longer than the players — a slot left to the game does that for its
+race, and a tavern list of the order's own is the whitelist's business.
+
+What the Voronoi layout does NOT yet read, and HotA's templates do — noted
+for the template editor, not for now: a connection's TYPE (`teleport`
+against `ground` — ours would be a field on the connection, since the
+engine's record has no live flag, see the sweep below), a FICTIVE
+connection (a spring with no passage — the outcast zones of `Jebus Outcast`
+lie beside a start zone this way), and REPEATED connections between one pair
+(HotA writes the same pair eight times — seven fictive, one real — to make
+the spring stronger, and `mt_outcast` joins opposite zones of its ring by
+teleport on top of the ring's ground passages).
+
+### The model: the game's template, and ours on top of it
+
+`template-game.ts` is the game's format and nothing more — `GameZone`,
+`GameConnection`, `GameTemplate`, and beside each a TABLE describing every
+field in file order: the tag, the kind of value (`FieldKind`: int, bool,
+text, an href attribute, a tier list, a list of records), what it means,
+and whether the engine reads it. `satisfies Record<keyof …, FieldSpec>`
+holds each table to its type, so a field cannot be added to one and not
+the other. `template.ts` extends the three (`RmgZone extends GameZone`,
+and so on) with what an `.h5et` adds, and describes those the same way
+with two more things per field: a `default` (what an absent tag reads
+as, and what the writer leaves unwritten) and an `after` (which field of
+the game's it is written behind). The reader and the writer both walk the
+tables — one description reads, writes, and will drive the template
+editor's panel. The dead fields are not in the record TYPES: each record
+has a second interface for them (`GameZoneDead`, `GameConnectionDead`,
+`GameTemplateDead`); the reader puts them on the same object and hands it
+back as the record type, the writer takes them as optional and writes the
+shipped files' value (the table's `default`) for a record that has none —
+so `keyof GameZone` names only what something reads, a phase or a panel
+walking a record's keys never meets `TwoWay` or `DenOfThieves`, and a zone
+the editor makes need not spell them out. `CanBeWater` is among them: read
+by nothing, probed to no effect (below).
+
+### Writing a template back — the editor's first brick
+
+`write-template.ts` turns an `RmgTemplate` into the file, and its shape is
+held to the game's: every one of the twenty-two shipped `.xdb`, read and
+written, is the bytes it was (`test-rmg-write-template`). What that took
+was reading the files rather than the schema. The serialiser writes a tab
+a level, CRLF, one `<Item>` a line, and an EMPTY list self-closed
+(`<Dwellings/>` in three zones of `S1-3P2Z7V3`); it writes `NameFileRef`
+where the template has one (nineteen) and no tag where it has none
+(three); it writes `Shipyard` only where the author set it (two, both
+`true`, which is also the default the constructor gives an absent one); and
+it writes a tier list AS LONG AS IT IS — every `Mines` has seven entries,
+`Dwellings` runs from none to seven, `S1P2Z2M1` spelling out
+`1,0,0,0,0,0,0` where `S1-2P2-4Z4K1S` stops at `1,0`. The reader used to
+pad the lists to seven, which read the same and wrote differently, so the
+model now holds them as written and the placers read a missing tier as
+nothing (`counts[tier] ?? 0`, which they did already); `shipyard` became
+`true | false | null` for the same reason, with `shipyardOf` for the
+engine's value. Fields of ours are written only when they say something
+the default does not, each where `Jebus Cross.h5et` puts it — so a template
+without them writes as a plain `.xdb`, and `usesOwnFields` says which a
+template is. Jebus itself round-trips by meaning, not bytes: it carries
+comments and one-line items the model does not keep, and the writer is
+fixed on its own output instead. Free text (`Name`, the hrefs) goes
+through the five XML entities both ways (`encodeEntities` /
+`decodeEntities` in `xml.ts`; `text()` stays verbatim for the round trips
+that keep bytes).
+
+### The template editor
+
+`renderer/features/rmg-templates.ts`, opened by "Templates…" in the Random
+Map dialog (over it; the dialog's lists follow a save). The diagram is
+SVG drawn from the model: a zone a box — `#index` and the race word in
+the header, a flag when it is a start zone, then one row per notion with
+a glyph drawn by code (`GLYPHS`, a 24-unit path each: area, castle, ×,
+pick, house, coins, gem, crate) and the number beside it; the box as wide
+as its longest row. A connection a quadratic between the two centres,
+labelled with its guard, dashed (`⋯`) without a road; a pair written more
+than once bows each line to its own side. The picture's positions come
+from `<Diagram>` when the file has one, else from `diagram-layout.ts` —
+a deterministic spring layout: start zones on an outer ring, the rest on
+an inner one, then repulsion between all, attraction along connections
+(one per record, so a doubled pair pulls twice), a push outward on the
+start zones, cooling; Jebus Cross opens as a cross, and the 22 shipped
+templates open with their boxes apart (`test-rmg-diagram-layout`).
+Dragging a box, Arrange, add, connect, remove all mark the template
+edited; Save writes the positions as `<Diagram>`.
+
+The panel is built from the field tables, not written by hand: for a
+zone, every live field of `ZONE_FIELDS` in table order — an `int` a
+number box, a `bool` a select (the optional `Shipyard` with a third
+choice, "not written"), `Setting` a select over `RACE_BY_NAME`, a `tiers`
+seven boxes (a list shorter than seven grows only as far as the tier
+edited, so the file's length stays the file's), a `float` a number box
+with the spec's bounds; the label is the tag, the tooltip the doc, ours
+in purple. The two structured lists of ours (`TreasureBlocks`, `Objects`)
+are small list editors under headings; an object's `Max` left blank is
+"no ceiling". A connection: its two ends as selects over the zones, the
+guard, `Road`. The template: name, the two ranges, `TestTemplate`, and
+ours. The index of a zone is not editable — it is the zone's name to
+every connection.
+
+Warnings, never refusals, on the line under the diagram: an index used
+twice, no zones, no start zone, more players than start zones, a range the
+wrong way round, a connection naming a missing zone or a zone itself, a
+zone joined to nothing, no name.
+
+Saving: `rmg:template-save` writes `<game>/H5E/RMG/Templates/<file>.h5et`
+(`user-templates.ts`), the root the generator's chain reads in front of
+`assets/rmg` and the mounted install, so a copy under a shipped name
+shadows the shipped one — the way a mod's file does — and "Delete"
+removes the user's copy only, the shipped one coming back. New starts
+from two start zones joined (the numbers `S1P2Z2M1`'s), and "+ Zone" copies
+the last zone with the next index. `e2e/rmg.spec.ts` opens the editor,
+reads Jebus's rows off the boxes, draws a three-zone template through the
+panel, saves it, and generates a tiny map from it.
+
+An `<Objects>` href is picked from the palette's buildings (the `…`
+beside it; `pickFromEntries`, the editor's one list picker) — a named
+object is placed and written as a building, so nothing else is offered.
+`e2e/rmg-outcast.spec.ts` draws HotA's Jebus Outcast click by click from
+its `.h3t` (the [1 hero] variant: base sizes 64 / 10 / 2, the treasure
+ranges with their counts, strong and weak, a Utopia in the middle), reads
+the saved file back through the generator's reader, and generates a medium
+map from it — the outcast zones on roadless passages to the middle until
+a connection of ours can say teleport and fictive.
+
+Not done: variants / packs (the roadmap).
+
+## Which fields the engine actually reads
+
+A data format read out of an executable comes with a second question behind
+every field: does anything CONSUME it? The XML says what may be written, the
+serialiser says where it lands, and neither says whether one instruction ever
+looks at it again. Answering that for the whole of `RMG/Params/Default.xdb` and
+the whole of a template is what this section records — twice over, once by
+reading the code and once by changing the file and generating the map again,
+because a claim about the code is worth exactly one experiment.
+
+### The three instruments
+
+**`tools/reverse/struct-fields.ts` — the field map, out of the serialiser.**
+Every xdb-backed structure has one function that walks its fields and says the
+two things a map needs in the same breath: `lea eax,[edi+<offset>]`, where the
+value goes, and `push <"Name">`, what the file calls it. So the map is READ,
+not inferred from the XML's order or from sizes guessed by type:
+
+```bash
+node tools/reverse/struct-fields.ts --at 0xb9e5d0   # SRMGParameters, 0x44..0x21C
+node tools/reverse/struct-fields.ts --at 0xb9b520   # one template zone, 0x04..0x74
+node tools/reverse/struct-fields.ts --at 0xb9c1a0   # SRMGTemplate, 0x50..0x8A
+```
+
+Two idioms live in those functions and the difference decides the answer. A
+plain field pushes its address as an argument, so the `lea` comes BEFORE the
+name; a nested one opens a block named by the string and only then writes into
+the field, so the `lea` comes AFTER. Pairing on "the last lea" alone reads the
+second kind one field out of step — every text reference in `SRMGParameters`
+came out twelve bytes low, `MapName` at `MapDescription`'s offset and so on
+down the block — and the listing looks perfectly reasonable while being wrong.
+The pairing takes the nearest unclaimed address in either direction, the one
+before first, and it is why the map closes at `0x21C` with no hole, which is
+the size the reflection table registers. There are TWO serialisers for most
+structures, one that reads the file into the object and one that writes it
+back, and only the reader carries real offsets — the writer builds each value
+in a temporary and gives every field the same `[esp+0Ch]`. A listing where
+every offset is equal is that one.
+
+**`tools/reverse/struct-use.ts` — who reads which field, over the whole image.**
+`trace.ts field 0x44` answers for every structure at once, because an offset is
+just a number; that is fine for finding a lead and useless for "nothing reads
+this", which is the claim a sweep exists to make. So this one starts from the
+DOOR — the place the pointer comes from — taints the register, walks each
+caller forward and writes down every `[tainted + N]`:
+
+```bash
+node tools/reverse/struct-use.ts --getter 0xeaff80 --cast 0x10b70d4 --min 0x44 --fields 0xb9e5d0
+node tools/reverse/struct-use.ts --cast 0x10b3350 --min 0x40 --fields 0xb9c1a0
+node tools/reverse/struct-use.ts --cast 0x10b3350 --deref 0x5c --min 0x4 --fields 0xb9b520
+```
+
+Three kinds of door, and the second is why the first alone lies. `--getter`
+roots at every call to the function that returns the pointer. `--cast` roots at
+every `dynamic_cast` to the class's RTTI type descriptor — the same door after
+the compiler INLINED the getter, which in the game build it does everywhere
+hot: rooted at the calls alone, `SRMGParameters` came out with eleven fields
+nothing reads, four of them read by an inlined copy of its own getter, the mine
+guard levels among them. `--deref <offset>` moves the question one step in, to
+what a pointer field leads to: a template's zones have no door of their own,
+they are reached by walking a stride from `template+0x5C` and by nothing else.
+`--fields` joins the result against the field map, so the answer comes out in
+the file's own words and ends with the list of fields nothing read.
+
+What the sweep cannot see it says out loud. A pointer that leaves the walk —
+pushed as an argument, moved to `ecx` for a method call — is printed under
+ESCAPES, and an absence is only earned once those are accounted for; in the
+parameters' case every one of them is the getter's own cache store or the
+resource release, except three `push`es that turned out to be a leaked taint
+rather than the pointer. A door that leads to no read at all is printed too.
+
+**The type descriptors**, which are what `--cast` is given:
+
+| class | game | editor | getter (game / editor) |
+| --- | --- | --- | --- |
+| `SRMGParameters` | `0x10B70D4` | `0x129DF0C` | `0xEAFF80` / `0xCFB010` |
+| `SRMGTemplate` | `0x10B3350` | `0x128CEE0` | inlined / `0x87F770` |
+| `STable_RMGPreset_Race` | `0x10B70AC` | — | — |
+
+The editor build keeps a real getter for each and inlines it once beside it
+(`0xCF7D7E` writing the `+0x54` cache, `0xCF6EEA` writing the `+0x4C` one),
+plus a non-caching holder-assign for the template at `0x87E8A0`; the game build
+inlines both everywhere. `--cast` covers all of it either way.
+
+**`tools/rmg-field-probe.ts` — and then the engine is asked.** A loose file
+under `<game>/data/` wins over the copy inside `data.pak`, which is measured
+rather than assumed: cutting `Mine1LevelMaxRadius` from 20 to 8 moved a mine
+from x=32 to x=18 and repainted 23,640 bytes of terrain. So each field gets a
+value far from the shipped one, the same order is generated again, and the
+output is compared:
+
+```bash
+node tools/rmg-field-probe.ts --game <dir> --control    # fields the sweep says ARE read
+node tools/rmg-field-probe.ts --game <dir> --unread     # fields it says are not
+node tools/rmg-field-probe.ts --game <dir> --template --unread
+```
+
+A template is copied to `data/RMGProbe/Probe.xdb` and ordered from there, so
+the game's own `RMG/Templates` — which the native generator lists — is never
+touched; the loose file is removed again when the probe ends.
+
+The controls are the point. A probe that reports "no change" for everything is
+a broken probe, and the only way to know the difference is to run it on fields
+that must move the map: `Mine1LevelMaxRadius`, `DistBetweenTreasureBlocks` and
+`JunctionMinBorderDistance` each rewrite tens of thousands of terrain bytes, a
+template's zone-0 `TreasureDensity` and `Prisons` likewise.
+
+**One order per launch, and the extension now enforces it.** A launch's SECOND
+order does not repeat its first: two identical orders in one process came out
+with different statics — the divergence begins in the statics block of
+`map.xdb`, Mountains against Hellpikes, with the draw counters still agreeing
+at the border-table step, so it is state surviving between generations rather
+than a different number stream. Why it survives is an open question; that it
+does is measured, and it had already put two wrong numbers in the `-size`
+table. So the loop moved OUT of the extension into `tools/rmg-batch.ts`, which
+starts the editor again for every order. One order per launch IS reproducible: twice over, the whole output matched except the
+`RMGguid`, which is drawn fresh every time, and ONE byte of `GroundTerrain.bin`
+at offset 160305 — the uninitialised byte the port already knew about. The
+probe subtracts exactly those two and nothing else.
+
+### `RMGParameters` — sixteen of its fifty-five fields feed nothing
+
+Read in both builds, and each read located: the six mine radii, the four guard
+levels and `BasicLeverGuardPower`, `JunctionMinBorderDistance`,
+`DistBetweenTreasureBlocks`, both terrain lights and the point-light block bar
+one field, six of the eight text references, all five tile references,
+`MapSizeNames`, all four objective and water texts, `MonsterStrenghtNames`,
+`GroundTerrainLights`, `Obelisk`, `Grail` and `WaterTreasures`.
+
+Ten of the sixteen are numbers, and a number can be put to the engine as well
+as to the disassembler. Nothing reads these — no instruction in the game build,
+none in the editor build — and changing each one leaves the generated map
+identical byte for byte. The eleventh row is `MinDist`, which lives inside
+`PointLightParams` rather than at the top level and so is not one of the
+sixteen:
+
+| field | shipped | probed with | verdict |
+| --- | --- | --- | --- |
+| `RMGVersion` | 37 | 99 | inert |
+| `TeleportMinBorderDistance` | 2 | 9 | inert |
+| `TeleportMaxBorderDistance` | 10 | 30 | inert |
+| `DistBetweenLakes` | 10 | 40 | inert |
+| `CreatureMinStackAmount` | 5 | 40 | inert |
+| `CreatureMaxStackAmount` | 70 | 9 | inert |
+| `MinDistanceBetweenBigObjects` | 15 | 2 | inert |
+| `MinDistanceBetweenTreasureBlocks` | 5 | 25 | inert |
+| `TransitiveTileIntensity` | 200 | 250 | inert |
+| `ShipyardGuardsLevelCoef` | 20 | 40 | inert |
+| `PointLightParams/MinDist` | 11 | 40 | inert on a surface map |
+
+The remaining six the sweep finds no reader for are beyond the probe's reach,
+being text or lists rather than numbers: `ScenarioCaption`,
+`ScenarioDescription`, `CreatureStackParams` (all three of its fields),
+`Templates` (empty in the shipped file), `ResourceMineColors` and
+`MonsterLevelCoef` (also empty).
+
+`MonsterLevelCoef` and `ShipyardGuardsLevelCoef` are the strongest verdicts in
+the table: **no instruction in the generator's whole address range even uses
+their displacements** (`+0x1E4`, `+0x1F0`), so there is nothing left to check by
+hand. The shipyard guard was already suspected — it is `BasicLeverGuardPower ×
+ConnectionGuardLevel × 20` with the 20 an immediate at `0xECC901` — and this
+settles it over the image rather than over one function.
+
+**`TransitiveTileIntensity` is settled, and the earlier claim was right for the
+wrong reason.** It was written down twice as "never read here", meaning in the
+paint step; the honest version needed the whole image, and it now has one. Ten
+instructions in the generator's range carry the displacement `+0x168` and every
+one was looked at: four are `mov dword ptr [esi+168h],<string>` in an unrelated
+constructor, six are the price-list walk at `0xEB975F` reading a vector's
+`begin`/`end` pair at `+0x168`/`+0x16C` of a different object. The 200 in the
+file reaches nothing, and 250 changes no byte of the map.
+
+`CreatureMinStackAmount`, `CreatureMaxStackAmount` and the whole
+`CreatureStackParams` block being inert is worth pausing on, because the names
+promise the opposite: guard stack sizes come from somewhere else entirely — the
+`SetMonster` path the port already models, `BasicLeverGuardPower × the type's
+level` — and these three numbers are a design that was never wired up.
+
+### `SRMGTemplate` — `GraalOnMap` and `Underground` are dead
+
+The template object is `0x50` of base and then ten fields:
+
+| off | field | read by |
+| --- | --- | --- |
+| `+0x50` | Name | the editor's template list |
+| `+0x5C` `+0x60` `+0x64` | Zones — begin, end, capacity | everything |
+| `+0x68` `+0x6C` | Connections — begin, end | the connections phase |
+| `+0x74` | **GraalOnMap** | **nothing** |
+| `+0x78` `+0x7C` | MinPlayers, MaxPlayers | the eligibility filter and the player draw |
+| `+0x80` `+0x84` | MinMapSize, MaxMapSize | the same two |
+| `+0x88` | **Underground** | **nothing** |
+| `+0x89` | TestTemplate | the eligibility filter |
+
+`GraalOnMap` and `Underground` are parsed by the serialiser, given defaults by
+the constructor (`0x8800FE`, `0x880117` in the editor), copied field for field
+when a template object is copied (`0x881195`), and then branched on by no
+instruction in either executable. Setting each to `true` in a template and
+ordering the same map produces the identical output — while zone 0's
+`TreasureDensity` and `Prisons` in the same file rewrite twenty-odd thousand
+bytes of terrain, so the probe was not asleep.
+
+That a map has an underground is the ORDER's business — the dialog's checkbox
+and our `-underground` switch decide it, and `create-map.ts` already takes it
+from the request. The Grail is placed by the upgrade-buildings step in the
+favoured zone regardless of the flag. So the two fields are data the format
+carries and the engine ignores.
+
+**But "the template's `Underground` is dead" is not the same sentence as "the
+underground and the template have nothing to do with each other", and the
+second one is false.** Ask for an underground in the dialog and templates
+disappear from the list — which is an observation about the UI, and the filter
+explains it without reading the field. At `0xCF7B58` the requested size is
+DOUBLED before it is matched against the template's `MinMapSize`/`MaxMapSize`,
+and the template is additionally required to have `MaxMapSize >= 10`; the plain
+comparison at `0xCF7B38` is the other branch. Doubling the area is exactly what
+a second floor costs, so the underground choice narrows the offered templates
+through their SIZE RANGE. The link is real and it is indirect: the engine
+consults `MinMapSize` and `MaxMapSize`, never `Underground`.
+
+**And the flag is named, not guessed.** The branch is selected when
+`[ebx+0x0C]` is clear and `[ebx+0x0D]` is set, and `+0x0D` of that record is
+where the console command's own handler puts the value of `-underground`
+(`0x73CEDB`, the settings built one instruction earlier by `0x467E10`; the
+slots are named by `net-probe --frame`, not counted by eye). So the record is
+the RMG request, `+0x0D` is the underground, and asking for one doubles the
+size the template's range has to contain. The first version of this paragraph
+had the condition backwards — "both clear" — which is what reading a
+`cmp`/`jne` pair without following the fall-through gets you.
+
+The eligibility filter deserves a name, because it is why `MinPlayers`,
+`MaxMapSize` and `TestTemplate` are read at all: at `0xCF7B17` the editor walks
+the template list rejecting anything with `TestTemplate` set, then anything
+whose size range does not contain the chosen size and whose player range does
+not contain the chosen count. That is the DIALOG's list, not the generator —
+and the console command bypasses it, which is why `rmg` will happily generate
+from a template the dialog would not have offered.
+
+### The template's ZONE — three of its twenty-five feed nothing
+
+A zone item is `0x74` bytes and twenty-five fields, and the item pointer is
+never handed out by a getter: it is `template+0x5C` plus a multiple of the
+stride, which is why the sweep needs `--deref`. Nine sites in the whole image
+step by that stride, all of them between `0xEA1D40` and `0xEA5B70`.
+
+| off | field | read by |
+| --- | --- | --- |
+| `+0x04` | Index | the per-zone driver, `0xEA414A` |
+| `+0x08` | Setting | LoadTemplate, `0xEA2358` — compared against 1, 2, 0 |
+| `+0x0C` | **CanBeWater** | **nothing found** |
+| `+0x10` | Size | LoadTemplate's floor balancing |
+| `+0x14` | CanBePlayerStart | LoadTemplate, `0xEA2370`/`0xEA23DF`/`0xEA243B` |
+| `+0x15` | Town | the town step, `0xEA5CB0` |
+| `+0x18` | TownGuardStrenght | the town step, `0xEA5FC6` — × `BasicLeverGuardPower` |
+| `+0x1C` | Shipyard | LoadTemplate, `0xEA2526`, water branch only |
+| `+0x20` | Mines | the mines step, `0xEB6030` — the address is formed at `0xEA4228` |
+| `+0x2C` | AbandonedMines | the abandoned-mines step |
+| `+0x30` | Dwellings | the dwellings step, `0xEB8C2C` — address formed at `0xEA456B` |
+| `+0x3C` … `+0x64` | the eleven density and points fields | their price-list workers |
+| `+0x68` | **DenOfThieves** | **nothing** |
+| `+0x6C` | **RedwoodObservatoryDensity** | **nothing** |
+| `+0x70` | BuffPoints | read, and thrown away — see below |
+
+**The observatory claim was right, and now it is earned.** `0xEBF930` IS the
+observatory and den-of-thieves step — its two static holders resolve
+`Redwood_Observatory` and `Den_Of_Thieves` — and it IS handed the whole zone
+item at `0xEA52FE`. It then never reads it: its argument is only reachable as
+`[ebp+8]`, its body contains no such reference, and `ebp` is repurposed as a
+general register partway through. Both numbers come from somewhere else
+entirely — the observatory count is **the zone's tile count ÷ 1000 + 1**
+(`0xEBF948`), and the den of thieves is **a 2-in-10 roll**, once per zone, on
+non-start zones only (`0xEBFC3C`). So the two densities in every shipped
+template are decoration: changing zone 0's from 100 to 400 and its
+`DenOfThieves` from 1 to 9 leaves the map identical.
+
+**`BuffPoints` is why READ and CONSUMED are two words.** The driver does read
+`+0x70` and does pass it — to `0xEC04D0`, whose entire body is `ret 4`. The
+static sweep therefore counts it read, and the probe finds it inert, and both
+are right about different things.
+
+**`CanBeWater` is settled now, and the answer is that it does nothing.** The
+static half was always clear: no read of `+0x0C` appears anywhere, LoadTemplate's
+every dereference of the item was enumerated (`+4`, `+8`, `+0x10`, `+0x14`,
+`+0x1C`) and this is not among them, and the water branch is taken on a
+GENERATOR-level flag instead. What was missing was the probe, because the
+console command could not order water — and now it can.
+
+The probe, with both controls, since a one-sided experiment on this proves
+nothing:
+
+- three copies of `S1P2Z2M1` as LOOSE files under `<game>/data/RMG/Templates/`
+  (the editor reads them; a loose folder under `data/` is mounted, which
+  `data/RMGTemp` already showed), one untouched, one with `CanBeWater` true on
+  all four zones, one with zone 1's `Size` 10 → 11;
+- each ordered with `-water 2` at seed 1785351845;
+- **the NOISE control first**: the same order twice differs by 29 bytes of
+  `map.xdb` (the `RMGguid`) and ONE byte of `GroundTerrain.bin` (the
+  uninitialised record `rmg-diff-map` already exempts). Anything at or under
+  that is not a finding;
+- **the positive control**: `Size` 10 → 11 moves 440,489 bytes of `map.xdb` and
+  53,444 of the terrain. The instrument is awake;
+- **`CanBeWater` true on every zone**: one byte of terrain — the noise — and a
+  `map.xdb` whose only difference is the recorded `<Template href>` naming a
+  different probe file, plus the shift that one character makes.
+
+So it is read by nothing and changes nothing, on the one order that could ever
+have shown it. Whatever the field was for, the shipped generator does not use
+it.
+
+### The template's CONNECTION — three of its six feed nothing
+
+The connection item was the one record of the template the sweep had not
+been run over, and the corpus could not stand in for it: all 22 shipped
+templates write `Guarded` true and `Wide` false on all 150 connections, so
+896 byte-identical maps say nothing about what either flag does when set
+the other way. (`TwoWay` does vary — 77 true, 73 false of 150 — and the port
+ignores it and still matches, which is the one verdict the corpus can
+give.)
+
+The item is `0x18` bytes, walked by that stride from `template+0x68` (the
+`add edx,18h` at `0xEC1E22`/`0xEC2326`), and its reader — `0xB9B8C0`, the
+one caller of which is the template's own at `0xB9BF3B` — registers six
+fields with `0x987A70(path, &field, size, type)`, a different idiom from
+the zone's `lea eax` pairs, which is why `struct-fields.ts` prints them
+all at `+0x00C` and the map below is read by hand:
+
+| off | field | size | read by |
+| --- | --- | --- | --- |
+| `+0x04` | SourceZoneIndex | int | the land digger `0xEC1630`, the teleport pass `0xEB7C60` |
+| `+0x08` | DestZoneIndex | int | the same two |
+| `+0x0C` | **TwoWay** | bool | **nothing** |
+| `+0x10` | GuardStrenght | int | both — the guard's power |
+| `+0x14` | **Guarded** | bool | **nothing** |
+| `+0x15` | **Wide** | bool | **nothing** |
+
+Two instruments, both builds. `struct-use.ts --cast 0x10b3350 --deref 0x68
+--min 0x4` on the game build: 71 doors, 18 leading to a read, every read at
+`+0x4`, `+0x8` or `+0x10`, and not one `push` among the escapes. The editor
+build needs its getter as well as its cast (`--cast 0x128cee0 --getter
+0x87f770`): 101 doors, 10 reads, the same three offsets. Then, because the
+sweep only follows a taint it can see, the whole `.text` of each build was
+scanned for byte-sized reads at `+0xC`, `+0x14` or `+0x15` through a
+base+index address — the only way a stride-walked item is ever reached —
+and each hit with an `add reg,18h` nearby was looked at: none is in the
+generator's range, and the two that looked closest (`0xEA5CB0`, `0xEA8D80`)
+are the zone item's `Town` and a hash node.
+
+So the passage between two zones is decided by geometry and nothing else:
+a straight enough border gets a guarded land passage, anything else gets
+the teleport pass, and no flag in the file can ask for one or the other,
+or for the guard to be left off. This is what the port already does — it
+reads only `GuardStrenght` — and it is the reason a "teleport / ground"
+switch on a connection has to be OUR field in OUR template format rather
+than a reading of theirs.
+
+**And the engine agrees.** `rmg-field-probe.ts --template` with each flag
+flipped on all three connections of `S1P2Z2M1` — `TwoWay` false, `Guarded`
+false, `Wide` true — ordered at seed 1785351845 against the baseline:
+**no change**, each of them, not a byte beyond the two known nuisances. The
+control in the same run, the first connection's `GuardStrenght` 12 → 90,
+rewrote `map.xdb`, so the instrument was awake. `Guarded` false does not
+take the guard off the passage; `Wide` true does not widen it; the three
+flags are data the format carries and nothing consumes.
+
+### The preset table — the road strengths reach nothing
+
+`RMGPresetTable.xdb` carries a `*Strenght` int behind each of its four tile
+references, 100 in every race. The road painter puts the literal 255 at a
+tile's four corners, which is what made them suspect; the probe settles it.
+Changing **every** occurrence in the document — all nine races at once —
+changes no byte of the map, for `RoadTileStrenght`, `SecondaryRoadTileStrenght`,
+`WaterTileStrenght` and `WaterBottomTileStrenght` alike.
+
+The control that makes those four mean something is `GuardStrenght`: changing
+every one of its 484 occurrences DOES move `map.xdb`, so the loose file is
+being read and the probe is not asleep. It is also the limit of this
+particular probe — it is document-wide, so it cannot separate the vector where
+`GuardStrenght` is live (upgrade buildings, pushed into `0xED3200`) from the
+four where it is dead, and the earlier finding about those four stands
+untouched by it.
+
+Three fields of the preset's statics block — `SetProbability`,
+`ConcurentProbability`, `BorderWidth` — also came out inert, but only five
+races carry that block and the reference order may not use one of them, so
+that is a lead rather than a verdict.
+
+**`HeroPool` is dead on both sides** (16.09). The preset record's reader
+`0xB98D50` puts it at `+0x1C`, eight heroes a race in the shipped table.
+Every race's pool emptied in a loose table: the generator's map is byte
+for byte the same (`--preset --field HeroPool=`, with `GuardStrenght` 9 as
+the live control in the same run, and `withField` now replaces a
+list-valued field whole), and the GAME, started on a generated map with
+the same loose table in place, still offered the hero choice in the lobby
+(played). So the heroes a map offers come from the hero documents, and
+what an order of ours says about them is below.
 
 ## What the executable says about itself
 
@@ -303,6 +4651,7 @@ Kept in `_tmp/oracle/` (not committed — game content).
 | 3 | **editor** | **1785351845** | `S1P2Z2M1` | small | **the reference** |
 | 4 | editor | 1000 | `S1P2Z2M1` | small | a second seed, same everything else |
 | 5 | editor | 1785351845 again | `S1P2Z2M1` | small | the determinism check |
+| 6 | editor | 1785351845 again | `S1P2Z2M1` | small | **the water reference** — the water checkbox on, everything else run 3 |
 
 Runs 3–5 are the useful ones: same template, same size, same settings, so the
 only variable is the seed. Run 3 is what the port is written against — ordered
@@ -330,18 +4679,56 @@ is what it is belongs next to the number.
 | `map-setup.ts` | the "map created" step — strength, water, floors | **done**, six draws bracketed by run 1 |
 | `load-template.ts` | `LoadTemplate` — floors, races, players, zone classes | **done**, 22 draws reconciled; derives run 3's races |
 | `params.ts` | reading `RMGParameters` | **done**, held to `Params/Default.xdb` field by field |
+| `layout.ts` | the ONE DOOR for the zones — `Engine` (the two phases below, byte for byte) or one of ours, by the template's `<ZoneLayout>` | **done**; see "Laying the zones out our way" |
 | `zones.ts` | `GenerateGameZones` | **done**, reconciled against run 1 |
 | `fill-zones.ts` | `FillZones` | **done, held in lockstep**: an editor trace matched all 18,459 draws |
+| `layout-voronoi.ts` | OURS: centres by relaxation over the template's graph, tiles by weighted Voronoi | **done**, held to what it promises (`test-rmg-layout`), not to any reference |
+| `trace.ts` | the listeners a tool attaches — draws, phases, jitter tiles, road fields | **done**; one object, `ChainOptions.trace` |
+| `zone-objects.ts` | OURS: a zone's NAMED objects from a template's `<Objects>` — floors placed before the budgets, ceilings the budgets honour | **done**, `test-rmg-zone-objects` |
 | `border-tiles.ts` | `CalcBorderTiles` | **done** — drawless, held to the definition and the reference chain |
 | `preset-table.ts` | `RMGPresetTable` Tiles + AdvMapTile documents | **done** for what the painter reads |
-| `terrain.ts` | `FillTerrain` | **done** — held to the reference file's masks byte for byte |
+| `terrain.ts` | `FillTerrain`, the road painter `0xECE3E0`, the water and LAKE painters | **done** — every mask layer of all four reference files, byte for byte |
 | `towns.ts` + `town-data.ts` | `PlaceTowns` | **done** — 16 draws, and both towns land where the engine put them |
 | `dist-to-towns.ts` | `FillDistToTownsTable` | **done** — drawless; its side effect is what later phases see |
 | `connections.ts` | `ZoneConnections`, land passages and guards | **done** — three guards on the engine's own tiles; teleports unported |
-| `objects/*.ts` | `MainObjects`, one file per placement step | |
-| `treasure.ts` | `CTreasureBlockDistributor` | |
+| `placement.ts` | the machinery every placement worker shares: room, filter, fit, stamp | **done** — read out of mines, confirmed against dwellings |
+| `mines.ts` | the mines step: rings, guards, piles | **done, live in zone 1** — 74 draws to the boundary, every object on the reference tile |
+| `dwellings.ts` | the dwellings step | **done, live in zone 1** — 8 draws to the boundary; mode 1 and tier ≥ 3 unported |
+| `upgrade-buildings.ts` | the upgrade-buildings step, and the guard wrapper `0xED3200` | **done** — zone 1's zero-draw exit live; the townless zones' budgets held by arithmetic, their live run waits |
+| `shrines.ts` | the shrines step: the hardcoded table over the generic placer | **done, live in zone 1** — 5 draws to the boundary |
+| `price-lists.ts` | the generic price-list placer and the four preset-vector steps' budget rules | **done, live in zone 1** — ten objects to the shops boundary at 18653 |
+| `treasures.ts` | the zone tail: observatories, the Den roll, treasures/chests | **done, live in zone 1** — 9 draws to 18662; chests a measured no-op |
+| `road.ts` | the zone road: the chain, the wave, the coin-tied walk | **done, live in all four zones** — 928 coins to the loop's end at 20039 |
+| `objects/*.ts` | the remaining `MainObjects` steps, one file each | |
+| `treasure-blocks.ts` | `CTreasureBlockDistributor`: the growth `0xED5650` and the fill `0xED49D0` | **done, live in all four zones** — 2,640 draws to the run's end at 92438 |
+| `teleports.ts` | the connections phase's second sweep `0xEB7C60` | **done, live on the underground run** — the pair tile-for-tile; serves the island connections unchanged |
+| `water-border.ts` | the water carve and treasures — `0xECB7D0` and its tail `0xECDB20` | **done, live on the island run** — 36 treasures by name |
+| `shipyards.ts` | the shipyard `0xECC0A0` — the `+0x2C` override's tail | **done, live on the island run** — 4 shipyards and their guards by name |
+| `prisons.ts` | the prisons step `0xEBD1C0` | **done, live on the underground run** — 8 and 6 draws |
+| `artifacts.ts` | the artifact table the distributor's pool is built from | **done** — cost and the generated flag, in id order |
 | `armies.ts` + `creatures.ts` | `CMonsterSetter::SetMonster` and its tables | **done** — the reference's three guards, creature for creature |
-| `emit.ts` | the finished map, handed to `src/map/` | |
+| `heights.ts` | the height plane: relief cones, the late pass `0xECF760` | **done, bit-identical** on all three references — 24,147 vertices |
+| `emit.ts` | the map.xdb emitter: per-type object bodies over the blank skeleton | **done — all three references byte-identical** |
+| `emit-texts.ts` | the archive's UTF-16LE texts from the Params word files | **done — all three references byte-identical** |
+| `emit-terrain.ts` | the GroundTerrain.bin writer, N layers | **done** — all four reference terrain files BYTE-IDENTICAL |
+| `passability.ts` | GenerateMap's last pass — the zone slot `+0x38` | **done** — the plane exact on all four files |
+
+**And the assembly, which used to live in `tools/` and now sits beside the
+phases** (15.09): `install.ts` is the pair the generator reads and nothing
+else — the data as the game mounts it and the game's executable — carried as
+an argument instead of reached for through `--game`; `chain.ts` runs the
+nine phases to the door of MainObjects and holds `ZoneFill`, the per-zone
+runner; `run.ts` is the whole run, objects collected in slot order;
+`build.ts` turns a run into the sixteen files; `recorded-order.ts` reads an
+order back out of a map's `sRMGProps`. **`index.ts` is the one door the
+application uses**: `dialogChoices` (the enums' names and the size ladder,
+from the install), `templatesOffered` (the dialog's filter at `0xCF7B58`,
+read — an order outside it is one the engine would lift), `generateMap`
+(an `RmgOrder` in the dialog's own units → the files, or a refusal that
+says why) and `writeMap` (the `.h5m`, packed the way the editor packs any
+map). The tools build the install once from the flag (`gameInstall()` in
+`tools/game-dir.ts`); `rmg-pack` and the random suite go through the door,
+the phase suites reach into the phases.
 
 ### The number stream, and why it comes first
 
@@ -438,9 +4825,45 @@ if (players > MaxPlayers || players < MinPlayers) players = MinPlayers
 Too many players falls back to the **minimum**. The engine's bug, kept, with
 a test naming it deliberate.
 
-Still open here: the units↔size-index conversions (the generator's vt+0x14 /
-vt+0x18) — which is also what the template's 5..14 "size" range measures —
-and the forced-underground fit checks for a map too small for its players.
+Still open here: the two units↔size-index conversions themselves — the block
+that calls them is read and written down below, and what is left is naming the
+class they hang off. The forced-underground fit check IS read: a template
+whose MinMapSize exceeds the units of size index 6 gets `settings[0x1C] =
+0x100`, which is the path that then skips the underground coin.
+
+**The size fit, read** (`0xEAB460`, the engine's `createMap`; it has no direct
+callers, so it is reached through the generator's own vtable at `0xFF3C60`).
+The block around the size draw is this, and it names both conversions:
+
+```
+if (template.maxMapSize != 1):
+    maxUnits = settings->vt[0x14](6)        ; size INDEX 6 -> template units
+    if (template.minMapSize > maxUnits):    ; the template wants more than the
+        settings[0x1C] = 0x100              ; biggest map there is
+    elif settings[0x1C]:                    ; an underground was asked for
+        settings[0x1C] = 0
+        settings[0x1D] = below(2) != 0      ; 0xEAB5A2 — the coin that REPLACES
+                                            ; the first next(), not a fourth draw
+next()                                      ; 0xEB13A0
+if settings[0x1E]:                          ; the size was left to the generator
+    units = template.minMapSize + below(template.maxMapSize - template.minMapSize + 1)
+    twoFloors = settings[0x1C] == 0 and settings[0x1D] != 0
+    size = settings->vt[0x18](twoFloors ? units / 2 : units)   ; units -> INDEX
+    this[0x20] = size
+```
+
+So `vt+0x14` turns a size index into the template's own units and `vt+0x18`
+turns units back into an index, and the two-floor halving happens on the
+UNITS, before the conversion — which is what
+[`create-map.ts`](../src/rmg/create-map.ts) already models. What the index
+then means is settled: it indexes the table at `0xFF291C`, read into a map as
+72 / 96 / 136 / 176 / 216 / 256 / 320, and `0xE9FFE4` is where the engine
+takes `[edx*4 + 0xFF291C]` and stores it as the map's TileX.
+
+Still open, and now narrowed to one thing: the two conversions belong to the
+SETTINGS object (`arg2`), not to the generator, so its class has to be named
+before its slots can be read. Until then a size other than the references'
+cannot be ordered, and `rmg-pack` says so instead of guessing.
 
 #### Map sizes, pinned down
 
@@ -499,8 +4922,9 @@ port derives it from the seed.
 The underground's flavour: Dwarven when the map-setup parity said so, else
 one coin — for the whole map — decides Subterra against SubInferno. Water
 makes floor-0 zones WaterBordered and copies the template's `Shipyard` bit
-(in the schema with default TRUE, written by no shipped file — the reader
-walk found it, and template.ts now parses it).
+(in the schema with default TRUE; two shipped templates write it —
+S0-1P2Z2K3.2T and S3-5P2-8Z8K2M, every zone, always true — the rest rely
+on the default; template.ts parses it).
 
 Named holes: the concrete-race branch appends a player entry without
 checking the operator's (nothing shipped reaches it; copied as read); who
@@ -554,10 +4978,20 @@ to 29 on the fourteenth insert (prime table at 0xF49470). Shipped indices
 reach 15, so in a small table zone 14 iterates before zone 2 — and a shipped
 15-zone template sits in a rehashed 29-bucket table where those indices stop
 colliding and the order is plain ascending again. `floorIterationOrder`
-models exactly this and **refuses** the one unread path (a collision after a
-rehash, whose within-bucket order depends on how the rehash re-inserted); the
-suite proves no shipped template reaches it even if all its zones landed on
-one floor.
+models exactly this, rehash included: the floor's insert is `0xEB0CB0`
+(LoadTemplate calls it at 0xEA26A3 with the floor's map: levels at
+`[[+0xC]+0x34]`, 0x120 a floor, the map at `+0xA8`), and its `insert_unique` grows the table
+before the insert when `count + 1 > buckets` — `next_size(count + 1)`
+(0x4E3D30, a lower bound over the prime table) — by walking the OLD buckets
+ascending, each chain from its head, and hanging every node on the HEAD of
+its new bucket (0xEB0D12–0xEB0D25), then puts the new key at the head of its
+bucket (0xEB0DDE/0xEB0DE3). So a collision after a rehash yields the moved
+keys in reverse of the old table's order, later inserts in front — the port
+grows its table live, the same way (`hashMapOrder`, tested with 30 and 1
+meeting in bucket 1 of 29). FillZones' two containers inline the same
+template (rehash loops at 0xEA8E11 and 0xEAA123). No shipped template
+collides after a rehash even with all its zones on one floor, but the path
+is read now, not refused.
 
 Also read on the way: **the zone constructor itself draws once** (`next()`
 into zone+0x13C) — those draws belong to LoadTemplate's budget, one per zone.
@@ -582,7 +5016,8 @@ zone owning ≥3 of its 8 neighbours, no draw; **jitter** — an assigned tile �
 from the border with no unassigned neighbour and ≥3 neighbours of one other
 zone flips to it with probability ~0.6 (`betweenFloat(0,1) > 0.4f`, the draw
 spent either way), but only while that zone is under quota:
-`sizeOther/sizeOwn > countOther/countOwn`, both divisions single precision.
+`sizeOther/sizeOwn > countOther/countOwn`, both quotients staying on the x87
+stack in the editor's build (the game's SSE one rounds them to single).
 Decisions queue up per sweep and apply at its end, and the areas the jitter
 reads are the *previous* sweep's snapshot — zero before the first, where the
 ratio is NaN and a strict `comiss` refuses without drawing: **sweep one costs
@@ -595,7 +5030,9 @@ the numbers an editor-oracle run of seed 1785351845 must log, phase by phase.
 
 Tie-breaks are the same 13-bucket hash containers as the zone order, down to
 `-1` hashing into bucket 8, and the port models them rather than taking a
-plain maximum. Named holes: the grid's initial −1 is assumed (whoever builds
+plain maximum — including the head insertion, which stays invisible until two
+zone indices share a bucket and then decides a tile (see the fifteen-zone
+template above). Named holes: the grid's initial −1 is assumed (whoever builds
 the floor writes it; unread), and the engine checks the jitter's 6-tile
 margin against the dimension pair SWAPPED relative to the neighbour bounds —
 indistinguishable on the square maps it makes, so the port refuses rectangles
@@ -646,7 +5083,7 @@ Held to the reference file, not to itself: on the traced run's
 GroundTerrain.bin the Sand-Dunes, Sand_Cracked and DarkGround masks are
 byte-identical, and Lava differs on exactly the 175 vertices where the file's
 Dead_Land sits — Inferno's SECONDARY ROAD tile, still land-class, painted by
-the roads phase that will steal from Lava when it is ported. The orientation
+the road painter (Phase 14), whose theft closes the difference. The orientation
 that makes this work is pinned by probing the file at the corners and zone
 starts: the plane lies plane[a·(size+1)+b] in the port grid's own
 coordinates.
@@ -745,7 +5182,1235 @@ the phase's second pass. Every reference connection was dug on land, so that
 path has never been measured; the port reports the connections it could not
 dig rather than inventing what the engine would do with them.
 
+### The four grids a level carries
+
+Every step from MainObjects on reads and writes these, so they are worth one
+place too. A level is `world->0x34 + floor*0x120`, and each grid is a flat
+buffer plus a table of row pointers — the buffer is what `CreateMap`
+(`0xE9FFC0`) fills, the table is what everything else indexes through, which
+is why the same grid has two offsets.
+
+| grid | filled with | what it holds |
+| --- | --- | --- |
+| `+0xC0` / `+0xC4` | −1 | the zone id of each tile — `FillZones` |
+| `+0xD0` / `+0xD4` | 0 | what occupies the tile |
+| `+0xE0` / `+0xE4` | −1 | distance to the zone border — `CalcBorderTiles` |
+| `+0xF0` / `+0xF4` | −1 | room: distance to the nearest point of a zone's list |
+
+**The border table is not permanent, but only two phases dent it.** An
+earlier version of this note blamed `0xEC1500`; a full write-site sweep
+(every `+0xE4` store in the RMG range) corrects it. `CalcBorderTiles`
+writes 0 on a border tile and the truncated Euclidean distance elsewhere
+(`border-tiles.ts`); after it, ONLY ZoneConnections writes — **1** on the
+passage mouth and its same-zone orthogonals from both sides (`0xEC1F6B`,
+`0xEC1FDE` for the digger; `0xEBA613`, `0xEBA66B` for the neighbour, the
+latter with no bounds test at all) — which `connections.ts` already ports —
+plus `CGameWaterBorderedZone`'s vtable `+0x24` override (`0xECB8F3`,
+water only, and it also disowns `+0xC4` tiles). `0xEC1500` and `0xEC2F90`
+only READ it; no placement worker dents it. That is why the road's costs
+are exact with nothing but the connections' dents reproduced.
+
+**What occupies a tile**, as the values that are actually written:
+
+| value | written by |
+| --- | --- |
+| 0 | nothing — the initial state |
+| 2 | an object's footprint, and a mine's resource pile |
+| 4 | a guard |
+| `0x08` `0x10` `0x20` | a road — three kinds, from the three calls to the router `0xEC0B60` |
+| `0x80` `0x100` `0x82` `0x40` `0x400` | written, meaning not established |
+
+A tile counts as FREE when `t == 0 || (t & 0x38)` — untouched, or carrying a
+road. That is the same `0x38` the room recompute is called with elsewhere, and
+it is exactly the three road bits.
+
+**The room grid** is recomputed on demand by `0xEC28E0(mask, allZones)`, and
+it does not measure distance to occupied tiles. For every tile of the floor it
+takes the minimum Euclidean distance to the nearest point in whichever of the
+zone's point lists the mask selects — `0x04` is the list at `zone+0x68`,
+`0x02` is `+0x5C`, `0x08`/`0x10`/`0x20` are the three road lists, `0x40` and
+`0x400` filter `+0xCC` by the matching occupancy bit. A tile belonging to no
+zone gets 1000; with `allZones` clear, tiles of other zones are left alone.
+The mines step calls it as `(4, 0)`.
+
+`0xEC2EB0(list)` is its companion: the **maximum** room value over a list of
+points, counting only those in the zone with a border distance above 2 and an
+occupancy that is not 2.
+
+**One engine quirk, to be reproduced rather than corrected.** The final
+`cvttss2si` in `0xEC28E0` (at `0xEC2E37`) converts `xmm0`, not the minimum
+accumulated on the stack. When no list iteration ran for a tile — because
+every selected list was empty — `xmm0` still holds whatever the previous tile
+left in it. The first mine of a zone is placed when nothing has been added to
+`zone+0x68` yet, so this is not a corner nobody reaches.
+
+### `RMGParameters`, offset by offset
+
+Every phase from here on reads this structure by offset, so the whole map is
+worth having in one place. It is read out of the executable twice over, which
+is why it is a fact and not a layout that happens to line up:
+
+- the **xdb serialiser**, `0xB9E5D0`, which pushes each field's name next to
+  the address it writes — `lea eax,[edi+<offset>]` … `push <name>`;
+- the **reflection descriptor table** built at `0xB9CA00`, where the offset
+  arrives as a literal in `edx` beside the field's type and size.
+
+The two agree, and the fields add up to `0x21C` without a hole — the size the
+table registers for the structure. `SRMGParameters` sits at offset 0 of the
+object (its RTTI locator says so, and the loader's first instructions take
+`ecx` unadjusted), so these are offsets from the pointer itself.
+
+| off | field | off | field |
+| --- | --- | --- | --- |
+| `+0x44` | RMGVersion | `+0x98` | GroundTerrainLight |
+| `+0x48` | Mine1LevelMinRadius | `+0xA0` | UndergroundTerrainLight |
+| `+0x4C` | Mine1LevelMaxRadius | `+0xA8` | PointLightParams (0x28) |
+| `+0x50` | Mine2LevelMinRadius | `+0xAC` | …ZoneRadius |
+| `+0x54` | Mine2LevelMaxRadius | `+0xB0` | …MinDist |
+| `+0x58` | Mine3LevelMinRadius | `+0xB4` `+0xB8` | …zMin, zMax |
+| `+0x5C` | Mine3LevelMaxRadius | `+0xBC` `+0xC0` | …LightRadiusMin, Max |
+| `+0x60` | BasicLeverGuardPower | `+0xC4` | …Colors |
+| `+0x64` | ConnectionGuardLevel | `+0xD0` … `+0x12C` | the eight text refs |
+| `+0x68` | Mine1LevelGuardLevel | `+0x130` | CreatureStackParams (0x10) |
+| `+0x6C` | Mine2LevelGuardLevel | `+0x134` … `+0x13C` | …Basic, Min, MaxAmount |
+| `+0x70` | MineGoldGuardLevel | `+0x140` `+0x148` | Default Surface / Subterra tile |
+| `+0x74` | JunctionMinBorderDistance | `+0x150` `+0x158` | DeepWaterTile, DeepWaterBottom |
+| `+0x78` | TeleportMinBorderDistance | `+0x160` | DefaultTransitiveTile |
+| `+0x7C` | TeleportMaxBorderDistance | `+0x168` | TransitiveTileIntensity |
+| `+0x80` | DistBetweenLakes | `+0x16C` | MapSizeNames |
+| `+0x84` | DistBetweenTreasureBlocks | `+0x1A8` | Templates |
+| `+0x88` | CreatureMinStackAmount | `+0x1CC` | MonsterStrenghtNames |
+| `+0x8C` | CreatureMaxStackAmount | `+0x1D8` | ResourceMineColors |
+| `+0x90` | MinDistanceBetweenBigObjects | `+0x1E4` | MonsterLevelCoef |
+| `+0x94` | MinDistanceBetweenTreasureBlocks | `+0x1F0` | ShipyardGuardsLevelCoef |
+| | | `+0x1F4` | GroundTerrainLights |
+| | | `+0x200` `+0x208` | Obelisk, Grail |
+| | | `+0x210` | WaterTreasures |
+
+The step that reads one of these reaches it through `0xEAFF80`, a lazy getter
+that dynamic-casts the resource to `SRMGParameters` and caches the result.
+
+### Phase 10 — MainObjects, the per-zone fill
+
+Not ported yet. What follows is the reading of the code and of the reference
+map — the shape to port against, and it is marked where it is a reading of
+behaviour rather than of the code.
+
+**It is two loops over the zones, not one.** `0xEA3F80` (called from
+`0xEABE09`) walks every zone and runs twelve steps inside each; `0xEA5450`
+(from `0xEABFC4`) walks them again for the two statics steps. The `ret` at
+`0xEA543A` is where the first one ends — the bytes after it are a jump table
+for the switch at `0xEA46AC`, and the second function starts at `0xEA5450`.
+That is why the reference map reads zone by zone through the buildings and
+then has 1,325 statics in one block at the end: the statics are a second pass.
+
+**Both loops open with one draw, whatever happens.** With `this->0xB5` set,
+`below(count)` picks a zone to favour; without it, `next()` is drawn and
+thrown away (`0xEA3FE5` / `0xEA3FF0`). A port that skips the draw in the
+second case is one number out for the whole phase.
+
+The zone's parameters are an array element of **0x74 bytes**, and each step
+takes its own field of it. The steps, in the order the code runs them:
+
+| step | worker | its field | skipped when |
+| --- | --- | --- | --- |
+| mines | `0xEB5C50`, then `0xEBD700` for abandoned | `+0x20`, `+0x2C` | — |
+| hero | `0xEB5B30` | — | never runs; draws nothing |
+| dwellings | `0xEB8C10` | `+0x30` | — |
+| upgrade buildings | `0xEC00F0` (Grail), `0xEBFFC0` (Obelisks), `0xEB96D0` | `+0x3C` | the Grail only in the favoured zone; both firsts only with `this->0xB5` |
+| prisons | `0xEBD1C0` | `+0x48` | — |
+| cartographer | `0xEBD4B0` | `+0x4C` | — |
+| shrines | `0xEBE1C0` | `+0x54` | — |
+| resource buildings | `0xEBE540` | `+0x5C` | — |
+| treasury buildings | `0xEBECB0` | `+0x60` | — |
+| luck/morale | `0xEBF090` | `+0x58` | — |
+| shops | `0xEBF540` | `+0x50` | — |
+| BuffPoints stub | `0xEC04D0` — whole body `ret 4` | `+0x70` | always a no-op |
+| observatories + Den roll | `0xEBF930` | takes `&params[i]`, NEVER reads it | — |
+| treasures, then chests | `0xEA57B0` → `0xEB9DC0` | `+0x40`, `+0x44` | underground (`zone->0xF4 != 0`) — they run later, in additional objects |
+| road | `0xEC05B0` → `0xEC0B60` | — | — |
+| big statics | virtual, zone vtable `+0x34` | — | second loop |
+| one tile statics | virtual, zone vtable `+0x30` | — | second loop |
+
+**The statics steps are virtual**: `CGameZone` answers with
+`0xEBAA70`/`0xEBBBD0`, and Subterra, Dwarven, SubInferno and WaterBordered
+each have their own, so a subterranean zone fills itself differently from a
+surface one.
+
+A zone whose id does not resolve (`0xE9FF00` at `0xEA414A`) is skipped whole,
+step for step.
+
+**What the reference map already says about the first step.** Twelve of its
+eighteen mines are the six resource mines of the two town zones, always in
+this order — Sawmill, Ore_Pit, Alchemist_Lab, Crystal_Cavern, Sulfur_Dune,
+Gem_Pond — and the zones without a town get Sawmill, Ore_Pit and a Gold_Mine
+instead. Every mine comes as a THREE: the mine, a guard exactly two tiles
+away on one axis, and one or two piles of its own resource next to the guard.
+Sawmill 32:21, guard of 3 Footmen at 30:21, Wood at 30:20. The guard is
+`SetMonster`, which is ported and checked already, so what this step still
+needs is where the mine goes and which one it is.
+
+`zone->0xF4` is the FLOOR, read rather than guessed: every use of it indexes
+the level array by `0x120` (`lea ecx,[eax+eax*8]; shl ecx,5`). So "treasures
+and chests only when it is zero" means only on the surface.
+
+**Not read out of the code, only observed**: what `this->0xB5` and `this->0xB0`
+mean. The addresses of individual draws inside the workers were attributed by
+address range rather than by walking each function, so a draw listed under a
+worker may belong to a small callee of it.
+
+#### The first step — mines, read out of `0xEB5C50`
+
+The function is two near-identical halves: types 0–1 in one, 2–6 in the other.
+Addresses below are the first half's; the second's mirror them.
+
+**The types are a table, and the order is just its indices.** Seven strings at
+`0x121C670` (0x20 apart, filled by the static initialiser at `0x4D5810`):
+Sawmill, Ore_Pit, Alchemist_Lab, Crystal_Cavern, Sulfur_Dune, Gem_Pond,
+Gold_Mine. The count of each comes from the zone's parameter field `+0x20` —
+a vector of ints, of which only `begin` is ever read, because the number of
+types is the hardcoded 7. A count of zero skips that type, which is the whole
+of why a town zone gets six mines and a zone without one gets three: the
+counts differ, the order does not.
+
+The only place a type is asked about at all is `0xEB6F8D` — index 6 takes its
+guard from `MineGoldGuardLevel`, everything else from `Mine2LevelGuardLevel`.
+
+**Candidates are gathered once per zone**, before the loop over mine types and
+not once per mine, into two lists: the near one for types 0–1 and the far one
+for 2 and up. The scan runs the first grid index outer and the second inner,
+and a tile qualifies when it is inside the map, belongs to this zone, and its
+`+0xE4` value is **above 1**. Then, and only if the zone has a town:
+
+    near list   Mine1LevelMinRadius < d < Mine1LevelMaxRadius
+    far list    Mine2LevelMinRadius < d < Mine2LevelMaxRadius
+
+Strict on both sides, both lists, and otherwise the same test on the same
+iteration — so a tile can land in both.
+
+**`d` is measured from the TOWN**, not from where the zone was seeded. The pair
+at `zone+0x0C`/`+0x10` is written in exactly one place in the generator —
+`0xEB4FBF` and `0xEB4FD8`, inside the slot `PlaceTowns` calls — and
+`GenerateGameZones` never touches it. That same function sets `zone+0xF8`,
+which is what "has a town" means, and a zone with `+0xF8 == 0` skips the rings
+entirely, putting every one of its tiles into both lists.
+
+Which parameter is at which offset is **read out of the executable**, not
+inferred — see the offset map below. The ones this step uses:
+
+| offset | field | value in `Default.xdb` |
+| --- | --- | --- |
+| `+0x48` `+0x4C` | `Mine1LevelMinRadius` / `MaxRadius` — the near ring, types 0–1 | 7, 20 |
+| `+0x50` `+0x54` | `Mine2LevelMinRadius` / `MaxRadius` — the far ring, types 2–6 | 15, 40 |
+| `+0x60` | `BasicLeverGuardPower` | 1000 |
+| `+0x68` `+0x6C` `+0x70` | `Mine1LevelGuardLevel`, `Mine2LevelGuardLevel`, `MineGoldGuardLevel` | 2, 9, 18 |
+
+**And the guard offsets are measured on top of that.** Every one of the eighteen mine guards in the reference run was
+rebuilt from its recorded draws at `BasicLeverGuardPower × the type's level` —
+2000, 9000 and 18000 — and all eighteen came out the engine's own army,
+creature for creature (`test-rmg-armies`). A wrong offset does not survive
+that eighteen times.
+
+It also caught a bug in `SetMonster` that three guards could not. The strength
+multiply **truncates where the product lands**, and does not round back to a
+float first: `0.9f` is 0.89999997615814208984375, so a guard power of 2000
+scales to 1799.99995… and truncates to **1799**, not 1800. Only one guard in
+the whole run can show that — the Familiar at 23, because 1799/75 is 23 while
+1800/75 is exactly 24, and it is the only single stack whose division comes
+out exact. The other three (17, 42, 25) hold either way.
+**A zone with no town (`zone->0xF8 == 0`) skips the rings entirely** and puts
+every one of its tiles into both lists.
+
+**Then, per mine**, the zone recomputes the room grid with `(4, 0)` — distance
+to the nearest point of its `+0x68` list — takes its maximum over the
+candidates through `0xEC2EB0`, and filters. The filter is **one test and
+nothing else**: `+0xF4 > threshold`, strictly. Not the zone, not the border
+distance, not the occupancy — those three appear in `0xEC2EB0`, where they
+decide what counts towards the maximum, and nowhere else. The threshold is a
+signed `trunc(2 × max / 5)`, so a maximum of 0 gives a threshold of 0 and
+keeps whatever has any room at all.
+
+The filtered list is built fresh from the ORIGINAL list each time, so a
+candidate struck out by a failed fit is back for the next mine.
+
+**What is in `+0x68` before the first mine is placed, and it is not empty.**
+`0xEC2F90` — the routine that stamps an object onto the level — makes three
+passes: the first pushes into `zone+0x5C` and marks occupancy **2**, the second
+and third push into `zone+0x68` and mark occupancy **4**. So *the `+0x68` list
+is exactly the tiles marked 4*. And two phases have already run it before
+MainObjects: `PlaceTowns`, through the slot at `0xEB4CB0`, and
+`ZoneConnections`, through `0xEB7C60` at `0xEB854D`. A zone with no town still
+has whatever its passage guards left there — which is why the room filter bites
+in a zone that never saw a town.
+
+**Two draws per ATTEMPT, not per mine**: `below(number of candidates)` picks a
+tile and `below(4)` picks a quadrant of rotation. If the object does not fit
+there, that candidate is struck out of the list and the pair is drawn again;
+an empty list is the `cant place mine %s at zone %d` line.
+
+**The guard costs no draws to place** — its tile is the first of the mine
+footprint's four orthogonal neighbours, starting from the quadrant the mine
+was rotated to, that is free. If none is, there is no guard at all and
+`SetMonster` is never called. It is called as `SetMonster(&out, power,
+&guardPos, angle)` with `power = <that level> × BasicLeverGuardPower`, and its
+own four or five draws are already ported (`armies.ts`).
+
+**The piles are eight neighbours and an 80% coin.** Their type is a parallel
+table at `0x121C830` — Wood, Ore, Mercury, Crystal, Sulfur, Gems, Gold, the
+same indices. Starting two past the guard's direction, each of the eight
+neighbours of the mine's last footprint tile is tried: it must be free, it
+must be **within 2.0 of the GUARD** — which is why the piles hug the guard and
+not the mine — and then `betweenFloat(0,1)` must come out under 0.8. Two is
+the hard ceiling.
+
+That last rule is what the reference map shows: Ore_Pit at 6:23 with its guard
+at 6:21 has its two Ore piles at 5:21 and 7:21, both against the guard, and
+every other mine in the map agrees.
+
+**Both of those doors are now closed by measurement.** `0xEC3510` draws
+nothing — a failed fit is followed straight by the next pair — and `0xEB3990`
+draws exactly two, which are the object's name. The traced run says so
+directly, and how it can be read that precisely is the next section.
+
+#### The mines step, draw for draw
+
+Every object the generator creates is named `item_<signed int32>`, minted from
+two `below(65535)` draws, and the reference map records that name. So a pair
+of consecutive draws composing a name the map has IS the moment that object
+was created — and **all 1,556 objects in the reference find their pair**. That
+is what `npm run rmg-decode-draws` does with the trace, and it turns an
+anonymous stream into a labelled one.
+
+Zone 1's 75 draws, in full:
+
+```
+18492  n  1893595527              the loop's prologue draw, thrown away
+18493  b         587              the tile
+18494  b           3              the quadrant
+18495  b       33794  Mine Sawmill
+18496  b       23405     "
+18497  f      0.0737              the guard's roll — under 0.6, so several stacks
+18498  b           0              which army template
+18499  b        1214  Monster Footman
+18500  b        3701     "
+18501  f      0.1886              a pile is rolled for — under 0.8, so it lands
+18502  b       47730  Treasure Wood
+18503  b        9017     "
+18504  f      0.8662              the second neighbour rolls over 0.8: no pile
+18505  b          36              the next mine's tile
+...
+18541  b          42              a tile that did NOT fit
+18542  b           3              its quadrant, drawn before the fit was tested
+18543  b         123              so the candidate is struck out and a pair drawn again
+18544  b           3
+18545  b       26211  Mine Sulfur_Dune
+```
+
+Which gives the cost exactly: **1** for the loop's prologue, **2 per attempt**
+at a tile, **2** for the mine's name, **4 or 5** for the guard, **1** per pile
+rolled and **2** more for each that lands. Zone 1: 1 + 14 + 12 + 24 + 10 + 14
+= 75, and the boundary says 75.
+
+#### The guard's two branches are not alternatives
+
+"Four or five" is the MEDIUM count, and a monster level other than MEDIUM shows
+why it was only ever half the story. The army branch is an **attempt**: every
+one of its failure exits jumps to `0x7939fe`, which falls straight into
+`0x793a22` — the very instruction the `r >= 0.6` roll jumps to. So a guard the
+template list cannot serve is not an empty guard; it is a **single stack**,
+drawn there and then, and only the single stack's own failure ends with nothing
+placed at all.
+
+There are three refusals at a hundred, not one, and each looks at its own
+number:
+
+| where | against | on failure |
+| --- | --- | --- |
+| `0x793747`, the entry | the RAW power | return, no draws |
+| `0x79326d`, the army builder | `trunc(scaled · 0.9)` | fall through to the single stack |
+| `0x7929c7`, the single stack | `scaled` | return, nothing placed |
+
+At MEDIUM the three cannot be driven far enough apart to disagree — which is
+exactly why every one of the 88 maps of the earlier sweeps passed with the port
+believing there was one gate on the raw power. At WEAK they disagree at once,
+and eight of the twenty-two templates depend on it.
+
+Two more things the same code says, and both were wrong in the port:
+
+- **A refusal mints no name.** The two `below(65535)` draws belong to the
+  object, and the failure exits never reach the creator. The port used to spend
+  them on every path, on the strength of a sentence in this file that said they
+  are spent "whether or not anything can be found to place".
+- **An army whose FIRST stack is empty or zero is a refusal too**
+  (`0x7939ad`..`0x7939bc` reads the vector's size and its first pair before it
+  will build anything), and it falls through like the rest.
+
+The single stack's rescan also has **no round limit** — `cmp eax,28h / jl`
+sends it back for as long as fewer than ten creatures have turned up, and the
+tolerance grows by 1.2 each pass until they do. The port had capped it at 16
+rounds, which is a cap that nothing measured had ever reached; it now loops as
+the engine does, and throws if it ever fails to converge.
+
+Two things the data settles that the code only suggested. Every pile that
+landed rolled 0.1886, 0.7641, 0.3076, 0.5571, 0.1160, 0.4472 or 0.2214, and
+every one that did not rolled 0.8662, 0.8545 or 0.9702 — the 0.8 is not just a
+constant in the image, it is the constant this run obeyed, with no exception.
+And all six guard rolls came out under 0.6, which is why every guard here cost
+four draws rather than five.
+
+#### The candidate list, and the four numbers it has to satisfy
+
+What is still needed to PORT the step is not the accounting but the candidate
+list: `below(587)` only reproduces if the list holds the same tiles in the same
+order. The run gives four independent tests of that — the first mine of each
+zone, where the list is at its least disturbed:
+
+| zone | the draw | the Sawmill landed at | has a town |
+| --- | --- | --- | --- |
+| 1 | 587 | 32:21 | yes |
+| 2 | 458 | 75:76 | yes |
+| 3 | 305 | 53:8 | no |
+| 4 | 631 | 15:88 | no |
+
+Three things are settled by those, because getting them wrong misses by
+hundreds rather than by a tile:
+
+- **The scan order.** The other way round puts zone 1's tile at index 22
+  instead of 587.
+- **The ring is measured from the town, not from the zone's start point.** From
+  the start point the ring holds 688 tiles and the tile is at 147; from the
+  town it holds 950 and the tile is at 706, which the room filter then brings
+  to 587 exactly. (The code says the same — `zone+0x0C` is written only by
+  `PlaceTowns` — so this is two independent readings agreeing.)
+- **A zone with no town really does drop the ring** and offer every tile it
+  has: zone 4 lands on 631 → 15:88.
+
+**The whole step is now ported and runs LIVE** — `src/rmg/mines.ts`, and
+`test-rmg-mines` lets the same rng that ran the chain keep drawing through
+zone 1's entire mines step: 74 draws later the counter stands on the step
+boundary the trace recorded, with all six mines, every guard and every pile
+on the reference map's tiles, matched by the names their draws minted.
+
+The placement half, read out of `0xEC3510`/`0xEB3990` and the piles block:
+
+- **The fit test** (`0xEC3510`, no draws): blocked tiles and the marker need
+  the map, the zone, occupancy EXACTLY 0 — a road blocks a mine even though
+  it counts as free elsewhere — and border distance ≥ 1; **active tiles need
+  border ≥ 3**. The marker's (0,0) pair is skipped. Floor 1 adds a five-tile
+  edge margin, unmeasured — the reference has no underground.
+- **Creation** (`0xEB3990`) mints the name — two `below(65535)` — BEFORE the
+  factory runs, so a failed creation has already spent them. The only free
+  failure is a shared path without "Shared" in it.
+- **The guard seat** costs no draws: first free orthogonal of the footprint's
+  last active tile, starting from the quadrant's direction. Free here IS the
+  road-lenient test. No seat — no guard, no SetMonster; the engine then still
+  runs the piles against an UNINITIALISED guard position (the jump skips the
+  only writes to that slot) — stale stack, which the port declines to
+  reproduce and documents instead.
+- **The piles**: eight neighbours, from two past the guard's direction; free
+  first, then within 2.0 of the guard, and only then the 0.8 roll — a
+  candidate failing either test spends nothing. Two is the ceiling, counted
+  after successful creation.
+- **Abandoned mines** (`0xEBD700`): a count of zero spends nothing.
+
+The candidate machinery underneath: `test-rmg-mines` also replays each zone's
+recorded first draw into the list this port builds, and the tile it picks is
+the reference map's Sawmill, zone for zone. What closed the last two was not a new rule but the
+reading of the connections phase's stamping:
+
+- a dug passage puts ONE tile into each side's `+0x68` — the digger its mouth
+  (which is also the guard's tile), the neighbour its adopted tile. That is
+  exactly what `zoneConnections` already returns as `passages`, so the room
+  points are the towns' occupancy-4 tiles plus the passages, and nothing new
+  had to be built;
+- the adoption offsets are MAP-coordinate pairs — dx moves x, the second grid
+  index — and the port had been applying them to (row, column). Zone 2 pinned
+  it: of the twenty-five points in the mouth's 5×5 neighbourhood, exactly one
+  lands its draw, and it is the tile the x-first order adopts. Fixed in
+  `connections.ts`, and the sabotage check (swapping the axes back) fails
+  zones 2 and 3 and no others.
+
+**The instrument for measuring it** is the step boundary — see below.
+
+#### The second step — dwellings, read out of `0xEB8C10`
+
+`0xEB8C10..0xEB96C2`, called from the zone loop at `0xEA4576` with the zone
+params' `+0x30` vector — the template's seven per-tier counts — and one byte,
+`generator+0xA5`. It is the mines step stripped to its skeleton, and the step
+boundaries hold it live: zone 1 spends 8 draws (three attempts, two failed
+fits), zone 2 spends 6, zones 3 and 4 with all-zero counts spend nothing.
+`test-rmg-dwellings` runs zone 1 through the same rng that ran the chain and
+lands the counter on 18574 with ImpCrucible on the reference tile, minted
+name and all.
+
+What is the same as mines, instruction for instruction: the room recompute
+`0xEC28E0(4,0)` and the maximum `0xEC2EB0` per instance, the fit test
+`0xEC3510` with the same six arguments, the name mint `0xEB3990`, the stamp
+`0xEC2F90`, and the attempt loop — `below(candidates)`, `below(4)` for the
+quadrant (the rotation is `q·π/2`, drawn before the fit is tested), strike
+and redraw on failure.
+
+What is different, and each difference is load-bearing:
+
+- **The candidates are every tile of the zone.** No rings, no radii, no
+  border test: the list is `zone+0xCC`, built once back in FillZones by
+  `0xEB7790` (its only caller) with nothing but a zone-membership test, and
+  never rebuilt. `RMGParameters` is never touched — `0xEAFF80` is absent.
+- **The threshold divisor is 3, not 5** — `trunc(2·max/3)` at `0xEB8CD3`
+  (`imul` by `0x55555556`, no `sar`) against the mines' `2·max/5`.
+- **No guard, no piles.** `SetMonster` and `betweenFloat` are never called;
+  the whole cost is 2 per attempt and 2 for the name.
+- **An exhausted candidate list is terminal for the STEP** — the
+  `Can't place dwelling %s at zone #%d, floor %d (town at %d:%d)` block at
+  `0xEB9647` has no edge back into either loop, so one failure abandons every
+  remaining instance and tier of that zone. (Whether mines behave the same is
+  unread — their failure block is separate.)
+- **The descriptor is the race preset's `Dwellings` list**, `RMGPresetTable`'s
+  four hrefs the zone keeps at `+0x1C→+0x28`, indexed `min(tier, 3)` — which
+  is why zone 1 (Inferno) placed ImpCrucible and zone 2 (Academy) Workshop. A
+  hole in the table skips the instance, no draws spent.
+
+**The worker is two-moded on `generator+0xA5`**, and every traced run has it
+zero. Mode 0 with tier < 3 sets no properties at all — exactly the reference
+map's dwellings, `PLAYER_NONE` with empty `RndSource`/`LinkToTown`. Unported
+and unmeasured, said rather than hidden: mode 1 swaps the descriptors for the
+seven `/MapObjects/Random/RandomDwellingN` stand-ins (`0x121C570`, filled by
+`0x4D5A60`) and, when the zone has a town, sets `RndSource = 2` and
+`LinkToTown` to the town at `zone+0xFC`; mode 0 with tier ≥ 3 reuses
+descriptor 3 and switches its creature on via `creaturesEnabled[tier-3]`.
+
+**One trap for a future comparison**: the reference has THREE `AdvMapDwelling`
+items, and only two are this step's. The RefugeeCamp at 29:75 is minted at
+draw 19821 — inside zone 4's SHOPS step, whose price list
+(`NewShopBuildings`) carries two dwelling-typed entries, RefugeeCamp and
+ElementalConflux. Counting item types against this step counts one too many.
+
+#### The price-list placers — upgrade buildings (`0xEB96D0`) and shrines (`0xEBE1C0`)
+
+One shape, two workers, and four more steps (resource, treasury,
+luck/morale, shops) share it with their own preset vectors. A points budget
+buys objects off a priced list: per object, `below(affordable prefix)`
+picks the type, then the dwellings-shaped body — room recomputed, filter
+`room > trunc(2·max/3)` over the `zone+0xCC` tiles, two draws per attempt,
+two for the name — and `spent += Value` until the budget clears nothing.
+The prefix is a LEADING scan that breaks at the first element with
+`Value + spent > points`, so list order is load-bearing: the shipped
+upgrade list's tail (SpellMentor 20, SacrificeAltar 10) sits behind the
+Value-40 wall and is unreachable until the budget clears it. Exhausted
+candidates abandon the step whole, dwellings-style. Both live in zone 1
+(`test-rmg-upgrade-shrines`): upgrade buildings as a measured zero-draw
+exit, shrines to the boundary at 18579 with `Shrine_Of_Magic_2` on the
+reference tile.
+
+**Upgrade buildings, what is its own:**
+
+- **The budget** is `trunc(len(zone+0xCC) · trunc(density · mult) / 10000)`
+  (`0x68DB8BAD` magic at `0xEB96F8`), density = the template's
+  `UpgBuildingsDensity` raw. `mult` is the `{0.2, 0.5, 1, 2, 4}` ladder
+  (jump table `0xEA543C`) indexed by `generator+0xB0`, applied at the CALL
+  SITE and to no other step. The traced run's draw counts pin the index to
+  1 (× 0.5): 2302·20/10000 = 4 points against a cheapest Value of 8 is the
+  whole of why a town zone spends nothing — towns are never consulted.
+  Zones 3 and 4 get 11 points, an affordable prefix of six, and exactly one
+  building each (12 and 31 draws decompose as 1+2·2+2+5 and 1+2·12+2+4).
+  What writes `+0xB0` is unread.
+- **The list** is `[zone+0x20]+0x168` — 0x14-byte records `{_, href,
+  loaded, Value, GuardStrenght}`, which is the preset's
+  `NewUpgradeBuildings` (the offset map of `[zone+0x20]` matches the xdb
+  field order across four sibling steps: `NewLuckMoraleBuildings +0x144`,
+  `NewShopBuildings +0x150`, `NewResourceGivers +0x15C`,
+  `NewUpgradeBuildings +0x168`).
+- **The guard** goes through `0xED3200` — its ONLY caller in the image —
+  not the mines' inline seat, and the two differ in both anchors: the base
+  tile is the object's position plus the FIRST active-tile offset rotated
+  by the angle (mines: the LAST stamped tile), and EIGHT directions are
+  tried from index `2q`, orthogonals then diagonals (mines: four
+  orthogonals). Freeness is the road-lenient test, no border or zone check.
+  Power = `BasicLeverGuardPower × GuardStrenght`; SetMonster's own
+  `power < 100` gate spends nothing, but the seat is taken and occupancy 4
+  written regardless. The guard tile joins `zone+0x98` — which the room
+  machinery never reads (mask 4 selects `+0x68`), so guards do NOT steer
+  later room; the treasure blocks phase is the ledger's one reader, and
+  keeps its piles 8 tiles away from every seat in it (Phase 13).
+- **A suspected infinite loop, never reached**: a failed mint (`0xEB9B37`)
+  skips the accounting and re-enters with an identical candidate list.
+
+**Shrines, what is its own:**
+
+- **Points are raw** — `ShrinePoints` pushed verbatim (`0xEA4B8B`), no
+  scaling; under 6 the step returns before any draw.
+- **The list is hardcoded**, mines-style: `Shrine_Of_Magic_1/2/3` at costs
+  `{6, 10, 12}` (records `0x121CA90`, costs `0xFF4C94`, static init
+  `0x4D5B40`). The preset's `NewShrines` vector is never read by this
+  worker — which is why the reader in `preset-table.ts` does not carry it.
+  The loop condition hardcodes the 6 (`0xEBE4BF`), not `cost[0]`.
+- **The candidate filter is the shared helper `0xEC1500`** (ten callers:
+  prisons, cartographer, shrines, resource, treasury, luck/morale, shops,
+  road and two more — upgrade buildings is NOT among them, it inlines), and
+  it adds a **border distance ≥ 1 gate** the inline filters do not have.
+  Measured, not just read: dropping the gate moves zone 1's boundary by 14
+  draws.
+- **No guard, ever**: SetMonster is called by none of the `0xEC1500`
+  family. And no SpellID — the reference's `SPELL_NONE` is the shared
+  document's default.
+
+**The other four — resource (`0xEBE540`), treasury (`0xEBECB0`),
+luck/morale (`0xEBF090`), shops (`0xEBF540`) — are the same body with the
+preset's own vectors**, and the traced run's 240 draws over 33 objects
+replay against the model without one mismatch (`test-rmg-price-lists`
+holds zone 1's ten live). What the four settle:
+
+- **The budget rule follows the template field's SUFFIX.** `…Points`
+  fields arrive raw (treasury `TreasureBuildingPoints`, shops
+  `ShopPoints`); `…Density` fields scale as `trunc(tiles · density /
+  10000)` (resource), and luck/morale adds 40 to the density INSIDE the
+  product — `add eax,28h` at `0xEBF0C6` before the multiply — which is
+  why a density-0 zone still builds (2279·40/10000 = 9 points). No
+  `{0.2,0.5,1,2,4}` ladder anywhere here: that is the upgrade-buildings
+  call site's alone.
+- **The vector-offset map closes**: `NewLuckMoraleBuildings +0x144`,
+  `NewShopBuildings +0x150`, `NewResourceGivers +0x15C`,
+  `NewUpgradeBuildings +0x168`, **`NewShrines +0x174` — read by nobody**,
+  `NewTreasuryBuildings +0x180`.
+- **`GuardStrenght` is dead data in these four vectors.** Twelve traced
+  objects carry a non-zero one and none drew a guard; the only `+0x10`
+  read in the family is upgrade buildings' push into `0xED3200`.
+- **The stop is `list[0].Value + spent <= points`** — the FIRST element,
+  like upgrade buildings; the shrines' hardcoded 6 is that list's own
+  `cost[0]` and a quirk of that worker alone.
+- **An entry need not be a building.** Shops ship two dwelling hrefs
+  (ElementalConflux, RefugeeCamp) and place them as plain objects — the
+  worker casts to the shared BASE type, and no dwelling properties are
+  set. The one exception is treasury, whose working descriptor is cast to
+  `SAdvMapBuildingShared`: a non-building entry there aborts the step
+  silently, with no log line. Nothing shipped reaches it.
+- **Only upgrade buildings logs on success** (`building #%s(%d) set…`) and
+  logs its budget up front; these four emit nothing but their failure
+  line. Every price-list worker also push_backs the minted name record
+  into `[zone+0x134]+0x40`, a ledger whose consumer is unread.
+
+#### The zone tail — observatories, treasures, chests (`0xEBF930`, `0xEA57B0` → `0xEB9DC0`)
+
+Read whole and replayed against the trace: the four zones' 9/15/5/5 draws
+account draw for draw (`test-rmg-treasures` holds zone 1 live to 18662).
+
+**Observatories (`0xEBF930`).** Takes `&params[i]` and never reads it —
+`RedwoodObservatoryDensity` and `DenOfThieves` are DEAD template fields.
+Places `trunc(len(zone+0xCC) / 4000) + 1` Redwood Observatories (the
+divisor is read out of the magic multiply; every traced zone lands N = 1)
+through the `0xEC1500` machinery with a 100-attempt cap per object. Then
+**the Den roll**: a zone with no player (`zone+0xF0`, the 1-based player
+number) draws `below(10)` and on 0 or 1 places one Den of Thieves the same
+way. Both town zones skip the roll and both townless zones took and missed
+it (9, 8) — the measurement that pins the gate.
+
+**Treasures and chests (`0xEB9DC0`, behind the `0xEA57B0` dispatcher).**
+Surface zones only — the dispatcher sits behind `zone->0xF4 == 0`, and the
+additional-objects phase later calls the same dispatcher for the
+underground zones. The worker prefilters `zone+0xCC` once by border ≥ 1,
+takes `count = trunc(len(RAW list) · trunc(density · ladder) / 10000)` —
+TreasureDensity on the `{0.2,0.5,1,2,4}` ladder indexed by
+`generator+0xA8` for treasures, TreasureChestDensity by `+0xB0` for
+chests — and per object: room + filter (room > trunc(2·max/3), border ≥ 1,
+**occupancy ≠ 2** — this inline filter's own gate; roads and guard tiles
+are acceptable seats), then the TYPE: `below(9)` over the table at
+`0x121C910` — Campfire, **Chest**, Crystal, Gems, Gold, Mercury, Ore,
+Sulfur, Wood — so a drawn treasure can be a Chest, and **the chests step
+is the same body with the type fixed at index 1**, 4 draws per object
+instead of 5. Amounts are never drawn and never written (the reference's
+`Amount 0` is the document default). Exhaustion abandons the step. In this
+template the chests step scales to zero everywhere; the reference's 31
+chests all come from the treasure-blocks phase — counting `Chest` objects
+against the chests step counts 31 too many.
+
+#### The road (`0xEC05B0` → `0xEC0B60`) — ported, live in all four zones
+
+Zone 1 spends 234 draws here, zones 2–4 265/222/207, and every one is the
+same coin: **`below(2)`, once per walked tile, the only RNG in the block**
+(`0xEC12D9`) — it flips whether the 8-neighbour scan runs forward or
+backward, pure tie-breaking on a strict compare. No mints, no objects.
+`src/rmg/road.ts`; `test-rmg-road` runs the whole first loop of
+MainObjects live to 20039 on the strength of it. One honest limit: the
+draw counter is BLIND to the coin's sense — either pick of a tie is a
+path of the same length — so the coin direction is held by reading alone
+until the road masks can be compared.
+
+**What it connects**: the zone's `+0x68` points, each routed to its
+NEAREST LATER sibling in list order — **and then one more**: `argmin`
+starts at 0, so the last iteration, whose inner loop is empty, routes
+`points[n−1]` back to `points[0]` and CLOSES the chain. n calls for n
+points; missing the closing route is what a first port came out 17–32
+draws short by, zone for zone. The list must be in the engine's PUSH
+order, and the full write-site sweep says it has exactly four feeders:
+`0xEC2F90`'s passes 2 and 3 (actives, then the non-zero marker — towns
+included, via `0xEB4CB0`'s stamp call: actives then marker, NO entry or
+flag point), the digger's mouth (`0xEC26EA` in `0xEC1630`) and the
+neighbour's adopted tile (`0xEBA5DB` in `0xEBA470`) — plus the Grail's
+inlined seat (`0xEC03F5`), favoured-zone only. Guards push `+0x98`, never
+`+0x68` — measured, too: adding them to the list breaks the mines' own
+lockstep. One divergence kept in mind: `0xEC2F90` has NO bounds clamp on
+its pushes where the port's stamp clamps — an object stamped against the
+map edge would differ.
+
+**The route** (`0xEC0B60(zone, from, to, kindBit, outList)`): a float cost
+grid cached at `zone+0xA4..+0xB0`, filled with 1000.0, `cost[from] = 0`,
+both endpoints' occupancy saved and zeroed; then a repeated full-grid
+sweep (Bellman-Ford flavour, no queue) relaxing 8 neighbours with step
+`1.0 (orth) / 1.41 (diag) + (100 − border)/100`, plus `(5 − border)` when
+border < 5 — propagation is gated to the zone's own tiles but relaxation
+writes into neighbours of any zone. `pure road algo failed.` fires at
+sweep 800 and is not fatal; 2000 breaks. Then the walk descends from `to`
+by `(int)cost` — TRUNCATED comparison, far coarser than the field — one
+coin per tile, OR-ing the kind bit into occupancy (`0x20` here, lists:
+`0x08 → zone+0x74`, `0x10 → +0x80`, `0x20 → +0x8C`; the first two belong
+to the later roads phase at `0xEBA690`). Quirks to reproduce: the endpoint
+occupancy is restored only on a clean finish (a walk that steps out of
+bounds loses it), and the sweep's neighbour bounds check swaps the axes —
+harmless on square maps only.
+
+**Where roads land for comparison**: not in `map.xdb` — they are terrain
+layers in `GroundTerrain.bin`. The reference's road layers: SandRoad 607
+vertices, LavaRoad 131, Dead_Land 175 (the Inferno SECONDARY road tile of
+land class — the layer `test-rmg-terrain` already books as "the roads
+phase's"), plus Lava's 175 missing vertices resolving. Those masks,
+byte for byte, are the acceptance target once the painter is reached.
+
+### Phase 11 — the roads phase (`0xEBA690`) — ported, live
+
+`src/rmg/roads-phase.ts`, `test-rmg-roads-phase`: 381 draws, 20039 →
+20420, every one the router's coin — the phase calls nothing that draws
+except `0xEC0B60`. The driver is an **inline loop in GenerateMap**
+(`0xEABE7D..0xEABF53`, printing "at %g roads created" at `0xEABF61`):
+floors ascending, each floor's zones in the level hash_map's bucket order
+— the order `floorIterationOrder` already models — calling `0xEBA690`
+non-virtually per zone. (A standalone copy of the driver at `0xEA3DC0`
+has no callers.) Between "main objects set" and the loop: two callback
+invocations, no draws — the phase has NO prologue draw.
+
+Per zone, after a cost-grid cache ensure that is a no-op by now
+(`0xEBA69F`), three parts:
+
+**The seed** (`0xEBA6EB`). With byte `zone+0xF8` set — "has a town",
+written by PlaceTown right after its stamp — the town ENTRY at `zone+0xC`
+(the same point Phase 8 grows from) is pushed into `zone+0x74`, the 0x08
+list. Otherwise element 0 of `zone+0xC0` is, if any. Nothing seeded means
+the phase does nothing for this zone.
+
+**Loop 1 — connections, kind 0x08** (`0xEBA710`). Each point of
+`zone+0xC0` in index order is routed to its nearest point of the GROWING
+0x08 list — every element scanned, single-precision distance, strict `<`,
+best from 1000.0f, argmin from 0 — with one gate this loop alone has
+(`0xEBA7FE`): both endpoints' truncated coordinates must lie inside the
+map, or the route is silently skipped. `0xEC0B60(zone, from = network,
+to = connection, 0x08, outList = zone+0x74)`: the wave grows FROM the
+network, the walk descends from the connection point, and the walked
+tiles join the list — later connections attach to earlier roads. A zone
+seeded from its own `C[0]` routes it to itself for zero coins.
+
+**Loop 2 — mines, kind 0x10** (`0xEBA883`). Each point of `zone+0x11C`
+in index order finds its nearest road tile by a SAMPLED scan: the 0x08
+list at indices ≡ 5 (mod 13) (`0xEBA8D5`, magic `0x4EC4EC4F`), then the
+same best continued over the 0x10 list at indices ≡ 7 (mod 11)
+(`0xEBA967`, magic `0xBA2E8BA3`). The route runs REVERSED — `from` = the
+MINE point, `to` = the road tile, `outList = zone+0x80` — and has NO
+bounds gate. Reachable quirk, kept: when no sampled index exists at all,
+argmin is still 0 and the route goes to `road08[0]`, the seed, no
+distance ever measured.
+
+**Who fills the inputs** (write-site sweep): `zone+0xC0` gets the
+digger's mouth (`0xEC2563` in `0xEC1630`), the neighbour's adopted tile
+(`0xEBA5B8` in `0xEBA470`) — the same pushes ZoneConnections makes to
+`+0x68`/`+0x98`, so `conn.passages` in push order IS this vector — and
+teleport actives (`0xEB7C60` stamps via `0xEC2F90` with
+`outList = zone+0xC0`; not ported, no surface-only template reaches it).
+`zone+0x11C` is fed by the mines step's two stamp sites (`0xEB640F`,
+`0xEB6E8F`) and the abandoned-mine placer (`0xEBE077`): stamp pass 2
+pushes each ACTIVE tile into the caller's outList when non-null — every
+other placer passes 0 — so the vector is every mine's actives in stamp
+order, which `PlacedMine.actives` now carries. `zone+0x74`/`+0x80` have
+no other feeder anywhere in the RMG range: they start empty, this phase
+alone fills them, and the room-recompute masks read them afterwards —
+the road painter does NOT: it scans the occupancy bits, which is why a
+network's seed tile (in the list, but never walked) stays unpainted.
+
+**Side writes**: none beyond the router's — occupancy `|= 0x08/0x10`
+along walks, endpoint occupancy zeroed and OR-restored on a clean
+finish. No border dents, no `+0x68`/`+0x98` pushes, no `RMGParameters`
+or template reads: the 0x08/0x10 split is hardwired by loop.
+
+The proof is the boundary alone — 130/115/65/71 coins across zones 1–4,
+landing on 20420 — because per-zone boundaries are not narrated for this
+phase and roads leave no `map.xdb` objects. Sabotage-checked: shifting
+loop 2's sampling phase by one moves the boundary to 20424. The masks in
+`GroundTerrain.bin` vouch for this phase too: every 0x08 and 0x10 tile
+of all four zones lies under the painted road vertices (Phase 14), while
+the zone road's 0x20 tiles are never painted at all — so the masks can
+arbitrate the roads phase but not the zone road.
+
+### Phase 12 — the statics (`0xEA5450` → vtable `+0x34`/`+0x30`)
+
+`src/rmg/statics-big.ts`, `src/rmg/statics-one-tile.ts`,
+`test-rmg-statics`. **Zone 1 runs in LOCKSTEP end to end** — big statics
+to 40826, one-tile to 44537, 269 objects — and with ONE road tile
+substituted (below) zone 2 does too: all 604 statics of zones 1–2 land
+on the reference by minted name and tile. Zones 3–4 carry similar
+road-corridor differences, awaiting the `grids` measurement.
+
+**The driver** (`0xEA5450`, sole caller `0xEABFC4`): zones in TEMPLATE
+ENTRY order (the 0x74-stride params array, entry+0x4 the zone id), big
+statics (`+0x34` = `0xEBBBD0`) then one-tile (`+0x30` = `0xEBAA70`) per
+zone, NO prologue draw and no `this->0xB5` read — the phase starts on
+the roads boundary exactly. Subterra/Dwarven/SubInferno/WaterBordered
+override both slots; the Subterra pair is read and ported (below), and
+the underground run drives it in lockstep.
+
+**What the underground run corrected in this phase's first reading**
+(each held by the run's boundaries and by-name checks):
+
+- **`zone+0x18` is the RESOLVED race.** The surface trace showed no
+  lake draws for its Inferno zone because the seed scan found ZERO
+  candidates — indistinguishable from a closed gate until a zone with
+  candidates (the underground's HEAVEN zone 2) opened it.
+- **The `+0x5C` stamped-blocked ledger** — the room masks' bit 0x02 —
+  is written by the stamp `0xEC2F90` itself: every stamped blocked cell
+  joins it, in stamp order, raw coordinates (no bounds check — and the
+  occupancy write wraps through the grid's contiguous x-major buffer).
+  A mine's piles and the treasures write their 2s directly and stay
+  out. `0xEC28E0`'s full bit dispatch: 0x02 `+0x5C`, 0x04 `+0x68`,
+  0x08/0x10/0x20 the three road lists, 0x40/0x400 occupancy-filtered
+  `+0xCC` tiles (byte/dword-wide tests); the all-zones flag recomputes
+  the LEVEL against the CALLING zone's lists, not each zone's own.
+- **The LAKES** (`0xEBC260`, mask 0x3E): after the blob, the lake
+  painter's tail (`0xECE680` → `0xecee65`) converts DEEP WATER: every
+  level cell in 1..dim−2 with ≥ 3 of its 8 neighbours at EXACTLY 0x80
+  turns 0x82, two-phase — and 0x82 & 0x3E = 2, so statics stand on a
+  lake's rim, never in its interior. The seed decorations jitter with
+  the FIRST below(5) on the pair's `a` field (the file's Y); the
+  over-lake one-tilers keep list HOLES (a self-closed `<Item/>` is
+  picked for three draws and creates nothing — `below(len)` counts it).
+  Decorations and one-tilers write no occupancy and push nothing.
+- **The MOUNTAINS** (`0xEBCAF0`) have NO recompute — candidates read
+  the room grid the lakes head left (stale if the gate never opened);
+  type is drawn BEFORE the quadrant; the fit is the shared vt+0x44;
+  0x100 per blocked cell is TRANSIENT (mountains overlap freely within
+  the pass, only the 4.0 rule separates them) and the WHOLE accumulated
+  set turns 2 after the pass; the relief cone fires unconditionally per
+  placement.
+
+### The subterranean statics — Subterra `+0x34`/`+0x30`, the carve
+
+`src/rmg/massif-carve.ts`, the subterranean branches of
+`statics-big.ts`/`statics-one-tile.ts`; driven by `test-rmg-underground`.
+
+**The carve** (`0xED11D0`, reached from vt+0x40 = `0xEC4A50`/`0xEC7050`/
+`0xEC92B0` — Subterra, Dwarven and SubInferno share it; SubInferno's
+`+0x34` lacks the vt+0x40 call, unexplained). The slot is not the carve
+alone: it is `recomputeRoom(0x3C, all=1)` over EVERY cell of the level
+and then the carve as a tail jump, and the `all=1` half is what a
+second zone on the floor reads through the fit — see "A subterranean
+zone refreshes the whole level's room grid" at the end. DRAWLESS, floor 1
+hardcoded. The underground level carries two VERTEX grids `(dim+1)^2`
+(`level+0x24` bytes, `level+0x14` floats; floor 1 starts 0x10/18.0 with
+a rock frame — the low edges ramp 36/30/24 over bytes 32/26/21, the far
+edge lines are plain wall — floor 0 starts 0x20/36.0). The carve walks
+the 3×3-tile lattice: a clean 9×9 occupancy patch (byte mask 0x3E)
+raises its 4×4 vertex block to rock (0x20/36.0), smooths the 16
+surrounding lattice cells (`0xEB27D0` — bilinear over four fixed
+corners, `trunc/9` bytes, float += delta·1.125; OOB corners read 0x20)
+and stamps the patch 0x40; one conversion pass then turns EXACTLY-0x40
+cells to 2 — so only the first subterranean zone's call carves. The
+port's float grid is byte-identical to the reference
+`UndergroundTerrain.bin`, all 5,329 vertices, frame and smoothing
+included.
+
+**Subterra big statics** (`+0x34` = `0xEC4A70`): the carve, then the
+base sweep VERBATIM — same crater rule, rotations, fit, acceptance,
+stamp — minus the relief cone and the "Mountain" test. Dwarven's
+(`0xEC7070`) is the carve alone; SubInferno's (`0xEC92D0`) is Subterra's
+body without the carve call.
+
+**Subterra one-tile statics** (`+0x30` = `0xEC50C0`; SubInferno's
+`0xEC9920` is an instruction-identical clone): the base skeleton — same
+bucket thresholds, same cascade constants and strictness — with three
+changes. A ROCK + BOUNDS filter everywhere (the corner vertex byte
+above 0x10 is rock, read in the vertex grids' own transposed
+convention; tiles must sit in 1..dim−2), tested BEFORE any draw. A
+SURVIVAL pre-roll opens every pass — fence ≥ 0.7, near ≥ 0.6, mid and
+far ≥ 0.9, equality survives — and in near/mid/far it comes BEFORE the
+below(4) quadrant (the base drew below(4) first). Created blockers and
+nonblockers go through vt+0x3C (`0xEC6280`): a resource path containing
+"Crystal" takes a point light for two draws — z = zMin + below(zMax −
+zMin), radius likewise from `PointLightParams` — colour drawless,
+`Colors[zoneId % count]`. Dwarven's `+0x30` (`0xEC7090`) is its own
+four-pass wall-and-pillar layout over the carve (FireColumns at
+`%10==5` seats, Fakels one ring further, a drawless Dwarf_Column
+forest, lights on "Fakel"/"FireColumn") — read in full, unported until
+a dwarven-underground reference exists.
+
+**Big statics** — three parts. The LAKES prologue (`0xEBC260`) gates on
+`zone+0x18` ∈ {HEAVEN, PRESERVE, NECROMANCY, INFERNO, DWARF,
+STRONGHOLD} and floor 0. The reference showed the gate CLOSED for its
+resolved-Inferno zone, which once read as "`+0x18` must be the
+TEMPLATE'S Setting race" — that guess is **retired**: the gate was open
+and its seed scan simply had no candidates, the underground run's HEAVEN
+zone opened it for real, and the sweep grows lakes on resolved-Inferno
+zones whose masks come out byte-identical. `+0x18` is the RESOLVED race,
+and the height plane's dig (see "Which race digs") is where that reading
+was re-earned. Inside (held by reading alone): room recompute mask 0x3E
+(`+0x5C` has NO writer anywhere in the RMG range — effectively 0x3C);
+seed candidates = zone tiles with room > 5, border > 5, local maximum
+of room over 8 neighbours (ties PASS — only a strictly greater
+neighbour disqualifies, `0xebc380`); one betweenFloat per structural
+candidate, accepted on roll < 0.4f strict THEN ≥ 20.0 from every
+accepted seed (the roll is spent either way); seeds join `zone+0xB4`.
+The blob grows drawlessly (chamfer +2/+3, occupancy 0x80, 13 waves);
+`0xEC3B30` decorates seeds (OverLakeCenterObjects) and `0xEC3E00` rolls
+below(10) ≤ 5 per COLLECTED LAKE TILE (OverLakeOneTileRandomObjects).
+The preset-MOUNTAINS pass (`0xEBCAF0`, `Mountains` — empty for both
+reference races) places with the statics fit, stamps occupancy 0x100
+(reads back as 0 through the byte-wide fit) and raises the relief cone
+(`0xED1660`: height += 2·(3.5 − r) under blocked offsets with r < 3.5,
+also fired by sweep-placed "Mountain" statics with > 15 blocked tiles).
+
+**The sweep**: room recompute mask 0x3C (`+0x68` actives + all three
+road lists), candidates = zone tiles with room > 1 in `+0xCC` order,
+built once; outer loop the preset's `BigStatics` in FILE ORDER (the
+shipped tables order big→small), inner the candidates — NO tile draw.
+"Big" is blocked count n > 10. A big "Crater" candidate keeps 15.0 from
+every `zone+0xB4` point before any work. Big: 4 free rotations (angle =
+attempt·π/2); small: ONE drawn below(4) — the phase's below-dominated
+bulk. A passing fit costs one betweenFloat, accepted iff roll <
+1/(n+1) single-precision strict; then the mint (two below), the
+standard stamp, big positions into `+0xB4`, and the relief for big
+Mountains. Placed candidates are not struck from the list.
+
+**The statics fit** (`0xEC39D0`, vtable `+0x44`, drawless): per rotated
+blocked offset — bounds [0, dim) (the dims swapped against the sweep's,
+square-safe); the 5-margin ONLY at floor == 1; occupancy byte & 0x3E
+== 0 (roads and objects block; lake 0x80 and mountain 0x100 pass); room
+≥ 2 SIGNED (`jl`), so the −1 a never-recomputed cell keeps from
+CreateMap fails it — and NO zone test, which is why the room grid's
+staleness is modelled (the level's ONE persistent grid in the chain,
+`ensureRoom`/`recomputeRoom` in placement.ts: each recompute writes its
+own zone's tiles and 1000 to zoneless ones, everything else keeps the
+last writer's values).
+
+**One-tile statics** (`0xEBAA70`): room recompute mask 0x3C, then a
+drawless bucket scan of `+0xCC` (occupancy EXACTLY 0, border ≠ 0; room
+2 → near, 3–4 → mid, > 4 → far), then four passes: (1) the border
+FENCE — every zone tile draws below(4) first (the trace's bare filler);
+survivors (border == 0, occupancy ∈ {0,1,8,0x10,0x20}) ALWAYS get an
+object, the betweenFloat only selects the list (< 0.4 blockers, else
+big objects, else blockers; both empty = the engine's division by
+zero); a "FireDot" blocker takes the MAP angle — `mapSetup`'s
+betweenFloat(0, 2π), finally consumed — occupancy = 2 written over
+roads; (2) near — below(4) + base roll, cascade with fresh rolls and
+free fallthrough on empty lists: base < 0.15 big objects, else < 0.4
+blockers, else < 0.6 nonblockers (occupancy 1, the step's only 1); (3)
+mid — base < 0.3 big objects, else < 0.5 blockers, no nonblockers; (4)
+far — base ≤ 0.5 (the one gate where EQUALITY passes) and big objects
+only. No budget: the step ends when the passes run out of tiles.
+
+**The corridor hunt, and what it found.** The road walk is one coin per
+tile and equal-length corridors cost the same coins, so the draw
+counter cannot see WHICH tiles a route walked — but the statics can:
+the room recompute reads the road lists, and the fit reads occupancy.
+Zone 2's divergence came down to ONE road tile (the engine walks the
+ortho 61:62, the port's field made the diagonal 60:62 the unique
+minimum), and no reading of the walk could produce that choice — so
+the field itself was measured. Two oracle instruments came out of it
+(native/rmg/oracle.c, config keywords): `grids` dumps the engine's own
+road lists (`rl`/`rt`) and all four level grids (`zg`/`oc`/`bd`/`rm`)
+at the roads boundary — it proved border, zone grid and room BYTE-EXACT
+and pinned the differences to road tiles alone; `field` detours the
+EDITOR's router (RVA 0x7FB1B0, found by its "pure road algo failed."
+string) and dumps the cost field of a named route right after its wave.
+The field dump showed the first ortho step from the start already one
+ulp below the port's — an exact round-to-nearest TIE under the ported
+composition — and the re-read of the editor's own wave explained it:
+**the editor is compiled x87 where the game is SSE. The editor's step
+is `(100−b) * 0.01f` (fmul) carried in DOUBLE with ONE rounding at the
+store and the compare in double; the game's is `/100.0f` (divss) with
+per-operation single rounding.** The reference map is the editor's, so
+road.ts now implements the editor's arithmetic — after which every road
+list of every zone is byte-identical to the dump, every statics
+boundary lands, and the walk's every tie resolves the engine's way with
+the port's own coin sense. The moral for every phase after this one:
+when a traced run and a read-out-of-the-game-exe port disagree at one
+ulp, ask WHICH BUILD generated the trace.
+
+Speaking the editor's arithmetic is a choice of MEASURABILITY, not of
+correctness: ordered runs can only be made in the editor (the game
+offers no way to set the generation parameters), so the editor is the
+only build a port can be held to. The GAME's wave builds DIFFERENT maps
+from the same seed. The day the port serves the in-game RMG screen
+(network play), it will need a build switch — game arithmetic vs editor
+arithmetic in the router — deliberately deferred until then.
+
+### Phase 13 — the treasure blocks (`0xEA3AE0` → `0xEBA420`) — ported, live
+
+The generator's last phase, and the one that finishes the reference run:
+2,640 draws from 89798 to **92438**, every boundary of every zone landed
+(`test-rmg-treasure-blocks`).
+
+**Read the LIVE function.** `0xED3F00` carries the phase's log string and
+looks exactly like its body — and nothing calls it, and it is in no
+vtable. An older redaction left as a COMDAT duplicate; it picks its
+artifacts from a different pool (`+0x4C`/`+0x58` by a value threshold
+where the live one filters `+0x70` by a cost window). The live path is
+`0xEBA420` → `0xED3EB0` (a five-argument setter, no logic) and
+`0xED49D0`, which begins by calling the growth `0xED5650`.
+
+**Additional objects (`0xEA59E0`) cost nothing here.** Its per-zone body
+sits behind `zone+0xF4 != 0` — the floor — so a surface-only template
+never enters it, and the trace agrees: 89798 to 89798.
+
+**A block is a spot beside a road.** `0xEBA420` first recomputes the room
+grid with mask **0x38** — the three road lists alone — so throughout this
+phase `room` is the distance to the nearest road tile. Then `0xED5650`
+walks `zone+0xCC` and a seed must be:
+
+| gate | the test | before or after the draw |
+| --- | --- | --- |
+| free | occupancy 0 (bit 0 is never written, so this is "untouched" — a road tile does NOT qualify) | before |
+| beside a road | `room == 1`, exactly | before |
+| away from the town | `(dy² + dx²) > 3.0f`, the SQUARE against 3 | before |
+| — | **`below(8)`** — where the eight-neighbour walk starts | — |
+| unguarded | no neighbour carries occupancy 4 | after |
+| on an edge | at least TWO free neighbours with `room > 1` | after |
+| spaced | `DistBetweenTreasureBlocks` (8) from every block already grown, and from every point of `zone+0x98` | after |
+
+So the phase's whole draw budget is decided by three tests, and the
+draw is spent on seeds that go on to fail four more.
+
+**`zone+0x98` is the guards' ledger, and this phase is its only
+reader.** ZoneConnections opens it with each passage guard's seat and
+each tile adopted from a neighbour; the mines step and the upgrade
+buildings add their seated guards. Nothing else ever reads it — which is
+why earlier sections called it a ledger no one reads. It is what keeps
+the piles off the roads' guarded junctions.
+
+**The spot grows** into those of the seed's eight neighbours that are
+free, at `room >= 1`, touch at least two footprints (occupancy 2) and no
+guard. Fewer than two grown points and the seed is dropped; the seed
+tile itself is not one of the points. The block records the SEED's raw
+coordinates — no centroid is computed — and `trunc(distance to town)`.
+
+**Then the value.** Once every block of the zone exists, the zone
+record's `TreasureBlocksTotalValue` is split: in a zone WITH a town by
+each block's distance to it (`trunc(dist * total / Σdist)`, so the far
+blocks are the rich ones), in a townless zone evenly. Integer division
+throughout, truncating toward zero. A block under **600** is then
+skipped whole — no guard, no artifact, no piles, no draws.
+
+**Filling a block**, in order:
+
+1. the guard, on the seed tile, at `trunc(value * 2.5f + 0.5f)` of power
+   through the ported `SetMonster` — 4 or 5 draws. Its facing is
+   `-atan2(accX, accY)` over the directions to the block's own points and
+   to every surrounding tile carrying a footprint or a guard, both
+   accumulators nudged by `0.01f` so a null vector still has an angle;
+2. the artifact — **one draw, always**. Candidates are the pool's
+   artifacts whose cost, IN FIFTHS, satisfies `c + 500 < value` and
+   `c * 7 > value`; `below(candidates)` picks one and the block pays `c`
+   out of its value. With no candidate the engine still spends a
+   `below(1)`, and that is the draw the trace shows as 0;
+3. the piles, one per grown point, in growth order. `perPoint =
+   (value / points) / 100`, both divisions integer. `perPoint <= 1` is a
+   chest of 1 and costs no extra draw; otherwise `perPoint > 10` redraws
+   it as `below(6) + 7`, a block of three points or more flips
+   `below(2)` for a chest, and a resource otherwise takes `below(7)`
+   over Wood, Ore, Mercury, Crystal, Sulfur, Gems, Gold. Each pile then
+   spends `betweenFloat(0, 1)` on its rotation and two `below(65535)`
+   minting its name.
+
+**The artifact lands on the point at index 1 and only there**, and that
+point gets nothing else. The pool itself is built in the distributor's
+constructor `0xED3B80`: every artifact whose `CanBeGeneratedToSell` is
+true, in ascending id order, id 0 skipped outright and id 10 (the
+sextant) behind a context flag — 89 of the vanilla 97.
+
+The phase writes NOTHING: no occupancy, no room points, no border. It
+only reads, and hands its objects to the map.
+
+### Phase 14 — the road painter (`0xECE3E0`) — ported, live
+
+`paintRoads` in `src/rmg/terrain.ts`, `test-rmg-road-painter`. The pass
+that turns the road networks into terrain layers — and with it **all
+seven layers of the reference `GroundTerrain.bin` are byte-identical,
+the roads-in-waiting forgiveness clause in `test-rmg-terrain` no longer
+carrying anything.**
+
+**Where it runs.** Not in the roads phase: GenerateMap calls it at
+`0xEAC1FE`, on the same `CTerrainProcessor` (`map+0x60`) that ran
+FillTerrain, AFTER "treasure blocks set" and just before "finished
+creating map" (the water pass `0xECF760` — height −0.5 on the 0x80 bits
+— follows it). Late, but nothing between the roads phase and it touches
+the road bits: the statics fit refuses occupied tiles, roads included,
+and the treasure blocks write nothing — so the port paints right after
+the roads phase and the masks come out the same. In the editor build the
+tail is an un-inlined function: `0xCEFC20`, painter at `0x7951F0`, same
+logic instruction for instruction (x87 codegen aside).
+
+**How it paints.** One scan of the occupancy grid per floor — outer loop
+the SECOND port index, inner the first (`0xECE632`/`0xECE622`, the
+reverse of FillTerrain's vertex walk) — and `test al, 18h`: only the
+0x08 and 0x10 bits paint, the zone road's 0x20 never. A tile with 0x08
+takes its zone's RoadTile (preset `+0x4C`), else the SecondaryRoadTile
+(`+0x58`); the zone is the TILE's own from the zone grid, found through
+GetZone and silently skipped when missing. The tile paints its FOUR
+corner vertices at the literal 255 — `RoadTileStrenght` and
+`SecondaryRoadTileStrenght` sit in the data at 100 and are never read,
+the same fate as `TransitiveTileIntensity`, all three of them settled
+over the whole image and then on the engine ("Which fields the engine
+actually reads") — through the ordinary PaintTile, which is the whole of the layer arithmetic:
+
+- Dead_Land (Inferno's secondary, `TT_LAVA`, priority 60) shares Lava's
+  class, so its 255 overflows the 255 base and strips Lava — the 175
+  stolen vertices, vertex for vertex;
+- SandRoad (240) and LavaRoad (244) share the ROAD class, and a border
+  vertex both networks touch keeps whichever combination the scan order
+  dictates: at 34:63 the sand tile scans first, builds no base for the
+  later lava paint, and the file holds BOTH at 255; at 51:50 and 52:50
+  the lava corner scans first and the later sand paint strips it. The
+  scan order is load-bearing, and those three vertices are its proof.
+
+Because the occupancy decides, a network's SEED tile — pushed into the
+road list but never walked, so never given its bit — stays unpainted,
+which the reference masks confirm at both town entries. No draws: the
+counter stands at 20420 through the whole pass, and the suite holds all
+seven layers to the file byte for byte, 607 SandRoad, 131 LavaRoad and
+175 Dead_Land vertices among them.
+
+**What the game does with a road's TYPE (16.09).** Read for the
+road-types-per-connection item, in the GAME build (`H5_Game_H5E.exe`),
+since movement is the game's business. The per-tile move cost is
+`0xD87340` (a twin at `0xD87480`, unreferenced), called from the
+pathfinder (`0xBFB419`) and the walk (`0xC24D10`) with the cell's pair
+of terrain types — `[cell+0]` the ground, `[cell+4]` the tile on top —
+the hero's movement params, and whether the step is diagonal. In full:
+
+```
+cost = 100
+kind 1, 2, 4 (sea, air, ...):  cost stays 100
+kind 3:                        cost = params[+4]
+kind 0 (a land step):
+    if top in {TT_DIRT_ROAD, TT_GRAVEL_ROAD, TT_COBBLESTONE_ROAD}:  cost = 75
+    else (top == TT_NONE too):
+        penalty = 0 if ground == params[+0xC] (the hero's native terrain) else
+                  DIRT 25, GRASS 0, SAND 50, SNOW 50, LAVA 25, SUBTERRANEAN 25,
+                  DWARVENMINES 0, TAIGA 25, WASTELAND 25, roads/NONE/water 0
+        if params[+0]:  penalty = trunc(penalty * 0.5)        ; the Pathfinding perk
+        if params[+1]:  penalty = 0
+        if params[+0x14] > 0: penalty = trunc((1 - params[+0x14] / 100) * penalty)
+        cost = 100 + penalty
+diagonal: trunc(cost * 1.4142135), with a last-step allowance on the points left
+```
+
+So the three road types are ONE branch: `edx-6 == 0 || edx-7 == 0 ||
+edx-8 == 0 → 75` (`0xD87370`), and nothing else in the image tells them
+apart — the tile class (`0x9EC370`) folds all three into class 1 for
+the layer arithmetic, the ambient sound and music come from the tile
+DOCUMENT (`+0x70`, `+0x78`), the minimap colour from `+0x64`. Unlike
+Heroes III (dirt 75, gravel 65, cobblestone 50), a road's type in Heroes
+V is a picture and a sound: the same 75 whichever it is. A road type
+per connection is therefore a cosmetic choice, and the roadmap item says
+so now.
+
+**And the terrain penalty, read while there.** The params block the cost
+function reads is built by `0xD87300` (the hero's native terrain, from
+his class through the table at `0xC1C5DC`) and `0xC24B00` (the flags):
+
+| class | Knight | Ranger | Wizard | Demon lord | Necromancer | Warlock | Runemage | Barbarian |
+|---|---|---|---|---|---|---|---|---|
+| native | GRASS | GRASS | SAND | LAVA | DIRT | SUBTERRANEAN | SNOW | TAIGA |
+
+Off his native ground a hero pays the penalty above — sand and snow
++50, dirt, lava, subterranean and taiga +25, grass and the dwarven
+mines nothing — halved by Pathfinding (skill 0x13), zeroed by artifact
+26 (`CountEquipped`, `0xB4C270`), and cut by 2% a level of skill 0x48.
+`RoadHome/NativeTerrain` in DefaultStats is not what the game reads:
+the table is in the code. So there is no Heroes III sand — a ground
+foreign to everyone: every ground that costs is somebody's home, and
+sand or snow (+50 for seven classes of eight) is the nearest thing. A
+road wipes the penalty whatever the ground: 75 flat.
+
+### Phase 15 — the height plane (`0xECF760`) — ported, bit-identical
+
+`src/rmg/heights.ts`, `test-rmg-heights` — the whole surface reference
+plane, all 9,409 vertices bit for bit. GenerateMap calls the pass ONCE
+at 0xEAC206, right after the road painter; it touches floor 0 only (the
+underground floor's heights are the massif carve's). The chain:
+
+1. **The plane starts at 6.0** — the level constructor `0xEB2B60` fills
+   the float grid with 6.0 for a surface floor (and builds the
+   underground rock frame the massif port had to measure from the
+   reference: fill 36.0/0x20, interior carved to 18.0/0x10, low edges
+   ramped 36/30/24 — the same final state `createVertexHeights` writes).
+2. **The statics add the mountain cones** (`0xED1660`, `coneRelief`):
+   per rotated blocked tile within 3.5 of the static, ONE vertex takes
+   `+2·(3.5 − r)`.
+3. **The base field** (`0xECF9A0`): per vertex,
+   `min(sin(o/10)·sin(o/42)·cos(n/13)·sin(n/29) / 0.15f ± dist/3 + 12, 3)`
+   is ADDED — the cap makes 6+3 = the 9.0 plateau everywhere except
+   NECROMANCY/INFERNO zones, whose dist term is negated (they dig toward
+   the zone interior). Road tiles (occupancy 0x18) dent their four
+   corners −1.0 in the same walk; the dist/zone reads are transposed
+   with clamps against the write, which on the square map makes both
+   land on the vertex's own tile.
+4. **Lake dents**: every 0x80 tile takes −0.5 on its corners and leaves
+   the smoothing mask.
+5. **Craters** (`0xED0240`): an INFERNO town sets every vertex within
+   8.0 (of the position minus one) to their average −1.0; the INFERNO
+   dwellings (BuildingType 0x48..0x4B — DemonGate, ImpCrucible, Kennels,
+   the military post) do the same within 2.5 at −2.5.
+6. **The footprint flatten** (`0xED06D0`, runs twice — before the first
+   smooth and after the second): every non-static floor-0 object zeroes
+   the mask under its rotated footprint (shared blockedTiles + the FIRST
+   activeTiles entry, quarter-turned by `0xABE1D0` — x87 round-half-even
+   of rot/(π/2)+0.25) and sets the footprint's closed vertex set to its
+   average. The closure appends, through two STLPort hash_maps whose
+   bucket order fixes the vector, one vertex BELOW each column's lowest
+   and one RIGHT of each row's rightmost — the sanctuary's flat set is
+   what proved the axes. ACADEMY towns and the ACADEMY dwellings
+   (BuildingType 0x51, 0x55..0x57) hover and are skipped.
+7. **Smooth ×2** (`0xEB2580`, kernel 0.8 centre / 0.025 neighbours),
+   the mask refilled to all-ones between them.
+8. **The lake flood** (`0xECFE40`): each 8-connected 0x80 body is set,
+   all four corners of every member tile, to its corner minimum −0.1.
+9. **Smooth #3** (kernel 0.2/0.1), mask = ones minus the footprints —
+   which is why the flattened sets survive to the file exactly.
+
+**The arithmetic is the EDITOR's x87, and the file proves it.** The
+game's SSE codegen does the kernel per-tap in single precision, which
+drifts a constant-9 neighbourhood by +1.9e-6 per 0.8-pass; the reference
+holds 4,414 vertices at EXACTLY 9.0. The editor keeps intermediates on
+the x87 stack (53-bit precision) and rounds ONCE at each store — a sum
+of nine f32 products is exact in double, so the plateau comes back
+bit-perfect. The port therefore computes every chain in double over f32
+operands and rounds only into the plane — the same law the road wave
+established, now governing a whole file plane. The object positions'
+engine order is (+0x44, +0x48) = the port's (y, x) — the same (a, b)
+convention the town centres already used.
+
+The water and underground runs replay through the same functions with
+NOTHING water- or floor-specific added: the base field reads the
+carve-adjusted border table and the post-carve zone grid (a sea tile's
+zone is -1, so no race flip, and its negative dist term digs below the
+plateau), and the underground map's floor-0 plane is the same machinery
+over its own grids — the town-object floors decide which towns the
+craters and flattens see (`towns.ts` now records the floor). The shared
+full-run driver `src/rmg/run.ts` is what collects the object list in
+slot order for all three runs — and is the emitter's foundation. Still
+separate: the ground-flags/passability planes, a reverse target on the
+save path.
+
 ## Tools
+
+The orders worth putting to the engine, and the two tables they come from, live
+in [RMG_TEST_MATRIX.md](RMG_TEST_MATRIX.md) — generated by
+`node tools/rmg-matrix.ts`, which also says what each block costs in editor
+launches before one is started.
 
 ```bash
 npm run rmg-map            # rewrite docs/RMG_CODE_MAP.md from the executable
@@ -762,12 +6427,1506 @@ npm run test-rmg-towns     # PlaceTowns: the towns, against the reference map.xd
 npm run test-rmg-dist-to-towns # FillDistToTownsTable: the 2-and-3 wave, and what it disowns
 npm run test-rmg-armies    # SetMonster: the recorded draws replayed into the recorded guards
 npm run test-rmg-connections # ZoneConnections: the passages, against the reference map.xdb
+npm run test-rmg-mines     # the mines candidate lists: four first picks land the reference Sawmills
+npm run test-rmg-dwellings # the dwellings step live in zone 1: 8 draws to the boundary, ImpCrucible on its tile
+npm run test-rmg-upgrade-shrines # upgrade buildings' zero-draw exit and shrines live to 18579; the townless budgets by arithmetic
+npm run test-rmg-price-lists # resource, treasury, luck/morale and shops live to 18653, ten objects on the reference tiles
+npm run test-rmg-treasures # the zone tail live to 18662: one observatory, below(9)=6 -> Ore, chests a no-op
+npm run test-rmg-road      # the WHOLE first loop of MainObjects live: four zones, every boundary, to 20039
+npm run test-rmg-roads-phase # the roads phase live: both loops, all four zones, to 20420
+npm run test-rmg-statics   # the statics live: eight boundaries to 89798, 1325 objects on the reference tiles
+npm run test-rmg-treasure-blocks # the treasure blocks live: growth and fill per zone, to 92438 — the whole run
+npm run test-rmg-road-painter # the road painter: all seven GroundTerrain.bin layers byte-identical
+npm run test-rmg-underground # the WHOLE two-floor run: the carve, the lakes for real, 1423 objects to 70799
+npm run test-rmg-heights   # the height plane: all three references' floor-0 planes, bit for bit
+npm run test-rmg-emit      # the map.xdb emitter: all three documents, byte for byte
+npm run test-rmg-log-sites # the oracle's step boundaries, against the editor executable
+
+npm run rmg-random-suite -- --game <dir>                 # 3 orders a size, every input drawn; engine, then port
+npm run rmg-random-suite -- --game <dir> --suite-seed 42 # the same orders again
+npm run rmg-random-suite -- --game <dir> --dry           # the orders alone
+
+node tools/reverse/rmg-log-sites.ts --exe <editor> --c   # the table, to paste
+
+npm run rmg-decode-draws -- --step mines   # the draws, with the objects they made
+npm run rmg-decode-draws -- --from 18491 --to 18566 --count
 
 node tools/reverse/trace.ts show 0xeab460 --bytes 0x600    # read a phase
 node tools/reverse/vtable.ts CGameZone                     # a class's virtuals
 ```
 
+**The random suite is the check the matrix cannot be.** Every block of the
+matrix was designed — three fixed seeds, one axis moved at a time — so
+`rmg-random-suite` draws everything instead: for each size but IMPOSSIBLE
+(the engine's own generator aborts on some of those), a coin for the
+underground, a template the dialog would OFFER for that size and floor count
+(`0xCF7B58`: the size's units inside `[MinMapSize, MaxMapSize]`, doubled with
+an underground and `MaxMapSize >= 10`), players inside the template's range,
+water as the checkbox records it or none, the monster level, both
+multipliers and both checkboxes. The engine makes them through `rmg-batch`
+alone, the port replays them after, and the run keeps everything in
+`_tmp/to_check_maps_new/<stamp>/`: `orders.txt` with the suite seed in its
+header (so the run repeats), a slot a map, `diff/<n>.txt`, and `diff.txt`
+with the verdict. Each run is new orders; that is the point.
+
 All of them need the **unwrapped** executable (`npm run unwrap-exe`); the
 shipped one ships its code encrypted and disassembles to noise. Where the game
 is has to be SAID — `--game <dir>` or `HOMM5_GAME`, never guessed from where the
 checkout sits (`tools/game-dir.ts`), which from a worktree would be wrong.
+
+### The game's build, where it stands (08.09)
+
+Five maps the game generated, replayed with `--game-build`: two large
+underground maps and a small island one at **18 of 20**, the rest at 17. The
+draw stream is the game's to the last draw — a full trace (702,880 draws,
+S3-6P2-4Z9B3) matches with zero differences — and `map.xdb` is byte-identical
+wherever the unmodelled `<Birds>` draw did not land. What it took, each read
+off a game map or out of the game executable and none of it guessed:
+
+- **The SSE build chops.** `_controlfp(_RC_CHOP)` sets MXCSR with the x87
+  word; the road cost field proved it (801 of 801 route fields bit-identical
+  with the 24-bit machine, `tools/rmg-diff-field.ts`). `SSE` in `arith.ts` is
+  that machine; `ChainOptions.gameBuild` is the one flag.
+- **Four evaluation-order coins**: the zone centres' two draws, the lake
+  decorations' two jitters, the shipyard's centroid accumulator that the
+  inlined placer never zeroes (`k × centroid`), and `betweenFloat`, which
+  rounds the draw to a float first and scales before it multiplies by the span.
+- **The game's runtime**: `%g` is one chopped multiply by the exact power of
+  ten and then the integer; `atof` chops; the exponent has two digits; the
+  captions below the base carry a placeholder; the camera constant is taken as
+  the game writes it.
+- **The late height pass** runs on the game's machine, with the base field as
+  the game's own expression (`cos(j/13)·A·B·sin(j/29) / 0.15`, the row sines
+  kept double), the relief cone's `cvtsd2ss`, the underground ramp and the
+  carve's add. The underground plane is byte-identical; the surface plane sits
+  within a few ulps on ~30% of its vertices, both directions — the stage-by-stage
+  instrument (`stages`, now from the game too, `tools/rmg-diff-stages.ts`)
+  is armed for it.
+- **The minimap** the game writes is the port's put through a float32
+  `/255 · 255` under chop (the underground floor byte-identical, the surface
+  floor 56,646 of 65,536 pixels); the four drawing functions were compared
+  instruction by instruction and hold no such step, so it sits in the game's
+  texture path, past what the port reproduces.
+
+Open, in order of cost: `S4-6P2-8Z8K2L`, on which the game spends one draw
+more than the port in the towns pass (a trace on that template names it); the
+surface heights' last ulps; the surface minimap's remaining pixels.
+
+**08.09, two full traces from the game.** `S3-6P2-4Z9B3` (702,880 draws) and
+`S4-6P2-8Z8K2L` (806,446 draws) both match the port draw for draw with no
+difference at all — so the one extra towns draw seen on `ГСК-011` is a branch
+that seed takes and these do not, and only a trace on that seed would name it.
+The late pass measured stage by stage on the second map: the entry plane (the
+cones) is identical; the base field differs on 259 of 31,329 vertices by one
+ulp, every one of them in the zone that digs (a negated dist term), in both
+directions; craters add 193, and the smoothing passes carry it. Rounding the
+row sines, the column trigonometry or all four to single each fixes some of
+the 259 and breaks others (`_tmp/base-score.ts` scores a variant by fixed and
+broken cells against the `hs 0` dump), so the remaining difference is not one
+of those — parked as the last ulps of the game build's surface relief.
+
+**08.09, later: the game's build, closed to the byte on seven maps of eight.**
+Every remaining difference was measured stage by stage against the game's own
+planes (`stages` from the game, the engine's stage *k* in, its stage *k+1* out)
+rather than guessed: the smoothing sums its nine taps row by row (3,308 vertices
+off with the column order, 0 with this); the crater's candidate scan is
+n-outer, which only a chopping sum can tell; the flatten sums in double and
+chops once; the base field divides by `(double)0.15f` = 0.15000000596046448 —
+the float promoted, not the double 0.15 and not its reciprocal — and the CRT's
+`sin`/`cos` are x87 `fsin`/`fcos` at 53 bits round-to-nearest (ucrtbase falls
+back to the x87 under any non-default MXCSR), so `Math.sin` reads them right.
+With those the late pass is bit-identical, every terrain file of every game map
+too. The minimap followed: the game parses an xdb decimal digit by digit on
+its chopping machine against a power-of-ten table built by nearest divisions
+(`parse24`, one shape of eleven consistent with 42 tile colours), resamples on
+doubles and divides where the editor multiplies by a reciprocal, and the
+`<Birds>` line is not the generator's — two full traces match the port draw
+for draw while it comes and goes — so the order carries it as it carries the
+GUID. Seven maps are byte-identical in every entry; the eighth has one icon
+(a Fairie Tree whose anchor is exactly 192) one pixel left of the port's, with
+the hole-tile mean tried and rejected on `IconObject.holes`. The game's seed
+can be forced now (`0x91D03C`, the screen's `_time64`), which is how the
+seed-specific extra towns draw of `ГСК-011` and the two older maps that part
+early will be traced.
+
+**08.09, afternoon: the dwarven underground, half closed.** The three game
+maps that still parted early all had a dwarven underground — the one coin of
+`LoadTemplate` the corpus had never produced, read long ago and never ported.
+With the game's seed forced (the screen's `_time64` at `0x91D03C`) one of them
+replayed in the game with the draw trace on, 505,183 draws as the original.
+Two things closed on it: the dwarven zone's big statics is the carve, a room
+recompute and no draw at all, and its one-tile statics is a lattice torch-
+and-column placer of its own (`CGameDwarvenZone` vt+0x30 `0xEC7090`,
+`placeDwarvenOneTileStatics`) — with both, the stream matches the engine's
+through all four dwarven zones' statics. Two remain, both on that trace: a
+single `below(zones)` between "zones filled in" and the first town, which is
+not in the towns pass (read: no draw there) but in the FillTerrain part that
+runs only under the map's dwarven flag (`byte [map+0x8C]`, `0xED17F0`); and
+the dwarven zone's treasure blocks, where the engine draws a resource kind
+(`below(7)`) after the artifact where the port lays a chest. The trace log
+is kept beside the others (`homm5-editor-rmg-20260908-trace-011-forced.log`);
+`rmg-diff-draws --from game/H5E/L_L_W_2_ГСК-011.h5m --game-build --full`
+names the first of the two, and an extra `below(zones.length)` at the head
+of `placeTowns` aligns the stream to the second.
+
+**08.09, evening: the dwarven underground's draws, closed.** Both of the two
+that were left came off the same forced-seed trace, and neither was where the
+log said it was.
+
+The first was the FillTerrain pre-step, and the log could not have named it:
+GenerateMap gates it on the dwarven coin (`cmp byte ptr [ecx+8Ch],0` at
+0xEABA09) and 0xED17F0 runs 0xEB2A20 on the level's SECOND floor, present only
+when the floor vector holds two (`end - begin >= 0x240`, entries of 0x120). The
+draw is `mov ecx,8; call 0xEB13E0` — the literal 8 of 0xEB2A25, smeared as
+`8 + below(8)` over a `(w/3+1)x(h/3+1)` coarse grid — and the traced map has
+eight zones, so a limit of 8 in the log reads equally well as `below(zones)`.
+The port had the function (`dwarvenCoarse`) and had never called it; it is
+called now, from the chain between `calcBorderTiles` and `placeTowns`.
+
+The second was not a treasure-block rule at all. The engine's block at seed
+(3,55) grew TWO points and the port's grew three, and with three the value per
+point fell under 2 — so the port laid a chest where the engine drew a resource
+kind, and the missing `below(7)` was the shape of the difference, not its
+cause. The extra point was (2,56), and it passed the growth's "at least two
+footprints around it" on tiles at x = 1, which carry no object at all in the
+game's map. Those tiles are the dwarven rock mask's: 0xEC7225 sets `0x40` AND
+`0x400` on them, and the massif carve of the NEXT dwarven zone converts a tile
+reading EXACTLY `0x40` into a footprint (`cmp dword ptr [eax+ecx*4],40h`,
+0xED162A). The port's occupancy was a BYTE, the `0x400` fell off it, and the
+carve claimed tiles the engine leaves alone. The grid is an `Int32Array` now —
+which is what the engine has, `or dword ptr [eax+ebx*4],400h` — the mask sets
+both bits, the marked list is taken by `0x400`, and the deep columns are
+`2 | 0x400`. `tools/test-rmg-underground.ts` holds the two values apart
+without any game data, and reddens when either half is undone.
+
+With those, `ГСК-011` matches the game **draw for draw, all 505,183 of them**,
+and its `map.xdb` — 9,943 objects — is byte-identical. Eighteen of its twenty
+entries are; the two that are not, `UndergroundTerrain.bin` and
+`minimap_floor_02.dds`, are the same two on `ГСК-004` and `ГСК-015` and on no
+other map, and all three of those are the dwarven ones. Over the twelve game
+maps the checkout holds: seven byte-identical in every entry, those three at
+18 of 20, `ГСК-007` at 19 (the Fairie Tree icon, unchanged), and the old
+`ГСК-001` at 14 of 17 — measured again with the change stashed, so it is
+where it already was. The underground
+terrain file is 438,392 bytes against the game's 467,195 and parts at byte 7,
+so the dwarven cave floor is painted from something FillTerrain's port does
+not read yet.
+
+
+**09.09: the dwarven underground terrain, closed — and it was not paint.**
+Every plane in the file already matched; `diff-terrain` said so and could only
+report the length, because `parseTerrain` never looks at the trailer. The
+28,803 bytes are the trailer's tag-`0x10` block, which the port always wrote
+empty. The engine fills it exactly once, in the pre-step: `0xEB2A20` sizes a
+`d × d` grid with `d = floor(V/3) + 1` — 60 on a 176-tile map, and the same
+formula gives the 25/33/46 measured on the shipped maps of `TERRAIN_FORMAT.md`
+— zeroes a word per cell and then writes the SAME word into all of them: low
+byte 1, high byte the `8 + below(8)` it just drew. In the file a cell is that
+pair as two one-byte fields, `03 0c 02 02 01 03 02 <v>`, and `v` is 14 on
+`ГСК-011` — the pre-step's own number, which is why the draw had to be kept
+rather than spent (`Chain.coarse`, `TerrainFileInput.coarse`). Only the
+UNDERGROUND file carries it, because the pre-step runs on floor 1.
+
+With that, `UndergroundTerrain.bin` is byte-identical on `ГСК-011`, `ГСК-004`
+and `ГСК-015`, and all three stand at 19 of 20; `ГСК-010` and `ГСК-006` are
+untouched at 20. What is left on the three is `minimap_floor_02.dds`, ~100
+bytes in one 8×8 block of pixels — and it is NOT an icon: the colours are the
+cave floor's own orange at different brightnesses, no shift of the block
+matches, and the block covers about five tiles square around a
+`RandomSancutuary` building at (59,139) on `ГСК-011`.
+
+**09.09, later: the darkening mask is ONE DESCRIPTOR A TILE, and the last two
+minimaps came with it.** The difference on `ГСК-011` was a single SOURCE pixel:
+the field `theirs - ours` over the 8x8 block is a clean lanczos kernel, +86 at
+its peak with negative lobes around it, which is the signature of one tile and
+not of an icon or a shift (all eight shifts of the block score 1-3 of 144
+against 97 for no shift at all).
+
+The tile is (59,140). A `Fakel_01` stands on it, and it is also the ACTIVE tile
+of the `RandomSancutuary` at (59,139) — whose `blockedTiles` are its four
+corners and whose `activeTiles` are its four edges, with its own centre in
+neither list. The engine leaves the tile bright; the port, ORing the two lists
+into a mask, darkened it. The registration is not a union: `0xA55C10` runs
+`0xA4FF00` (walk `+0xB4`, the blocked list, write `+0x10 = 1`) and then
+`0xA500D0` (walk `+0xB8`, the active list, write `+0x10 = 2`) per object, and
+each looks the tile's descriptor up, copies it whole and puts it back — so a
+tile registered twice keeps ONE kind, and only kind 1 darkens.
+
+`ГСК-004` then said the rule was not just "active wins": a torch stands on an
+ore pile's tile at (161,160) and the engine DARKENS that one. The pile's
+`blockedTiles` are empty and its `activeTiles` are its own tile; the sanctuary
+blocks four. So an object that blocks nothing claims nothing — the likely
+reading is the veto at `0xA46E80`, a chain of virtual predicates `0xA55C10`
+runs before either registration, which would leave a pile and a guard out of
+both lists. That chain is not read class by class, so the shape is fitted to
+the maps rather than taken from the predicate.
+
+WHICH REGISTRATION WINS a contested tile is left unmodelled, and deliberately:
+the write is unconditional (`mov dword ptr [esp+28h],1` at 0xA4FFFF), so it is
+the last that stands, and the map's own order puts the sanctuary at #446 long
+before its torch at #8440 — which rules out "objects in order, blocked then
+active for each" and says the registration order is not the file's. Both "all
+the blocked lists, then all the active ones" and "the first write stands" fit
+every map here. What is modelled is what they agree on.
+
+With that, TEN of the twelve game maps are byte-identical in every entry.
+`ГСК-007` keeps its 72 bytes (the Fairie Tree icon, one pixel left — a
+different subsystem: the icon anchor, not the mask) and `ГСК-001` its 14 of 17.
+`tools/test-rmg-minimap.ts` holds both halves of the rule with no game data,
+and reddens when either is undone.
+
+**09.09: the Fairie Tree's icon, narrowed to one object and everything else
+ruled out.** The 72 bytes on `ГСК-007` are one icon, `Object_0` (6x6), drawn at
+left 188 by the engine and 189 by the port — the anchor's x lands on 191 there
+and on 192 here. The object is the `Fairie_Tree` dwelling at (101,101), rot
+3pi/2, whose lists are five blocked, one active and SIX holes covering every
+one of them.
+
+The rule the port has — the mean over blocked and active, ROTATED — is not in
+doubt. `src/rmg/build.ts` was made to list, per map, every icon whose anchor
+moves when the rotation is dropped: 166 of them over the corpus, 17 on
+`ГСК-007` alone, and the port has 16 of those 17 right — four at the same
+3pi/2 quadrant, a town, three mines and an `OrcishDwelling01`. The Fairie Tree
+is the only one it misses, on any map.
+
+What the engine wants there is the UNROTATED mean, and nothing else fits. The
+window is narrow enough to say so exactly: the blit's `left` and `top` pin
+`mean.x` to [-0.023, 0.5) and `mean.y` to (-0.023, 0.5], and of the four
+quadrant turns only the identity lands in it. Ruled out, each by measurement
+rather than by argument:
+
+  * dropping the rotation for every icon — 2,915 bytes wrong on the surface
+    minimap and 1,101 on the underground one, against 72;
+  * the other turn direction (`mean.x = -0.5`) — left 187, not 188;
+  * a turn by pi — left 188 but top 62, and the top is 61 in both files;
+  * the holes in the mean — tried before, and it moves the mines of every map;
+  * the holes SUBTRACTED, which would empty this object's lists and skip the
+    mean at `cmp edi,1` (0xDD0094) — the `Graveyard` dwelling has the SAME five
+    blocked, one active and six covering holes, and both of the ones on this
+    map (rot 0 on the surface, rot pi below) are drawn where the ROTATED mean
+    puts them, two pixels from where skipping it would;
+  * the icon's own size — `Object_0` is 6x6, so `trunc(w/2)` is 3 either way.
+
+So two dwellings with byte-identical footprints disagree, and the difference is
+not in the document. The next step is not another rule: it is to find which
+SUBOBJECT the icon pass holds when it calls `[eax+0xB4]` / `[eax+0xB8]`
+(0xDCFFF4, 0xDD0049) and read that vtable's slots for the dwelling class —
+`CAdvMapDwelling` has three vtables, and `+0xB4` on the primary one is a lazy
+document getter (0xD0FCD0), which is not what the anchor is walking. A slot
+read without its vtable says nothing.
+
+**09.09, further: the Fairie Tree's icon — the slots are the right ones, and
+the object contradicts itself.** The step left open above was to find which
+subobject the icon pass holds when it calls `[eax+0xB4]` / `[eax+0xB8]`. It is
+the one at `+0xC0`, and its vtable is `CAdvMapDwelling`'s `0xFD36F0`: `+0xA0`
+is the world position (`0xC7BD80`, three floats out of the placement
+component), `+0xB4` is `lea eax,[ecx-0x68]` and `+0xB8` is
+`lea eax,[ecx-0x5C]` — plain members at `obj+0x58` and `obj+0x64`. The
+rotation setter `0xC7BBD0` pins the offsets rather than leaving them fitted:
+it reads the angle at `[edi-0x74]`, and the angle is `obj+0x4C`.
+
+Those two members are filled by `0xC7A970`, which takes the shared document's
+`+0x54` (blockedTiles) into `obj+0x58` and its `+0x6C` (activeTiles) into
+`obj+0x64` — also `+0x60`, the holes, into `obj+0x70`, and the possession
+marker into `obj+0x7C` — and puts each through the quarter-turn rotate
+`0xABE1D0` with the object's own angle. So the lists the anchor averages are
+ROTATED, and the port's rule is the engine's. `0xC7A970` has exactly two
+callers, the rotation setter and the marker setter; attaching the shared
+document does not call it. And the rotation setter opens with `ucomiss`
+against the angle it already holds and RETURNS when the two are equal, so an
+object handed its final angle before its document arrives would never have its
+footprint rotated at all. That is the shape of a mechanism, not a measurement.
+
+Three things were then measured against the whole corpus rather than argued:
+
+  * AN ANCHOR LANDING EXACTLY ON AN INTEGER PIXEL IS NOT WHAT MOVED IT. The
+    Fairie Tree's rotated `px` is exactly 192.0 — `(101.5 - 1) * 256 / 134`,
+    with nothing left to round — which made "the truncation goes the other way
+    on the edge" the obvious guess. `ГСК-004`, `-010` and `-006`,
+    byte-identical maps all three, carry seven such icons between them; two of
+    them have the same half-tile mean this one has (an
+    `Academy_Military_Post` at 3pi/2 and a `DwarvenDwelling` at pi/2, both
+    landing on exactly 64.0), and every one of the seven is drawn where the
+    port puts it.
+  * "THE FIRST DWELLING OF A MAP KEEPS AN UNROTATED FOOTPRINT" IS REFUTED. The
+    Fairie Tree is object `#124`, the first dwelling of `ГСК-007`, and the two
+    dwellings after it are drawn rotated — which made the guess worth making.
+    But `ГСК-011`'s first dwelling is a `Graveyard` at rot pi and `ГСК-012`'s
+    is a `Battle_Academy` at rot pi, both on maps the port reproduces byte for
+    byte, and both are drawn ROTATED.
+  * THE OBJECT CONTRADICTS ITSELF, and this is the finding. Handing the icon
+    pass the UNROTATED mean for this one object and changing nothing else
+    brings `ГСК-007` to 20 of 20. Doing the same to the DARKENING MASK — the
+    same footprint, the same object, the same two members — costs 202 bytes
+    against the standing 72, and emptying its lists there costs 225. So the
+    tiles this object blocks are registered from the ROTATED footprint while
+    its icon is anchored on the UNROTATED one, and one list cannot be both.
+
+Which is why no arithmetic rule was ever going to close this: the anchor's
+inputs are not in doubt any more, and neither is its arithmetic. Between the
+registration and the draw something rewrote `obj+0x58` and `obj+0x64`, and
+`0xC7A970` is their only writer — it writes an unrotated list exactly when the
+angle it is handed is zero. What is left is to watch that happen:
+`native/rmg/minimap-probe.c` already owns the editor's minimap window, and a
+hook on the anchor logging the object, its `+0x4C` angle and both lists would
+say it in one run.
+
+One more thing the corpus says about the shape of the search: it holds exactly
+ONE Fairie Tree, and it is the icon that misses — the Preserve race appears on
+one map only. So "this document" is not ruled out either. It is untested, and
+a second map with a Preserve zone would test it.
+
+
+**09.09, CLOSED — and it was the ROUNDING MODE, not the object.** The probe
+went into the game's image too, the map was ordered there, and the anchor
+logged its own answer for the object everything above is about:
+
+    mm anchor tile+point*1000 101 101 101499 101000
+      blocked 5 0 1 0 -1 1 1 1 0 1 -1
+      active  1 0 0
+
+Read it and every hypothesis of the last two entries falls at once. The
+blocked list IS the rotated one — those five pairs are the shared document's
+five turned by 3pi/2, which is what the port turns them into — the active list
+is the one tile, the count is six, and the tile is 101,101. Nothing about the
+lists was ever wrong. What is wrong is the last bit: the point is 101.499, and
+the port had 101.5.
+
+THE MEAN IS `sum * (1.0f / n)` — a reciprocal and a multiply, never a divide
+(`0xDD0099`) — and it runs on a unit at single precision and ROUND TOWARD
+ZERO. That is the state `src/exe/x87.ts` already describes and the minimap
+already speaks: a process with a Direct3D device carries `0x0C7F`, and 6208 of
+6208 calls of the engine's own table sine came out of that module. The icon
+anchor was the one part of the minimap still computing in doubles. Chopped,
+`1/6` is under a sixth, `3 * (1/6)` is a half less an ulp, `101 + that` is one
+ulp under 101.5 — and `(101.5 - 1) * 256 / 134` is EXACTLY 192.0, so the
+converter lands on 191.99998 and the blit truncates it to 191. Left 188, which
+is where the reference has it.
+
+WHY EXACTLY ONE ICON IN THE CORPUS. The last bit only reaches the picture where
+the converted anchor sits on a pixel boundary, and chopping only moves a value
+TOWARD ZERO — so it has to sit on the boundary from ABOVE. The corpus holds
+seven other anchors that land on an integer exactly; six of them have a count
+that is a power of two or a sum of zero, where the chop and the round agree to
+the bit, and the seventh is a `DwarvenDwelling` whose sum is NEGATIVE — chopping
+lifts its mean from -0.5 toward zero, the anchor moves up off the boundary
+rather than down through it, and 64.0 stays 64. Only a positive sum over a
+count that is not a power of two, landing on a boundary, moves; there is one.
+
+WHY THE EDITOR COULD NOT HAVE SAID IT. Seven instrumented editor runs, 277
+icons: every anchor there is the rotated footprint and every point equals the
+port's to a thousandth, because none of them sits on a boundary. The two
+executables do not make the same map from the same order, so the map that does
+was out of the editor's reach entirely — the same order gives an editor map
+whose Fairie Tree stands at 129,27 under a different quarter, and that one is
+drawn where the port draws it. It took the probe in the game's own image.
+
+`iconAnchor` now runs on `mul24`/`div24`/`add24`/`sub24`, `ГСК-007` is 20 of
+20, and `tools/test-rmg-minimap.ts` holds the case without game data: the same
+footprint on the same tile, the anchor under the boundary rather than on it,
+and a power-of-two count landing on it as the control. Undo the chop and the
+first two redden.
+
+**ELEVEN of the twelve game maps are byte-identical in every entry.** What is
+left is `ГСК-001` at 14 of 17, which is a different animal: it parts in
+`map.xdb` at byte 321 and its `GroundTerrain.bin` is a different size, so it
+wants the map re-ordered and a fresh trace on that seed rather than a rule.
+
+
+**09.09, the twelfth map — and the saved file was never the map.** The order
+`ГСК-001` carries is `S3-5P2Z7N2.2`, large, two players, seed 1785534414, and
+the first thing to do with it was the thing the diff has been printing at the
+bottom of every report: order it again. Ordered fresh, the SAME seed comes out
+with `map.xdb` and `GroundTerrain.bin` byte-identical — 2,837,538 bytes of
+objects to the byte — and even the races differ from the saved file's
+(`ACADEMY NECROMANCY` against its `INFERNO ACADEMY`). So the archive in `H5E/`
+was generated and then PAINTED ON: its captions are numbered from 2, which is
+an editor SAVE, and its terrain file is 157 KB smaller than the generator's.
+Three of its seventeen entries were never the generator's answer to compare
+against. **Nothing was wrong with the port on this map at all** — except one
+subsystem, which the fresh order did expose:
+
+    minimap_floor_01.dds     174 bytes differ, first at 11029
+
+**And that closed on the EDITOR'S TEXT-TO-FLOAT, which is not the game's.**
+The 174 bytes are 174 single channels, every one of them GREEN, every one of
+them one step apart, in two blobs. What they are not is a rounding boundary:
+`_tmp/mm-blame-001.ts` reopens the two resample passes and prints how far each
+disagreeing channel's pre-rounding sum sits from the `.5` that decides it, and
+all 174 are a mile from it (0.02 to 0.48, where the Fairie Tree's were 4e-5).
+So the value that came in was already different, and the layer before the
+resample is where to look. `RMG_MINIMAP_LAYERS=<dir>` on any build now writes
+the two pre-resample layers, which is what made the rest arithmetic:
+
+  * raise every source pixel whose green is 196 — the Bog document's, and no
+    other document has that green — to 197, resample, merge: **0 bytes differ**
+    (`_tmp/mm-bog-197.ts`). 68 pixels, all of them Bog tiles the halving spares.
+  * Bog's green text is `0.772549`, and 197/255 is `0.7725490196…` — the text
+    is 2e-8 UNDER the byte the editor draws. No arithmetic on the float nearest
+    that text reaches it: `f32(0.772549) * 255` is 196.99998 under every
+    rounding. The parse has to overshoot, by one ulp exactly.
+  * Which parse? Thirteen shapes were run against all 127 distinct colour texts
+    in the game's tile documents — digits against a power-of-ten table built
+    four ways, the whole fraction as an integer over a power of ten, the
+    accumulation from either end, each under nearest and under chop — with the
+    constraint that `0.772549` come out 197 and the other 126 keep the byte the
+    port already reproduced. **One fits: the fraction accumulated FROM THE
+    RIGHT, `v = (v + d) / 10` over the digits in reverse, rounded to nearest at
+    24 bits** (`parse24Right`). Accumulating from the left misses Bog; the
+    `* 0.1f` variants and the integer-over-power ones take `0.862745` up with
+    it, and that colour is 371 tiles of this very map, which is how they are
+    refuted rather than merely disliked.
+  * It is a DIFFERENT parse from the game's `parse24`, and the two are held
+    apart by the data rather than assumed: eleven of the 127 colours are ones
+    the game lowers a byte and the editor does not — `Water`'s red, the
+    `Dead_Land` red, the `SandRoad` and `SnowRoad` greens among them. A parse
+    that fits one build gets those eleven wrong on the other. Nearest at load
+    time and chopping at draw time is the same argument `POW10_NEAREST` already
+    rests on: the documents are read before there is a Direct3D device to put
+    the process in chop mode, and the minimap's own multiply runs long after.
+
+`tools/test-x87.ts` holds it with no game data — Bog both ways, four of the
+eleven, and two colours just as close to their boundary that must not move —
+and `tools/test-rmg-minimap.ts` is unchanged at 0 bytes on the reference.
+
+**THE SCOREBOARD, re-measured rather than remembered.** Every editor template
+run: **22 of 22 at 15 of 15** (`_tmp/all22`, which the old note had at 20). The
+game-built archives in `H5E/`: twelve at every entry byte-identical —
+`ГСК-002`, `003` and `009` through `016` — plus `ГСК-001`, whose saved copy is
+the painted-on one above and whose ORDER now reproduces at 15 of 15. What is
+left in that folder is `32232.h5m`, a three-player two-level `S6-11P2-8Z8K2.4a`
+at 22 of 23: `minimap_floor_02.dds`, 101 bytes from 101238, on the game's
+build. That is the next one, and the tools above are pointed at it.
+
+
+**09.09, THE SIZE FIT AND BOTH CONVERSIONS — READ, and the two named holes in
+[`create-map.ts`](../src/rmg/create-map.ts) are closed.** The question that
+started it was which orders a test matrix would even have to make, and the
+first answer was a fit to 22 observations that turned out to be right for the
+wrong reason. What the executable says:
+
+`vt+0x14`, a size INDEX into the template's own units — `0xEADE20`, and it is
+a seven-way JUMP TABLE, not arithmetic. Read case by case, then the table's
+own dwords read to make sure the order is the file's:
+
+    index  0   1   2   3   4   5    6
+    units  5  10  18  31  47  66  102
+
+Which is the tile count squared over a thousand, ROUNDED — 96x96 is 9.2 and the
+table says 10 — so there is no divisor to argue about and never was.
+
+`vt+0x18`, units back to an index — `0xEADE90`, a ladder of five compares:
+under 8 is TINY, under 15 SMALL, under 25 MEDIUM, under 40 LARGE, under 60
+EXTRALARGE, under 90 HUGE, and 90 or more IMPOSSIBLE. Note it is NOT the
+inverse of the table above: 10 units is SMALL going one way, and the step that
+answers SMALL starts at 8.
+
+THE FIT ITSELF, `0xEAB616`, and it runs on whatever the size ended up being —
+supplied or drawn, after the players rather than before:
+
+    eax = vt14(settings[0x20])       ; the size, in units
+    eax = eax * (settings[0x1D] + 1) ; TIMES THE FLOORS
+    if (eax >= template.minMapSize) keep it
+    else:
+        idx = vt18(minMapSize)
+        if (idx <= 5) settings[0x20] = idx
+        else:                                  ; wants more than the biggest
+            settings[0x20] = min(vt18(minMapSize / 2), 4)
+            settings[0x1D] = 1                 ; an underground, FORCED
+
+So the request is honoured whenever the map carries the template's units, and
+there is NO upper bound in this path at all: `-size 6` on `S1P2Z2M1`, whose
+range is 5..14 units, makes a 320x320 map out of a two-zone template and the
+port reproduces it byte for byte. Nine orders were measured against it, and
+the one that separates "times the floors" from every reading I had before is
+`S6-11P2-8Z8K2.4a -size 3 -underground 1`: 31 units twice over is 62, which
+clears the template's 60, so LARGE STANDS — while `-size 0 -underground 1` on
+the same template is lifted to HUGE. The forced-underground branch is ported
+from the instructions and untested by any map here: the largest MinMapSize
+shipped is 70, and the branch needs 90.
+
+**AND THE DIALOG'S FILTER IS THE SAME RELATION, from the other side.** Two
+screenshots of the game's own template list settled it — MEDIUM selected, with
+the underground off and on. Off, the list is exactly the five templates whose
+range contains 18 (`S1-2P2-4Z4K1S`, `S1-2P2-8Z8K2S`, `S1-2P2Z7V2`,
+`S1-3P2-4Z5V`, `S1-3P2Z7V3`); on, it is exactly the eight whose range contains
+36 — which is a DIFFERENT set, not a subset, and the predictions that make it
+convincing are the absences: `S1-3P2-4Z5V` (Max 34) and `S2-3P2Z7N2` (Max 35)
+drop out, `S4-6P2-8Z8K2L` (Min 36) appears on the boundary, and `S6-11`/`S7-*`
+are still out of reach. So the dialog filters on `Min <= units * floors <= Max`
+and the console's `rmg` command checks only the lower half — which is why
+ticking the underground swaps small templates for LARGE ones rather than the
+other way round, and why the two paths were so easy to mistake for two rules.
+The template's own `<Underground>` field (+0x88, read out of the serialiser at
+`0xB9C1A0`) is not what filters: the generator ignores it outright —
+`S1P2Z2M1`, the one template that says `false`, makes two floors on request —
+so it can only be UI, and which UI is unread.
+
+`tools/test-rmg-template.ts` holds both tables, the ladder's every step, the
+nine measured fits and the forced branch. `src/rmg/chain.ts` now hands
+`createMap` the real index rather than the reference's 8 units, and says so out
+loud if the engine would lift an order rather than quietly building a map the
+engine would not make: no order in the corpus reaches that, because every size
+a generated map RECORDS is a fixed point of the fit.
+
+**A second case of the mask's veto, on a map a fifth the size.** The same probe
+run that answered the underground question — `S1P2Z2M1 -size 1 -underground 1`
+— came out 17 of 18, and the 329 bytes are ONE tile of the cave floor, (21,70),
+which the engine leaves bright with `Dwarf_Floor_Incrusted`'s own 212/131/56.
+Put that value into the layer before the resample and the file is identical.
+On the tile: a `Shrine_Of_Magic_1` with an EMPTY blocked list whose one active
+tile is its own, and a `Fakel_01` that blocks it — byte for byte the shape of
+`32232.h5m`'s 101 bytes, on a 96x96 map instead of a two-level 176. Against it
+stands `ГСК-004`, where the claimant is an `AdvMapTreasureShared` and the
+engine DOES darken. A sweep of every template run and every probe found no
+other conflict of that shape anywhere — three cases in all — which is why the
+port's proxy ("no blocked list, claims nothing") has survived this long.
+`0xA46E80` is the veto and `0xA55C10` skips both registrations when it answers,
+which is now read; which classes it answers for is not.
+
+
+**09.09, THE VETO AND THE ORDER, READ — and both easy answers are gone.** Two
+readings, both negative, and a negative that closes a hypothesis is worth the
+same as a positive one:
+
+  * THE VETO CANNOT SEE THE CLASS. Its eight predicates are slots `+0x1C`,
+    `+0x20`, `+0x28`, `+0x2C`, `+0x30`, `+0x34`, `+0x38` and `+0x7C` of the
+    object's own interface vtable — the long one, the same table whose `+0xB4`
+    thunk lands on `0xAD06F0`, so it is the right table and not one of the
+    class's other seven. Seven of those eight are the SAME function in the
+    shrine, the treasure and the static: `0x4797F0`, which is `xor eax,eax;
+    ret`. The eighth (`0xAD0240`) is not a predicate at all — it hands back a
+    subobject of a VIRTUAL BASE (`this + [[this-0xD8]+0x10] - 0xD8`, reached
+    through `sub ecx,[ecx-4]` thunks), which the shrine and the treasure have
+    and the static does not, and the veto then asks THAT for its `+0x18` and a
+    chain through `+0x58`. So what the veto reads is STATE, and a rule keyed on
+    the class is refuted rather than merely unsupported.
+  * "THE FIRST WRITE STANDS" IS REFUTED. `0xAD12A0` unpacks the tile key (x in
+    bits 0..9, y in 10..19, the floor in 20..23), bounds-checks it, addresses a
+    36-byte record in the floor's grid and calls `0xAD1F10` — which is an
+    unconditional field-by-field copy with refcount bookkeeping around the two
+    pointer members. No insert-if-absent, no test of the kind already there.
+    Of the two shapes this document called equally admissible, that leaves one:
+    ALL the blocked lists, then ALL the active ones.
+
+And the order is not the port's placement order either, which the port's own
+numbers say plainly: on both BRIGHT tiles the claimant is placed first and the
+torch last (a shrine at #113 against #1590 on a two-level `S1P2Z2M1`, the
+`ГСК-011` sanctuary at #446 against #8440), and on the DARK one exactly the
+same way round (an ore pile at #414 against a torch at #6557 on `ГСК-004`). The
+one thing that differs between them is in the data rather than in the code: the
+pile has a GUARD standing next to it, placed by the same step (#413, a Demon on
+the adjacent tile), and neither shrine has one. That is a correlation on three
+cases and it is not being ported as a rule: the veto skips BOTH registrations,
+so "guarded claims nothing" would also stop a guarded object's blocked list
+from darkening — and the corpus cannot test that, because almost every guarded
+object with a blocked list has impassable tiles that the plane arm darkens
+anyway. A rule the corpus is blind to is exactly the kind this port does not
+take.
+
+**THE PROBE THAT WOULD SETTLE IT, and what it cost to find out where to put
+it.** `native/rmg/minimap-probe.c` now carries a `mask` word of its own: hooks
+on the registration (`0xA55C10`) and on both stamps (`0xA4FF00` blocked,
+`0xA500D0` active), logging a line per write. Three things were learned before
+it logged anything:
+
+  * the editor's twins are `0xD52770`, `0xD50310` and `0xD4F880`, found by the
+    shape of the guard the register runs before the veto — the game tests
+    `[eax+esi+8] < 0`, the editor `test byte ptr [ecx+esi+0Bh],80h`, which is
+    the same sign bit;
+  * A DETOUR'S HEAD IS ITS LENGTH. Eight bytes looked like a stronger
+    signature for `0x83 0xec 0x2c 0x53 0x55 0x56 0x8b 0x74` and cut
+    `mov esi,[esp+3Ch]` in half; the trampoline ran two bytes of it and jumped
+    into the rest, the body read its object out of a stack slot nobody wrote,
+    and the editor died twice with `esi` holding 0xB2 and a heap address in
+    `eip` — before any line of ours reached the log, which made it look as
+    though the probe's own reads were at fault. They were not. Five whole
+    instructions in the editor, EIGHT in the game (its copy loads the argument
+    three instructions in): the head is measured per image, never copied.
+  * AND THE EDITOR CANNOT ANSWER THIS AT ALL. With all three hooks in and the
+    minimap probe's window on top, a whole console-ordered two-level run logged
+    NOTHING — not a registration, not a stamp, and not one `minimap build
+    begins`. So the editor's generate-and-save path reaches neither the
+    registration nor the minimap build through the functions those addresses
+    name. The reading has to be taken in the GAME's image, the same way the
+    Fairie Tree's anchor had to be, and both maps the question is about were
+    generated there: `32232.h5m` (the shrine, LEFT BRIGHT) is seed 1788789832
+    on `S6-11P2-8Z8K2.4a`, large, 3 players, underground, weak monsters, and
+    `ГСК-004` (the guarded pile, DARKENED) is seed 1788799357 on
+    `S6-11P2-8Z8K2XL`, large, 2 players, underground, weak monsters.
+
+
+**09.09, CLOSED — THE VETO GOES BY CLASS, and a guard's own tile is what said
+so.** The probe never logged a line, and it did not have to: what it ruled out
+sent the search back to the maps, and the maps had the answer as soon as the
+right ones were ordered.
+
+THE RUN THAT BROKE THE TIE. Every conflict in the corpus was on a dwarven
+underground — a `Subterra/Fakel_*` torch standing on something — and the
+twenty-two template runs are all single-floor, which is why the sweep of them
+found nothing. Eight two-level orders of `S1P2Z2M1` later, seed 44 had TWO
+contested tiles at once and one of each answer:
+
+    tile 90,9    claimed by AdvMapBuildingShared (ShamanOfNommads)  BRIGHT
+    tile 14,30   claimed by AdvMapMonsterShared  (a Footman guard)  DARK
+
+A guard is not guarded by anything, and its own tile is darkened. That kills
+the reading nine cases had fitted — "an object with a guard beside it claims
+nothing" — which had looked inevitable because every darkened treasure in the
+corpus is a MINE's pile with its guard on the next tile. And the Shaman kills
+the port's old proxy too: no blocked list, and it claims.
+
+THE MEASURED SPLIT, eleven contested tiles over five maps:
+
+    AdvMapShrineShared     4   BRIGHT     AdvMapTreasureShared   3   DARK
+    AdvMapBuildingShared   2   BRIGHT     AdvMapMonsterShared    1   DARK
+
+So `0xA46E80` answers for the pickups and the monsters, and `0xA55C10` then
+registers NEITHER list — which is `vetoesRegistration` in
+[`minimap-mask.ts`](../src/rmg/minimap-mask.ts), a list of classes read off the
+shared document's own xpointer. `AdvMapArtifactShared` is named there as the
+one NOT decided: an artifact is a pickup and would be expected to go with the
+treasures, but no map here puts one under a blocked tile, so the port leaves it
+claiming and says so rather than guessing.
+
+The object arm is now two passes — all the blocked lists, then all the active
+ones — which is the one shape of the two that survived the reading above, and
+the vetoed classes take part in neither.
+
+**WHAT THAT CLOSED, re-measured end to end.** Every game-built archive in
+`H5E/` is byte-identical in every entry: `ГСК-002`, `003`, `006`, `007`,
+`009` through `017`, `3223` at 23 of 23, `0123456` at 26 of 26, and
+`32232` — the map this whole thread started from — at **23 of 23**. The only
+one that is not is `ГСК-001`, whose archive is the painted-on one. The editor
+side is 22 of 22 at 15 of 15, the nine probe maps of the size work are clean,
+and `tools/test-rmg-minimap.ts` holds the rule without game data: the same
+footprint claims or does not by its class alone, a vetoed object darkens
+nothing with its blocked list either, and the reference minimap is still 0
+bytes.
+
+**A NEW ONE, and it is not the mask.** Of the eight two-level orders, seed 55
+comes out 13 of 18: `map.xdb` parts at byte 476357 (ours 1,107,686 against
+1,143,488), `GroundTerrain.bin` by 8,301 bytes, `UndergroundTerrain.bin` by 12,
+and both minimaps follow from those. Its races are `TOWN_STRONGHOLD` and
+`TOWN_DUNGEON`, and the seven other seeds of the same order are byte-identical
+— so it is one seed's worth of something the port does not do, with the whole
+apparatus above pointed at it. `_tmp/ug/5` is the run.
+
+**10.09, CLOSED — A SUBTERRANEAN ZONE REFRESHES THE WHOLE LEVEL'S ROOM GRID,
+and the note that dismissed the pass had a premise instead of a measurement.**
+Seed 55 is byte-identical in all eighteen entries, and so are six brand-new
+two-level orders across five other templates.
+
+WHAT IT IS. `vt+0x40` is five instructions, duplicated per class — `0xEC4A50`
+for Subterra, `0xEC7050` for Dwarven:
+
+    push 1        ; all = 1
+    push 3Ch      ; mask 0x3C
+    call 0xEC28E0 ; the room recompute
+    jmp  0xED11D0 ; the massif carve
+
+`all = 1` is the flag that makes `0xEC28E0` skip its zone test (`0xEC299C`:
+`cmp byte [ebp+0Ch],0; jne` past `cmp eax,[ebx+0ECh]`), so every cell of the
+level takes a fresh distance from THIS zone's points — a foreign zone's cells
+included. The sweep's own `recomputeRoom(0x3C, 0)` right after it refreshes
+this zone's cells only, so the foreign ones are still holding what the `all = 1`
+pass left; and the fit `0xEC39D0` reads room with no zone test at all. That is
+the whole mechanism: a footprint spilling over a zone border reads a value the
+NEIGHBOUR's zone never wrote and this zone's `all = 1` pass did.
+
+WHY THE CORPUS COULD NOT SAY SO. The note here used to read "with one zone on
+the floor both recomputes write what the sweep's own recompute writes, and
+neither is materialised" — true, and every underground map measured until now
+had exactly one zone per floor. `S1P2Z2M1` with `-underground 1` has TWO, and
+seed 55 is the seed where the difference reaches a decision: zone 2's
+`Column_5x5_05` is a FULL 5x5, its candidate at 27,71 puts a corner on the
+zone-3 cell (29,73), the stale value there is 1 and the fresh one 2, and the
+fit's `room >= 2` turns on exactly that. One tile, and the whole underground
+parted from it — 1,972 objects against our 1,906, a lake moved from the bottom
+of the map to the left edge, 2,382 height vertices and both minimaps.
+
+HOW IT WAS FOUND, because the route is the lesson. The draw diff named draw
+53561: the engine spends two floats where the port mints a name. Reading back
+from there — the roll at 53560 is 0.06075, the port's entry is `Crater4x3_1`
+with 12 blocked tiles and a threshold of 1/13, and the engine REFUSED it. Since
+`0xEBBFAB..0xEBBFF0` is `1/(n+1)` and nothing else, and since the creator
+`0xEB3990` cannot fail after it (its one refusal, `find("Shared")` on the
+resource path, is a property of the entry and not of the candidate), the
+engine's `n` there had to be 16 or more — so the engine was still on an EARLIER
+entry, and our per-entry candidate counts had drifted invisibly. They can:
+every fit pass costs exactly one float whether it is accepted or not, so a
+redistribution among entries moves nothing in the stream.
+
+THE INSTRUMENT THAT SETTLED IT is new and stays: `presweep` in the oracle
+config dumps the same four grids `grids` does, but at the boundary that ENDS
+zone 1's one-tile statics — the last one before a second zone's sweep begins.
+All four matched on both floors, road lists included, at the engine's own 53,362
+draws; and since the state going in matched and the fit is the port's fit, what
+was left between them was `vt+0x40`. Then the executable said it in five
+instructions.
+
+WHAT HOLDS IT NOW. `tools/test-rmg-statics.ts` builds the smallest floor that
+can tell: one tile of zone 2, everything else zone 3, the room grid seeded
+stale at 1, nine pebbles that keep the carve out, and a full 5x5 on the single
+candidate. With the pass the static is placed and the foreign cells read their
+distances; without it nothing is placed and they read 1. The measured corpus is
+unchanged — every game archive, 22 of 22 editor templates, the size and mask
+probes — plus eight seeds of `S1P2Z2M1` at 18 of 18 and the six new orders
+(`S1-2P2-8Z8K2S`, `S2-3P2Z7N2`, `S1P2Z3K5.1`, `S3-5P2-8Z8K2M`, `S3-6P2-4Z9B3`,
+`S1-3P2Z7V3`, small through large) at 18 of 18.
+
+**10.09, THE UNMEASURED LIST, READ.** Every claim the port made about itself
+being fitted, unported or undecided was collected and taken to the executable.
+Six of them come back with an answer, one is unreachable by construction, and
+what is left is named at the end.
+
+1. **The room grid with no points is 10000, and that is an initialisation.**
+   The note said "stale xmm0, unmeasured". `0xEC29AE` writes the register per
+   tile before the point loops — `movss xmm0,[0xFAA664]`, and that dword is
+   10000.0f — and each loop's tail leaves the running minimum in the same
+   register, so an empty list leaves the initialisation standing for the
+   `cvttss2si` at `0xEC2E26`. The port already answered 10000.
+
+2. **All three point-light name lists are read, not fitted.** One predicate per
+   class, each a chain of `find` (`0x987790`) over the shared's own resource
+   path at `+0x20`: `0xEB2EF0` "Crystal", `0xEB2FB0`/`0xEB3010` "Fakel" or
+   "FireColumn", `0xEB3070` "Crater" or "Lavacrack" or "Hellpikes" — and the
+   same shape as `0xEB3120` "Mountain" and `0xEB3180` "Crater" already read for
+   the cone and the spacing. The lava list's fit agrees exactly.
+
+3. **THE MASK'S VETO IS A RULE, and an artifact registers nothing.** `0xA46E80`
+   asks eight virtual questions — `+0x20`, `+0x2C`, `+0x38`, `+0x30`, `+0x34`,
+   `+0x7C`, `+0x1C`, then `+0x28` — on the one vtable of the eight a class has
+   that is long enough to hold slot `0x7C` (0x144 bytes; every other vtable of
+   the same class answers plausible nonsense, which is the trap here). Seven are
+   adjustor thunks to a single `xor eax,eax; ret` at `0x4797F0`; whichever a
+   class overrides is its own answer, shaped
+   `lea eax,[ecx-N]; cmp ecx,M; cmove eax,edx; ret` — a cast that hands back a
+   subobject, so non-zero, so a veto. Over every `CAdvMap*` class in the image
+   exactly six override one: **Artifact `+0x20`, Hero `+0x2C`, Ship `+0x38`,
+   Ghost `+0x30`, Caravan `+0x7C`, Monster `+0x1C`** — the movers and the
+   pickups. Everything else (treasure, shrine, building, mine, dwelling, town,
+   teleport, sign, tent, seer hut, sanctuary…) answers NO to all seven and is
+   decided by the eighth: `+0x28` (`0xAD0240` in every class) hands back the
+   virtual base's subobject and the veto asks its `+0x18` and the object behind
+   its `+0x58`. That chain is runtime state, not a class, and stays unported.
+
+   So `AdvMapArtifactShared` — named in the port as the one NOT decided — is
+   VETOED, and has been added. The three darkened treasures remain the only
+   evidence for treasures, whose class says nothing; the note in
+   [`minimap-mask.ts`](../src/rmg/minimap-mask.ts) now separates the two.
+
+4. **Big water is "painted at all".** `0x9EBC22` gates the layer on
+   `Type == 0x0B`, and `0x9EBC3C..0x9EBC57` compares the tile's four corner
+   bytes against 0, any non-zero jumping to `mov al,1`. The port's `> 0` is the
+   rule, and the "no map here can separate the two" note is retired.
+
+5. **The border ring's width is virtual.** `0xA4F769` asks the widget for it
+   (`call [eax+68h]`) and the four bounds tests at `0xA4F76C..0xA4F792` use what
+   comes back — so it was never a constant to score, and fitting widths 0 to 16
+   against the maps could not have landed. Inert on this path either way.
+
+6. **A guardless mine's piles measure from a defined tile.** The seat walk
+   writes each candidate to one pair of locals and copies that pair into the
+   slot the piles read only ON SUCCESS (`0xEB67EC..0xEB67FE`); an exhausted walk
+   jumps past the copy (`0xEB64EB`). What the slot still holds is not rubbish:
+   it is the temp the candidate collector pushes tiles through
+   (`0xEB5E55`/`0xEB5E62` into `0x584970`), so it is the last tile appended to
+   the first distance band's list. A pile needs 2.0 of it, so a mine anywhere
+   else makes none — the port still skips them, and now says what it skips.
+   (Counted with `net-probe --frame`, whose 2 KB window this function outgrew:
+   `--bytes` now raises it, and the walk stopping mid-function used to look like
+   a decode failure.)
+
+7. **`fmtRot`'s large-exponent throw is dead code.** Every Rot the generator
+   writes is a quadrant multiple, a mine's facing or the map angle, so
+   |Rot| < 10 and the exponent cannot reach 6. The other `%g` form — exponent
+   under -4 — is reachable and measured, digit count included.
+
+**AND THE ONE A USER CAN REACH TODAY.** The dwellings worker is two-moded on
+`generator+0xA5`, which the field table says is the **Grail checkbox**. Mode 1
+(the seven `RandomDwellingN` stand-ins, `RndSource=2`, `LinkToTown`) is
+therefore one tick away in the dialog, and the console order has no word for it
+— so `rmg-batch` cannot produce one and nothing has ever measured it. Ordering
+a map with Grail on is the shortest path to a divergence this port knows about
+and does not reproduce (it places no grail either). Random towns (`+0x95`) is
+the same shape of gap.
+
+**Still open, and each needs a map rather than a reading:** the `+0x28` chain
+that decides treasure against shrine, the halving exemption's own field
+identities (`0x9EC3C0` reads three level planes — `+0x28` bytes, `+0x48` at
+half-grid against 0x8C, `+0x58` floats against 0.0f — and which is which is
+unread), the mask's `TT_NONE` arm, and blocks E and F of the test matrix. (D
+was named here too, wrongly: the water sweep above IS block D, run in full on
+two seeds before the matrix was drawn up.)
+
+**10.09, THE GRAIL, PORTED — the one gap a user could reach, closed the day it
+was reached.** A grail-ordered map now comes out byte-identical in all fifteen
+entries. The order that proves it: `S1-2P2Z7V2 -seed 1789069784 -size 2
+-players 2 -monsters 0 -resource 0 -exp 0 -pokeb 165 1`.
+
+**THE CONSOLE CAN ORDER ONE, with no new code.** The dialog's checkbox is
+`request+0xA5` and `cli.c`'s `-pokeb <decimal offset> <value>` says any field of
+the request outright — `-pokeb 165 1` turns the grail on, and the map's own
+record comes back `<Grail>true</Grail>`. The instrument that had been built to
+identify the fields is what makes the feature orderable, and therefore
+traceable.
+
+**WHAT THE CHECKBOX DOES.** `generator+0xB5` is read twice by MainObjects:
+
+1. `0xEA3FB4` — the phase's PROLOGUE DRAW. With the grail on it is
+   `below(zoneCount)` (`0xEB13E0`, the bound taken from the zone vector's own
+   element count) and the result is the zone the Graal goes into; with it off it
+   is a bare `next()` (`0xEB13A0`). That draw had been in the port since the
+   first day, spent and unexplained — this is what it is, and the two traces say
+   so at the same index: the reference's is `tn`, a grail run's `tb 2 of 7`.
+2. `0xEA463B` — inside the zone loop, right after the DWELLINGS step. The drawn
+   zone gets the Graal (`0xEC00F0`), and then EVERY zone gets obelisks
+   (`0xEBFFC0`). Neither prints a boundary, so their draws land under the next
+   one the engine prints — "upgrade buildings" — which is why the divergence
+   first showed up there.
+
+**HOW MANY OBELISKS**, from `0xEA4652..0xEA468E`: a per-size numerator — 10 at
+size index 0, 18 at index 1, 26 above — times the zone's tile count, over the
+map's tile area, plus TWO. Both increments are in the code (`inc eax` in the
+caller, `lea ebp,[eax+1]` in the callee), and both are needed: the measured
+seven-zone medium comes to 5+5+5+5+5+5+8 = **38**, which is the archive's count,
+where one increment short gives 31.
+
+**WHERE EACH GOES** (`0xEBFCF0`, candidates from `0xEC1500`): the room grid is
+recomputed with mask 4 — the zone's actives alone — INSIDE the builder, so every
+obelisk filters on the last one's stamp; a zone tile is a candidate when
+`room > trunc(2 * max / 3)` and `border >= 1`; then at most ONE HUNDRED attempts
+(`cmp ebx,64h`), `below(candidates)` for the tile and `below(4)` for the
+quadrant, a refusal striking the candidate. The Graal uses the SAME builder.
+
+**THE GRAAL STAMPS ITSELF, and that is the reading the stream insisted on.** Its
+shared document's blocked, active, hole and passable lists are ALL empty, so an
+ordinary footprint stamp writes nothing — and then the next obelisk's candidate
+list would be the same list twice, where the engine's grows from 259 to 294.
+`0xEC03F5` pushes its tile into the zone's points and `0xEC0425` writes
+occupancy 4 for it, by hand. With that the port matches all **199,823** draws.
+
+**AND THE RECORD**, four value-level differences found by diffing the archive
+once the draws agreed: the Graal artifact is the one artifact whose
+`RandomShiftRadius` is 5 rather than 0; the primary objective becomes
+`OBJECTIVE_KIND_BUILD_GRAAL` and keeps the two text refs; the defeat-all it
+displaced reappears as a hidden SECONDARY (the primary's own item with the refs
+emptied and `IsInitialyVisible`/`IsHidden` turned over); and `<Grail>` in
+`sRMGProps` goes true. The three objective TEXTS switch to the parameters' other
+set — `DefaultGrailObjective`, `ObjectiveRMGCaption`, `ObjectiveRMGDescription`
+— whose names suggest the opposite pairing and whose contents settle it
+("Найти слезу Асхи" against "Побей всех!").
+
+**A CORRECTION THIS TURNED UP.** The dwellings worker's second mode hangs on
+`generator+0xA5`, and the note calling that the grail was wrong: the request's
+`+0xA5` is the generator's `+0xB5`, so the dwellings' flag is the one at request
+`+0x95` — RANDOM TOWNS. The grail map proves it from the other side: its
+dwellings are ordinary preset ones with `RndSource=RND_NONE`, which is mode 0.
+Random towns is now the only dialog-only gap left.
+
+**AND THE SAME ORDER FROM THE GAME, 17 OF 17.** The grail map that started this
+was made in the GAME, not the editor, and the two came out different maps from a
+byte-identical order record — the game's carrying one terrain layer fewer, so
+its zones had resolved to different terrain races and the streams had parted
+inside `LoadTemplate`. What said which was which is a line the oracle writes at
+every run and the log keeps: **`x87 control word 3199`** — 0x0C7F, single
+precision toward zero — against `639` (0x27F) for the editor's console run. Two
+runs of one seed in one log file, and the word told them apart before anything
+else did. With `--game-build` the same archive is byte-identical in every entry.
+
+The one thing the two builds do NOT agree on is the objective block: the
+EDITOR keeps the displaced defeat-all as a hidden secondary, and the GAME leaves
+the secondary empty, the grail goal standing alone. One map per build is the
+whole of the evidence, and enough of it — the objectives are a fixed consequence
+of the checkbox and no part of them is drawn.
+
+**11.09, RANDOM TOWNS — the last dialog-only gap, ported to the record.** The
+map that reached it was made in the GAME (`S1-2P2-8Z8K2S -seed 1789118387
+-size 2 -players 3 -monsters 0 -resource 0 -exp 0`, `<RandomTowns>true`), and
+`--anyway` put the first divergence at the towns phase: the game's "towns
+placed" boundary at 65900 draws against the port's 65940 — forty draws, eight
+towns, five each. With the flag ported the replay lands on the engine's
+210803 and `map.xdb`, `GroundTerrain.bin` and every text are byte-identical;
+three more orders through the editor (the same seed; the reference template;
+a two-level tiny one with a townless zone) come out the same way, record and
+terrain whole. What the checkbox does is two readers of `generator+0xA5`, the
+request's `+0x95`, and both are in the towns' code:
+
+- **PlaceTown, `0xEB4CB0`, twice.** At `0xEB4E0D` the prototype: with the flag
+  it is the global `/MapObjects/RandomTown.xdb` (`0x121C544`, filled at
+  start-up beside the seven random dwellings, 0x4D5A60) and the race preset's
+  `TownProto` is never read; the retry loop, the three gates and the stamp are
+  the same code over a different footprint (a (1,-5) entry, a (1,0) marker).
+  At `0xEB57E5`, right after the garrison, `jne` to the epilogue: the
+  decoration over the entrance and the specialisation are skipped whole,
+  draws included — the five per town. The garrison is still the ZONE RACE's
+  (`0xED2330` runs before the test; an Inferno zone's random town is held by
+  imps), an owned town still gets its tavern, and the record writes
+  `<Specialization/>` — the empty element, which no engine map spells as an
+  empty href.
+- **The dwellings step, `0xEB8C10` — mode 1 is this flag, not the grail's.**
+  The descriptor is the tier's own stand-in, `RandomDwelling<tier+1>`
+  (`0x121C570 + tier*0x20` at 0xEB8DF8), the tier test is skipped (0xEB904A),
+  and when the zone has a town (`zone+0xF8`, 0xEB935E) the instance gets
+  `RndSource = 2` and `LinkToTown` = the town's minted name (`zone+0xFC`); a
+  zone without one sets nothing, which the two-level order's third zone shows.
+  No draw moves: the properties come after the fit.
+- **An underground random town's lights are BLACK.** `0xEC6780` indexes a
+  per-town-type table (`[0x1207D04] + 8 + type*0x1E8`, the colour at `+0x1AC`)
+  by the document's `Type`, and the TOWN_RANDOM_TYPE row gives (0,0,0) — four
+  lights of it on the two-level order, z and radius drawn as before.
+
+**WHAT IS LEFT IS THE MINIMAP, and it is the engine's world objects, not its
+generator.** On every random-towns map a few hundred bytes of the picture
+differ, and each cluster is one of two things. An `Object` icon two pixels off
+— the first random dwelling of every map so far, and one more on the game's —
+whose anchor and darkening both fit the SAME footprint shifted by (+1, 0) in
+the document's axes (which happens to be the Dwarven tier-1 dwelling's list,
+`RandomDwelling1`'s plus one in x; every other race's tier-1 list IS
+`RandomDwelling1`'s, so a substitution would be invisible on the rest). And a
+town whose darkening lacks exactly one tile — document (5,-3), entry four of
+RandomTown's list — which on one map moves the icon a pixel and on another
+leaves it where it is. Neither is in the record: `map.xdb`'s positions and
+the passability plane agree with the port, so the shift lives in the world
+object's own `+0xB4`/`+0xB8` vectors or its `+0xA0` position, which is what
+the minimap reads and the file does not. Two editor runs of one order agree
+with each other, so it is deterministic; the game's picture of the same seed
+puts the clusters elsewhere, but that is a different map. The reading that
+settles it is the `mask` probe's `mmr`/`mmrb`/`mmra` lines on a GAME run —
+the registration hook logs each object's tile key and both lists — and the
+config under `game/bin` now asks for it.
+
+**11.09, LATER — THE MINIMAP'S RESIDUE IS THE WORLD, READ.** The `mask`
+probe's registration hooks stayed silent in the game as they had in the
+editor, but the game's anchor hook spoke (the installed DLL had been built
+with the probe's unit compiled out — `--log rmg/minimap-probe` is what makes
+it speak), and three lines settled it. A random town is written to the map
+as the placeholder, but the object the engine BUILDS for it is a real town of
+one race — the lists logged were Fortress's (active (1,-6), not RandomTown's
+(1,-5)) and Heaven's — standing at the record's tile plus that document's
+`FitRandomTownMaskPositionShift`, rotated with the town: (0,1) for the six
+castles, (1,0) for the Stronghold, (0,0) for Necropolis and Sylvan, whose
+lists ARE the placeholder's. The shift and the real list's mean cancel, which
+is why no town icon ever moved and only a mask tile or two did. Every dwelling
+bound to the town is that race's dwelling of its tier at the same tile — the
+first list logged was the Dwarven tier-1, the one tier-1 footprint that is not
+RandomDwelling1's — and a dwelling in a townless zone resolves the same way.
+
+The port carries it as `RunObject.world` (the document and its shift) off a
+per-zone race, `ChainOptions.randomTownRaces`; the mask and the icon pass use
+the world object where there is one. With the race FITTED per zone from the
+picture (`_tmp/fit-races.ts`, one zone at a time, their pixels do not
+overlap), all six random-towns maps come out byte-identical in every entry —
+three from the game (ГСК-019/020/021), three console orders. Zone 1 is
+Fortress on all six; the rest vary, and the same seed in the two builds
+(different maps) picks differently, so the choice is a draw from something
+the objects' creation order feeds. The candidate is `NWorld::CRandomGenerator`
+(0xC30080 `below(n)`: a two-step MSVC LCG, `(a >> 7) ^ (b << 6)` mod n, seeded
+123456789 by its constructor unless 0xC2FE60 says otherwise) — its default
+sequence does not fit the objects' ordinals under any subset of kinds, so the
+probe now logs its every draw (`wr`: sequence, generator, state before, bound,
+answer) and its seeding (`wrs`), game only, under `mask`. One more game run
+lines the draws up with the objects.
+
+**11.09, EVENING — RANDOM TOWNS CLOSED: THE RACE IS A HASH, and eight maps are
+byte-identical in every entry.** Two more game runs, the second with every hook
+that could be wanted at once (the anchor lists, the world's generator, the race
+chooser with its record, the seed vector, the seeded draw, the hash table and a
+dump of the world object), and the whole mechanism read out of `0xB543E0`:
+
+- the world's object factory (0xB51F40) builds a REAL town for a record whose
+  shared is `TOWN_RANDOM_TYPE`, at the record's tile plus the real document's
+  `FitRandomTownMaskPositionShift` rotated with it, from the least-used town
+  document of the race among the players' towns;
+- the race is `0xB553A0 (world, record)`: the OWNER's race when the record has
+  a PlayerID, else the linked player's or town's (`RndSource`), else — every
+  neutral town of a generated map — a draw with NO state behind it:
+  `h = hash("/RMGTemp/CurrentMap/map.xdb#xpointer(id(<name>)/AdvMapTown)")`
+  (0x983915, `h*5 + c` over the case-folded bytes; the record's own path in the
+  generator's temp world), `seed = adler32(0x12345678, [FIRST, x, y, h]) + 16`
+  (0xB4E4C0 through zlib's adler32), `race = between(seed, 0, 7) + TOWN_HEAVEN`
+  (0xB4E610: one two-step MSVC LCG whose state IS the seed; 0xB4E730). The
+  game's log agreed with the port's arithmetic on twelve draws, four seeds and
+  four hashes — `tools/test-rmg-world-race.ts` holds those numbers;
+- dwellings resolve in `0xB53D30` with the same three arms, a bound dwelling
+  taking its town's race, a townless one drawing on TWO ints
+  (`adler32(0x12345678, [FIRST, h]) + 8`, 0xB4E2D0, the path ending in
+  `/AdvMapDwelling)`, no position) — four townless dwellings of one map, one of
+  them Dwarven, said which of the candidate seeds it was;
+- `FIRST` is the world's `+0x50` (`vt+0x124`), 0x89E3D3BD in the game across two
+  sessions and two maps, and the editor's five neutral towns come out right
+  with it too — a constant of the build, measured;
+- the players' races are the one thing the record does not hold: player 1 is
+  Fortress, player 2 Heaven, player 4 Dungeon on every map, players 3 and 5
+  one of the six the picture cannot tell apart (Necropolis and Sylvan ARE the
+  placeholder's lists; Heaven, Academy, Fortress, Inferno and Stronghold cover
+  the same tiles after their shift). Where the temp world's players get them is
+  not read; `ChainOptions.randomTownPlayerRaces` takes them, the measured ones
+  are the default, and `src/rmg/world-race.ts` says exactly that.
+
+With the rule in, all eight random-towns maps — five from the game (ГСК-019,
+020, 021, 023, 024), three console orders (the same seed as 019, the reference
+template, a two-level tiny one with a townless zone) — are byte-identical in
+every entry, minimaps included. `tools/rmg-fit-races.ts` is the instrument that
+found the model before the code was read (a race per zone, fitted from the
+picture); it stays, on `ChainOptions.randomTownRaceOverride`.
+
+Two things the probes said on the way, kept for the next reader: the game's
+`mmw` stamps and the anchor lists appear when the game LOADS the saved map
+into the lobby world as well as when it generates — the log holds one minimap
+window per build, and a session in which the map was generated twice holds
+two of the first kind; and the `wr`/`wrs` lines (the world's CRandomGenerator)
+are the lobby's own generators, seeded per player after the objects exist —
+nothing about a town's race passes through them.
+
+**12.09, BLOCKS E AND F OF THE MATRIX, RUN — and the two things E found.**
+Block E (players at their maximum, 12 templates, three seeds: 36 orders) came
+back 34 of 36; block F (monsters, resource and exp across all five rungs on two
+templates, 72 orders) 72 of 72 first time. The two of E were both on
+`IMPOSSIBLE` 320-tile maps with eight players, and neither was about players.
+
+- **`S7-15P2-8Z9K2.4b` at seed 1001 — a name minted twice.** The terrain and
+  the minimap were identical; `map.xdb` had one static more than the engine's,
+  and the engine's list carried the SAME id twice: a lava zone's
+  `StickOfDeath_02` at (140,315) and a snow zone's `Snowhommock03` at (26,166)
+  had both drawn `item_1746477870` from their two `below(65535)`. Where the
+  port wrote the stick, the engine wrote the hommock — and where the port
+  wrote the hommock, the engine wrote
+  `<Item href="#xpointer(id(item_1746477870)/AdvMapStatic)"/>`. Read in
+  `0xEB3990` (the game): the name is a document PATH, and after composing it
+  the creation goes to the document manager — find-by-path (`vt+0x58`, and an
+  addref on a hit), unload of what it found (`vt+0x60`), create (`vt+0x44`).
+  A second creation under an existing name replaces the first's document; the
+  world's list keeps both slots and both hold the one document, and the
+  serializer inlines it at the first slot and references it at the second.
+  The chance is two draws over 65535², about n²/2^33 a map — one in a hundred
+  at 8,700 objects, so the corpus was due one. `runFull`'s `add` keeps a
+  name index and replaces in place, pushing an `alias` slot; the emitter
+  writes the reference for it; the height pass, the mask and the icons skip
+  it — on the evidence of this map (statics reach none of the three), not on
+  a reading of what `vt+0x60` does to the world's registrations.
+
+- **`S7-22P2-8Z15K2.4c` at seed 2002 — `Math.hypot` is not `sqrtss`.** The
+  first teleport of zone 8 stood on (209,21) against the engine's (221,7),
+  with the same name and the same rotation — the same draws, a different
+  candidate list. The oracle's `points` said the room points were the engine's
+  (the two town tiles), `areas` said every zone's tile count was, and the
+  trace said what the port could not: `tb 636970 413 821` — the engine had
+  821 candidates to the port's 820, and index 413 was its tile where the
+  port's 412 was. One tile short, before (221,7) in scan order. It was
+  (196,28): 99² + 20² = 10201 = 101², an exact distance, and V8's
+  `Math.hypot(99, 20)` is 100.99999999999999 — it scales before squaring and
+  loses the ulp — where the engine sums the squares and `sqrtss`es them to
+  exactly 101.0. Truncated to the room grid that is 100 against 101, and the
+  filter's `> threshold` at threshold 100 dropped it. `tileDistance` in
+  `placement.ts` is `fround(sqrt(dx² + dy²))` now, and every `hypot` in the
+  port (the room, and the mines' three ring tests against integer bounds) goes
+  through it.
+
+With both in, block E is 36 of 36, and the whole corpus was re-run because
+the distance feeds every room grid: 138 engine folders (`rmg-batch`, `seed2`,
+`water`, `water2`, `monsters-sweep`, `monsters`, `mm`, `xl`) and the 24 RMG
+archives in `game/H5E/` — every one byte-identical, `ГСК-001` at its known 14
+of 17. The unit suites all pass. The matrix has no red cell left; what B and
+C did not sweep is what remains.
+
+**13.09, BLOCKS C AND B — THE MATRIX RUN IN FULL, and two more readings.**
+Block C (every template one size up and at its largest: 114 orders) came back
+113 of 114; block B (every template with two floors: 66) 62 of 66. Five maps,
+two causes, neither a draw.
+
+- **The teleport's candidates are the zone's tile LIST, not its grid.**
+  `S0-1P2Z2K3.2T` at 320 tiles, seed 1001: the counters agreed through "dist
+  to towns" and then the engine spent 4,735 draws in ZoneConnections to the
+  port's 26. The trace showed one zone's teleport drawing `below(4709)`,
+  `below(4708)`, … down to nothing — every candidate refused by the fit — and
+  then "cant find empty tiles". `0xEB8050` walks `zone+0xCC` to `+0xD0` (eight
+  bytes an entry, `cvttss2si` on each half) against the border grid alone, 2 <
+  d < 10, and never asks the zone grid; the fit does. That zone had no passage
+  dug to it — which is what a teleport is for — so dist-to-towns had written
+  -2 over all of it in the grid, and the list still held every tile. The port
+  scanned the grid, found nothing, and left without a draw. `teleports.ts`
+  takes the list now (`ZoneTeleportsInput.tiles`: FillZones' list, or the
+  water carve's).
+
+- **The town's footprint gate is the shared fit, `0xEC3510`.** Four two-level
+  maps (`S1-3P2-4Z5V` seed 1001, `S2-3P2Z7N2` 3003, `S2-4P2Z7B2` 2002,
+  `S7-22P2-8Z15K2.4c` 1001) parted in PlaceTowns: at the third attempt on
+  the first of them the engine refused a tile (the pool fell from 281 to 280)
+  that the port accepted. `towns.ts` had its own three-list gate — blocked
+  and active at depth 1, the marker at 3, no margin — fitted to the
+  reference, which it passed. PlaceTown calls `0xEC3510` at 0xEB51A7 with
+  the prototype's blocked, active and marker lists, the same call the mines
+  and dwellings make: active at depth THREE, the marker at 1, and on floor 1
+  the five-tile margin from the map edge. All four were underground towns
+  near an edge. `towns.ts` calls `fits` now, and `rotate` moved to
+  `placement.ts` so the import points one way.
+
+Block C's tenth order is also where the batch grew its eyes: the oracle's log
+kept beside each slot (`<keep>/<n>.log`, the log emptied before each launch —
+it appends, and the first copies were 167 MB apiece), `--resume`, and a
+watcher that kills the editor the moment its top window is the CRT's abort
+box — five launches in a row had sat on that box for fifteen minutes each
+while the port's replays ran beside the editor, and a second batch driver that
+survived a botched stop had two editors racing for one slot. The frame is not
+hidden: with it hidden the extension's "waiting for the editor to come up"
+never ends.
+
+With both readings in, C is 114 of 114 and B 66 of 66, and every earlier map
+is being re-run against the port, since a town gate and a candidate list reach
+every order.
+
+**13.09, LATER — THE LOBBY'S RACES ARE AN INPUT, and a map records them.**
+`ГСК-025`, generated in the game with three player slots set by hand
+(Inferno, Necromancy, Preserve) and the fourth random, came out with those
+three and a drawn Fortress; the port had drawn all four, and the first town's
+name still agreed — the draws are spent either way, the concrete slot wins.
+`load-template.ts` had held that arm since the reading; the chain had never
+filled the vector. `ChainOptions.playerRaces` is the lobby's vector now, and
+`rmg-diff-map` hands the map's `PlayersInfo` back as it: a random slot
+recorded its own draw, so the outcome replays whichever slots were set.
+Console orders have no lobby and change nothing. What the temp world's
+PLAYERS carry for random towns is still another source — `ГСК-019`'s
+`PlayersInfo` says Necromancy for player 1 and its town stood as Fortress.
+
+**13.09, EVENING — THE WORLD'S PLAYER RACES ARE NOT THE LOBBY'S EITHER.**
+Four more maps from the game, all byte-identical: `ГСК-026` (five slots
+random), `027` (five set by hand), `028` and `029` on `S3-5P2-8Z8K2M` at
+LARGE — and 029 has random towns ON with the lobby at Heaven / Preserve /
+Academy / Dungeon / Necromancy. The port stood its owned random towns as the
+measured races (Fortress, Heaven, Heaven, Dungeon, Heaven) and the minimap
+came out the engine's, while Preserve for player 2 and Necromancy for player
+5 are exactly the two the picture CAN tell apart. So the temp world's players
+carry something constant to this installation across nine random-towns maps,
+two sessions and three lobbies — not the slots, not `PlayersInfo`. It stays an
+input (`randomTownPlayerRaces`, the measured ones as the default); what it
+comes from — the profile's last game is the guess — is unread, and for a map
+made by the editor's button it is cosmetic: the game's own world decides an
+owned random town's race when it loads the map, and the file carries only
+the minimap.
+
+**13.09, NIGHT — THE WORLD'S PLAYER RACES, READ.** Not the lobby, not the
+map: a draw. The reading went through the objects rather than the writers —
+`0xB553A0`'s owner arm is `CWorld::GetPlayer` (vt+0x68, `0xA535E0`, a scan
+of the pointer vector at world+0x24 for the entry whose vt+0x2C is the id)
+and that entry's vt+0x34; the entries are `CPlayer` by its second vtable
+(`0xFC515C`, the subobject at +0x1C), vt+0x2C `[this+0x78]`, vt+0x34
+`[this+0x17C]` — the race at CPlayer+0x198, written by the constructor
+`0xC02BA0` from its fourth argument. Its three factories pass what THEIR
+callers hand them, and the return address of the one that matters landed in
+`.data` in the game; so the probe moved to the EDITOR, where the same class
+lives at `0x84D270` / `0x84DA20` and the batch can order random towns
+(`-pokeb 149 1`) without a screen. There the factory's caller is `0x8450E0`,
+the builder of the world's players, `(this, setup)`: it walks the setup's
+`CPlayersStartInfo` (vt+0x1C count, vt+0x20 item, 0x8C bytes an item: +0
+kind, +4 number, +0x18 race, +0x50/+0x54 the races a RANDOM slot may take)
+and hands each slot's race to the factory as it stands — unless it is 1,
+RANDOM, when it takes `list[draw % count]` from a `CRMVersionTracker`
+(`0x9A3F00` makes it; vt+0x28 seeds it with `setup+0x30`; vt+0x20 is two
+MSVC LCG steps and `(s2 << 6) ^ (s1 >> 7)`, `0x9A36D0`).
+
+The probe's readings: every slot at 1 with the list [3 8 7 4 6 5 9 10],
+`setup+0x30` = 0, and the factory then got 9 and 3. From seed 0 the tracker
+reads 5, 9, 3, 5, 6, 3, 8, 3 — one draw is spent before the players
+(`0xD57C90` runs on the tracker between the seeding and the loop; unread,
+the count is the measurement) — so the players are Dwarf, Heaven, Academy,
+Dungeon, Heaven: the "constant" nine maps had shown, player 3's Academy
+where the fitted table had guessed Heaven. `worldPlayerRaces(n)` in
+`world-race.ts` is the rule now, `test-rmg-world-race` pins it, and all six
+random-towns game maps and the batch's probe map are byte-identical with
+it. `randomTownPlayerRaces` stays as an override. The lobby's own slot
+choices never reach this builder (`ГСК-029`) — why, is a question about the
+lobby, not the generator.
+
+**13.09, LATE — THE MINIMAP'S LAST THREE BRANCHES, AND THE PARSER, READ.** Four
+readings in one sitting, each a place where the port had said "fitted" or
+"unported"; none of them changed a byte of the corpus, and all four changed
+what the code is entitled to say.
+
+- **The halving's exemption is `0x9EC3C0`, whole** (`waterTile` in
+  `minimap.ts`): clamp to `[0, dim-2]`; the four ground-flag corners all zero
+  goes straight to the tail; otherwise a `TT_BIG_WATER` layer over any corner
+  (`0x9EBAE0`) answers NO and so does a river centre cell `(2y+1, 2x+1)` at or
+  under 0x8C (unsigned, strictly above goes on); the tail refuses when the sea's
+  float plane (`+0x58`) reads above 0.0. The planes are named at last — `+0x28`
+  flags, `+0x48` river, `+0x58` sea. `0xDD0784` halves when the bit is set AND
+  the answer is NO. The fitted rule ("wet and not under big water") was the
+  live arm exactly. The shipyard's ring asks the same function (`0xCB19C9`) and
+  the port keeps only the river there — see the last item below for why that
+  is exact.
+- **The veto's eighth question is three constants, not state.** `+0x28`
+  (`0xAD0240`) is `AsInteractive()`; the chain asks `IAdvMapInteractive::+0x18`
+  — `mov al,1` for `CAdvMapTreasure` and `CAdvMapArtifact`, `xor al,al` for
+  every other class ("visited by stepping on it"; its other caller is the
+  hero's interaction handler) — then `IAdvMapObject::+0x58`, a dynamic_cast to
+  `IAdvMapTent` whose slot 0 is "keymaster" (`Type == 37`; a border guard
+  vetoes), then the object's own slot 0, a dynamic_cast to `IAdvMapStatic`
+  whose slot 0 is the placement's `IsRemovable`. The generator places no tent
+  and writes `IsRemovable` false everywhere, so `VETOED_CLASSES` stands as it
+  was — Artifact, Monster, Treasure — read rather than measured on three
+  tiles. The guard beside a mine's pile was never in the answer.
+- **The tile pass `0xA4F6D0`, all five kinds** (`buildMinimapMask`). It runs
+  once per floor from `CWorld+0x148` (`0xA55A50`, called by the loader
+  `0xB514C0` after every object exists; nothing recomputes it later). In order:
+  kind 4 — the tile is on some object's `passableTiles` (`vt+0xBC`, `obj+0x88`,
+  the shared document's `+0x78`; the floor keeps a vector of exactly the
+  objects whose list is non-empty), CLEAR, with `desc[+0]` the winning land
+  layer's Type from `0x9EB690` and set only when that is 9 — which is the
+  `TT_NONE` arm as it really is, a sub-case of kind 4 on `desc[+0]`, not the
+  type `0x9EB4D0` writes to `+4` (which `0xAD0F50` never reads); kind 5 — the
+  BorderSize ring (`floor+0x38` ← `SAdvMapDesc+0x1DC`, 1 here, outside the
+  drawn picture) or, underground only, the flags vertex at the tile's corner
+  at or over 0x20 (`0x9EBAC0`, rock; `terrain[+0x64]` is "this floor is the
+  underground", set by the loader from the floor index, and gates the corners
+  arm `0x9EB9E0` too); kind 3 — big water, the plane at 0, corners that differ;
+  kind 2 — `0x9EC570`, whose live arm is a river centre over 0x8C with no big
+  water, and kind 2 SETS the mask (every such tile is one the halving spares,
+  so the picture cannot show it); kind 1 — clear. Fifteen documents in the data
+  carry `passableTiles` (bridges, an outpost, `MagmaShrine`) and the generator
+  places none — the shrines step reads a hardcoded table, not the preset's
+  NewShrines — so kind 4 and its `TT_NONE` are transcribed with nothing to
+  stand on. The rock arm underground had been covered by the plane and the
+  corners; it is its own line now.
+- **The text-to-float is one loop, compiled twice.** `0x4DF4A0` (game) and
+  `0x56B060` (editor): `v = v*10 + d` over the integer digits, then
+  `p = p * 0.1f; v = v + d * p` over the fraction, left to right, no table and
+  no division; an exponent arm no tile document uses. The game is compiled to
+  SSE scalar single — every step a chopped 24-bit result under MXCSR, which
+  `_controlfp(_RC_CHOP)` set with the x87 word — and the editor to x87, where
+  `v` and `p` sit on the stack at the CRT's 53-bit nearest and are stored to a
+  single once, by the caller's `fstp dword`. Run under those two machines the
+  read loop gives the game's byte on all 124 colour texts and the editor's on
+  all 124 — which is what `parse24` (digits against a nearest power table,
+  chopping) and `parse24Right` (the fraction from the right, nearest) had each
+  been fitted to. Two shapes were one algorithm at two precisions; `parseText`
+  with `SSE_CHOP` and `X87_53` replaces both (`parse24`, `parse53`).
+
+`test-x87` and the minimap reference are unchanged at 0 bytes; the corpus
+regression (`_tmp/matrix/regress-all.sh`) ran after the four: 458 of 458, the
+known `ГСК-001` 14/17 among them.
+
+### Next: what the generator reads from the DATA and what it carries in the CODE
+
+The question the port answers next is not "does it match" — it does — but
+"what can be fed to it". A mod adds creatures, artifacts, dwellings, obstacle
+sets, and one day a ninth race; which of those the generator picks up by
+itself, and which it cannot see because the list lives in the executable, is
+what decides whether the button can generate for a modded game. The port
+already knows some of both sides, and the survey should start from what is
+written down rather than from the exe:
+
+- **Read from data** (and so open to a mod): the artifact table
+  (`GameMechanics/RefTables/Artifacts.xdb`, `artifacts.ts` — every record that
+  says it may be generated, by id), the creature and army lists by their
+  hardcoded PATH (`armies.ts`), the RMG preset table per race
+  (`RMGPresetTable.xdb`: tiles, statics, mines, dwellings, town prototypes,
+  `preset-table.ts`), the templates and the tile documents.
+- **Carried in the code** (and so closed to a mod until the extension patches
+  it): the shrine table at `0x121CA90` (`shrines.ts`), the size ladder
+  (`create-map.ts`), the surface/underground draw lists of
+  `load-template.ts`, the eight races as a dimension — `SLOT_RACE_LIST` in
+  `world-race.ts` is the exe's `[3 8 7 4 6 5 9 10]`, the preset table is
+  looked up BY RACE ENUM, and every `__RACE_COUNT`-sized table in the engine
+  (`docs/…` — the ninth-faction survey) is a place the generator would have
+  to be widened.
+- **To find out**: for each list the generator walks, whether the port reads
+  the file or holds a copy; for each one held, whether the ENGINE holds it in
+  code too (then the port is right to, and the extension is where a mod would
+  reach it) or reads a file the port shortcut (then the port should read the
+  file). The obstacle sets are the open one: how the statics steps choose
+  their documents (`statics-big.ts`, `statics-one-tile.ts`, the subterranean
+  columns) — preset vectors, and what a preset may name.
+
+**The data half, done (14.09).** The port used to open every document with
+`readFileSync` against one folder — the unpacked `data/*.pak` — so a mod was
+invisible to it by construction. Now every reader in `src/rmg/` takes a
+`DataRoot` (`src/rmg/data.ts`: a directory, or an `Assets` chain) and reads
+through it; `runChain`/`runFull`/`buildMapFiles` carry the chain, and the
+CLIs get theirs from `dataAssets()` in `tools/game-dir.ts`. The chain is
+built by `src/game/mounted.ts` the way the executable builds its own: every
+archive in `<game>/H5E/` matching the five masks, the NEWEST member winning a
+path however the folder is ordered, a member dated at the ZIP epoch ignored,
+over the unpacked data — docs/ARCHIVES.md's rule, held by
+`tools/test-mounted.ts` with a folder order that contradicts the dates. The
+whole corpus (`_tmp/matrix/regress-all.sh`) is unchanged through the chain,
+which is the expected result: the vanilla copy's `H5E/` holds only the maps
+the engine made, and none of them carries a path the generator reads. The
+editor's own `mountedAssets` still mounts creature mods only; the generator
+needs more than that, and the button will build its chain from `mounted.ts`.
+
+**The code half, done (14.09, later).** Everything the survey above listed as
+"carried in the code" — and a dozen more that turned up once the port was
+swept for literals — is now read out of the game's image by
+`src/exe/rmg-tables.ts` and handed through `Chain.exe` (`src/rmg/exe.ts`
+memoizes the read; `tools/game-dir.ts` `gameExe()` names the file). The
+locators are landmarks, never addresses: the generator's own log strings
+find the step that uses a table ("Cant set shrine %s in zone %d" is the
+shrine step; the call before "at %g prisons in zone %d set" is the prison
+worker), RTTI finds the zone classes' vtables (the lake gate is the first
+call of `CGameZone`'s `+0x34`, the light substrings are the `find` calls
+under each subterranean class's `+0x3C`, the shipyard is the document the
+water zone's `+0x2C` tail-jumps into), and a byte pattern finds the one
+accessor a RANDOM slot's race list is read through. The values come from
+the instructions: a string global is the `push <str>; mov ecx,<slot>; call`
+triple its static initializer builds it with, a table of them is the run of
+such triples 0x20 apart, a size ladder is the jump table's cases, the
+multipliers are the `movss` loads the fill loop switches to (the 1.0 case
+jumps straight to the store, keeping what was loaded before the switch), the
+race lists are LoadTemplate's `push_back` immediates with the one under
+`cmp byte [+1Dh],0` set apart. `tools/test-rmg-tables.ts` holds the decoding
+to the vanilla game's twenty-eight values; the RMG suites and the whole
+corpus pass through them unchanged.
+
+What stays in the port as code is what the engine has as code: the port's
+`RACE` names are checked against the image's enum when the chain starts
+(a renumbered build fails out loud rather than drifting), the mine guard
+levels are the step's three branches (`guardLevelOf`), the size fit's caps
+are the fit's own compares. The dwelling `Type` values the minimap never
+flags are numbers in the image and names in the map file; the bridge is the
+`BuildingType` enum of `types.xml`, read through the chain
+(`readEnumValues`), which is also where the order's `MapSize`,
+`WaterAmount`, `MonsterLevel` and multiplier names come from now. The
+editor's build of the generator is not read: it compiles the same lists
+differently (`push_back` inlined, constants in registers), and the game's
+image is the one the maps are for.
+
+Two hedges this left, both in comments where they belong: the compare that
+routes the gold mine to `MineGoldGuardLevel` is not yet read as an
+instruction (`mines.ts`, "the last of the seven" is what every run shows),
+and the `CartographerWater` document the image also carries has no reader
+in the generator's range — noted, not ported.
+
+**The hedges of the sweep, read (14.09, later still).** The port was swept
+for every "assumed / measured / carried in / argued unreachable" note, and
+these came out of the executable:
+
+- **`<Birds>` is a draw after all.** The map-setup step's sixth draw
+  (`below(10) > 6`, `mapSetup().birds`) had always been ported; what was
+  missed is that the line is written right there, at `0xEA0EA0`, under the
+  flag the ambient-light set leaves, with the document a string global names
+  (`birds` in `rmg-tables.ts`, `Pigeons_Adv.xdb`). Replaying the setup draws
+  alone predicts the line on 138 of 138 corpus maps and 31 of 32 game-made
+  ones; the one miss is ГСК-001, whose all-random order does not replay past
+  its coins anyway. It is no longer carried in with the order.
+- **The game's caption placeholder is data.** `Это название карты` is
+  `RMG/Params/rmgMapName.txt`, the params' `MapName` href; the emitter reads
+  it through the chain (`gamePlaceholder`).
+- **The world's seed word is derived.** `WORLD_SEED_FIRST` (0x89E3D3BD) is
+  exactly the first draw of the version tracker seeded with 0 — the CWorld
+  constructor's own draw, the one `worldPlayerRaces` spends before the
+  players — so it is computed, not held.
+- **The point-light spans are the global params'.** `vt+0x3C` fetches the
+  generator's params (`0xEAFF80`) and draws `zMin + below(zMax - zMin)`,
+  `radiusMin + below(radiusMax - radiusMin)` off `+0xB4..+0xC0`
+  (0xEC63A6..0xEC6415): 2..7 and 20..25 in the shipped file, the
+  `2 + below(5)` the maps show; a race preset's own zMin/zMax is never read.
+- **The upgrade-buildings mint-failure path** (`0xEB9B37` → `0xEB9D03`)
+  frees the name and goes straight back to the loop test with nothing spent —
+  the suspected spin is real, and unreachable while a create cannot fail.
+- **LoadTemplate tests WaterAmount for zero only** (`cmp byte [gen+0A6h],0`
+  at 0xEA24B2): 1 and 2 are the same to it.
+- **`generator+0xB0` is the order's ExpMultiplier index**, swept 0..4 by
+  block F; nothing in the generator writes it.
+- **The map angle at `map+0x5C` is the WORLD's to read** (`movss` at
+  0xD65CB4, 0xD6A198), not the generator's.
+
+And after them: the gold mine's guard level is routed by a LITERAL, `cmp
+dword ptr [esp+14h],6; jne` at 0xEB6F8D — not "the last of the seven" —
+and the reader takes the immediate out of the mines step (`goldMineType`);
+the (0,0) possession marker is refused by the stamp `0xEC2F90` skipping an
+EMPTY marker list (`test eax,0FFFFFFFEh; jle` at 0xEC3196), the pair being
+read at 0xEB4F7C / 0xEB506B on the way in — the test that keeps a zero
+pair out of the list is the one instruction still not located; `%g`'s
+large-exponent form is written by the runtime's own rule instead of
+refused (unexercised: |Rot| < 10); and the three "rectangle" refusals now
+say what they are — the engine has ONE dimension (both of `map+0xC` and
+`map+0x10` come from the same size-table entry), so a rectangle is not an
+input it can be given, and the port's square-only readers guard their own
+API, not a hole. The last refusal, a rehashed bucket's order (`zones.ts`),
+was read on 14.09 out of the floor's insert `0xEB0CB0` (see Phase 3) and is
+modelled, not refused — what remains is the prime table's end, an API
+guard like the rectangle's. The water
+treasures' failed creation is read too (`0xECCDE2` / `0xECCF4D` → `0xECD104`:
+the candidate is spent and the loop goes round, nothing stamped, nothing in
+the repel ledger), and LoadTemplate's two former named holes are held by the
+matrix (block B) and by ГСК-025. `tools/test-doc-addresses.ts` now asks the
+GAME's image first, so a data table of the game is no longer held to an
+instruction boundary in the editor's larger `.text`; its ratchet is 5.
+
+**The two readings that were owed, taken (13.09, later still).**
+
+- **The sea is not big water.** The shipyard's ring and the minimap see the
+  same terrain (`[[zone+0x134]+0x34]`, pushed at `0xECC52B`; FillTerrain and
+  the carve's sea paint both precede the ring), the layer's document is a
+  real pointer from the first paint (`0x9EAD90` writes `rec+0x10`), and the
+  gate `0x1182704` is a constant zero — none of the candidates. What the
+  port had wrong was the premise: the params' DeepWaterTile,
+  `RMG/Tiles/Water/Water.xdb`, is `TT_SMALL_WATER` (priority 253), and
+  `0x9EBAE0` tests `[doc+0x60] == 0x0B` only, so the sea's layer is skipped by
+  TYPE — at ring time, at minimap time, always. The generator's one
+  `TT_BIG_WATER` document is the lava lake's `LavaFlow.xdb`, grown and
+  painted in the statics sweep, phases after the ring; the "26 sea tiles" the
+  mask note had blamed on the sea were a lava lake on a sea map, and the water
+  reference's 1,906 sea pixels are the unhalved colour, as the note two
+  sections up had always said. `shipTile`'s river-only rule is exact by
+  construction, not by measurement; the notes in `minimap.ts`,
+  `minimap-mask.ts` and `shipyards.ts` say so now.
+- **The draw before the players is the world's own.** `0xD57C90` is
+  `CWorld::Create`; the builder makes the world on the tracker it just seeded,
+  and the world's constructor (`0xD56590`, at 0xD568A9) draws once —
+  unconditionally, straight-line — into `world+0x50`, a field no reader was
+  found for in either build. The game is the same three instructions
+  (`0xA51570`, 0xA519AC). One draw per world, then one per RANDOM slot;
+  `worldPlayerRaces` had the count and now has the cause.
+
+## The button (15.09)
+
+**Random map…** sits beside New map… in the Map menu and on the map list.
+The dialog is the game's dialog, field for field, and every list in it is
+read from the install through the module's door (`rmg:choices`,
+`rmg:templates` in `electron/channels/rmg.ts`): the seven sizes with their
+tile counts, the five monster levels, the five rungs of each multiplier, and
+the templates — narrowed to what the game's own dialog would offer for the
+size and the floor count (`templatesOffered`, the filter at `0xCF7B58`), so
+the players field follows the template's range and a mod's template is
+offered beside the shipped ones. Water is the checkbox the game has (it
+records `WATER_ISLAND_MAP`); random towns, the grail and the minimap are the
+other three; the seed is typed or left blank for a drawn one. **Every
+choice but the name and the minimap can be left to Random** ("All random"
+leaves them all): main draws them before the run (`resolve` in
+`electron/channels/rmg.ts`), in the order the dialog's own dependencies go —
+the size, then the levels, then a template the game's dialog would offer for
+those and that takes the players when they are fixed, then the players inside
+its range — so a fixed template with a random size is a size the template
+fits, never one the engine would lift; water, the monster level, the
+multipliers, the towns and the grail are drawn independently. What came out
+is in the result and on the HUD.
+
+**A generation is a job in a child process** (`src/rmg/job.ts`,
+`electron/rmg-worker.ts`, forked through `utilityProcess` the way the scene
+builder is): the job carries paths — the game folder, the data root, the
+mount cache, the executable, the folder to write into — and the child mounts
+`<game>/H5E/` by the engine's rule, generates, and writes the sixteen files
+where it was told. A child that cannot be forked (`HOMM5_RMG_INLINE=1` forces
+it) runs the same job in the main process, slower to everyone and correct.
+Then the map LANDS the way a New Map does (`landAsArchive` in
+`electron/channels/maps.ts`, factored out of `map:new`): a manifest, the
+`.h5m` in `<game>/H5E/<name>.h5m`, the manifest pointed back at it, and the
+map opened from that archive like any other. Its folder inside the archive is
+`Maps/RMG/<guid>`, which is where the game's generator puts every map it
+makes — and which is why a map opened from a `.h5m` of ours is now titled
+after the FILE: the folder's name, for a generated map, is the GUID.
+
+`e2e/rmg.spec.ts` drives it: the lists come from the install, the template
+list narrows with the size and the floors, a tiny map on the reference
+template and seed comes back with that order in its `sRMGProps`, the run was
+the child's (the main process's log says so), and a taken name is refused
+with the dialog left open. The sandbox install it makes for itself
+(`_tmp/e2e-rmg`) holds only the unwrapped executable: the generator needs
+neither the extension nor a mod.
+
+**What the button does NOT do yet** is in ROADMAP.md, Phase 10: a visual
+template editor, a whitelist of what the generator may place (a dialog inside
+this one, and lists a template can carry for the map and per zone), and a
+mirrored two-player template with one start hero for both.

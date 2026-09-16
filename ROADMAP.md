@@ -1080,6 +1080,188 @@ Round-trip (load→save→identical) is the cheap complementary net.
 
 ---
 
+## Phase 10 — The random map generator
+
+The game's own generator, ported to TypeScript and held byte for byte to the
+maps the engine writes: same order and seed, same archive (`docs/RMG.md` —
+the reading, the corpus, the matrix, the random suite). Nothing in it is
+fitted and nothing is refused: every table comes out of the game's executable
+or its data, so a mod's templates, creatures and artifacts reach it.
+
+- [x] **The port** (`src/rmg/`): every phase read out of `H5_Game.exe`, the
+      corpus of 896 engine-made maps byte-identical, a random suite
+      (`npm run rmg-random-suite`) that draws every input anew each run ✅
+- [x] **One door for the application** (`src/rmg/index.ts`): the dialog's
+      lists from the install, the templates the game's dialog would offer
+      (its filter at `0xCF7B58`, read), an order in the dialog's units, a
+      `.h5m` out ✅
+- [x] **Random map… in the editor**: the game's dialog field for field —
+      size, two levels, a template list that narrows with them, players in
+      the template's range, water, monster level, both multipliers, random
+      towns, grail, minimap, a seed or a drawn one. Runs in a child process
+      (`electron/rmg-worker.ts`), lands like New Map (`<game>/H5E/<name>.h5m`,
+      opened from the archive). `e2e/rmg.spec.ts` ✅
+- [x] **The zones laid out our way** (`src/rmg/layout.ts`): one door for the
+      zones, the template choosing with `<ZoneLayout>` — `Engine` (the two
+      phases, byte for byte, the default) or `Voronoi` (ours: centres settled
+      by the connections, start zones pushed to the corners, tiles cut as
+      weighted Voronoi cells — the picture Heroes III's Jebus Cross has in
+      mind, from the graph alone, no coordinate in the file). `.h5et` is our
+      template format — the game's plus our fields — shipped in `assets/rmg`
+      and listed by the dialog beside the game's. The whole generator runs on
+      it (`test-rmg-layout`). A template's connection record was swept on
+      the way: `TwoWay`, `Guarded`, `Wide` are read by nothing ✅
+- [x] **A zone of ours says more than the game's can** (`.h5et`, 16.09):
+      `<Objects>` names a building with a floor, a ceiling and a guard;
+      `<GuardMultiplier>` scales the guards the zone seats for itself, on top
+      of the map's monster level; `<TreasureBlocks>` values the blocks by
+      ranges with counts (relics by value, the Heroes III way). A template
+      asking for more than fits gets what fits and a warning on the HUD
+      line, never a refusal ✅
+
+**Written down, not started — after Jebus and the Outcasts are finished:**
+
+- [ ] **Variations**: any `<Item>` of a template (a zone, a connection, an
+      `<Objects>` line, a treasure range) may carry `<Variant>name</Variant>`;
+      neighbours with one name in one list are alternatives and ONE is kept,
+      drawn from the seed on a stream of its own, before the generator sees
+      the template. Zone alternatives must keep their `Index` (a warning
+      otherwise, not a refusal). Cheap: a pre-pass over the parsed template ⬜
+- [ ] **Packs**: one `.h5et` holding several `<RMGTemplate>` under one name,
+      each with its own size and player ranges and its own zones, the dialog
+      listing the name once and the first variant that fits the size and the
+      player count taken — HotA's `.h3t` (Jebus Outcast: 126 maps in one
+      file). Belongs to the template editor, which is where variants will be
+      authored ⬜
+- [ ] **What `mt_outcast` needs of a connection** (read 16.09, three things,
+      all ours — the engine's connection flags are dead): `<Passage>Teleport`
+      (the land digger skips it, the teleport pass plants the monoliths —
+      opposite zones of the ring are joined so, on top of the ring's ground
+      passages); `<Fictive>` (a spring for the layout, no passage — how an
+      outcast zone lies beside a start zone); a weight (HotA writes one pair
+      eight times, seven fictive and one real, to pull harder — count the
+      records, or an explicit `<Weight>`). Then `mt_outcast` itself as an
+      `.h5et`. Left for later on purpose: the creature banks and what else
+      the outcast zones hold want thinking about first. Done of it already
+      (16.09): a pair written twice is two passages, `<Road>false</Road>`
+      keeps one off the roads ⬜
+- [ ] **Road types per connection**, the way Heroes III has dirt / gravel /
+      cobblestone. The engine HAS the three (`TT_DIRT_ROAD`,
+      `TT_GRAVEL_ROAD`, `TT_COBBLESTONE_ROAD` in types.xml, tile documents
+      for each in the data) and its generator lays only cobblestone
+      (`RoadTile` of every preset; the `SecondaryRoadTile` under the mine
+      roads is often not a road at all). Needs: the painter painting per
+      route rather than per list, and a tile per (terrain, type) — not every
+      terrain has all three. READ (16.09, `docs/RMG.md` "What the game does
+      with a road's TYPE"): the move cost `0xD87340` gives 75 to all three
+      alike, against 100 + a terrain penalty off-road — the type is a
+      picture and a sound, not movement. Cosmetic if done at all ⬜
+- [ ] **Heroes per player** — no way found (16.09): `AvailableHeroes` is the
+      map's one list (lobby and taverns alike; the taverns of a restricted
+      map are empty), `ReserveHeroes` on the player restricts nothing
+      (played: an orc hired for a dwarf, with and without him in the map's
+      list). Per player there is only `StartHero`, a placed hero object with
+      no choice ⬜
+- [ ] **New grounds** — a swamp, say, the way Heroes III has one everyone
+      wades through. The terrain type is an enum of fifteen in the code
+      (`TT_DIRT` … `TT_WASTELAND`, strings at `0xFAB520`), and a sixteenth
+      wants the SWITCHES that key on it patched, all found while reading
+      the road type (16.09): the move cost's penalty table (`0xD87444`,
+      with its unreferenced twin `0xD8755C`) — where a swamp would get its
+      +50 with nobody's class native to it; the class-to-native table
+      (`0xC1C5DC`); the tile class (`0x9EC370`, land/road/sea/river); the
+      layer validation (`0x9ECEE8`) and the layer classification for the
+      renderer (`0xA2321C`); the ambience switch (`0xB70430`) and the
+      terrain-type gate at `0xBAF190`. Plus types.xml's enum for the
+      editor, a tile document (texture, minimap colour, ambient set,
+      music) and the RMG side: a preset naming it and the generator's
+      terrain race carrying it. A native extension the way the ninth
+      faction is — same discipline: a probe clone of an existing ground
+      first, the verdict from the game. Recorded, not started. Done
+      meanwhile (16.09): `<UniqueRaces>` — no faction twice, the middle
+      nobody's own, which is the same idea short of a ground of its own.
+      Tried and taken out the same day: `<CostlyGround>`, a non-start zone
+      kept off grass (which costs every class nothing) — Senya would
+      rather redo the grounds whole, below (`5118e5a`, reverted) ⬜
+- [ ] **Redo how a zone's ground is chosen** — a thing of its own (Senya,
+      16.09), after the grounds above: today the ground IS the zone's race
+      (the preset's tiles), so what a zone costs to cross and which
+      faction lives in it are one draw. Separate them: a zone's ground as
+      its own choice in a template of ours, with the penalty table in
+      mind, the race choosing the town and the dwellings only ⬜
+
+**Before it can be released — three things, in a chat of their own:**
+
+- [x] **A visual template editor** — DONE 16.09 (`renderer/features/rmg-templates.ts`,
+      "Templates…" in the generator's dialog; `docs/RMG.md`, "The template
+      editor"): the zones as rectangles with glyph rows, connections as
+      lines with their guard (dashed without a road, bowed apart when a pair
+      is written twice), drag / add / connect / remove, a panel built from
+      the field tables, warnings under the diagram; saved as the install's
+      own `<game>/H5E/RMG/Templates/<file>.h5et`, listed in front of the
+      editor's and the game's. `e2e/rmg.spec.ts` draws one, saves it and
+      generates from it; `e2e/rmg-outcast.spec.ts` draws HotA's Jebus
+      Outcast click by click (sizes 64/10/2, the ranges, weak/strong, the
+      Utopia through the object picker — the palette's buildings, since a
+      named object is placed as one) and generates a medium map from it,
+      the outcasts on roadless passages until a connection can say
+      teleport / fictive. The boxes show the ESSENTIALS (size, town and
+      guard, multiplier, mine and dwelling counts, the blocks summed, the
+      objects as +forced −barred), the lists on hover and in the panel.
+      Not yet: variants and packs (below); a diagram pan/zoom; and
+      `<Objects>` names BUILDINGS only (the placer writes a building) — a
+      Refugee Camp (`AdvMapDwelling`), a Seer's Hut, a shrine, a Hill
+      Fort cannot be forced or barred until the placer emits by the
+      document's type, each with the fields its type needs. Our own, a module of its own embedded
+      in the editor, writing `.h5et` (settled 16.09; HotA's editor and
+      zomle's open reimplementation of it are the picture, not the code).
+      The zones as RECTANGLES, the way an ER diagram draws an entity: index
+      and race in the header, the properties as rows below (size, start,
+      town and its guard, the multiplier, the treasure ranges, the named
+      objects), each row a GLYPH and a number rather than a field name —
+      a castle for the town, a sword for a guard, coins for the treasure
+      value, a gem for the relic ranges, a pick for the mines, a road or
+      a boot on a connection — one sign per notion, the name on hover; a
+      connection a line labelled with its guard, marked when roadless,
+      two lines for a pair written twice. Add a zone, drag it
+      (the picture only — the file holds no coordinates, and the diagram is
+      laid out from the graph on opening, by the same springs the map
+      uses; a `<Diagram>` block of ours may keep a hand layout), draw a
+      connection, click either for its panel; the template's own fields
+      (name, sizes, players, ZoneLayout, LayoutJitter, UniqueRaces) in a
+      panel of their own. Warnings on the diagram, never refusals. First
+      brick DONE (16.09): the `.h5et` WRITER (`src/rmg/write-template.ts`),
+      the game's 22 byte for byte and Jebus by meaning (it carries comments
+      the model does not; `test-rmg-write-template`) — which taught the
+      model two things the reader had folded: a tier list's LENGTH is data
+      (`Dwellings` runs none to seven) and `Shipyard` is written or not.
+      The model then split (16.09): `template-game.ts` the game's three
+      records with a described table of every field, `template.ts` ours
+      extending them, the dead fields in a second interface off the record types;
+      the reader, the writer and the panel all walk the tables ✅
+- [ ] **Generate only from a whitelist.** A second dialog inside the
+      generator's: what the generator may place — creatures, dwellings,
+      artifacts, buildings — so a thing that lives as a mod (the sharpshooter,
+      say) can be kept off a map, or made the only one. And let a TEMPLATE
+      carry its own lists, for the whole map and per zone (HotA has something
+      of the kind; to be read before it is designed). The generator's pools
+      are all read from data now, so a list is a filter on those pools; the
+      one question is what the filter does to the draw stream, which decides
+      whether a whitelisted map is still the engine's map ⬜
+- [ ] **A mirrored "Outcast" template**, the way HotA's is: two players, the
+      same start, the same road, the same guards — and for a mirrored game the
+      same start hero for both and the map's hero list cut down to those two
+      (StartHero is a map property, not the generator's; noted 13.09). Read
+      15.09, `mt_outcast 4.8` and `Jebus Outcast`: a ring of eight zones
+      joined by ground passages, the OPPOSITE zones of the ring joined by
+      teleports on top (`Type: teleport`, `Portal repulsion`), tiny "outcast"
+      treasure zones held beside a start zone by FICTIVE connections (a
+      spring for the layout, no passage), the same pair written eight times
+      to make the spring stronger, and the hero list cut by a `Heroes`
+      column of exclusions. So the template will want, on a connection: a
+      type (teleport / ground — our field, the engine's flags being dead), a
+      fictive flag, and a weight; none of it is in the Voronoi layout yet ⬜
+
 ## Open research questions
 
 - 🔬 **Per-submesh materials**: when a model has more than one

@@ -1,20 +1,20 @@
 // `RMGPresetTable` — what each race's zone is made of. This reader grows one
 // phase at a time: the terrain painter needs the Tiles block (the default
 // tile and the "other tiles" pool the zone constructor's roll picks from),
-// and PlaceTowns needs the town prototype plus the decorations that may sit
-// over a town's entrance. The rest of a preset (hero pools, dwellings, road
-// and water tiles) waits for the phases that consume it.
+// PlaceTowns needs the town prototype plus the decorations that may sit
+// over a town's entrance, and the dwellings step needs the race's four
+// dwelling hrefs. The rest of a preset (hero pools, road and water tiles)
+// waits for the phases that consume it.
 //
 // The table indexes by the same race enum LoadTemplate draws (RACE_* ids in
 // file order), and a tile is carried as the engine's shared reference: the
 // href PATH is the identity a terrain layer keeps, `#xpointer(...)` stripped
 // exactly the way GroundTerrain.bin stores it.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { childText, find, findAll, parse } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 import { RACE_BY_NAME } from './load-template.ts';
 
 /** A terrain tile document, reduced to what the painter reads. */
@@ -24,11 +24,41 @@ export interface TerrainTileInfo {
   priority: number;
   /** `TT_*` as the document spells it. */
   type: string;
+  /** `AdvMapTile+0x64` — the minimap's colour for this ground, each 0..1. */
+  minimapColor: readonly [number, number, number];
 }
 
 export interface RacePreset {
   defaultTile: TerrainTileInfo | null;
   otherTiles: TerrainTileInfo[];
+  /**
+   * `RoadTile` / `SecondaryRoadTile` — what the road painter paints under
+   * the 0x08 and 0x10 networks. The `*Strenght` fields beside them are 100
+   * in every shipped preset and the painted weight is always 255, so the
+   * strength is not carried until a table proves it read.
+   */
+  roadTile: TerrainTileInfo | null;
+  secondaryRoadTile: TerrainTileInfo | null;
+  /**
+   * `WaterCoastTile` (`+0x88`) — what the water carve's coast band paints
+   * at 200. Inferno's is its Dead_Land, the same document as its
+   * SecondaryRoadTile; an empty ref falls back to DeepWaterBottom.
+   */
+  waterCoastTile: TerrainTileInfo | null;
+  /**
+   * `WaterTile` (`+0x64`) — the LAKE painter's surface layer, the literal
+   * 150 over every blob tile's corners. Four of the five lake races name
+   * Water.xdb here, Necropolis its Bog; the races that grow no lakes leave
+   * it empty. (The offsets fall out of the block's own chain: the shared
+   * refs are 8 bytes with their `*Strenght` int behind each, so RoadTile
+   * 0x4C, SecondaryRoadTile 0x58, WaterTile 0x64, WaterBottomTile 0x70,
+   * OtherTiles 0x7C, WaterCoastTile 0x88, OneTileSmallBlockers 0x90.)
+   */
+  waterTile: TerrainTileInfo | null;
+  /** `WaterBottomTile` (`+0x70`) — the lake bed, painted depth-scaled. */
+  waterBottomTile: TerrainTileInfo | null;
+  /** `AbandonedMine` (`+0x198`) — what the abandoned-mines worker places. */
+  abandonedMine: string | null;
   /** `TownProto` — the AdvMapTownShared a zone of this race builds. */
   townProto: string | null;
   /**
@@ -37,26 +67,106 @@ export interface RacePreset {
    * skip the decoration block whole, draws included.
    */
   overTownCenterObjects: string[];
+  /**
+   * `Dwellings` — the four AdvMapDwellingShared hrefs the dwellings step
+   * indexes by `min(tier, 3)` (the table the zone keeps at +0x1C→+0x28).
+   */
+  dwellings: string[];
+  /**
+   * `NewUpgradeBuildings` — the price list the upgrade-buildings step buys
+   * from (`[zone+0x20]+0x168`), sorted ascending by Value in the shipped
+   * table; the affordable-prefix draw depends on that order.
+   */
+  newUpgradeBuildings: PricedBuilding[];
+  /** `NewResourceGivers` (`+0x15C`) — the resource-buildings step's list. */
+  newResourceGivers: PricedBuilding[];
+  /** `NewTreasuryBuildings` (`+0x180`) — the treasury step's list. */
+  newTreasuryBuildings: PricedBuilding[];
+  /** `NewLuckMoraleBuildings` (`+0x144`) — the luck/morale step's list. */
+  newLuckMoraleBuildings: PricedBuilding[];
+  /**
+   * `NewShopBuildings` (`+0x150`) — the shops step's list; two entries are
+   * dwelling hrefs (ElementalConflux, RefugeeCamp) and place as-is.
+   */
+  newShopBuildings: PricedBuilding[];
+  /**
+   * `BigStatics` (`+0xB4`) — the statics sweep's type list, in FILE ORDER
+   * (the shipped tables order big→small, and the sweep leans on that).
+   */
+  bigStatics: string[];
+  /** `Mountains` (`+0xC0`) — the pre-sweep mountain pass's list. */
+  mountains: string[];
+  /** `OverLakeCenterObjects` (`+0xCC`) — lake-seed decorations. */
+  overLakeCenterObjects: string[];
+  /** `OverLakeOneTileRandomObjects` (`+0xD8`) — the lakes' one-tile pass; holes kept null. */
+  overLakeOneTileRandomObjects: Array<string | null>;
+  /** `OneTileSmallBlockers` (`+0x90`) — the one-tile step's blockers. */
+  oneTileSmallBlockers: string[];
+  /** `OneTileSmallNonblockers` (`+0x9C`) — its passable decorations. */
+  oneTileSmallNonblockers: string[];
+  /** `OneTileBigObjects` (`+0xA8`) — its larger-model one-tilers. */
+  oneTileBigObjects: string[];
+  /**
+   * `PointLightParams.Colors` — the ZONE'S OWN colour table for the
+   * subterranean point light, one entry taken by `zoneIndex % count`.
+   *
+   * Not the global params': `/RMG/Params/Default.xdb` carries a thirteen-entry
+   * list which is Dungeon's nine followed by NO_TYPE's four, and reading a
+   * lava zone's colour out of it lands on a Dungeon green. Each race's own
+   * list is here, and most races have none — only SPECIAL (five lava
+   * colours), NO_TYPE (four) and DUNGEON (nine) are filled, which is exactly
+   * the three an underground floor can be painted as. The SPANS the two
+   * draws use are the GLOBAL params' — READ (14.09): `vt+0x3C` fetches the
+   * generator's params through `0xEAFF80` and draws `zMin + below(zMax -
+   * zMin)` and `radiusMin + below(radiusMax - radiusMin)` off their
+   * `+0xB4..+0xC0` (0xEC63A6..0xEC6415); the shipped file says 2..7 and
+   * 20..25, which is the `2 + below(5)` the maps show. A race's own zMin 3
+   * zMax 3 is never read.
+   */
+  pointLightColors: Array<{ x: number; y: number; z: number }>;
+  /**
+   * `RaceColor` — the four point lights an UNDERGROUND TOWN wears.
+   *
+   * Not the zone's colour above: that one is picked per zone out of a list,
+   * this one is the faction's and there is exactly one. It was a hand-grown
+   * table in `run.ts` for as long as the corpus held one underground
+   * faction, and every new map threw until someone read its colour off the
+   * result. It was in the preset all along, beside the lists the same preset
+   * already gives us ([[take-the-value-dont-derive-it]]).
+   */
+  raceColor: { x: number; y: number; z: number };
+}
+
+/** One `Building / Value / GuardStrenght` record of a preset's price lists. */
+export interface PricedBuilding {
+  href: string;
+  value: number;
+  /** The engine's own misspelling, kept. Guard power = this × BasicLeverGuardPower. */
+  guardStrenght: number;
 }
 
 const stripXpointer = (href: string): string => href.replace(/#xpointer\(.*\)$/, '');
 
 /** Read one AdvMapTile document by its href, relative to unpacked data. */
-export function readTileInfo(dataRoot: string, href: string): TerrainTileInfo {
+export function readTileInfo(dataRoot: DataRoot, href: string): TerrainTileInfo {
   const path = stripXpointer(href);
-  const root = parse(readFileSync(join(dataRoot, path.replace(/^\//, '')), 'utf8'));
+  const root = parse(readText(dataRoot, path));
   const tile = find(root, 'AdvMapTile');
   if (!tile) throw new Error(`${path}: not an AdvMapTile`);
+  const colour = find(tile, 'MinimapColor');
   return {
     path,
     priority: Number.parseInt(childText(tile, 'Priority'), 10) || 0,
     type: childText(tile, 'Type'),
+    minimapColor: colour
+      ? [Number(childText(colour, 'x')), Number(childText(colour, 'y')), Number(childText(colour, 'z'))]
+      : [0, 0, 0],
   };
 }
 
 /** Every race's preset, keyed by the race enum. */
-export function readPresets(dataRoot: string): Map<number, RacePreset> {
-  const xml = readFileSync(join(dataRoot, 'GameMechanics', 'RefTables', 'RMGPresetTable.xdb'), 'utf8');
+export function readPresets(dataRoot: DataRoot): Map<number, RacePreset> {
+  const xml = readText(dataRoot, 'GameMechanics/RefTables/RMGPresetTable.xdb');
   const root = parse(xml);
   const table = find(root, 'Table_RMGPreset_Race');
   const objects = table ? find(table, 'objects') : null;
@@ -65,6 +175,21 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
   const hrefs = (holder: XmlElement | null): string[] => holder
     ? findAll(holder, 'Item').map((i) => i.attrs['href']).filter((h): h is string => !!h)
     : [];
+  // The engine keeps a list's HOLES — a self-closed <Item/> is an entry
+  // whose pick draws below(len) and creates nothing. The underground
+  // run's zone-2 lakes proved it: Haven's one over-lake hole makes the
+  // engine draw below(1) per placed blob tile, where a filtered list
+  // skips the pass entirely.
+  const hrefsKeepingHoles = (holder: XmlElement | null): Array<string | null> => holder
+    ? findAll(holder, 'Item').map((i) => i.attrs['href'] ?? null)
+    : [];
+  const priced = (holder: XmlElement | null): PricedBuilding[] => holder
+    ? findAll(holder, 'Item').map((i) => ({
+        href: find(i, 'Building')?.attrs['href'] ?? '',
+        value: Number.parseInt(childText(i, 'Value'), 10) || 0,
+        guardStrenght: Number.parseInt(childText(i, 'GuardStrenght'), 10) || 0,
+      })).filter((p) => p.href !== '')
+    : [];
   for (const item of findAll(objects, 'Item')) {
     const id = childText(item, 'ID');
     const race = RACE_BY_NAME[id];
@@ -72,11 +197,54 @@ export function readPresets(dataRoot: string): Map<number, RacePreset> {
     const obj = find(item, 'obj');
     const tiles = obj ? find(obj, 'Tiles') : null;
     const def = tiles ? find(tiles, 'DefaultTile')?.attrs['href'] : undefined;
+    const road = tiles ? find(tiles, 'RoadTile')?.attrs['href'] : undefined;
+    const secondary = tiles ? find(tiles, 'SecondaryRoadTile')?.attrs['href'] : undefined;
+    const coast = tiles ? find(tiles, 'WaterCoastTile')?.attrs['href'] : undefined;
+    const lakeSurface = tiles ? find(tiles, 'WaterTile')?.attrs['href'] : undefined;
+    const lakeBottom = tiles ? find(tiles, 'WaterBottomTile')?.attrs['href'] : undefined;
     out.set(race, {
       defaultTile: def ? readTileInfo(dataRoot, def) : null,
       otherTiles: tiles ? hrefs(find(tiles, 'OtherTiles')).map((h) => readTileInfo(dataRoot, h)) : [],
+      roadTile: road ? readTileInfo(dataRoot, road) : null,
+      secondaryRoadTile: secondary ? readTileInfo(dataRoot, secondary) : null,
+      waterCoastTile: coast ? readTileInfo(dataRoot, coast) : null,
+      waterTile: lakeSurface ? readTileInfo(dataRoot, lakeSurface) : null,
+      waterBottomTile: lakeBottom ? readTileInfo(dataRoot, lakeBottom) : null,
+      abandonedMine: (obj ? find(obj, 'AbandonedMine')?.attrs['href'] : undefined) ?? null,
       townProto: (obj ? find(obj, 'TownProto')?.attrs['href'] : undefined) ?? null,
       overTownCenterObjects: obj ? hrefs(find(obj, 'OverTownCenterObjects')) : [],
+      dwellings: obj ? hrefs(find(obj, 'Dwellings')) : [],
+      newUpgradeBuildings: obj ? priced(find(obj, 'NewUpgradeBuildings')) : [],
+      newResourceGivers: obj ? priced(find(obj, 'NewResourceGivers')) : [],
+      newTreasuryBuildings: obj ? priced(find(obj, 'NewTreasuryBuildings')) : [],
+      newLuckMoraleBuildings: obj ? priced(find(obj, 'NewLuckMoraleBuildings')) : [],
+      newShopBuildings: obj ? priced(find(obj, 'NewShopBuildings')) : [],
+      bigStatics: obj ? hrefs(find(obj, 'BigStatics')) : [],
+      mountains: obj ? hrefs(find(obj, 'Mountains')) : [],
+      overLakeCenterObjects: obj ? hrefs(find(obj, 'OverLakeCenterObjects')) : [],
+      overLakeOneTileRandomObjects: obj ? hrefsKeepingHoles(find(obj, 'OverLakeOneTileRandomObjects')) : [],
+      oneTileSmallBlockers: obj ? hrefs(find(obj, 'OneTileSmallBlockers')) : [],
+      oneTileSmallNonblockers: obj ? hrefs(find(obj, 'OneTileSmallNonblockers')) : [],
+      oneTileBigObjects: obj ? hrefs(find(obj, 'OneTileBigObjects')) : [],
+      raceColor: (() => {
+        const c = obj ? find(obj, 'RaceColor') : null;
+        return {
+          x: c ? Number(childText(c, 'x')) || 0 : 0,
+          y: c ? Number(childText(c, 'y')) || 0 : 0,
+          z: c ? Number(childText(c, 'z')) || 0 : 0,
+        };
+      })(),
+      pointLightColors: (() => {
+        const pl = obj ? find(obj, 'PointLightParams') : null;
+        const list = pl ? find(pl, 'Colors') : null;
+        return list
+          ? findAll(list, 'Item').map((i) => ({
+              x: Number(childText(i, 'x')) || 0,
+              y: Number(childText(i, 'y')) || 0,
+              z: Number(childText(i, 'z')) || 0,
+            }))
+          : [];
+      })(),
     });
   }
   return out;

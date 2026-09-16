@@ -51,20 +51,25 @@ function functionStartOf(pe: PEFile, va: number, back = 0x2000): number | null {
  * How many bytes of arguments a function pops on its way out — the `N` of `ret N`.
  *
  * Every `ret` in a function agrees on it (the compiler has one epilogue's worth of
- * truth), so the first one found is the answer; 0 for a cdecl callee, and 0 for
- * anything not decodable, which errs towards leaving the count alone.
+ * truth), so the first one found is the answer; 0 for a cdecl callee, and `null`
+ * when no `ret` was reached at all — undecodable, or simply longer than the walk.
+ * `null` is a different answer from 0 and the caller turns it into an unsure
+ * frame. Assuming 0 there is the silent four-bytes-per-call drift this mode
+ * exists to prevent, and it DID drift: the walk used to stop after 0x400 bytes,
+ * so the 0xF52-byte minimap builder at 0xdd0c70 read as cdecl and every slot
+ * named after that call in its caller came out four bytes low, unmarked.
  */
-const cleanups = new Map<number, number>();
-function cleanup(pe: PEFile, target: number): number {
+const cleanups = new Map<number, number | null>();
+function cleanup(pe: PEFile, target: number): number | null {
   const known = cleanups.get(target);
   if (known !== undefined) return known;
-  cleanups.set(target, 0); // Against recursion, before the walk.
-  let found = 0;
+  cleanups.set(target, null); // Against recursion, before the walk.
+  let found: number | null = null;
   if (pe.isCode(target)) {
     const section = pe.sections.find((s) => target - pe.imageBase >= s.va && target - pe.imageBase < s.va + s.virtualSize);
     if (section) {
       const code = pe.bytesOf(section).subarray(target - (pe.imageBase + section.va));
-      for (const ins of functionBody(code, target, 0x400)) {
+      for (const ins of functionBody(code, target)) {
         // masm writes `ret 8` and `ret 0Ch` — hex only when it has to say so.
         const ret = /^ret ([0-9A-Fa-f]+h|\d+)$/.exec(ins.text);
         if (ret) {
@@ -72,7 +77,10 @@ function cleanup(pe: PEFile, target: number): number {
           found = n.endsWith('h') ? Number.parseInt(n.slice(0, -1), 16) : Number(n);
           break;
         }
-        if (ins.text === 'ret') break;
+        if (ins.text === 'ret') {
+          found = 0;
+          break;
+        }
       }
     }
   }
@@ -234,7 +242,12 @@ if (wanted[0] === '--func' || wanted[0] === '--frame') {
   const walk = (start: number) => {
     const section = pe.sections.find((s) => start - pe.imageBase >= s.va && start - pe.imageBase < s.va + s.virtualSize)!;
     const code = pe.bytesOf(section).subarray(start - (pe.imageBase + section.va));
-    const body = functionBody(code, start, 0x800);
+    // 2 KB was the whole window until a function longer than that had to be
+    // read: the walk simply STOPPED mid-function, and the last thing it printed
+    // looked like a decode failure rather than the end of a budget. `--bytes N`
+    // raises it; the default stays what every earlier reading used.
+    const budget = Number(process.argv[process.argv.indexOf('--bytes') + 1]) || 0x800;
+    const body = functionBody(code, start, budget);
     // What an indirect call is assumed to clean up: the run of pushes that leads into
     // it, four bytes each — unless the caller cleans them itself right afterwards
     // (`add esp,N`), which is the cdecl case and counting it twice would be worse.
@@ -277,7 +290,11 @@ if (wanted[0] === '--func' || wanted[0] === '--frame') {
         // a guess from there on. Ignoring it instead would be a guess too — the silent
         // kind, four bytes per argument, and it is what made this mode necessary.
         if (ins.branchTarget === undefined) return step(frame.esp + (assumed.get(ins.address) ?? 0), frame.ebp, false);
-        return step(frame.esp + cleanup(pe, ins.branchTarget));
+        const pops = cleanup(pe, ins.branchTarget);
+        // A callee whose `ret` was never reached says nothing about its arity, which
+        // is not the same as saying zero. Carry the doubt instead of the drift.
+        if (pops === null) return step(frame.esp, frame.ebp, false);
+        return step(frame.esp + pops);
       }
       return step(frame.esp);
     };

@@ -27,12 +27,13 @@
 // orthogonal neighbours inside the zone, which is how later phases learn to
 // keep the passage clear.
 //
-// TELEPORTS ARE NOT PORTED. When a connection finds no land passage — a
-// different floor, or a border too thin — the engine's second pass plants a
-// monolith or a subterranean gate pair instead. Every connection on the
-// reference run got a land passage, so that path has never been measured
-// against a real run; rather than invent it, this port reports the
-// connections it could not dig and leaves them alone.
+// TELEPORTS ARE THE SECOND PASS, and they live in `teleports.ts`. When a
+// connection finds no land passage — a different floor, or a border too thin —
+// the engine plants a monolith pair on one floor or a subterranean gate pair
+// across two. The reference run has none (every connection there got a land
+// passage), which is why this note used to say the path was unported; two-level
+// orders reach it constantly and are byte-identical with it, `S2-3P2Z7N2`
+// seed 202 carrying two monoliths and four gates.
 
 import { setMonster } from './armies.ts';
 import type { GuardTables } from './armies.ts';
@@ -45,9 +46,19 @@ export const JUNCTION_MIN_BORDER_DISTANCE = 5;
 /** Fewer candidates than this and the neighbour is skipped. */
 const MIN_CANDIDATES = 8;
 
-/** The engine's neighbour table: four orthogonals, then four diagonals. */
+/**
+ * The engine's neighbour tables (`0x1093968`, then `0x1093988`), and the pairs
+ * are MAP-coordinate offsets: the first number moves x — the SECOND grid
+ * index — and the second moves y. An earlier reading applied them to
+ * (row, column) instead, which adopts a different tile whenever the first
+ * fitting neighbour differs between the two orders — and the adopted tile
+ * seeds the room grid the mines step filters by, so the mistake surfaced as
+ * two zones' first mines landing one draw away from the reference. The
+ * mines-step measurements pinned it: with x-first offsets all four zones'
+ * first picks land on the engine's tiles; with row-first, two do not.
+ */
 const NEIGHBOURS: ReadonlyArray<readonly [number, number]> = [
-  [0, -1], [1, 0], [0, 1], [-1, 0], [-1, -1], [1, -1], [1, 1], [-1, 1],
+  [0, -1], [1, 0], [0, 1], [-1, 0], [1, -1], [1, 1], [-1, 1], [-1, -1],
 ];
 
 export interface ConnectionZone {
@@ -64,13 +75,25 @@ export interface PassageGuard {
   stacks: Array<{ creature: string; amount: number }>;
   /** 2 HOSTILE, 3 WILD — the engine's own enum values. */
   mood: number;
+  /**
+   * The floor the passage is on. Both zones of a connection are on it — the
+   * sweep is per floor — and the map file records it per object, which is the
+   * only reason it has to travel: a two-level map's underground connections
+   * were being written as floor 0.
+   */
+  floor: number;
   between: [number, number];
 }
 
 export interface ConnectionsResult {
   guards: PassageGuard[];
-  /** Per zone index, the tiles a passage opens onto. */
+  /** Per zone index, the tiles a passage opens onto — every passage, road or not. */
   passages: Map<number, Array<[number, number]>>;
+  /**
+   * OURS: of those, the ones a template's `<Road>false</Road>` keeps off the
+   * roads phase, as `a:b` keys. Empty for a template of the game's.
+   */
+  roadless: Set<string>;
   /** Connections no land passage could be dug for — teleport territory. */
   unconnected: RmgConnection[];
 }
@@ -95,7 +118,7 @@ export interface ConnectionsInput {
  * in scan order, and returned in the engine's hash-bucket order of the
  * neighbour index.
  */
-function collectCandidates(
+export function collectCandidates(
   grid: Int32Array[],
   size: number,
   zoneIndex: number,
@@ -132,16 +155,30 @@ function collectCandidates(
   return ordered;
 }
 
-/** The connection a pair of zones is named by, whichever way round it is. */
-function connectionBetween(template: RmgTemplate, a: number, b: number): RmgConnection | undefined {
-  return template.connections.find((c) =>
+/**
+ * The connections a pair of zones is named by, whichever way round — ONE in
+ * every template of the game's; a template of ours may write a pair twice
+ * for two passages, each record its own guard and road flag, in file order.
+ */
+function connectionsBetween(template: RmgTemplate, a: number, b: number): RmgConnection[] {
+  return template.connections.filter((c) =>
     (c.sourceZoneIndex === a && c.destZoneIndex === b) || (c.sourceZoneIndex === b && c.destZoneIndex === a));
 }
+
+/**
+ * OURS: a second passage of a pair keeps this far (in tiles, either axis)
+ * from the first, or it would be the same gap dug twice.
+ */
+const PASSAGE_SPACING = 8;
+
+/** The passage tile key the roadless set is kept by. */
+export const passageKey = (a: number, b: number): string => `${a}:${b}`;
 
 export function zoneConnections(input: ConnectionsInput, rng: RmgRandom): ConnectionsResult {
   const { size, template, zones, floors, distances, guardPowerUnit, monsterStrength, tables } = input;
   const guards: PassageGuard[] = [];
   const passages = new Map<number, Array<[number, number]>>();
+  const roadless = new Set<string>();
   const done = new Map<number, Set<number>>();
   const byIndex = new Map(zones.map((z) => [z.index, z]));
 
@@ -175,36 +212,48 @@ export function zoneConnections(input: ConnectionsInput, rng: RmgRandom): Connec
       for (const [neighbour, tiles] of candidates) {
         if (done.get(zone.index)?.has(neighbour)) continue;
         if (!byIndex.has(neighbour)) continue;
-        const connection = connectionBetween(template, zone.index, neighbour);
-        if (!connection) continue;
+        const records = connectionsBetween(template, zone.index, neighbour);
+        if (!records.length) continue;
         if (tiles.length < MIN_CANDIDATES) continue;
 
-        const [ta, tb] = tiles[rng.below(tiles.length)]!;
-        openMouth(dist, grid, zone.index, ta, tb);
+        // One passage per record — one for every template of the game's, so
+        // the loop below runs once and draws what the engine draws. A second
+        // record (ours) draws again among the tiles left clear of the first.
+        let pool = tiles;
+        for (const connection of records) {
+          if (pool.length === 0) break;
+          const [ta, tb] = pool[rng.below(pool.length)]!;
+          openMouth(dist, grid, zone.index, ta, tb);
 
-        const guard = setMonster(guardPowerUnit * connection.guardStrenght, monsterStrength, tables, rng);
-        if (guard) {
-          guards.push({
-            name: guard.name,
-            x: tb,
-            y: ta,
-            stacks: guard.stacks,
-            mood: guard.mood,
-            between: [zone.index, neighbour],
-          });
-        }
-        addPassage(zone.index, [ta, tb]);
+          const guard = setMonster(guardPowerUnit * connection.guardStrenght, monsterStrength, tables, rng);
+          if (guard) {
+            guards.push({
+              name: guard.name,
+              x: tb,
+              y: ta,
+              stacks: guard.stacks,
+              mood: guard.mood,
+              floor: f,
+              between: [zone.index, neighbour],
+            });
+          }
+          addPassage(zone.index, [ta, tb]);
+          if (!connection.road) roadless.add(passageKey(ta, tb));
 
-        // The neighbour takes the passage from its own side: the first of
-        // its tiles adjacent to the mouth, orthogonals before diagonals.
-        for (const [da, db] of NEIGHBOURS) {
-          const na = ta + da;
-          const nb = tb + db;
-          if (na < 0 || na >= size || nb < 0 || nb >= size) continue;
-          if (grid[na]![nb] !== neighbour) continue;
-          openMouth(dist, grid, neighbour, na, nb);
-          addPassage(neighbour, [na, nb]);
-          break;
+          // The neighbour takes the passage from its own side: the first of
+          // its tiles adjacent to the mouth, orthogonals before diagonals —
+          // and the offsets are (dx, dy), so dx moves the SECOND index.
+          for (const [dx, dy] of NEIGHBOURS) {
+            const na = ta + dy;
+            const nb = tb + dx;
+            if (na < 0 || na >= size || nb < 0 || nb >= size) continue;
+            if (grid[na]![nb] !== neighbour) continue;
+            openMouth(dist, grid, neighbour, na, nb);
+            addPassage(neighbour, [na, nb]);
+            if (!connection.road) roadless.add(passageKey(na, nb));
+            break;
+          }
+          pool = pool.filter(([a, b]) => Math.abs(a - ta) >= PASSAGE_SPACING || Math.abs(b - tb) >= PASSAGE_SPACING);
         }
         markDone(zone.index, neighbour);
       }
@@ -213,5 +262,5 @@ export function zoneConnections(input: ConnectionsInput, rng: RmgRandom): Connec
 
   const unconnected = template.connections.filter((c) =>
     !done.get(c.sourceZoneIndex)?.has(c.destZoneIndex));
-  return { guards, passages, unconnected };
+  return { guards, passages, roadless, unconnected };
 }

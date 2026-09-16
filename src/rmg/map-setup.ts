@@ -14,8 +14,10 @@
 //
 // Draw four is the strangest and the most load-bearing: its PARITY (map+0x8C
 // = map+0x88 & 1) is what later makes the underground Dwarven — the dwarven
-// caves are a 50/50 of one raw roll. What reads the angle at map+0x5C is
-// still open; the roll's own upper bits likewise.
+// caves are a 50/50 of one raw roll. The angle at map+0x5C is read by the
+// WORLD, not the generator — `movss xmm0,[+5Ch]` at 0xD65CB4 and 0xD6A198 in
+// the game's world code (the FireDots take it as their rotation, statics-big);
+// the roll's own upper bits reach nothing else.
 //
 // This is also where the floor vector is built: 1 + gen+0x1D elements of
 // 0x120 bytes — the "two floors" bit from CreateMap IS the floor count,
@@ -33,13 +35,19 @@ const TWO_PI = Math.fround(6.2831853);
 export interface MapSetupRequest {
   /** 0..2 to fix it; undefined lets the engine roll below(3). */
   monsterStrength?: number;
-  /** Fixed, or undefined for the engine's coin. */
-  water?: boolean;
+  /**
+   * WaterAmount, fixed, or undefined for the engine's coin. TRI-state
+   * (0 NONE / 1 PRESENT / 2 ISLAND_MAP), but the dialog's water control is
+   * a checkbox that supplies 2 — the middle 1 only ever comes out of the
+   * coin, so no ordered run can record it.
+   */
+  water?: number;
 }
 
 export interface MapSetup {
   monsterStrength: number;
-  water: boolean;
+  /** gen+0xA6 — the WaterAmount byte, 0/1/2. */
+  water: number;
   /** map+0x5C — single-precision, in radians; its reader is unfound. */
   angle: number;
   /** map+0x88 — the raw roll, kept whole because only its parity is understood. */
@@ -61,9 +69,9 @@ export function mapSetup(params: RmgParams, request: MapSetupRequest, rng: RmgRa
     monsterStrength = request.monsterStrength;
   }
 
-  let water: boolean;
+  let water: number;
   if (request.water === undefined) {
-    water = rng.below(2) !== 0;
+    water = rng.below(2);
   } else {
     rng.next();
     water = request.water;

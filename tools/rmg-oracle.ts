@@ -127,6 +127,7 @@ if (args.includes('--read')) {
   let seed: number | null = null;
   const phases: number[] = [];
   const sweeps: Array<[number, number]> = [];
+  const steps: Array<{ draws: number; zone: number; what: string }> = [];
   for (const line of readFileSync(path, 'latin1').split(/\r?\n/)) {
     const run = /^run seed (-?\d+) (\d+)$/.exec(line);
     // A second run restarts the reading: the log appends, and the numbers that
@@ -135,12 +136,17 @@ if (args.includes('--read')) {
       seed = Number(run[1]);
       phases.length = 0;
       sweeps.length = 0;
+      steps.length = 0;
     }
     const phase = /^phase (\d+) (\d+)$/.exec(line);
     if (phase) phases.push(Number(phase[2]));
     // The editor's finer reading: FillZones draws at every tenth sweep.
     const sweep = /^sweep (\d+) (\d+)$/.exec(line);
     if (sweep) sweeps.push([Number(sweep[1]), Number(sweep[2])]);
+    // And the finer one still: every step the generator says it finished,
+    // which is the only reading MainObjects has.
+    const step = /^step (\d+) (-?\d+) (.+)$/.exec(line);
+    if (step) steps.push({ draws: Number(step[1]), zone: Number(step[2]), what: step[3] });
   }
   if (seed === null) {
     console.log('the log has no run in it');
@@ -152,6 +158,21 @@ if (args.includes('--read')) {
   if (sweeps.length) {
     console.log('FillZones draws at every tenth sweep:');
     console.log('  ' + sweeps.map(([s, d]) => `${s}:${d}`).join(' '));
+  }
+  if (steps.length) {
+    // Each step's own draws, not the running total — the total is what the log
+    // holds, and what a port is compared on is how much THIS step spent.
+    console.log(`draws at each of ${steps.length} step boundaries:`);
+    // From the seed, which is where the counter was zeroed — the step lines
+    // and the phase lines interleave, so each step's predecessor is the step
+    // before it, and the first one's is the start of the run.
+    let before = 0;
+    for (const step of steps) {
+      const spent = step.draws - before;
+      before = step.draws;
+      const where = step.zone < 0 ? '' : ` (zone ${step.zone})`;
+      console.log(`  ${String(step.draws).padStart(7)}  ${String(spent).padStart(6)}  ${step.what}${where}`);
+    }
   }
   process.exit(0);
 }
@@ -201,20 +222,36 @@ check('the extension is beside it', existsSync(join(root, 'bin', 'homm5-editor.d
 
 const configPath = join(root, ORACLE_CONFIG);
 const seed = flag('seed');
-if (seed !== undefined) {
+// `trace` survives a `--seed`, and `--trace` turns it on. Rewriting the config
+// without it used to switch the draw trace OFF silently, which is the worst
+// possible way for it to be off: the run happens, the map comes out, and only
+// `rmg-diff-draws` afterwards says the log has no traced run in it. A run
+// nobody can repeat cheaply should not be lost to a flag that was dropped.
+const tracing =
+  args.includes('--trace') ||
+  (existsSync(configPath) && /^\s*trace\s*$/m.test(readFileSync(configPath, 'latin1')));
+if (seed !== undefined || args.includes('--trace')) {
   writeFileSync(
     configPath,
     [
       '# The random map generator\'s oracle — see docs/RMG.md.',
       '# Written by tools/rmg-oracle.ts. Its presence turns the hooks on.',
-      `seed ${Number(seed) | 0}`,
+      ...(seed !== undefined ? [`seed ${Number(seed) | 0}`] : []),
+      ...(tracing ? ['trace'] : []),
       '',
     ].join('\n'),
     'latin1',
   );
-  console.log(`  wrote ${configPath} — seed ${Number(seed) | 0}`);
+  console.log(
+    `  wrote ${configPath} — ${seed !== undefined ? `seed ${Number(seed) | 0}` : 'seed unchanged'}` +
+      `, draw trace ${tracing ? 'ON' : 'off'}`,
+  );
 }
 check('the oracle config is in place', existsSync(configPath));
+if (existsSync(configPath)) {
+  const has = /^\s*trace\s*$/m.test(readFileSync(configPath, 'latin1'));
+  console.log(`  ${has ? 'ok  ' : '    '}  the draw trace is ${has ? 'on' : 'OFF — pass --trace to turn it on'}`);
+}
 
 const h5e = join(root, 'H5E');
 if (!existsSync(h5e)) mkdirSync(h5e, { recursive: true });

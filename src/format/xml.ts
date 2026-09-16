@@ -182,6 +182,19 @@ export function text(el: XmlElement | null | undefined): string {
 // Convenience: text of the first child element named `name`.
 export function childText(el: XmlElement, name: string): string { return text(find(el, name)); }
 
+// The five predefined entities, for a field that is free text rather than a
+// number, a path or an enum name. text() hands entities back verbatim on
+// purpose (the round trip keeps bytes), so a reader wanting the CHARACTERS
+// decodes for itself, and a writer of new text encodes. The game's own files
+// use `&quot;` and `&apos;` (in script.xdb text), so its parser knows the set.
+export function decodeEntities(s: string): string {
+  return s.replace(/&(lt|gt|amp|quot|apos);/g, (_, e: string) =>
+    ({ lt: '<', gt: '>', amp: '&', quot: '"', apos: "'" })[e]!);
+}
+export function encodeEntities(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 // Replace an element's text content with a single new value, preserving nothing
 // of the old text run (leaf value fields only, e.g. <x>40</x>).
 export function setText(el: XmlElement, value: string | number): void {

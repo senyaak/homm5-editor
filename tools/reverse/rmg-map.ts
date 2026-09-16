@@ -89,7 +89,10 @@ const RMG_STRING = new RegExp(
     'cant place mine',
     'cant find empty tiles',
     'Cant set ',
-    "Can't place .+ at zone",
+    // Bounded on purpose: `.` matches a NUL, so a greedy wildcard run across
+    // the data section swallows the strings that follow this one and the scan
+    // never sees them. Two whole log sites went missing that way.
+    "Can't place [^\\x00\\n]{1,60} at zone",
     "Can't place aban mine",
   ]
     .map((s) => `(?:${s})`)
@@ -150,30 +153,55 @@ function functionEnd(pe: PEFile, va: number): number {
 /** Every RMG literal in read-only and initialised data, with its code references. */
 function collect(): Reference[] {
   const out: Reference[] = [];
+  const seen = new Set<number>();
   for (const name of ['.rdata', '.data']) {
     const section = pe.section(name);
     const lo = section.raw;
     const hi = section.raw + section.rawSize;
-    let start = lo;
-    for (let i = lo; i < hi; i++) {
-      if (pe.buf[i] !== 0) continue;
-      if (i > start) {
-        const literal = pe.buf.toString('latin1', start, i);
-        // Printable plus the tab and newline these format strings carry —
-        // rejecting those was what first hid every phase in this list.
-        if (RMG_LITERAL.test(literal) && /^[\t\n\r\x20-\x7e]+$/.test(literal)) {
-          const strVa = pe.addressOf(start);
-          if (strVa !== null) {
-            for (const pointer of pe.pointersTo(strVa)) {
-              const from = pe.addressOf(pointer);
-              if (from === null || from < codeLo || from >= codeHi) continue;
-              const fn = functionStart(pe, from);
-              if (fn !== null) out.push({ str: literal.replace(/[\r\n]+$/, ''), from, fn });
-            }
-          }
+    // Search for the VOCABULARY, not for NUL-separated runs. The linker packs
+    // whatever it likes against a literal's front — `at %g chests in zone %d
+    // set` follows four bytes of a float constant with no terminator between
+    // them — and a scanner that anchors each literal at the previous NUL sees
+    // one unprintable blob there and drops the line without a word. That is
+    // how the editor build's `chests` and `cant place mine` went missing.
+    const hay = pe.buf.toString('latin1', lo, hi);
+    const hunt = new RegExp(RMG_STRING.source, 'g');
+    for (let m = hunt.exec(hay); m; hunt.lastIndex = m.index + 1, m = hunt.exec(hay)) {
+      // A match is not always the literal's first byte — `zone #%d` sits in
+      // the middle of one — so the start has to be found rather than assumed.
+      // What settles it is the CODE: the address a `push` names IS where the
+      // string begins. So walk back over the printable run and take the first
+      // byte of it that anything points at.
+      let earliest = lo + m.index;
+      while (earliest > lo && /^[\t\n\r\x20-\x7e]$/.test(String.fromCharCode(pe.buf[earliest - 1]))) earliest--;
+      let start = -1;
+      for (let candidate = earliest; candidate <= lo + m.index; candidate++) {
+        const va = pe.addressOf(candidate);
+        if (va !== null && pe.pointersTo(va).length) {
+          start = candidate;
+          break;
         }
       }
-      start = i + 1;
+      if (start < 0) continue;
+      let stop = lo + m.index;
+      while (stop < hi && pe.buf[stop] !== 0) stop++;
+      const literal = pe.buf.toString('latin1', start, stop);
+      // Printable plus the tab and newline these format strings carry —
+      // rejecting those was what first hid every phase in this list.
+      if (!RMG_LITERAL.test(literal) || !/^[\t\n\r\x20-\x7e]+$/.test(literal)) continue;
+      const strVa = pe.addressOf(start);
+      if (strVa === null) continue;
+      for (const pointer of pe.pointersTo(strVa)) {
+        const from = pe.addressOf(pointer);
+        if (from === null || from < codeLo || from >= codeHi) continue;
+        // One literal can answer to several words of the vocabulary — "Can't
+        // place dwelling … at zone #%d" is both a `Can't place … at zone` and
+        // a `zone #%d` — and the same reference must still be listed once.
+        if (seen.has(from)) continue;
+        seen.add(from);
+        const fn = functionStart(pe, from);
+        if (fn !== null) out.push({ str: literal.replace(/[\r\n]+$/, ''), from, fn });
+      }
     }
   }
   return out;

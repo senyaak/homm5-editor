@@ -10,11 +10,10 @@
 // Offsets are in the MAP's coordinates (x east, y south), the way the files
 // spell them; the phase rotates them by a quarter turn at a time.
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 import { childText, find, findAll, parse } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 
 /** One (x, y) offset from the building's anchor. */
 export type Offset = readonly [number, number];
@@ -33,6 +32,14 @@ export interface TownShared {
    * towns.ts for how that was settled, and for what is still open about it.
    */
   possessionMarker: Offset;
+  /**
+   * `FitRandomTownMaskPositionShift` — where this town STANDS when it takes a
+   * random town's place: the world object is created at the random town's
+   * tile plus this offset (rotated with it), so that the real footprint
+   * covers the random mask. (0,1) for the six castles, (1,0) for the
+   * Stronghold, (0,0) for Necropolis, Sylvan and the random town itself.
+   */
+  fitShift: Offset;
 }
 
 export interface TownSpecialization {
@@ -44,8 +51,7 @@ export interface TownSpecialization {
 
 const stripXpointer = (href: string): string => href.replace(/#xpointer\(.*\)$/, '');
 
-const readDoc = (dataRoot: string, path: string): XmlElement =>
-  parse(readFileSync(join(dataRoot, path.replace(/^\//, '')), 'utf8'));
+const readDoc = (dataRoot: DataRoot, path: string): XmlElement => parse(readText(dataRoot, path));
 
 /** `<name><Item><x>..</x><y>..</y></Item>…</name>` — an offset list. */
 function offsets(el: XmlElement, name: string): Offset[] {
@@ -57,11 +63,12 @@ function offsets(el: XmlElement, name: string): Offset[] {
   ]);
 }
 
-export function readTownShared(dataRoot: string, href: string): TownShared {
+export function readTownShared(dataRoot: DataRoot, href: string): TownShared {
   const path = stripXpointer(href);
   const town = find(readDoc(dataRoot, path), 'AdvMapTownShared');
   if (!town) throw new Error(`${path}: not an AdvMapTownShared`);
   const marker = find(town, 'PossessionMarkerTile');
+  const shift = find(town, 'FitRandomTownMaskPositionShift');
   return {
     path,
     // `Type` on the building, `TownType` on a specialisation — the two
@@ -74,6 +81,9 @@ export function readTownShared(dataRoot: string, href: string): TownShared {
     possessionMarker: marker
       ? [Number.parseInt(childText(marker, 'x'), 10) || 0, Number.parseInt(childText(marker, 'y'), 10) || 0]
       : [0, 0],
+    fitShift: shift
+      ? [Number.parseInt(childText(shift, 'x'), 10) || 0, Number.parseInt(childText(shift, 'y'), 10) || 0]
+      : [0, 0],
   };
 }
 
@@ -81,7 +91,7 @@ export function readTownShared(dataRoot: string, href: string): TownShared {
  * `RMG/TownRandomSpecGroup.xdb` in FILE ORDER — the order the phase's
  * `below(matches)` indexes into once the list is filtered.
  */
-export function readTownSpecializations(dataRoot: string): TownSpecialization[] {
+export function readTownSpecializations(dataRoot: DataRoot): TownSpecialization[] {
   const group = find(readDoc(dataRoot, '/RMG/TownRandomSpecGroup.xdb'), 'TownRandomSpecGroup');
   const link = group ? find(group, 'link') : null;
   if (!link) return [];

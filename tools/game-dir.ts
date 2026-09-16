@@ -20,7 +20,14 @@
 //                   proceeding; proceeding into a made-up path was the bug.
 
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+
+import { singleRoot } from '../src/game/assets.ts';
+import type { Assets } from '../src/game/assets.ts';
+import { mountArchives } from '../src/game/mounted.ts';
+import type { DataRoot } from '../src/rmg/data.ts';
+import type { RmgInstall } from '../src/rmg/install.ts';
 
 /** The game folder, or null when nobody said. Never a guess. */
 export function gameDirIfAny(): string | null {
@@ -56,4 +63,44 @@ export function gameDir(): string {
     process.exit(2);
   }
   return dir;
+}
+
+/** The game's unwrapped executable — what the generator's tables are read from. */
+export function gameExe(): string {
+  const exe = join(gameDir(), 'bin', 'H5_Game_H5E.exe');
+  if (!existsSync(exe)) {
+    console.error(`${exe} is not there — \`npm run unwrap-exe\` makes it`);
+    process.exit(2);
+  }
+  return exe;
+}
+
+/**
+ * The data as the GAME reads it: the archives mounted from `<game>/H5E/` over
+ * the unpacked cache, by the executable's own rule (`src/game/mounted.ts`).
+ * Without a game folder it is the cache alone — a chain of one, the shipped
+ * data — and a tool that must match a real install says `--game`.
+ */
+export function dataAssets(): Assets {
+  const base = dataDir();
+  const game = gameDirIfAny();
+  if (!game) return singleRoot(base);
+  return mountArchives(game, join(tmpdir(), 'homm5-editor', 'mounted'), base);
+}
+
+/** The game's unwrapped executable, or null when nobody said where the game is. */
+export function gameExeIfAny(): string | null {
+  const game = gameDirIfAny();
+  if (!game) return null;
+  const exe = join(game, 'bin', 'H5_Game_H5E.exe');
+  return existsSync(exe) ? exe : null;
+}
+
+/**
+ * The install the generator runs against — the data as the game mounts it
+ * and the game's executable, both from the folder somebody said. A suite
+ * that reads the unpacked cache alone passes `dataDir()` as the data.
+ */
+export function gameInstall(data: DataRoot = dataAssets()): RmgInstall {
+  return { data, exe: gameExe() };
 }

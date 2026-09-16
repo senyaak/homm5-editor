@@ -17,9 +17,12 @@
 //      from the border, no unassigned neighbour) flips to a neighbouring zone
 //      owning >= 3 neighbours with probability ~0.6 (betweenFloat(0,1) drawn,
 //      kept when > 0.4f) — but only while that zone is UNDER QUOTA:
-//      sizeOther/sizeOwn > countOther/countOwn, both divisions single
-//      precision. Areas converge to the template's proportions; borders
-//      stay ragged.
+//      sizeOther/sizeOwn > countOther/countOwn. Neither quotient leaves the
+//      x87 stack: 0xcf3ad5 and 0xcf3adf are `fidiv`, and the `fcompp` after
+//      them compares what the stack holds, so nothing rounds to float32 on
+//      the way. (The GAME's SSE build divides in single precision, and the
+//      reference maps are the EDITOR's — the same split as the relief cone.)
+//      Areas converge to the template's proportions; borders stay ragged.
 //
 // A sweep scans the whole grid with a drawn direction per axis (two below(2)
 // per sweep, per floor — even a zone-less floor pays them), queues every
@@ -33,19 +36,42 @@
 // Tie-breaks are the engine's hash containers, modelled exactly: 13 buckets,
 // bucket = key % 13 unsigned (so -1 lands in bucket 8), head insertion,
 // buckets iterated ascending, and the first strict maximum in that order
-// wins. The engine also checks the 6-tile margin against the SWAPPED
-// dimension pair (map+0xC vs +0x10) — indistinguishable on the square maps
-// the generator makes, and this port refuses rectangles rather than guess
-// which reading is faithful (see fillZones).
+// wins. Head insertion is only VISIBLE when two live keys share a bucket,
+// which needs a zone index of 14 or more — under thirteen zones the bucket
+// order is plain ascending and every within-bucket question is moot. That is
+// why the neighbour scan's ORDER went unchecked for so long, and why getting
+// it wrong cost exactly one template (see NBR). The engine also checks the
+// 6-tile margin against the SWAPPED dimension pair (map+0xC vs +0x10) —
+// indistinguishable on the square maps the generator makes, and this port
+// refuses rectangles rather than guess which reading is faithful (see
+// fillZones).
 
+import { DOUBLES } from './arith.ts';
+import type { Arith } from './arith.ts';
 import type { RmgRandom } from './random.ts';
+import { hashMapOrder } from './zones.ts';
 import type { PlacedZone } from './zones.ts';
 
 const fl = Math.fround;
 const SQRT3 = fl(1.7320508); // [0xF4D5D8]
 const KEEP_ABOVE = fl(0.4); // [0xF5E500] — the jitter keeps a draw above this
 
-/** Neighbour offsets in the engine's own order (table 0x1093870). */
+/**
+ * Neighbour offsets in the engine's own order (table 0x1093870; the editor's
+ * 0x12BCED0, read pair by pair at `[esi-4]`/`[esi]` from 0xcf38b4).
+ *
+ * EACH PAIR IS (first index, second index) IN THE ENGINE'S ORDER, and the
+ * engine's first index is the one its OUTER loop walks — which is this port's
+ * `b`, not its `a` (see the scan below). So the pairs are destructured as
+ * `[db, da]`: component 0 goes on `b`.
+ *
+ * The eight offsets are symmetric, so putting them on the wrong index visits
+ * the same eight tiles and gets the same counts — it only changes the ORDER
+ * they are met in, and that is invisible until two of them are zones whose
+ * indices share a hash bucket. On `S7-22P2-8Z15K2.4c` they are: zone 2 and
+ * zone 15 both land in bucket 2 of 13, and one tile at sweep 27 went to the
+ * one the engine met second.
+ */
 const NBR: ReadonlyArray<readonly [number, number]> = [
   [0, -1], [1, 0], [0, 1], [-1, 0], [-1, -1], [1, -1], [1, 1], [-1, 1],
 ];
@@ -56,33 +82,29 @@ const NBR: ReadonlyArray<readonly [number, number]> = [
  * order, so it is modelled rather than replaced with a plain max.
  */
 class HashCounts {
-  private buckets: Array<Array<{ key: number; count: number }>> = Array.from({ length: 13 }, () => []);
-  private keys = 0;
+  /** In insertion order; `hashMapOrder` lays them out when they are read. */
+  private entries: Array<{ key: number; count: number }> = [];
 
   add(key: number): void {
-    const bucket = this.buckets[(key >>> 0) % 13]!;
-    const hit = bucket.find((e) => e.key === key);
+    const hit = this.entries.find((e) => e.key === key);
     if (hit) hit.count++;
-    else {
-      bucket.unshift({ key, count: 1 });
-      this.keys++;
-    }
+    else this.entries.push({ key, count: 1 });
   }
 
-  get size(): number { return this.keys; }
+  get size(): number { return this.entries.length; }
 
   has(key: number): boolean {
-    return this.buckets[(key >>> 0) % 13]!.some((e) => e.key === key);
+    return this.entries.some((e) => e.key === key);
   }
 
   /** The first strict maximum in iteration order, never key -1. */
   best(): { key: number; count: number } | null {
     let best: { key: number; count: number } | null = null;
-    for (const bucket of this.buckets) {
-      for (const e of bucket) {
-        if (e.key === -1) continue;
-        if (!best || e.count > best.count) best = e;
-      }
+    // Eight neighbours, so this never grows past one bucket table — but it is
+    // the same container and reads through the same door.
+    for (const e of hashMapOrder(this.entries, (x) => x.key, 'HashCounts')) {
+      if (e.key === -1) continue;
+      if (!best || e.count > best.count) best = e;
     }
     return best;
   }
@@ -90,29 +112,23 @@ class HashCounts {
 
 /**
  * The deferred-decision queues (map1/map2): zone index -> tiles to repaint,
- * applied in the container's iteration order. Same 13 buckets, same head
- * insertion — and the same refusal as floorIterationOrder: a fourteenth
- * distinct zone would rehash, and post-rehash order is an unread path no
- * shipped template can reach (a floor holds at most 12 zones).
+ * applied in the container's iteration order. The same container as the zone
+ * order, through the same door — including the rehash at the fourteenth key,
+ * which a fifteen-zone template does reach.
  */
 class HashQueue {
-  private buckets: Array<Array<{ key: number; points: Array<[number, number]> }>> = Array.from({ length: 13 }, () => []);
-  private keys = 0;
+  /** In insertion order; `hashMapOrder` lays them out when they are read. */
+  private queued: Array<{ key: number; points: Array<[number, number]> }> = [];
 
   push(key: number, a: number, b: number): void {
-    const bucket = this.buckets[(key >>> 0) % 13]!;
-    const hit = bucket.find((e) => e.key === key);
+    const hit = this.queued.find((e) => e.key === key);
     if (hit) hit.points.push([a, b]);
-    else {
-      if (this.keys === 13) throw new Error('HashQueue: a 14th zone would rehash — order unverified');
-      bucket.unshift({ key, points: [[a, b]] });
-      this.keys++;
-    }
+    else this.queued.push({ key, points: [[a, b]] });
   }
 
   /** Iteration order: buckets ascending, newest key first, points as pushed. */
   *entries(): Iterable<{ key: number; points: Array<[number, number]> }> {
-    for (const bucket of this.buckets) yield* bucket;
+    yield* hashMapOrder(this.queued, (e) => e.key, 'HashQueue');
   }
 }
 
@@ -140,7 +156,14 @@ export interface FillZonesSpy {
    * engine calls GetZone(own) and GetZone(best), BEFORE the ratio verdict.
    * The oracle's `gz` lines are this callback's engine-side twin.
    */
-  candidate?(sweep: number, a: number, b: number, own: number, best: number): void;
+  candidate?(sweep: number, a: number, b: number, own: number, best: number, count: number): void;
+  /**
+   * The areas as the sweep leaves them — the engine's own `CollectOwnTiles`
+   * (`0xEB7790`, called per zone from the sweep's tail) rebuilds the zone's
+   * `+0xCC` list, and the NEXT sweep's ratio divides those lengths. Worth
+   * hearing when a sweep's jitter count differs and its candidates do not.
+   */
+  areas?(sweep: number, areas: ReadonlyMap<number, number>): void;
 }
 
 /**
@@ -157,13 +180,14 @@ export function fillZones(
   twoFloors: boolean,
   rng: RmgRandom,
   spy?: FillZonesSpy,
+  ar: Arith = DOUBLES,
 ): FilledZones {
   const floorCount = twoFloors ? 2 : 1;
   // The engine checks the jitter's 6-tile margin against the dimensions
   // SWAPPED relative to the neighbour bounds. On the square maps it makes the
   // two readings agree; on a rectangle they would not, and porting either one
   // would be a guess wearing the other's clothes.
-  if (width !== height) throw new Error('fillZones: the engine is only ever run square — rectangle semantics unread');
+  if (width !== height) throw new Error('fillZones: one side only — the engine has one dimension (map+0xC and map+0x10 come from the same size-table entry, map-setup.ts), so a rectangle is not an input it can be given');
   const size = width;
 
   const byFloor: PlacedZone[][] = Array.from({ length: floorCount }, () => []);
@@ -175,9 +199,9 @@ export function fillZones(
   const byIndex = new Map<number, PlacedZone>();
   for (const floor of byFloor) for (const z of floor) if (!byIndex.has(z.index)) byIndex.set(z.index, z);
 
-  // Assumed, and said: the grid arrives all -1. FillZones itself never writes
-  // the initial value; whoever builds the floor does, and that constructor is
-  // still unread. The first oracle-held sweep will confirm or deny.
+  // The grid arrives all -1: the map-created step writes it when it builds the
+  // floors (border-tiles.ts has the reading), and every oracle-held sweep
+  // since has agreed.
   const grids: Int32Array[][] = byFloor.map(() =>
     Array.from({ length: size }, () => new Int32Array(size).fill(-1)));
 
@@ -187,17 +211,27 @@ export function fillZones(
     for (let a = 0; a < size; a++) {
       for (let b = 0; b < size; b++) {
         for (const z of byFloor[f]!) {
-          const dax = fl(a - Math.trunc(z.x));
-          const dby = fl(b - Math.trunc(z.y));
-          const d = fl(Math.sqrt(fl(fl(dax * dax) + fl(dby * dby))));
+          const dax = ar.store(ar.sub(a, Math.trunc(z.x)));
+          const dby = ar.store(ar.sub(b, Math.trunc(z.y)));
+          const d = ar.store(ar.sqrt(ar.store(ar.add(ar.store(ar.mul(dax, dax)), ar.store(ar.mul(dby, dby))))));
           if (z.r > d) { grid[a]![b] = z.index; break; }
         }
       }
     }
   }
 
+  // A FLOOR PAST THIRTEEN ZONES USED TO BE REFUSED HERE, and it is worth a
+  // line why it no longer is. Thirteen is where the hash container rehashes,
+  // and it is also where two zone indices can first share a bucket - so it
+  // WAS the edge of the evidence, and the one shipped template that crosses
+  // it, `S7-22P2-8Z15K2.4c`, really did come out different. What made it
+  // different was the neighbour scan's order (see NBR), not the rehash. With
+  // the offsets on the indices the engine puts them on, all fifteen zones
+  // reproduce: the engine's own candidate pairs match for all 443 sweeps, the
+  // areas for all 444 snapshots, and the map is byte-identical on both seeds.
+
   // ---- pass 2: grow and jitter, sweep by sweep ----
-  const sweepLimit = fl(fl(size) * SQRT3);
+  const sweepLimit = ar.store(ar.mul(ar.store(size), SQRT3));
   let sweepsPerFloor = 0;
   let jitterDraws = 0;
   let firstSweepJitterDraws = 0;
@@ -211,7 +245,7 @@ export function fillZones(
     for (const z of byFloor[f]!) counts.set(z.index, 0);
 
     let sweeps = 0;
-    for (let counter = 0; sweepLimit > fl(counter); counter++) {
+    for (let counter = 0; sweepLimit > ar.store(counter); counter++) {
       if (counter % 10 === 0) decades.push({ sweep: counter, draws: rng.draws });
       sweeps++;
       const grow = new HashQueue();
@@ -237,7 +271,7 @@ export function fillZones(
           const own = grid[a]![b]!;
           if (own === -1) {
             const cnt = new HashCounts();
-            for (const [da, db] of NBR) {
+            for (const [db, da] of NBR) {
               const na = a + da;
               const nb = b + db;
               if (na < 0 || na >= size || nb < 0 || nb >= size) continue;
@@ -249,7 +283,7 @@ export function fillZones(
           } else {
             if (a < 6 || a > size - 6 || b < 6 || b > size - 6) continue;
             const cnt = new HashCounts();
-            for (const [da, db] of NBR) {
+            for (const [db, da] of NBR) {
               const na = a + da;
               const nb = b + db;
               if (na < 0 || na >= size || nb < 0 || nb >= size) continue;
@@ -261,7 +295,7 @@ export function fillZones(
             // The engine looks both zones up BEFORE checking the neighbour
             // threshold (GetZone×2 at 0xeaa2ca, the checks at 0xeaa347) — the
             // spy sits where the engine's own trace hook does.
-            if (best) spy?.candidate?.(counter, a, b, own, best.key);
+            if (best) spy?.candidate?.(counter, a, b, own, best.key, best.count);
             if (!best || best.count <= 2) continue;
             const zOwn = byIndex.get(own);
             const zOther = byIndex.get(best.key);
@@ -269,8 +303,10 @@ export function fillZones(
             // Stale on purpose: last sweep's areas. 0/0 is NaN and x/0 is
             // infinity, and a strict comiss says "no" to both — the engine's
             // own way of sitting the first sweep out.
-            const countRatio = fl((counts.get(zOther.index) ?? 0) / (counts.get(zOwn.index) ?? 0));
-            const sizeRatio = fl(zOther.size / zOwn.size);
+            // Two `fidiv`s and an `fcompp`: nothing rounds to float32 on the
+            // way, but at 0x0C7F the divides themselves land on 24 bits.
+            const countRatio = ar.div(counts.get(zOther.index) ?? 0, counts.get(zOwn.index) ?? 0);
+            const sizeRatio = ar.div(zOther.size, zOwn.size);
             if (sizeRatio > countRatio) {
               spy?.jitter?.(counter, a, b);
               const r = rng.betweenFloat(0, 1);
@@ -293,6 +329,7 @@ export function fillZones(
           if (z !== -1 && counts.has(z)) counts.set(z, counts.get(z)! + 1);
         }
       }
+      spy?.areas?.(counter, counts);
     }
     sweepsPerFloor = sweeps;
   }

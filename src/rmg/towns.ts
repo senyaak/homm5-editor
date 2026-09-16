@@ -17,8 +17,11 @@
 //   then three gates, none of which draws:
 //     * the town's own tile must sit inside the 1 .. size-1 frame
 //     * the ENTRANCE — tile + rot_q(1,-1) — must be at least (2*R)/3 deep
-//     * the footprint, rotated with it, must stay inside the zone, on free
-//       tiles, none of them right against the zone border
+//     * the footprint, rotated with it, passes the SHARED fit `0xEC3510`
+//       (`fits` in placement.ts) — the same call the mines and dwellings
+//       make (`call 0xEC3510` at 0xEB51A7, with the prototype's three
+//       lists): blocked and marker at border depth 1, ACTIVE at 3, and on
+//       floor 1 the five-tile margin from the map edge
 //
 // A frame or depth refusal keeps the tile in the pool (it can be drawn
 // again); a footprint refusal drops it. Past a hundred retries the depth gate
@@ -42,14 +45,47 @@
 //
 // The offsets were pinned through the document's generated reader, the way
 // the template's were: +0x54 blockedTiles, +0x60 holeTiles, +0x6C
-// activeTiles, +0x84 PossessionMarkerTile. The footprint checks three of
-// them at three depths — blockedTiles and activeTiles at 1, the possession
-// marker at 3 — and holeTiles, despite being the largest list, is not
-// checked at all.
+// activeTiles, +0x84 PossessionMarkerTile — and holeTiles, despite being
+// the largest list, is not checked at all.
+//
+// THE FOOTPRINT GATE WAS ONCE THIS FILE'S OWN — blocked and active at depth
+// 1, the marker at 3, no margin — fitted to the reference, which it passed.
+// Block B's `S1-3P2-4Z5V` at seed 1001 did not: the engine refused a town
+// the port took, on floor 1 with a footprint tile inside the five-tile
+// margin, and the draws parted at the third attempt. The call is `0xEC3510`,
+// read at 0xEB51A7, so the gate is the shared one now.
+//
+// RANDOM TOWNS — the dialog's checkbox, `request+0x95`, handed to PlaceTown
+// as its second argument (`0xEA5FBE` reads `generator+0xA5` and pushes it).
+// PlaceTown reads it twice, and both reads are read off `0xEB4CB0`:
+//
+//   0xEB4E0D  the PROTOTYPE. With the flag the document is the global
+//             `/MapObjects/RandomTown.xdb#xpointer(/AdvMapTownShared)`
+//             (`0x121C544`, filled at start-up next to the seven random
+//             dwellings) and the race preset's `TownProto` is never looked
+//             at; without it the preset's, as before. The retry loop, the
+//             three gates and the stamp are the same code either way — only
+//             the footprint they measure changes, and RandomTown's is its own
+//             (a 1..-5 entry, a (1,0) marker).
+//   0xEB57E5  straight after the garrison: `jne 0xEB5A8A`, the epilogue. The
+//             decoration over the entrance AND the specialisation are skipped
+//             whole, draws included — which is the 40 draws (8 towns × 5: two
+//             for the decoration's quadrant and pick, two for its name, one
+//             for the specialisation) the game's "towns placed" boundary sat
+//             short of the port's on the first random-towns map.
+//
+// What the flag does NOT change, and the same map shows it: the garrison is
+// still the ZONE RACE's — `0xED2330` runs before the test, so an Inferno
+// zone's random town is held by imps — and an owned town still gets its
+// tavern.
 
+import type { CreatureInfo } from './creatures.ts';
+import { setTownGuard } from './town-guard.ts';
+import type { TownGuardStack } from './town-guard.ts';
 import type { RmgRandom } from './random.ts';
 import type { RacePreset } from './preset-table.ts';
 import type { Offset, TownShared, TownSpecialization } from './town-data.ts';
+import { fits, rotate } from './placement.ts';
 import type { LoadedZone } from './load-template.ts';
 import type { RmgTemplate } from './template.ts';
 
@@ -67,19 +103,14 @@ export interface MapPos {
 
 const toMapPos = (a: number, b: number): MapPos => ({ x: b, y: a });
 
-/** A quarter-turn of a document offset, the engine's own four cases. */
-export function rotate(q: number, off: Offset): Offset {
-  const [x, y] = off;
-  if (q === 1) return [-y, x];
-  if (q === 2) return [-x, -y];
-  if (q === 3) return [y, -x];
-  return [x, y];
-}
+export { rotate } from './placement.ts';
 
 export interface PlacedObject {
   kind: 'town' | 'decoration';
   /** `item_<signed int32>` — the name the engine mints from two draws. */
   name: string;
+  /** The zone's floor — an underground town's object stands on floor 1. */
+  floor: number;
   pos: MapPos;
   /** Radians: q * pi/2, as the map file records it. */
   rot: number;
@@ -91,6 +122,19 @@ export interface PlacedObject {
   specialization?: string;
   /** Towns only: a player's town also gets a tavern (the engine's rule). */
   hasTavern?: boolean;
+  /**
+   * Towns only: the garrison a town nobody owns is given — see
+   * `town-guard.ts`. Absent on a player's town, which is never guarded.
+   */
+  army?: TownGuardStack[];
+  /**
+   * An UNDERGROUND town's four point lights — the subterranean zone
+   * subclasses wrap PlaceTown (vt+0x20 is 0xEC6250/0xEC84C0/0xECAAB0, not
+   * 0xEB4CB0 itself) and a SUCCESSFUL placement pays two draws for the
+   * whole set: z = 5 + below(3), radius = 12 + below(10), positions the
+   * literal (0,±5) and (±5,0), colour a constant of the town's faction.
+   */
+  pointLights?: { z: number; radius: number };
 }
 
 export interface TownsResult {
@@ -101,7 +145,26 @@ export interface TownsResult {
    */
   centres: Map<number, { a: number; b: number }>;
   /** Per floor: 0 free, 2 under a building's blocked tiles, 4 under the rest. */
-  occupancy: Uint8Array[];
+  occupancy: Int32Array[];
+  /**
+   * Per zone index, the tiles marked 4 in MARK order — the town's active
+   * tiles rotated, then the possession marker. This is the head of the
+   * zone's `+0x68` room-points list, and the ORDER is load-bearing: the
+   * road step chains those points to their nearest later siblings, so a
+   * scan-order reconstruction routes different roads.
+   */
+  stamped: Map<number, Array<[number, number]>>;
+  /**
+   * Per zone index, the tiles marked 2 — the head of the zone's `+0x5C`
+   * stamped-blocked ledger, the extra bit of the lakes' 0x3E room mask.
+   */
+  stampedBlocked: Map<number, Array<[number, number]>>;
+  /**
+   * Per zone index, the minted name of the town it got — the string PlaceTown
+   * leaves at `zone+0xFC` (and the `zone+0xF8` flag that says one is there).
+   * The random-towns dwellings link to it by this name.
+   */
+  townNames: Map<number, string>;
 }
 
 export interface TownsInput {
@@ -119,6 +182,22 @@ export interface TownsInput {
   towns: Map<string, TownShared>;
   /** `RMG/TownRandomSpecGroup.xdb`, in file order. */
   specializations: TownSpecialization[];
+  /** The creature table, for the garrison an unowned town is given. */
+  creatures: readonly CreatureInfo[];
+  /** Ids the garrison never buys — read out of the executable. */
+  unplaceable: ReadonlySet<number>;
+  /** `BasicLeverGuardPower` — the zone's `TownGuardStrenght` multiplies it. */
+  basicLeverGuardPower: number;
+  /** The map's monster level, 0..4 — the garrison scales by its own two cases. */
+  monsterStrength: number;
+  /**
+   * The RANDOM TOWNS checkbox (`request+0x95`), PlaceTown's second argument.
+   * With it every town is built from `randomTown` and neither the decoration
+   * nor the specialisation is drawn — see the header.
+   */
+  randomTowns?: boolean;
+  /** `/MapObjects/RandomTown.xdb`, resolved — required when `randomTowns` is on. */
+  randomTown?: TownShared;
 }
 
 const HALF_PI = Math.PI / 2;
@@ -158,9 +237,22 @@ function centroid(tiles: Array<[number, number]>): { a: number; b: number } {
 
 export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
   const { size, template, zones, floors, distances, radii, presets, towns, specializations } = input;
+  const { creatures, unplaceable, basicLeverGuardPower, monsterStrength } = input;
+  const randomTowns = Boolean(input.randomTowns);
+  if (randomTowns && !input.randomTown) throw new Error('random towns ordered, but no RandomTown document was given');
   const objects: PlacedObject[] = [];
   const centres = new Map<number, { a: number; b: number }>();
-  const occupancy = floors.map(() => new Uint8Array(size * size));
+  const townNames = new Map<number, string>();
+  // A DWORD PER TILE, as the engine has it (`or dword ptr [eax+ebx*4],400h`
+  // in the dwarven one-tile pass, `cmp dword ptr [eax+ecx*4],40h` in the
+  // massif carve). A byte would fit every bit the surface phases use, and it
+  // did until the dwarven underground: its rock mask sets 0x40 AND 0x400, and
+  // in a byte the second is lost - which leaves a tile reading exactly 0x40,
+  // the very value the next zone's massif carve turns into a footprint. The
+  // engine's tile reads 0x440 there and is left alone.
+  const occupancy = floors.map(() => new Int32Array(size * size));
+  const stamped = new Map<number, Array<[number, number]>>();
+  const stampedBlocked = new Map<number, Array<[number, number]>>();
   const byIndex = new Map(zones.map((z) => [z.index, z]));
 
   for (const item of template.zones) {
@@ -174,8 +266,20 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
       continue;
     }
 
+    // TWO presets, because the zone holds two. `+0x1C` is its own race's row
+    // and `+0x20` is the one it paints and decorates from — the same row for
+    // every zone except a Dungeon one on the surface, which borrows Haven's
+    // (0xeb4c86: `cmp [esi+18h],6`, then `cmp [esi+0F4h],0`, then entry 3).
+    // The TOWN comes from the first: `S3-5P4Z12B4`'s zone 12 builds a Dungeon
+    // town and is guarded by a Dungeon creature, while the decoration over its
+    // entrance is Haven's LeafDownBig.
     const preset = presets.get(zone.race);
-    const proto = preset?.townProto ? towns.get(preset.townProto.replace(/#xpointer\(.*\)$/, '')) : undefined;
+    const paintPreset = presets.get(zone.terrainRace);
+    // With random towns on, the prototype is the one global stand-in and the
+    // preset's `TownProto` is never consulted (0xEB4E0D jumps past it).
+    const proto = randomTowns
+      ? input.randomTown
+      : preset?.townProto ? towns.get(preset.townProto.replace(/#xpointer\(.*\)$/, '')) : undefined;
     if (!proto) continue; // no prototype, no town — the engine bails the same way
 
     const dist = distances[zone.floor]!;
@@ -183,12 +287,11 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
     const r = radii.get(zone.index) ?? 0;
     const pool = tiles.filter(([a, b]) => dist[a]![b]! > Math.trunc(r / 2));
     const depthGate = Math.trunc((2 * r) / 3);
-    // Three lists, three depths — and holeTiles is in none of them.
-    const footprint: Array<{ offs: readonly Offset[]; minDepth: number }> = [
-      { offs: proto.blockedTiles, minDepth: 1 },
-      { offs: proto.activeTiles, minDepth: 1 },
-      { offs: [proto.possessionMarker], minDepth: 3 },
-    ];
+    // The shared fit's view of the prototype: three lists, holeTiles absent.
+    const foot = {
+      path: '', blocked: proto.blockedTiles, active: proto.activeTiles, passable: [], marker: proto.possessionMarker,
+    };
+    const fitCtx = { size, grid, border: dist, occupancy: occ, zoneIndex: zone.index, floor: zone.floor };
 
     let retries = 0;
     while (pool.length) {
@@ -209,24 +312,19 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
       const deepEnough = retries >= 100 || (inFrame && dist[na]![nb]! >= depthGate);
       if (!inFrame || !deepEnough) { retries++; continue; } // the tile stays in the pool
 
-      let fits = true;
-      for (const { offs, minDepth } of footprint) {
-        for (const off of offs) {
-          const [dx, dy] = rotate(q, off);
-          const fa = ta + dy;
-          const fb = tb + dx;
-          if (fa < 0 || fa >= size || fb < 0 || fb >= size
-            || grid[fa]![fb] !== zone.index || occ[fa * size + fb] !== 0 || dist[fa]![fb]! < minDepth) {
-            fits = false;
-            break;
-          }
-        }
-        if (!fits) break;
-      }
-      if (!fits) { pool.splice(pick, 1); retries++; continue; } // this tile is done for
+      // `fits` takes map (x, y) — the port's (b, a).
+      if (!fits(fitCtx, foot, [tb, ta], q)) { pool.splice(pick, 1); retries++; continue; } // this tile is done for
 
       const rot = q * HALF_PI;
       const name = mintName(rng);
+      // The garrison, and it draws — between the name and the decoration,
+      // which is where PlaceTown asks for it (0xeb57e0). Only a town nobody
+      // owns: the engine's own test is `cmp dword ptr [edi+0F0h],0` one
+      // instruction earlier, and an owned town pays nothing here.
+      const army = zone.playerNo === 0
+        ? setTownGuard(item.townGuardStrenght * basicLeverGuardPower, monsterStrength,
+          zone.race, creatures, unplaceable, rng)
+        : [];
       // Reserve: blockedTiles mark 2, the active tiles and the marker 4 —
       // the engine's own two values, kept because later phases read them.
       const mark = (offs: readonly Offset[], value: number): void => {
@@ -234,29 +332,62 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
           const [dx, dy] = rotate(q, off);
           const fa = ta + dy;
           const fb = tb + dx;
-          if (fa >= 0 && fa < size && fb >= 0 && fb < size) occ[fa * size + fb] = value;
+          if (fa < 0 || fa >= size || fb < 0 || fb >= size) continue;
+          occ[fa * size + fb] = value;
+          // The 4s are the zone's room points, kept in MARK order — the
+          // road step later chains them, so the order is part of the fact.
+          if (value === 4) {
+            const list = stamped.get(zone.index);
+            if (list) list.push([fb, fa]);
+            else stamped.set(zone.index, [[fb, fa]]);
+          }
+          if (value === 2) {
+            const list = stampedBlocked.get(zone.index);
+            if (list) list.push([fb, fa]);
+            else stampedBlocked.set(zone.index, [[fb, fa]]);
+          }
         }
       };
       mark(proto.blockedTiles, 2);
-      mark([...proto.activeTiles, proto.possessionMarker], 4);
+      // A possession marker of (0,0) is NO marker: the offset is the town's
+      // own tile, and the engine neither marks it 4 nor pushes it as a room
+      // point. Orc_Stronghold is the only shipped town with a zero offset,
+      // which is why this cost a template to find — `S1-2P2-8Z8K2S`'s zone 8
+      // is a Stronghold, and the engine's `+0x68` there holds four points
+      // where the port had five. Read off the engine's own list (the oracle's
+      // `points` dump). Where the refusal sits (14.09): the stamp `0xEC2F90`
+      // takes the marker as a LIST of byte pairs and skips the mark and the
+      // push whole when the list is empty (`test eax,0FFFFFFFEh; jle` at
+      // 0xEC3196 on end − begin); PlaceTown reads the pair at 0xEB4F7C and
+      // 0xEB506B on its way to that list, and the test that keeps a (0,0)
+      // pair out of it is the one instruction still not located.
+      const marker = proto.possessionMarker;
+      const fours = marker[0] === 0 && marker[1] === 0
+        ? proto.activeTiles
+        : [...proto.activeTiles, marker];
+      mark(fours, 4);
 
       const specs = specializations.filter((s) => s.townType === proto.townType && s.randomTown === 'TOWN_RANDOM');
       objects.push({
         kind: 'town',
         name,
+        floor: zone.floor,
         pos: toMapPos(ta, tb),
         rot,
         shared: proto.path,
         playerId: zone.playerNo,
         hasTavern: zone.playerNo !== 0,
+        ...(army.length ? { army } : {}),
       });
       const town = objects[objects.length - 1]!;
+      townNames.set(zone.index, name);
       // The wave the next phase runs starts at the ENTRY, not at the town.
       centres.set(zone.index, { a: na, b: nb });
 
       // The decoration over the entrance — skipped WHOLE, draws included,
-      // when the race lists none.
-      const decorations = preset?.overTownCenterObjects ?? [];
+      // when the race lists none — and, with random towns on, skipped along
+      // with the specialisation: 0xEB57E5 goes straight to the epilogue.
+      const decorations = randomTowns ? [] : (paintPreset?.overTownCenterObjects ?? []);
       if (decorations.length) {
         const dq = rng.below(4);
         const dpick = rng.below(decorations.length);
@@ -264,6 +395,7 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
         objects.push({
           kind: 'decoration',
           name: dname,
+          floor: zone.floor,
           pos: toMapPos(ea, eb),
           rot: dq * HALF_PI,
           shared: decorations[dpick]!.replace(/#xpointer\(.*\)$/, ''),
@@ -271,10 +403,19 @@ export function placeTowns(input: TownsInput, rng: RmgRandom): TownsResult {
       }
 
       // The specialisation comes last, and only if the pool has one.
-      if (specs.length) town.specialization = specs[rng.below(specs.length)]!.path;
+      if (specs.length && !randomTowns) town.specialization = specs[rng.below(specs.length)]!.path;
+
+      // The underground subclasses' wrapper — after 0xEB4CB0 returns true
+      // it hangs four point lights on the town for two draws (0xEC6570);
+      // a failed placement pays nothing, and a surface town has no lights.
+      if (zone.floor !== 0) {
+        const z = 5 + rng.below(3);
+        const radius = 12 + rng.below(10);
+        town.pointLights = { z, radius };
+      }
       break;
     }
   }
 
-  return { objects, centres, occupancy };
+  return { objects, centres, occupancy, stamped, stampedBlocked, townNames };
 }

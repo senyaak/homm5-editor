@@ -22,6 +22,9 @@ const DDSD = 0x1 | 0x2 | 0x4 | 0x1000 | 0x8;
 const DDPF_ALPHAPIXELS = 0x1;
 const DDPF_RGB = 0x40;
 const DDSCAPS_TEXTURE = 0x1000;
+const DDSD_MIPMAPCOUNT = 0x20000;
+const DDSCAPS_COMPLEX = 0x8;
+const DDSCAPS_MIPMAP = 0x400000;
 
 /**
  * A `.dds` holding `image` as uncompressed BGRA.
@@ -31,12 +34,16 @@ const DDSCAPS_TEXTURE = 0x1000;
  * with red and blue exchanged, which reads as an art mistake rather than a
  * format one.
  */
-export function writeDDS(image: Image): Buffer {
+export function writeDDS(image: Image, declareMipCount = false): Buffer {
   const { width, height, rgba } = image;
   const header = Buffer.alloc(128);
   header.write('DDS ', 0, 'latin1');
   header.writeUInt32LE(124, 4);            // header size, always 124
-  header.writeUInt32LE(DDSD, 8);
+  // The engine's own minimaps declare the single mip in the flags and the
+  // caps as well as in the count; ours have always left those two bits clear,
+  // which every reader takes the same way. Byte-identity with a file the game
+  // WROTE is a different bar, so the minimap asks and nothing else changes.
+  header.writeUInt32LE(declareMipCount ? DDSD | DDSD_MIPMAPCOUNT : DDSD, 8);
   header.writeUInt32LE(height, 12);
   header.writeUInt32LE(width, 16);
   header.writeUInt32LE(width * 4, 20);     // pitch, one row in bytes
@@ -50,7 +57,8 @@ export function writeDDS(image: Image): Buffer {
   header.writeUInt32LE(0x0000ff00, 96);    // green
   header.writeUInt32LE(0x000000ff, 100);   // blue
   header.writeUInt32LE(0xff000000, 104);   // alpha
-  header.writeUInt32LE(DDSCAPS_TEXTURE, 108);
+  header.writeUInt32LE(declareMipCount
+    ? DDSCAPS_TEXTURE | DDSCAPS_COMPLEX | DDSCAPS_MIPMAP : DDSCAPS_TEXTURE, 108);
 
   const pixels = Buffer.alloc(width * height * 4);
   for (let i = 0; i < width * height; i++) {

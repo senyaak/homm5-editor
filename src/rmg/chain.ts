@@ -1,0 +1,981 @@
+// The reference chain, once — seed 1785351845 through the nine ported
+// phases to the door of MainObjects, plus a per-zone runner for the fill
+// steps in the engine's order. Every RMG suite used to carry its own copy
+// of this; they now share one, so a new step's test is the step and its
+// assertions, nothing else.
+
+import { arithFor } from './arith.ts';
+import type { Arith } from './arith.ts';
+import type { ArithName } from './arith.ts';
+import { readDefaultParams } from './params.ts';
+import { toAssets } from './data.ts';
+import type { Assets } from '../game/assets.ts';
+import type { DataRoot } from './data.ts';
+import { objectName, withoutPointer } from './exe.ts';
+import type { RmgExeTables } from './exe.ts';
+import { installTables } from './install.ts';
+import type { RmgInstall } from './install.ts';
+
+import { readArmyTemplates } from './armies.ts';
+import type { GuardTables } from './armies.ts';
+import { calcBorderTiles } from './border-tiles.ts';
+import { zoneConnections } from './connections.ts';
+import type { ConnectionsResult } from './connections.ts';
+import { createMap } from './create-map.ts';
+import { readCreatures } from './creatures.ts';
+import { fillDistToTowns } from './dist-to-towns.ts';
+import { placeZoneDwellings } from './dwellings.ts';
+import type { PlacedDwelling } from './dwellings.ts';
+import { layoutZones } from './layout.ts';
+import { loadTemplate } from './load-template.ts';
+import type { LoadedTemplate } from './load-template.ts';
+import { mapSetup } from './map-setup.ts';
+import { placeZoneAbandonedMines, placeZoneMines, readMineShared } from './mines.ts';
+import type { MineFootprint, PlacedMine } from './mines.ts';
+import type { readParams } from './params.ts';
+import { ensureRoom, filterByRoom, readFootprint, zoneTiles } from './placement.ts';
+import { placeZoneCartographers } from './cartographer.ts';
+import type { PlacedCartographer } from './cartographer.ts';
+import { placeZonePrisons } from './prisons.ts';
+import type { PlacedPrison } from './prisons.ts';
+import type { Footprint, Tile } from './placement.ts';
+import { readPresets } from './preset-table.ts';
+import type { PricedBuilding, RacePreset } from './preset-table.ts';
+import { placePriceList, scaledBudget } from './price-lists.ts';
+import type { PlacedPriced, PricedItem } from './price-lists.ts';
+import { RmgRandom } from './random.ts';
+import { buildZoneRoad } from './road.ts';
+import { placeZoneShrines } from './shrines.ts';
+import type { PlacedShrine } from './shrines.ts';
+import { placeZoneTeleports } from './teleports.ts';
+import { placeZoneObjects } from './zone-objects.ts';
+import type { PlacedZoneObject } from './zone-objects.ts';
+import type { PlacedTeleport } from './teleports.ts';
+import { readTemplateNamed } from './template-files.ts';
+import { placeObservatories, placeZoneTreasures } from './treasures.ts';
+import type { PlacedObject } from './treasures.ts';
+import type { RmgTemplate, RmgZone } from './template.ts';
+import { readTownShared, readTownSpecializations } from './town-data.ts';
+import type { TownShared } from './town-data.ts';
+import { placeTowns } from './towns.ts';
+import type { TownsResult } from './towns.ts';
+import { dwarvenCoarse, makeRiverPlane, stampZoneSeaRiver } from './terrain.ts';
+import type { RiverPlane } from './terrain.ts';
+import { carveWaterBorder, placeWaterTreasures, waterDepth } from './water-border.ts';
+import type { PlacedWaterTreasure, WaterMark } from './water-border.ts';
+import { placeShipyard } from './shipyards.ts';
+import type { PlacedShipyard } from './shipyards.ts';
+import { placeZoneGraal, placeZoneObelisks } from './obelisks.ts';
+import type { PlacedObelisk } from './obelisks.ts';
+import { placeZoneUpgradeBuildings } from './upgrade-buildings.ts';
+import type { PlacedUpgradeBuilding } from './upgrade-buildings.ts';
+import type { ChainTrace } from './trace.ts';
+import { floorIterationOrder } from './zones.ts';
+
+import { worldPlayerRaces } from './world-race.ts';
+import { RACE } from './load-template.ts';
+
+export const SEED = 1785351845;
+export const SIZE = 96;
+
+/** The knobs the ordered reference runs differ by. */
+export interface ChainOptions {
+  /**
+   * The order's seed. Defaults to the reference run's, which is the only one
+   * every phase has been checked against — another seed replays the same
+   * ported code on different draws, and nothing here knows whether it reaches
+   * a branch the port has not written.
+   */
+  seed?: number;
+  /** Template file name without the extension; the surface run's default. */
+  template?: string;
+  /** Map side in tiles — 96 for the surface run, 72 for the underground one. */
+  size?: number;
+  underground?: boolean;
+  /**
+   * How many players the order asked for. Defaults to the references' 2, and
+   * it is a DRAWN value: `createMap` spends a coin on it either way, and the
+   * count feeds the zone loading, so this is not a label.
+   */
+  players?: number;
+  /**
+   * THE LOBBY'S SLOTS — `gen+0x64` as the operator left it: a race per
+   * player slot (`RACE.*`), `RACE.RANDOM` where the slot said random. The
+   * generator draws a race for every player-start zone regardless, and a
+   * concrete slot WINS over the draw (`load-template.ts`); a console order
+   * has no lobby and an empty vector, so every slot takes its draw.
+   *
+   * A map generated in the GAME records the outcome in `PlayersInfo`, and
+   * feeding that back as concrete slots replays it whichever slots were
+   * concrete: a slot that was random recorded its own draw. `ГСК-025` is
+   * the map that needed this — three lobby slots set by hand, the fourth
+   * random, and the port had drawn all four.
+   */
+  playerRaces?: number[];
+  /**
+   * MonsterLevel, 0 weak .. 4 impossible. Defaults to the references' 1
+   * (MEDIUM). It multiplies every connection guard, so it is not a label
+   * either.
+   */
+  monsterStrength?: number;
+  /** WaterAmount (0/1/2); the water reference supplies 2 — see map-setup.ts. */
+  water?: number;
+  /**
+   * The dialog's GRAIL checkbox (`request+0xA5`, and `-pokeb 165 1` says it
+   * through the console). It changes the stream from the FIRST draw of
+   * MainObjects: without it that draw is a bare `next()` nobody has explained,
+   * with it a `below(zoneCount)` — the zone the Graal goes into. See
+   * `run.ts`, where the draw is spent.
+   */
+  grail?: boolean;
+  /**
+   * The dialog's RANDOM TOWNS checkbox (`request+0x95`; `-pokeb 149 1`
+   * through the console). Two readers, both in the towns' code: PlaceTown
+   * builds every town from `/MapObjects/RandomTown.xdb` and draws neither a
+   * decoration nor a specialisation (`towns.ts`), and the dwellings step
+   * places the seven `RandomDwellingN` stand-ins linked to the zone's town
+   * (`dwellings.ts`). The zone races, the terrain and the garrisons are
+   * untouched — the first random-towns map from the game agreed with the
+   * port to the draw until "towns placed".
+   */
+  randomTowns?: boolean;
+  /**
+   * With random towns on: the races of the world's PLAYERS, by 1-based slot —
+   * what an owned random town stands as in the engine's world (see
+   * `src/rmg/world-race.ts`; neutral ones are a seeded draw the port makes
+   * itself). The record does not hold them; the measured ones are the default.
+   */
+  randomTownPlayerRaces?: ReadonlyMap<number, number>;
+  /**
+   * Per zone index, a race to stand the zone's random town (and its
+   * dwellings) as INSTEAD of the rule's answer — what `rmg-fit-races` tries
+   * one zone at a time. Not an order field: a measuring instrument.
+   */
+  randomTownRaceOverride?: ReadonlyMap<number, number>;
+  /**
+   * `ResourceMultiplier` and `ExpMultiplier` as the enum counts them —
+   * 0 MISERABLE, 1 LITTLE, 2 NORMAL, 3 LOTS, 4 MUCH. They are NOT labels:
+   * the treasures step scales its count by the `{0.2, 0.5, 1, 2, 4}` ladder,
+   * resource for the treasures and exp for the chests, so a step that spends
+   * nine draws at LITTLE spends four at MISERABLE and the run parts there.
+   *
+   * Both default to LITTLE, which is what every reference was ordered at.
+   * The three ways of ordering a map disagree about them: the editor's dialog
+   * was set to LITTLE, the console command's own defaults are NORMAL (which is
+   * why `-resource` and `-exp` exist), and THE GAME orders MISERABLE.
+   */
+  resourceMultiplier?: number;
+  expMultiplier?: number;
+  /**
+   * The listeners — every draw, every phase boundary, a jitter draw's tile,
+   * a road's cost field. None of them changes the map; see `trace.ts`.
+   */
+  trace?: ChainTrace;
+  /**
+   * Which machine to compute on — the editor's doubles (the default, and what
+   * every reference map in the corpus was checked against) or the game's
+   * single precision toward zero. See `src/rmg/arith.ts`.
+   */
+  arith?: ArithName;
+  /**
+   * Take the two coordinate draws the way the GAME's build does — the second
+   * into x and the first into y. See `generateGameZones`.
+   */
+  swapZoneAxes?: boolean;
+  /**
+   * The GAME's build, all of it at once: `arith: 'sse'`, `swapZoneAxes`, and
+   * the shipyard's carried centroid sum (`ShipyardInput.centroidSum`). The two
+   * options above stay for a run that wants one of them alone; a map the game
+   * generated wants all three, and a tool that named two of them was quietly
+   * comparing against a third build nobody ships.
+   */
+  gameBuild?: boolean;
+}
+
+export interface Chain {
+  dir: Assets;
+  /** The executable's tables — every list the engine carries in its image. */
+  exe: RmgExeTables;
+  rng: RmgRandom;
+  size: number;
+  template: RmgTemplate;
+  params: ReturnType<typeof readParams>;
+  presets: Map<number, RacePreset>;
+  tables: GuardTables;
+  setup: ReturnType<typeof mapSetup>;
+  /** The two ladder indices the order carried — see `ChainOptions`. */
+  multipliers: { resource: number; exp: number };
+  /** The machine this run computes on — see `src/rmg/arith.ts`. */
+  arith: Arith;
+  /** The listeners, kept for the roads phase to hand its routes through. */
+  trace?: ChainTrace;
+  /**
+   * What the run wants said and did not stop for: an order the engine would
+   * have lifted, a named object the zone had no room for. Read out by the
+   * application into the map's line; a tool prints them.
+   */
+  warnings: string[];
+  /** Whether this is the game's build — the later phases toss their own coins. */
+  gameBuild: boolean;
+  /** The order's GRAIL checkbox — see `ChainOptions.grail`. */
+  grail: boolean;
+  /** The order's RANDOM TOWNS checkbox — see `ChainOptions.randomTowns`. */
+  randomTowns: boolean;
+  /** The seven `RandomDwellingN` stand-ins, tier order — mode 1's descriptors. */
+  randomDwellings: string[];
+  /** The world's players' races — see `ChainOptions.randomTownPlayerRaces`. */
+  randomTownPlayerRaces: ReadonlyMap<number, number>;
+  /** The fit's per-zone override — see `ChainOptions.randomTownRaceOverride`. */
+  randomTownRaceOverride: ReadonlyMap<number, number>;
+  loaded: LoadedTemplate;
+  townResult: TownsResult;
+  /**
+   * The water border's leavings, when the order asked for water: the sea
+   * depth, per zone the rebuilt `+0xCC` (the grid alone no longer derives
+   * it — the rim keeps list membership with grid -1), the sea tiles, the
+   * `+0x148` water ledger, the `+0x154` repel ledger and the placed water
+   * treasures; and the draw counter at the pass's end (the engine's
+   * "dist to towns" bracket spends the same draws on nothing else).
+   */
+  water: {
+    depth: number;
+    kept: Map<number, Tile[]>;
+    sea: Map<number, Tile[]>;
+    waterLedger: Map<number, Tile[]>;
+    repel: Map<number, Tile[]>;
+    treasures: Map<number, PlacedWaterTreasure[]>;
+    /** One per water zone with the Shipyard bit, from the connections sweep. */
+    /** Per zone, in the order they were placed — a big map gets two. */
+    shipyards: Map<number, PlacedShipyard[]>;
+    /** The carve's terrain 200-marks per zone, in carve order — for paintWaterMarks. */
+    marks: Map<number, WaterMark[]>;
+    /**
+     * The river plane, stamped and blurred per zone inside the carve
+     * (0xECF080 reads the border AS ADJUSTED at that moment — the
+     * connections dent it later, so the plane can't be replayed after
+     * the chain).
+     */
+    river: RiverPlane;
+    drawsAfter: number;
+  } | null;
+  conn: ConnectionsResult;
+  /** The teleport pass's objects, per zone — empty on the surface run. */
+  teleports: Map<number, PlacedTeleport[]>;
+  /**
+   * Per floor, the zone grid AS FILLTERRAIN SAW IT — before the dist-to-towns
+   * pass disowned anything and before the water carve took the rim. The terrain
+   * paints replay after the chain, so this is the grid they must read; see
+   * where it is taken.
+   */
+  gridAtFillTerrain: Int32Array[][];
+  /**
+   * The dwarven pre-step's draw, `8 + below(8)`, or null when the map is not
+   * a two-floor dwarven one and the pre-step never ran. It is the whole of
+   * the underground terrain file's coarse grid — every cell carries it.
+   */
+  coarse: number | null;
+  /** Per floor: the zone grid, border table, occupancy and room grid. */
+  floors: Array<{ grid: Int32Array[]; border: Int32Array[]; occ: Int32Array; room: Int32Array[] }>;
+  /** Floor 0's zone grid, border table and occupancy. */
+  grid: Int32Array[];
+  border: Int32Array[];
+  occ: Int32Array;
+  /**
+   * Floor 0's PERSISTENT room grid (`level+0xF4`): every step recomputes
+   * its own zone's tiles in place and the rest keep their stale values —
+   * which the statics fit reads across zone borders, so the staleness is
+   * part of the model.
+   */
+  room: Int32Array[];
+  /** The zone's `+0x68` points: town stamp, passages, teleport stamps. */
+  roomPoints(zoneIndex: number): Tile[];
+  /**
+   * The zone's `+0xCC` — its tiles as the tail of FillZones collected them,
+   * which is NOT what the grid says later: the dist-to-towns pass disowns a
+   * zone's unreachable tiles and the water carve takes its rim, and neither
+   * touches this list. Every first-loop step draws from it.
+   */
+  zoneTileList(zoneIndex: number): Tile[];
+  /** The teleports' active tiles — the `zone+0xC0` entries they pushed. */
+  teleportActives(zoneIndex: number): Tile[];
+  /** The teleports' guard seats — part of the treasure blocks' repel list. */
+  teleportGuardSeats(zoneIndex: number): Tile[];
+  /** The zone's `+0x5C` stamped-blocked ledger — the lakes' 0x3E extra bit. */
+  blockedList(zoneIndex: number): Tile[];
+  zone(zoneIndex: number): RmgZone;
+  zoneRace(zoneIndex: number): number;
+  footprint(href: string): Footprint;
+}
+
+/**
+ * Run the nine ported phases; the rng stands at 18491 when this returns —
+ * or at 4475 for the underground run's options.
+ */
+export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain {
+  const dir = toAssets(install.data);
+  // The executable's tables — the install's, read once.
+  const exe = installTables(install);
+  // The port names the races symbolically; the numbers behind the names are
+  // the image's, checked here so a build that renumbers them fails out loud.
+  for (const [name, value] of Object.entries(RACE)) {
+    const theirs = exe.raceEnum[name === 'RANDOM' ? 'RANDOM_TYPE' : name];
+    if (theirs !== value) throw new Error(`the executable numbers RACE_${name} ${theirs}, the port ${value}`);
+  }
+  const size = options.size ?? SIZE;
+  const template = readTemplateNamed(dir, options.template ?? 'S1P2Z2M1');
+  const params = readDefaultParams(dir);
+  const presets = readPresets(dir);
+  const towns = new Map<string, TownShared>();
+  for (const preset of presets.values()) {
+    if (preset.townProto) {
+      const shared = readTownShared(dir, preset.townProto);
+      towns.set(shared.path, shared);
+    }
+  }
+  // The random-towns stand-ins: one town, seven dwellings — the globals
+  // 0x4D5A60 fills at start-up, spelled the way the engine spells them.
+  const randomTowns = Boolean(options.randomTowns);
+  const randomTown = randomTowns ? readTownShared(dir, exe.randomTown) : undefined;
+  const randomDwellings = [...exe.randomDwellings];
+  const creatures = readCreatures(dir);
+  const tables: GuardTables = {
+    templates: readArmyTemplates(dir, exe.armyTemplateGroup),
+    unplaceable: new Set(exe.unplaceableCreatures),
+    creatures,
+    powerByName: new Map(creatures.map((c) => [c.name, c.power])),
+  };
+
+  const rng = new RmgRandom(options.seed ?? SEED);
+  const ar = arithFor(options.arith ?? (options.gameBuild ? 'sse' : undefined));
+  const swapZoneAxes = options.swapZoneAxes || Boolean(options.gameBuild);
+  rng.arith = ar;
+  const trace = options.trace;
+  const warnings: string[] = [];
+  if (trace?.draw) rng.onDraw = (kind, value, limit) => trace.draw!(kind, value, limit);
+  const phase = (label: string): void => trace?.phase?.(label, rng.draws);
+  phase('start');
+  // THE REQUEST CARRIES THE SIZE INDEX, now that `vt+0x14`/`vt+0x18` are read
+  // (`create-map.ts`): the tile count the caller asked for, back through the
+  // engine's own table. `createMap` may then move it — a size too small for
+  // the template's units is lifted — and every size a generated map RECORDS is
+  // already a fixed point of that lift, so an order read out of a map comes
+  // back unchanged. An order typed by hand may not, and then the grid below
+  // follows the engine rather than the request.
+  const asked = exe.mapSizes.indexOf(size);
+  // A tile count outside the engine's seven is nobody's order; the reference's
+  // index stands in, rather than leaving the size UNSUPPLIED, which would send
+  // the phase down its drawing branch and change the value it yields.
+  const requested = asked < 0 ? exe.mapSizes.indexOf(SIZE) : asked;
+  const made = createMap(template,
+    { players: options.players ?? 2, size: requested, underground: options.underground }, rng, exe);
+  if (made.size !== requested) {
+    // Said out loud rather than followed: the grid below is laid out from the
+    // caller's tile count, and rebuilding it here would hide the fact that the
+    // engine would not have made this map at all. No order in the corpus
+    // reaches this — every size a generated map records is a fixed point.
+    warnings.push(`the engine would lift this order's size: ${exe.mapSizes[requested]} asked,`
+      + ` ${exe.mapSizes[made.size]} is what ${template.name}'s ${template.minMapSize} units require`);
+  }
+  phase('createMap');
+  const setup = mapSetup(params,
+    { monsterStrength: options.monsterStrength ?? 1, water: options.water ?? 0 }, rng);
+  phase('mapSetup');
+  const loaded = loadTemplate(template, {
+    twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
+    playerCount: made.players, mapSize: size, pointLightZoneRadius: params.pointLightParams.zoneRadius,
+    players: options.playerRaces ? [...options.playerRaces] : undefined,
+    races: exe,
+  }, rng);
+  warnings.push(...loaded.warnings);
+  phase('loadTemplate');
+  // WHICH WAY THE ZONES ARE LAID OUT is the template's choice — the engine's
+  // own two phases by default, byte for byte, or one of ours. See `layout.ts`.
+  const laid = layoutZones(template.zoneLayout, {
+    size, zones: loaded.zones, templateZones: template.zones, connections: template.connections,
+    twoFloors: made.twoFloors, layoutJitter: template.layoutJitter,
+    arith: ar, swapZoneAxes, spy: trace, phase,
+  }, rng);
+  const placed = { zones: laid.zones };
+  const filled = { floors: laid.floors };
+  // THE ZONE'S `+0xCC`, TAKEN WHERE THE ENGINE TAKES IT. `0xEB7790` — whose
+  // one caller is FillZones' own tail at 0xeaa609, right after the grow and
+  // flip lists are painted back into the grid — walks the level grid once and
+  // keeps every cell of the zone. Nothing rebuilds it afterwards, and two
+  // later phases dent the grid under it: FillDistToTowns writes -2 over the
+  // tiles a zone cannot reach from its centre, and the water carve takes the
+  // rim. So a candidate list DERIVED from the grid at MainObjects time is
+  // short of exactly those tiles, and the pool a step draws from is smaller
+  // than the engine's with no draw differing to say why — which is how
+  // `S3-5P4Z12B4` diverged: 348 against 346, the two being a disowned pocket
+  // at (71..72, 82) that FillDistToTowns had walled off.
+  const zoneLists = new Map<number, Tile[]>();
+  for (const z of loaded.zones) {
+    zoneLists.set(z.index, zoneTiles(size, filled.floors[z.floor] ?? filled.floors[0]!, z.index));
+  }
+  const distances = calcBorderTiles(size, size, filled.floors);
+  // THE DWARVEN PRE-STEP, which is FillTerrain's first half. GenerateMap at
+  // 0xEABA15 gates it on `byte [map+0x8C]` - the dwarven-underground coin -
+  // and calls 0xED17F0, which runs 0xEB2A20 on the SECOND floor and only when
+  // the level vector holds one (`end - begin >= 0x240`, two 0x120 entries).
+  // That is one draw, `8 + below(8)`, smeared over a (w/3+1)x(h/3+1) coarse
+  // grid nothing else in the chain reads. The limit is the literal 8 of
+  // `mov ecx,8` at 0xEB2A25 - on the traced map the zone count was 8 too, and
+  // the log alone could not tell the two apart.
+  // The value it draws is not thrown away: the underground terrain file's
+  // tag-0x10 block is that number, smeared over every cell of the coarse grid.
+  const coarse = setup.dwarvenUnderground && made.twoFloors ? dwarvenCoarse(rng) : null;
+  // FILLTERRAIN RUNS HERE, between CalcBorderTiles and PlaceTowns, so its
+  // vertex walk sees the grid as it stands at this moment. Two later passes
+  // dent it - FillDistToTowns writes -2 over a zone's unreachable tiles, the
+  // water carve takes the rim - and the paints replay long after the chain has
+  // finished, so the grid they read has to be kept rather than re-read. Feeding
+  // them the LATER grid paints nothing over a disowned pocket, because the
+  // vertex walk skips a cell whose zone no longer resolves: on `S3-5P4Z12B4`
+  // that cost 31 bytes of `GroundTerrain.bin` at (70..74, 79..83), and on
+  // `S1-3P2Z7V3` 10 more.
+  const gridAtFillTerrain = filled.floors.map((f) => f.map((row) => Int32Array.from(row)));
+  const townResult = placeTowns({
+    size, template, zones: loaded.zones, floors: filled.floors, distances,
+    radii: new Map(placed.zones.map((z) => [z.index, z.r])),
+    presets, towns, specializations: readTownSpecializations(dir),
+    creatures, unplaceable: tables.unplaceable, basicLeverGuardPower: params.basicLeverGuardPower,
+    monsterStrength: setup.monsterStrength,
+    randomTowns, randomTown,
+  }, rng);
+  phase('towns');
+  // The water border — the engine runs it between "towns placed" and the
+  // dist-to-towns tables (0xEABB1D): the sea depth by size index, then every
+  // floor-0 zone's vt+0x24 in the level's hash order. The carve is drawless;
+  // each water treasure costs exactly five draws.
+  let water: Chain['water'] = null;
+  if (setup.water !== 0) {
+    water = {
+      // THE DEPTH IS THE SIZE'S. It used to be `waterDepth(8)` — out of the
+      // table's range, so it fell through to the 3 that a 96-tile map wants
+      // anyway, and every larger island order carved the wrong ring. With the
+      // index said, a 136-tile order's border table comes back identical to
+      // the engine's; with 3 or 5 instead, 17473 of its 18496 cells differ.
+      depth: waterDepth(exe.waterDepth, exe.mapSizes.indexOf(size)),
+      kept: new Map(), sea: new Map(), waterLedger: new Map(),
+      repel: new Map(), treasures: new Map(), shipyards: new Map(),
+      marks: new Map(),
+      river: makeRiverPlane(size), drawsAfter: 0,
+    };
+    for (const z of floorIterationOrder(loaded.zones.filter((zz) => zz.floor === 0))) {
+      const carved = carveWaterBorder({
+        size, grid: filled.floors[0]!, border: distances[0]!, zoneIndex: z.index,
+        tiles: zoneLists.get(z.index)!, depth: water.depth,
+      });
+      water.kept.set(z.index, carved.kept);
+      water.sea.set(z.index, carved.sea);
+      water.waterLedger.set(z.index, carved.waterLedger);
+      water.marks.set(z.index, carved.marks);
+      // The carve's tail hands the sea vector to 0xECF080 — the layer
+      // paints replay later (the test builds layers only at fillTerrain
+      // time), but the river plane is stamped and blurred HERE: the seed
+      // reads the border as this zone's carve just adjusted it.
+      stampZoneSeaRiver(water.river, carved.sea, distances[0]!, size);
+      const repel: Tile[] = [];
+      water.repel.set(z.index, repel);
+      water.treasures.set(z.index, placeWaterTreasures({
+        size, landTiles: carved.kept.length, sea: carved.sea, ledger: repel,
+        typeCount: params.waterTreasures.length,
+      }, rng));
+    }
+    water.drawsAfter = rng.draws;
+  }
+
+  phase('waterBorder');
+  // The list the engine has AT THIS MOMENT: the carve has already taken the
+  // sea out of the grid, and what it left on the list is what gets disowned.
+  // TRANSPOSED on the way in - a zone tile list is (x, y) against a grid read
+  // as `grid[y][x]`, and dist-to-towns indexes its grid the other way round.
+  fillDistToTowns(size, filled.floors, loaded.zones, townResult.centres,
+    (zoneIndex) => (water?.kept.get(zoneIndex) ?? zoneLists.get(zoneIndex) ?? [])
+      .map(([x, y]) => [y, x] as const));
+  phase('distToTowns');
+  const conn = zoneConnections({
+    size, template, zones: loaded.zones, floors: filled.floors, distances,
+    guardPowerUnit: params.basicLeverGuardPower * params.connectionGuardLevel,
+    monsterStrength: setup.monsterStrength, tables,
+  }, rng);
+
+  phase('connections');
+  const floors = filled.floors.map((grid, f) => ({
+    grid, border: distances[f]!, occ: townResult.occupancy[f]!,
+    room: Array.from({ length: size }, () => new Int32Array(size)),
+  }));
+
+  // The phase's second sweep — the teleports. A no-op when the land digger
+  // served every connection, so the surface run costs nothing here. The
+  // stamps' room points and actives are kept per zone: `roomPoints` serves
+  // the former to every later recompute, the roads phase reads the latter.
+  const footprints = new Map<string, Footprint>();
+  const chainFootprint = (href: string): Footprint => {
+    let foot = footprints.get(href);
+    if (!foot) {
+      foot = readFootprint(dir, href);
+      footprints.set(href, foot);
+    }
+    return foot;
+  };
+  const teleports = new Map<number, PlacedTeleport[]>();
+  const teleportRoomPoints = new Map<number, Tile[]>();
+  const shipyardRoomPoints = new Map<number, Tile[]>();
+  const teleportActives = new Map<number, Tile[]>();
+  const teleportGuardSeats = new Map<number, Tile[]>();
+  const unconnectedSet = new Set(conn.unconnected);
+  const blockedLists = new Map<number, Tile[]>();
+  const blockedList = (zoneIndex: number): Tile[] => {
+    let l = blockedLists.get(zoneIndex);
+    if (!l) {
+      l = [...(townResult.stampedBlocked.get(zoneIndex) ?? [])];
+      blockedLists.set(zoneIndex, l);
+    }
+    return l;
+  };
+  const basePoints = (zoneIndex: number): Tile[] => {
+    const points: Tile[] = [...(townResult.stamped.get(zoneIndex) ?? [])];
+    for (const [a, b] of conn.passages.get(zoneIndex) ?? []) points.push([b, a]);
+    return points;
+  };
+  // The engine's second sweep (vt+0x2C per zone) always runs; the teleport
+  // half no-ops when the digger served every connection, and the shipyard
+  // half exists only on water-bordered zones — so the loop is entered when
+  // either half has work.
+  if (unconnectedSet.size || water) {
+    for (let f = 0; f < floors.length; f++) {
+      for (const z of floorIterationOrder(loaded.zones.filter((zz) => zz.floor === f))) {
+        const centre = townResult.centres.get(z.index)!;
+        const points = basePoints(z.index);
+        const grew: Tile[] = [];
+        const actives: Tile[] = [];
+        const seats: Tile[] = [];
+        const placedTeleports = placeZoneTeleports({
+          documents: { monolith: withoutPointer(exe.monolith), gateIn: withoutPointer(exe.gateIn), gateOut: withoutPointer(exe.gateOut) },
+          size, zoneIndex: z.index, floor: f,
+          grid: floors[f]!.grid, border: floors[f]!.border, occupancy: floors[f]!.occ,
+          points: grew, blocked: blockedList(z.index), connectionPoints: actives, guardSeats: seats,
+          connections: template.connections, unconnected: unconnectedSet,
+          centre: { x: centre.b, y: centre.a },
+          tiles: water?.kept.get(z.index) ?? zoneLists.get(z.index) ?? [],
+          floorOf: (zi) => loaded.zones.find((zz) => zz.index === zi)!.floor,
+          footprint: chainFootprint,
+          guardPowerUnit: params.basicLeverGuardPower * params.connectionGuardLevel,
+          monsterStrength: setup.monsterStrength, tables,
+          roomKept: (ring) => {
+            const room = ensureRoom(floors[f]!.room, size, floors[f]!.grid, z.index, [...points, ...grew]);
+            return filterByRoom(ring, room, floors[f]!.grid, floors[f]!.border, floors[f]!.occ,
+              size, z.index, 3).kept;
+          },
+        }, rng);
+        if (placedTeleports.length) teleports.set(z.index, placedTeleports);
+
+        // The WaterBordered override's tail: one shipyard for a zone whose
+        // `+0x164` bit is set, straight after its teleports.
+        if (water && z.floor === 0) {
+          const templateZone = template.zones.find((t) => t.index === z.index)!;
+          if (z.shipyard) {
+            // The stamp pushes into the zone's `+0x68` — served back through
+            // roomPoints() so the mines' room downstream sees the shipyard.
+            const stamped: Tile[] = [...points, ...grew];
+            const before = stamped.length;
+            // TWO SHIPYARDS ON A BIG MAP. `0xECC0A0` opens with
+            // `cmp [level+0xC],64h; setg cl; inc ecx` and loops its whole body
+            // that many times (`0xECCAE0` against the same slot), so the count
+            // is 1 + (dim > 100): one at 72 or 96 tiles, two from 136 up. The
+            // second pass builds its pool afresh and sees the first
+            // shipyard's stamp, and every water order past 96 tiles was short
+            // by exactly one shipyard a zone until this was read.
+            const attempts = size > 100 ? 2 : 1;
+            const framed: Tile[] = [];
+            // The game's centroid accumulator has the same lifetime as `framed`:
+            // the placer's frame, across both attempts. See `centroidSum`.
+            const centroidSum = options.gameBuild ? { x: 0, y: 0 } : undefined;
+            for (let attempt = 0; attempt < attempts; attempt++) {
+            const ship = placeShipyard({
+              centroidSum,
+              size, grid: floors[f]!.grid, border: floors[f]!.border,
+              occupancy: floors[f]!.occ, room: floors[f]!.room,
+              points: stamped, blocked: blockedList(z.index),
+              connectionPoints: actives, guardSeats: seats,
+              zoneIndex: z.index, floor: f, tiles: water.kept.get(z.index)!, framed,
+              depth: water.depth, river: water.river,
+              town: templateZone.town ? { x: centre.b, y: centre.a } : null,
+              foot: chainFootprint(withoutPointer(exe.shipyard)),
+              guardPowerUnit: params.basicLeverGuardPower * params.connectionGuardLevel,
+              monsterStrength: setup.monsterStrength, tables,
+            }, rng);
+            if (ship) {
+              const list = water.shipyards.get(z.index) ?? [];
+              list.push(ship);
+              water.shipyards.set(z.index, list);
+            }
+            }
+            if (stamped.length > before) shipyardRoomPoints.set(z.index, stamped.slice(before));
+          }
+        }
+
+        if (grew.length) teleportRoomPoints.set(z.index, grew);
+        if (actives.length) teleportActives.set(z.index, actives);
+        if (seats.length) teleportGuardSeats.set(z.index, seats);
+      }
+    }
+  }
+  phase('teleports');
+  const grid = floors[0]!.grid;
+  const border = floors[0]!.border;
+  const occ = floors[0]!.occ;
+  const room = floors[0]!.room;
+
+  return {
+    dir, exe, rng, size, template, params, presets, tables, setup, loaded, townResult, water, conn,
+    multipliers: { resource: options.resourceMultiplier ?? 1, exp: options.expMultiplier ?? 1 },
+    arith: ar,
+    trace, warnings,
+    gameBuild: Boolean(options.gameBuild),
+    grail: Boolean(options.grail),
+    randomTowns, randomDwellings,
+    randomTownPlayerRaces: options.randomTownPlayerRaces ?? worldPlayerRaces(8, exe.slotRaceList),
+    randomTownRaceOverride: options.randomTownRaceOverride ?? new Map(),
+    teleports, floors, grid, border, occ, room, gridAtFillTerrain, coarse,
+    roomPoints(zoneIndex: number): Tile[] {
+      // The engine's PUSH order — the town's stamp, the passages, the
+      // teleports' stamps, then the shipyard's. The room computations are
+      // order-blind, but the road step chains these points in order, so
+      // the order is part of the fact.
+      return [
+        ...basePoints(zoneIndex),
+        ...(teleportRoomPoints.get(zoneIndex) ?? []),
+        ...(shipyardRoomPoints.get(zoneIndex) ?? []),
+      ];
+    },
+    zoneTileList(zoneIndex: number): Tile[] {
+      return zoneLists.get(zoneIndex) ?? [];
+    },
+    teleportActives(zoneIndex: number): Tile[] {
+      return teleportActives.get(zoneIndex) ?? [];
+    },
+    teleportGuardSeats(zoneIndex: number): Tile[] {
+      return teleportGuardSeats.get(zoneIndex) ?? [];
+    },
+    blockedList,
+    zone(zoneIndex: number): RmgZone {
+      return template.zones.find((z) => z.index === zoneIndex)!;
+    },
+    zoneRace(zoneIndex: number): number {
+      return loaded.zones.find((z) => z.index === zoneIndex)!.race;
+    },
+    footprint(href: string): Footprint {
+      let foot = footprints.get(href);
+      if (!foot) {
+        foot = readFootprint(dir, href);
+        footprints.set(href, foot);
+      }
+      return foot;
+    },
+  };
+}
+
+/**
+ * One zone's MainObjects steps, in the engine's order. Construction spends
+ * NO draws; the phase's one prologue draw is the caller's (`chain.rng.next()`
+ * before the first zone). Call the steps in order — each mutates the shared
+ * occupancy and this zone's points the way the engine does.
+ */
+export class ZoneFill {
+  readonly points: Tile[];
+  readonly floor: number;
+  /** The abandoned mines the last mines() call placed — actives included. */
+  abandoned: import('./mines.ts').PlacedAbandonedMine[] = [];
+  private readonly c: Chain;
+  private readonly zoneIndex: number;
+  private readonly zone: RmgZone;
+  /** The town race's preset — what the dwellings step indexes. */
+  private readonly preset: RacePreset;
+  /**
+   * The TERRAIN race's preset — what `[zone+0x20]` points at, and what
+   * every price-list step buys from. On the surface the two races agree;
+   * an underground zone's dwarven town buys from the Dungeon lists, which
+   * the underground run's treasury boundary is what proved.
+   */
+  private readonly pricePreset: RacePreset;
+  /** The zone's `+0x5C` stamped-blocked ledger, shared with the chain. */
+  readonly blocked: Tile[];
+  /** The zone's own floor's grids — what every step reads and dents. */
+  private readonly f: Chain['floors'][number];
+  /**
+   * The zone's `+0xCC` — the list FillZones built and nothing rebuilds. The
+   * water carve is the one thing that EDITS it (the rim keeps membership with
+   * grid -1), so a water run takes the carve's answer and every other run the
+   * list as collected. Either way the steps read it rather than the grid,
+   * which by then has disowned tiles the engine is still drawing from.
+   */
+  private readonly tiles: Tile[];
+  /**
+   * OURS: the template's `<Objects>` ceilings for this zone, forced ones
+   * subtracted — set by `objects()`, read by every priced step after it.
+   * Empty (no ceilings) for a template of the game's.
+   */
+  private caps = new Map<string, number>();
+
+  constructor(c: Chain, zoneIndex: number) {
+    this.c = c;
+    this.zoneIndex = zoneIndex;
+    this.points = c.roomPoints(zoneIndex);
+    this.blocked = c.blockedList(zoneIndex);
+    this.zone = c.zone(zoneIndex);
+    const loaded = c.loaded.zones.find((z) => z.index === zoneIndex)!;
+    this.preset = c.presets.get(loaded.race)!;
+    this.pricePreset = c.presets.get(loaded.terrainRace)!;
+    this.floor = loaded.floor;
+    this.f = c.floors[this.floor] ?? c.floors[0]!;
+    this.tiles = c.water?.kept.get(zoneIndex) ?? c.zoneTileList(zoneIndex);
+  }
+
+  private priced(list: PricedBuilding[]): PricedItem[] {
+    return list.map((p) => ({ type: p.href, value: p.value, foot: this.c.footprint(p.href) }));
+  }
+
+  mines(): PlacedMine[] {
+    const { c } = this;
+    const centre = c.townResult.centres.get(this.zoneIndex);
+    const types = c.exe.mines.map((m) => ({ mine: objectName(m.href), pile: objectName(m.pile) }));
+    const feet = new Map<string, MineFootprint>(types.map((t) => [t.mine, readMineShared(c.dir, t.mine)]));
+    const mines = placeZoneMines({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor,
+      town: this.zone.town && centre ? { x: centre.b, y: centre.a } : null,
+      types, goldType: c.exe.goldMineType, counts: this.zone.mines,
+      radii: {
+        nearMin: c.params.mine1LevelMinRadius, nearMax: c.params.mine1LevelMaxRadius,
+        farMin: c.params.mine2LevelMinRadius, farMax: c.params.mine2LevelMaxRadius,
+      },
+      guardPower: {
+        basic: c.params.basicLeverGuardPower,
+        mine1: c.params.mine1LevelGuardLevel, mine2: c.params.mine2LevelGuardLevel,
+        gold: c.params.mineGoldGuardLevel,
+      },
+      guardMultiplier: this.zone.guardMultiplier,
+      monsterStrength: c.setup.monsterStrength,
+      tables: c.tables,
+      footprints: feet,
+    }, c.rng);
+    // 0xEBD700 — the abandoned mines run right after, in the same step.
+    this.abandoned = this.pricePreset.abandonedMine
+      ? placeZoneAbandonedMines({
+          size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ,
+          room: this.f.room, points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor,
+          count: this.zone.abandonedMines,
+          town: this.zone.town && centre ? { x: centre.b, y: centre.a } : null,
+          ringMin: c.params.mine3LevelMinRadius, ringMax: c.params.mine3LevelMaxRadius,
+          foot: c.footprint(this.pricePreset.abandonedMine),
+        }, c.rng)
+      : [];
+    return mines;
+  }
+
+  dwellings(): PlacedDwelling[] {
+    const { c } = this;
+    return placeZoneDwellings({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, counts: this.zone.dwellings,
+      descriptors: this.preset.dwellings.map((href) => c.footprint(href)),
+      // Mode 1 — the stand-ins, and the town the zone got (`zone+0xFC`).
+      randomTowns: c.randomTowns,
+      randomDescriptors: c.randomTowns ? c.randomDwellings.map((href) => c.footprint(href)) : undefined,
+      townName: c.townResult.townNames.get(this.zoneIndex),
+    }, c.rng);
+  }
+
+  /**
+   * `0xEBFFC0` — the obelisks the GRAIL checkbox adds, this zone's share.
+   * The room grid is recomputed with mask 4 first, which is the worker's own
+   * (`0xEC1500` calls `0xEC28E0(4, 0)` before every obelisk); the pass sits
+   * between the dwellings and the upgrade buildings.
+   */
+  /** `0xEC00F0` — the Graal, in the drawn zone and before its obelisks. */
+  graal(): PlacedObelisk | null {
+    const { c } = this;
+    return placeZoneGraal({
+      size: c.size, sizeIndex: c.exe.mapSizes.indexOf(c.size),
+      grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      obelisk: c.footprint(c.params.obelisk), graal: c.footprint(c.params.grail),
+    }, c.rng);
+  }
+
+  obelisks(): PlacedObelisk[] {
+    const { c } = this;
+    return placeZoneObelisks({
+      size: c.size, sizeIndex: c.exe.mapSizes.indexOf(c.size), grid: this.f.grid, border: this.f.border,
+      occupancy: this.f.occ, room: this.f.room, points: this.points,
+      zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      obelisk: c.footprint(c.params.obelisk),
+    }, c.rng);
+  }
+
+  /**
+   * OURS — the template's `<Objects>` for this zone: the floors placed, the
+   * ceilings kept for the priced steps that follow. See `zone-objects.ts`.
+   */
+  objects(): PlacedZoneObject[] {
+    const { c } = this;
+    if (!this.zone.objects.length) return [];
+    const r = placeZoneObjects({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      objects: this.zone.objects, footprint: (href) => c.footprint(href),
+      basicLeverGuardPower: c.params.basicLeverGuardPower * this.zone.guardMultiplier,
+      monsterStrength: c.setup.monsterStrength, tables: c.tables,
+    }, c.rng);
+    this.caps = r.caps;
+    for (const short of r.short) {
+      c.warnings.push(`zone ${this.zoneIndex}: ${objectName(short.href)} asked ${short.min}, placed ${short.placed} — no room for more`);
+    }
+    return r.placed;
+  }
+
+  upgradeBuildings(): PlacedUpgradeBuilding[] {
+    const { c } = this;
+    return placeZoneUpgradeBuildings({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, density: this.zone.upgBuildingsDensity, multIndex: c.multipliers.exp, multipliers: c.exe.densityMultipliers,
+      caps: this.caps.size ? this.caps : undefined,
+      list: this.priced(this.pricePreset.newUpgradeBuildings)
+        .map((p, i) => ({ href: p.type, value: p.value, foot: p.foot,
+          guardStrenght: this.pricePreset.newUpgradeBuildings[i]!.guardStrenght })),
+      // OURS: the zone's multiplier rides on the unit; 1 for the game's templates.
+      basicLeverGuardPower: c.params.basicLeverGuardPower * this.zone.guardMultiplier,
+      monsterStrength: c.setup.monsterStrength, tables: c.tables,
+    }, c.rng);
+  }
+
+  /** `0xEBD1C0` — the template's Prisons count, no guard, skip on failure. */
+  prisons(): PlacedPrison[] {
+    const { c } = this;
+    return placeZonePrisons({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      count: this.zone.prisons, foot: c.footprint(withoutPointer(c.exe.prison)),
+    }, c.rng);
+  }
+
+  /** `0xEBD4B0` — the prisons placer's twin, LandCartographer of them. */
+  cartographers(): PlacedCartographer[] {
+    const { c } = this;
+    return placeZoneCartographers({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      count: this.zone.landCartographer, foot: c.footprint(withoutPointer(c.exe.cartographer)),
+    }, c.rng);
+  }
+
+  shrines(): PlacedShrine[] {
+    const { c } = this;
+    return placeZoneShrines({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, shrinePoints: this.zone.shrinePoints,
+      types: c.exe.shrines.map((s) => ({ name: objectName(s.href), cost: s.cost })),
+      footprints: c.exe.shrines.map((s) => c.footprint(withoutPointer(s.href))),
+    }, c.rng);
+  }
+
+  private priceListStep(budget: number, list: PricedBuilding[]): PlacedPriced[] {
+    const { c } = this;
+    return placePriceList({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles, budget, list: this.priced(list),
+      caps: this.caps.size ? this.caps : undefined,
+    }, c.rng);
+  }
+
+  private zoneTileCount(): number {
+    if (this.tiles) return this.tiles.length;
+    let n = 0;
+    for (let x = 0; x < this.c.size; x++) {
+      for (let y = 0; y < this.c.size; y++) if (this.f.grid[y]![x] === this.zoneIndex) n++;
+    }
+    return n;
+  }
+
+  resourceBuildings(): PlacedPriced[] {
+    return this.priceListStep(
+      scaledBudget(this.zoneTileCount(), this.zone.resourceBuildingsDensity),
+      this.pricePreset.newResourceGivers);
+  }
+
+  treasuryBuildings(): PlacedPriced[] {
+    return this.priceListStep(this.zone.treasureBuildingPoints, this.pricePreset.newTreasuryBuildings);
+  }
+
+  luckMorale(): PlacedPriced[] {
+    return this.priceListStep(
+      scaledBudget(this.zoneTileCount(), this.zone.luckMoralBuildingsDensity, 40),
+      this.pricePreset.newLuckMoraleBuildings);
+  }
+
+  shops(): PlacedPriced[] {
+    return this.priceListStep(this.zone.shopPoints, this.pricePreset.newShopBuildings);
+  }
+
+  /** `0xEBF930` — observatories plus the townless zones' Den of Thieves roll. */
+  observatories(): PlacedObject[] {
+    const { c } = this;
+    return placeObservatories({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      points: this.points, blocked: this.blocked, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      observatory: c.footprint(withoutPointer(c.exe.observatory)),
+      denOfThieves: c.footprint(withoutPointer(c.exe.denOfThieves)),
+      playerNo: c.loaded.zones.find((z) => z.index === this.zoneIndex)!.playerNo,
+    }, c.rng);
+  }
+
+  private treasureStep(kind: 'treasures' | 'chests', late = false): PlacedObject[] {
+    const { c } = this;
+    // The dispatcher 0xEA57B0 sits behind the surface gate — an underground
+    // zone gets its treasures in the additional-objects phase instead,
+    // through the same dispatcher with the gate's sense reversed.
+    if (!late && c.loaded.zones.find((z) => z.index === this.zoneIndex)!.floor !== 0) return [];
+    return placeZoneTreasures({
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ, room: this.f.room,
+      // NO `blocked` — the treasures' 2s stay out of the `+0x5C` ledger
+      // (measured on the underground zone-2 mountains: with them in, the
+      // port's candidate list loses tiles the engine keeps).
+      points: this.points, zoneIndex: this.zoneIndex, floor: this.floor, tiles: this.tiles,
+      density: kind === 'treasures' ? this.zone.treasureDensity : this.zone.treasureChestDensity,
+      multIndex: kind === 'treasures' ? c.multipliers.resource : c.multipliers.exp, multipliers: c.exe.densityMultipliers, kind,
+      types: c.exe.treasures.map(objectName),
+      footprints: c.exe.treasures.map((t) => c.footprint(withoutPointer(t))),
+    }, c.rng);
+  }
+
+  treasures(): PlacedObject[] {
+    return this.treasureStep('treasures');
+  }
+
+  chests(): PlacedObject[] {
+    return this.treasureStep('chests');
+  }
+
+  /** The additional-objects phase — the underground zones' late treasures. */
+  lateTreasures(): PlacedObject[] {
+    return this.treasureStep('treasures', true);
+  }
+
+  lateChests(): PlacedObject[] {
+    return this.treasureStep('chests', true);
+  }
+
+  /** `0xEC05B0` — the zone road, kind 0x20; one below(2) per walked tile. */
+  road(): Tile[] {
+    const { c } = this;
+    const { zoneIndex } = this;
+    return buildZoneRoad({
+      arith: c.arith,
+      size: c.size, grid: this.f.grid, border: this.f.border, occupancy: this.f.occ,
+      zoneIndex, points: this.points, kindBit: 0x20,
+      field: c.trace?.roadField && ((cost, from, to) => c.trace!.roadField!(zoneIndex, 0x20, cost, from, to)),
+    }, c.rng);
+  }
+}

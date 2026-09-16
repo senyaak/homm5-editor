@@ -15,11 +15,20 @@
 // An href is kept verbatim, `#xpointer(...)` suffix and all — the phases that
 // resolve one should see exactly what the engine saw, not a path this reader
 // decided to tidy.
+//
+// SIXTEEN OF THE FIFTY-FIVE FIELDS FEED NOTHING — no instruction in either
+// executable reads them, and changing the ten that are numbers leaves the
+// generated map identical byte for byte. They are marked below rather than
+// dropped, because the format carries them and a reader that skipped them
+// would be a reader of a different format. See "Which fields the engine
+// actually reads" in docs/RMG.md for how each verdict was earned.
 
 import { readFileSync } from 'node:fs';
 
 import { childText, find, findAll, parse, text } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
+import { readText } from './data.ts';
+import type { DataRoot } from './data.ts';
 
 /** An x/y/z triple — a light colour, held in single precision like the engine. */
 export interface RmgColor {
@@ -31,6 +40,7 @@ export interface RmgColor {
 /** `PointLightParams` — the coloured lights scattered over the underground. */
 export interface RmgPointLightParams {
   zoneRadius: number;
+  /** DEAD, unlike the rest of this block. */
   minDist: number;
   zMin: number;
   zMax: number;
@@ -47,6 +57,7 @@ export interface RmgCreatureStackParams {
 }
 
 export interface RmgParams {
+  /** DEAD. 37 in the shipped file, and nothing compares it against anything. */
   rmgVersion: number;
   /** Tiles from a town: how far out each tier of mine is allowed to be. */
   mine1LevelMinRadius: number;
@@ -61,31 +72,39 @@ export interface RmgParams {
   mine2LevelGuardLevel: number;
   mineGoldGuardLevel: number;
   junctionMinBorderDistance: number;
+  /** DEAD, both of them — a teleport keeps no distance from a border. */
   teleportMinBorderDistance: number;
   teleportMaxBorderDistance: number;
+  /** DEAD. */
   distBetweenLakes: number;
   distBetweenTreasureBlocks: number;
+  /** DEAD, both: a guard stack is sized by `SetMonster`, from the power. */
   creatureMinStackAmount: number;
   creatureMaxStackAmount: number;
+  /** DEAD. */
   minDistanceBetweenBigObjects: number;
+  /** DEAD — `distBetweenTreasureBlocks` above is the one that is read. */
   minDistanceBetweenTreasureBlocks: number;
   groundTerrainLight: string;
   undergroundTerrainLight: string;
   pointLightParams: RmgPointLightParams;
   mapName: string;
   mapDescription: string;
+  /** DEAD, both — the map's scenario text comes from `MapDescription`. */
   scenarioCaption: string;
   scenarioDescription: string;
   objectiveCaption: string;
   objectiveDescription: string;
   objectiveRMGCaption: string;
   objectiveRMGDescription: string;
+  /** DEAD, all three of its fields. */
   creatureStackParams: RmgCreatureStackParams;
   defaultSurfaceTile: string;
   defaultSubterraTile: string;
   deepWaterTile: string;
   deepWaterBottom: string;
   defaultTransitiveTile: string;
+  /** DEAD. Every transitive paint uses a literal instead — 150, 200, 255. */
   transitiveTileIntensity: number;
   /** Seven, one per entry of the size table `CreateMap` indexes. */
   mapSizeNames: string[];
@@ -93,14 +112,16 @@ export interface RmgParams {
   textWithout: string;
   defaultRMGObjective: string;
   defaultGrailObjective: string;
-  /** Empty in the shipped file; kept so a file that fills it is not misread. */
+  /** DEAD, and empty in the shipped file; kept so a filled one is not misread. */
   templates: string[];
   textWithWater: string;
   textWithoutWater: string;
   monsterStrenghtNames: string[];
+  /** DEAD — eight colours the generator never asks for. */
   resourceMineColors: RmgColor[];
-  /** Empty in the shipped file, like `templates`. */
+  /** DEAD, and empty in the shipped file, like `templates`. */
   monsterLevelCoef: number[];
+  /** DEAD: the shipyard guard multiplies by an immediate 20 at `0xECC901`. */
   shipyardGuardsLevelCoef: number;
   groundTerrainLights: string[];
   obelisk: string;
@@ -218,6 +239,12 @@ export function parseParams(xml: string): RmgParams {
   };
 }
 
+/** The params by their full path on disk — the tests' door. */
 export function readParams(path: string): RmgParams {
   return parseParams(readFileSync(path, 'utf8'));
+}
+
+/** `RMG/Params/Default.xdb` through the mounted chain — the generator's door. */
+export function readDefaultParams(dataRoot: DataRoot): RmgParams {
+  return parseParams(readText(dataRoot, 'RMG/Params/Default.xdb'));
 }

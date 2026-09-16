@@ -30,19 +30,39 @@
 // A count above the maximum falls back to the MINIMUM. The engine's bug, so
 // the port keeps it, with a test naming it deliberate.
 //
-// Named holes, still open:
-//   - the units-to-size-index conversions (the generator's vt+0x14/vt+0x18)
-//     are unread, so what the template's 5..14 range measures stays open; a
-//     DRAWN size is returned in those units, halved (integer, op unverified)
-//     when two floors share the map;
-//   - the forced-underground fit checks (map too small for its players) are
-//     unported — they need the same two virtuals.
+// BOTH NAMED HOLES ARE CLOSED, and neither was arithmetic. `vt+0x14` and
+// `vt+0x18` are the generator's own slots, `0xEADE20` and `0xEADE90`, and they
+// are two tables in the code — a jump table and a compare ladder, read out of
+// the executable into `SizeTables` (`src/exe/rmg-tables.ts`). With them the
+// size fit at `0xEAB616` reads out whole, and so does the forced-underground
+// branch behind it.
 //
 // What is pinned: the size that reaches the map is an index into the table at
 // 0xff291c — 72, 96, 136, 176, 216, 256, 320 tiles — and the reference map is
 // 96×96, index 1.
 
 import type { RmgRandom } from './random.ts';
+
+/**
+ * The three size tables, read out of the executable (`src/exe/rmg-tables.ts`):
+ * the tile counts by size index (the index is what the request carries and
+ * what the water depth is chosen by), a size index in the template's own
+ * UNITS — a seven-way jump table whose numbers are the tile count squared
+ * over a thousand, rounded, held as constants — and the ladder back.
+ */
+export interface SizeTables {
+  mapSizes: readonly number[];
+  sizeUnits: readonly number[];
+  /** The ladder's thresholds: units below `[i]` are size `i`; past the last, the last index. */
+  unitsToSize: readonly number[];
+}
+
+/** The generator's `unitsToSize` — a ladder of compares, the thresholds the executable's. */
+export function unitsToSize(sizes: SizeTables, units: number): number {
+  const ladder = sizes.unitsToSize;
+  for (let i = 0; i < ladder.length; i++) if (units < ladder[i]!) return i;
+  return ladder.length;
+}
 import type { RmgTemplate } from './template.ts';
 
 export interface MapRequest {
@@ -63,7 +83,7 @@ export interface CreatedMap {
   twoFloors: boolean;
 }
 
-export function createMap(template: RmgTemplate, request: MapRequest, rng: RmgRandom): CreatedMap {
+export function createMap(template: RmgTemplate, request: MapRequest, rng: RmgRandom, sizes: SizeTables): CreatedMap {
   // Draw one: the underground. The coin only spins when the operator asked
   // for a random one; otherwise the number is drawn and dropped like every
   // other supplied parameter.
@@ -75,13 +95,14 @@ export function createMap(template: RmgTemplate, request: MapRequest, rng: RmgRa
     twoFloors = request.underground ?? false;
   }
 
-  // Draw two: the size. Drawn in the template's own units, and with two
-  // floors sharing the map the units are halved before the engine converts
-  // them to a size index (the conversion itself is the unread vt+0x18).
+  // Draw two: the size. Drawn in the template's own UNITS, halved when two
+  // floors share the map, and turned into an index by `unitsToSize` — the
+  // conversion is `0xEADE90` and it is read now, so the drawn path no longer
+  // hands the units on as if they were an index.
   let size: number;
   if (request.size === undefined) {
-    size = template.minMapSize + rng.below(template.maxMapSize - template.minMapSize + 1);
-    if (twoFloors) size = Math.trunc(size / 2);
+    const units = template.minMapSize + rng.below(template.maxMapSize - template.minMapSize + 1);
+    size = unitsToSize(sizes, twoFloors ? Math.trunc(units / 2) : units);
   } else {
     rng.next();
     size = request.size;
@@ -97,6 +118,36 @@ export function createMap(template: RmgTemplate, request: MapRequest, rng: RmgRa
     players = request.players;
   }
   if (players > template.maxPlayers || players < template.minPlayers) players = template.minPlayers;
+
+  // THE SIZE FIT, `0xEAB616`, and it runs on whatever the size ended up being
+  // — supplied or drawn, after the players, not before. The map has to carry
+  // the template's own MinMapSize in units, and TWO FLOORS COUNT TWICE:
+  //
+  //     if (units(size) * floors < MinMapSize) size = unitsToSize(MinMapSize)
+  //
+  // Measured against the engine on nine orders: `-size 0` on a template whose
+  // Min is 60 comes back HUGE, and `-size 3` on the SAME template with an
+  // underground comes back LARGE and stays there — 31 units over two floors is
+  // 62, which clears 60. There is no upper bound here: `-size 6` on a template
+  // whose Max is 14 gives 320x320 and the engine does not complain. The
+  // DIALOG is where the upper bound lives — it filters the template list by
+  // `Min <= units * floors <= Max`, which is why ticking the underground
+  // swaps small templates for large ones rather than the other way round.
+  const total = sizes.sizeUnits[size] === undefined ? 0 : sizes.sizeUnits[size]! * (twoFloors ? 2 : 1);
+  if (total < template.minMapSize) {
+    const straight = unitsToSize(sizes, template.minMapSize);
+    if (straight <= 5) {
+      size = straight;
+    } else {
+      // A template that wants more than the biggest map there is gets an
+      // underground FORCED and half its units, capped at EXTRALARGE. No
+      // shipped template reaches this — the largest MinMapSize is 70 — so it
+      // is ported from the instructions and untested by any map here.
+      const half = unitsToSize(sizes, Math.trunc(template.minMapSize / 2));
+      size = half >= 4 ? 4 : half;
+      twoFloors = true;
+    }
+  }
 
   return { players, size, twoFloors };
 }

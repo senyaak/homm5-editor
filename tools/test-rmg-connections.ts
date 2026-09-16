@@ -25,13 +25,23 @@ import { mapSetup } from '../src/rmg/map-setup.ts';
 import { readParams } from '../src/rmg/params.ts';
 import { readPresets } from '../src/rmg/preset-table.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
-import { readTemplate } from '../src/rmg/template.ts';
+import { readTemplate } from '../src/rmg/template-files.ts';
 import { readTownShared, readTownSpecializations } from '../src/rmg/town-data.ts';
 import type { TownShared } from '../src/rmg/town-data.ts';
 import { placeTowns } from '../src/rmg/towns.ts';
 import { generateGameZones } from '../src/rmg/zones.ts';
 import { dataDir } from './game-dir.ts';
 import { hasReference, REFERENCE_MAP, REFERENCE_MISSING } from './rmg-reference.ts';
+import { exeTables } from '../src/rmg/exe.ts';
+import { gameExeIfAny } from './game-dir.ts';
+
+// The generator's tables come out of the executable, so a run needs the game.
+const exePath = gameExeIfAny();
+if (!exePath) {
+  console.log('skipping — the generator reads its tables from the executable; say --game <dir> or HOMM5_GAME');
+  process.exit(0);
+}
+const EXE = exeTables(exePath);
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -57,17 +67,17 @@ for (const preset of presets.values()) {
 }
 const creatures = readCreatures(dir);
 const tables: GuardTables = {
-  templates: readArmyTemplates(dir),
+  templates: readArmyTemplates(dir, EXE.armyTemplateGroup),
   creatures,
-  powerByName: new Map(creatures.map((c) => [c.name, c.power])),
+  powerByName: new Map(creatures.map((c) => [c.name, c.power])), unplaceable: new Set(EXE.unplaceableCreatures),
 };
 
 const rng = new RmgRandom(1785351845);
-const made = createMap(template, { players: 2, size: 8 }, rng);
-const setup = mapSetup(params, { monsterStrength: 1, water: false }, rng);
+const made = createMap(template, { players: 2, size: 1 }, rng, EXE);
+const setup = mapSetup(params, { monsterStrength: 1, water: 0 }, rng);
 const loaded = loadTemplate(template, {
   twoFloors: made.twoFloors, dwarvenUnderground: setup.dwarvenUnderground, water: setup.water,
-  playerCount: made.players, mapSize: 96, pointLightZoneRadius: params.pointLightParams.zoneRadius,
+  playerCount: made.players, mapSize: 96, pointLightZoneRadius: params.pointLightParams.zoneRadius, races: EXE,
 }, rng);
 const placed = generateGameZones(96, 96,
   loaded.zones.map((z) => ({ index: z.index, size: z.size, floor: z.floor })), made.twoFloors, rng);
@@ -77,6 +87,8 @@ const townResult = placeTowns({
   size: 96, template, zones: loaded.zones, floors: filled.floors, distances,
   radii: new Map(placed.zones.map((z) => [z.index, z.r])),
   presets, towns, specializations: readTownSpecializations(dir),
+  creatures, unplaceable: new Set(EXE.unplaceableCreatures), basicLeverGuardPower: params.basicLeverGuardPower,
+  monsterStrength: setup.monsterStrength,
 }, rng);
 fillDistToTowns(96, filled.floors, loaded.zones, townResult.centres);
 
