@@ -59,7 +59,19 @@ interface Patch {
   rva: number;
   before: number[];
   after?: number[];
+  /** The MAP EDITOR's image, not the game's — an `_ED_` in the address's name says so. */
+  editor: boolean;
 }
+
+/**
+ * Which executable an address is in. The two are the same source compiled
+ * twice and lay their code out differently (docs/RMG.md), so the extension
+ * names an editor address with `_ED_` — `MM_ED_WRITE_RVA`, the minimap
+ * probe's — and a row so named is checked against `H5_MapEditor_H5E.exe`.
+ * Checked against the game's it found other bytes at every one of fifteen
+ * addresses (16.09).
+ */
+const inEditor = (rvaName: string): boolean => /_ED_/.test(rvaName);
 
 /** `static const BYTE NAME[n] = { 0x.., ... };` — the row, by its name. */
 function bytesNamed(source: string, name: string): number[] | null {
@@ -91,7 +103,7 @@ for (const path of sources(join(REPO, 'native'))) {
       `${before.length} vs ${after.length}`);
     check(`  ${what}: and the patch actually changes something`,
       before.some((b, i) => b !== after[i]));
-    patches.push({ file, what, rva, before, after });
+    patches.push({ file, what, rva, before, after, editor: inEditor(rvaName) });
   }
 
   // AND EVERY OTHER ADDRESS THE FILE NAMES. `overwrite_code` is one of three
@@ -111,7 +123,7 @@ for (const path of sources(join(REPO, 'native'))) {
     const before = bytesNamed(source, `${stem}_HEAD`) ?? bytesNamed(source, `${stem}_MARK`);
     const rva = rvaNamed(source, `${stem}_RVA`);
     if (!before || rva === null) continue;
-    patches.push({ file, what: stem, rva, before });
+    patches.push({ file, what: stem, rva, before, editor: inEditor(`${stem}_RVA`) });
   }
 
   // AND THE STUBS, WHICH ARE THE OTHER HALF OF THE SAME RISK.
@@ -200,19 +212,24 @@ check('there are patches to check at all', patches.length > 0, `${patches.length
 
 const game = gameDirIfAny();
 const exe = game ? join(game, 'bin', 'H5_Game_H5E.exe') : null;
+const editorExe = game ? join(game, 'bin', 'H5_MapEditor_H5E.exe') : null;
 if (!exe || !existsSync(exe)) {
   console.log(`\n  (skipped the executable half — ${exe ? 'no ' + exe : 'no game folder said'})`);
 } else {
   const pe = PEFile.read(exe);
+  const editorPe = editorExe && existsSync(editorExe) ? PEFile.read(editorExe) : null;
+  if (!editorPe) console.log(`  (the editor's addresses are skipped — no ${editorExe})`);
   const hex = (b: number[]): string => b.map((x) => x.toString(16).padStart(2, '0')).join(' ');
 
   for (const p of patches) {
-    const at = pe.offsetOf(pe.imageBase + p.rva);
+    const image = p.editor ? editorPe : pe;
+    if (!image) continue;
+    const at = image.offsetOf(image.imageBase + p.rva);
     if (at === null) {
       check(`${p.what}: 0x${p.rva.toString(16)} is inside the image`, false);
       continue;
     }
-    const there = [...pe.buf.subarray(at, at + p.before.length)];
+    const there = [...image.buf.subarray(at, at + p.before.length)];
     check(`${p.what}: the bytes at 0x${p.rva.toString(16)} are the ones the patch expects`,
       there.every((b, i) => b === p.before[i]), `found ${hex(there)}, wanted ${hex(p.before)}`);
 
@@ -224,7 +241,7 @@ if (!exe || !existsSync(exe)) {
     // pretending otherwise would be a check that fails for being true.
     if (p.before.length < 2) continue;
     const slides = [-1, 1].filter((d) => {
-      const near = pe.buf.subarray(at + d, at + d + p.before.length);
+      const near = image.buf.subarray(at + d, at + d + p.before.length);
       return p.before.every((b, i) => near[i] === b);
     });
     check(`${p.what}: and only at that address`, slides.length === 0,
