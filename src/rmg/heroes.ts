@@ -78,7 +78,10 @@ function readRoster(data: Assets): HireableHero[] {
     if (childText(doc, 'Class') === 'HERO_CLASS_NONE') continue;
     const town = childText(doc, 'TownType');
     if (!town) continue;
-    const nameRef = find(doc, 'NameFileRef')?.attrs.href;
+    // The name is the Editable block's; the document's own NameFileRef-like
+    // tags (SpecializationNameFileRef) are the specialization's.
+    const editable = find(doc, 'Editable');
+    const nameRef = editable ? find(editable, 'NameFileRef')?.attrs.href : undefined;
     const shown = nameRef ? gameText(data, nameRef) : '';
     out.push({ href: entry.id, town, name: shown || entry.name || path });
   }
