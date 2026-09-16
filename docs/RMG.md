@@ -3869,10 +3869,13 @@ hero), by its `TownType` — eight a race, the dwarves under
 player slot, grouped by race; `test-rmg-heroes` holds the roster, the
 choice and the file, `e2e/rmg.spec.ts` drives the select and reads the
 map. Played on `Jebus Heroes` (16.09): the lobby offers exactly the heroes
-listed, one per slot — and two slots naming ONE hero get one hero between
-them, the second slot starting without; that is a warning now, and a
-mirrored two-player map will want two documents of one hero (the
-Outcast's business).
+listed, one per slot, and the TAVERNS are empty — every hero the map lists
+is seated at the start, and nobody is left to hire. Two slots naming ONE
+hero get one hero between them, the second slot starting without; that is
+a warning now, and a mirrored two-player map will want two documents of
+one hero (the Outcast's business). A map that should still hire wants the
+list longer than the players — a slot left to the game does that for its
+race, and a tavern list of the order's own is the whitelist's business.
 
 What the Voronoi layout does NOT yet read, and HotA's templates do — noted
 for the template editor, not for now: a connection's TYPE (`teleport`
