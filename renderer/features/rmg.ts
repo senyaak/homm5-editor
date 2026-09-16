@@ -164,6 +164,18 @@ function renderLists(): void {
   $('rmg-lists').classList.toggle('locked', $input('rmg-heroes-of-races').checked);
 }
 
+/**
+ * Setting a hero aside is a statement about everyone else: the first hero
+ * put on the black list pulls every hero not yet on either list into the
+ * white one, so the two lists partition the roster from then on and the
+ * map's list (the white one) is "everybody but these".
+ */
+function setAside(href: string): void {
+  black.push(href);
+  const listed = new Set([...white, ...black]);
+  for (const h of choices?.heroes ?? []) if (!listed.has(h.href)) white.push(h.href);
+}
+
 /** The picker: every hero not yet in either list, by town, narrowed by the search; a click adds one and closes. */
 function openPicker(into: string[], title: string): void {
   const d = $('rmg-pick');
@@ -192,7 +204,12 @@ function openPicker(into: string[], title: string): void {
         const b = document.createElement('button');
         b.className = 'rmg-pick-hero';
         b.textContent = h.name;
-        b.onclick = () => { into.push(h.href); renderLists(); d.close(); };
+        b.onclick = () => {
+          if (into === black) setAside(h.href);
+          else into.push(h.href);
+          renderLists();
+          d.close();
+        };
         list.appendChild(b);
       }
     }

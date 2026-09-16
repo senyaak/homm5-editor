@@ -210,6 +210,21 @@ test('generates a tiny map through the dialog and opens it', async () => {
   await expect(page.locator('#rmg-white .rmg-hero')).toHaveCount(0);
   await page.locator('#rmg-black .rmg-hero button').first().click();
   await expect(page.locator('#rmg-white .rmg-hero')).toHaveCount(1);
+  // Setting one aside through the black list's + puts everyone else on the
+  // white list — Orrin already there, the other 62 of the 64 hireable join
+  // him (eight a race, test-rmg-heroes); Clear empties both.
+  await page.locator('#rmg-black-add').click();
+  await page.locator('#rmg-pick-list .rmg-pick-hero').first().click();
+  await expect(page.locator('#rmg-black .rmg-hero')).toHaveCount(1);
+  await expect(page.locator('#rmg-white .rmg-hero')).toHaveCount(63);
+  await page.locator('#rmg-heroes-clear').click();
+  await expect(page.locator('#rmg-white .rmg-hero')).toHaveCount(0);
+  await expect(page.locator('#rmg-black .rmg-hero')).toHaveCount(0);
+  // And Orrin alone again, for the map below.
+  await page.locator('#rmg-white-add').click();
+  await page.locator('#rmg-pick-search').fill(orrinName);
+  await page.locator('#rmg-pick-list .rmg-pick-hero', { hasText: orrinName }).click();
+  await expect(page.locator('#rmg-white .rmg-hero')).toHaveCount(1);
   await expect(page.locator('#rmg-where')).toContainText(`${NAME}.h5m`);
   await page.locator('#rmg-ok').click();
 
