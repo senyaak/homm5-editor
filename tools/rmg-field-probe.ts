@@ -222,7 +222,9 @@ function generate(): Snapshot {
 function withField(field: string, value: string): string {
   const xml = readFileSync(stock, 'utf8');
   const every = onPreset || (onTemplate && CONNECTION_FIELDS.has(field));
-  const tag = new RegExp(`<${field}>[^<]*</${field}>`, every ? 'g' : '');
+  // Lazy up to the closing tag, so a field holding a LIST (`HeroPool`) is
+  // replaced whole and a plain number exactly as before.
+  const tag = new RegExp(`<${field}>[\\s\\S]*?</${field}>`, every ? 'g' : '');
   if (!new RegExp(`<${field}>`).test(xml)) throw new Error(`${stock} has no <${field}>`);
   return xml.replace(tag, `<${field}>${value}</${field}>`);
 }
