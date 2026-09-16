@@ -1133,6 +1133,16 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       player count taken — HotA's `.h3t` (Jebus Outcast: 126 maps in one
       file). Belongs to the template editor, which is where variants will be
       authored ⬜
+- [ ] **What `mt_outcast` needs of a connection** (read 16.09, three things,
+      all ours — the engine's connection flags are dead): `<Passage>Teleport`
+      (the land digger skips it, the teleport pass plants the monoliths —
+      opposite zones of the ring are joined so, on top of the ring's ground
+      passages); `<Fictive>` (a spring for the layout, no passage — how an
+      outcast zone lies beside a start zone); a weight (HotA writes one pair
+      eight times, seven fictive and one real, to pull harder — count the
+      records, or an explicit `<Weight>`). Then `mt_outcast` itself as an
+      `.h5et`. Left for later on purpose: the creature banks and what else
+      the outcast zones hold want thinking about first ⬜
 
 **Before it can be released — three things, in a chat of their own:**
 
