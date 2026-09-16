@@ -50,6 +50,8 @@ let sel: Selection = null;
 /** Connect mode: off, or waiting for the first zone (-1), or holding it. */
 let connectFrom: number | null = null;
 let dirty = false;
+/** How many templates have been taken up — what an opening checks after its wait, see `openTemplateEditor`. */
+let takes = 0;
 /** Told when a template was saved or removed, so the generator's list can follow. */
 let onChanged: () => void = () => {};
 
@@ -730,13 +732,20 @@ function refreshList(): void {
   fillSelect($select('rte-list'), opts, source === 'new' ? '' : file);
 }
 
+/** The list, from the generator's own process — seconds the first time a session, when the spinner shows. */
 async function loadList(): Promise<void> {
-  list = (await api.rmgChoices()).templates;
+  $('rte-loading').hidden = false;
+  try {
+    list = (await api.rmgChoices()).templates;
+  } finally {
+    $('rte-loading').hidden = true;
+  }
   refreshList();
 }
 
 /** Take a template up: its picture from the file, or from the graph. */
 function take(template: RmgTemplate, name: string, from: Source): void {
+  takes++;
   t = template;
   file = name;
   source = from;
@@ -807,17 +816,26 @@ async function remove(): Promise<void> {
   }
 }
 
-/** Open the editor, on the named template or the first listed. */
+/**
+ * Open the editor, on the named template or the first listed.
+ *
+ * The list may be seconds away (the first read of the install), and the
+ * editor is usable meanwhile — New, and everything after it. Whatever was
+ * taken up during the wait stays: the list arrives into the select, and the
+ * template it would have opened is not loaded over the user's.
+ */
 export async function openTemplateEditor(name?: string): Promise<void> {
   const d = dialog();
   if (!d.open) d.showModal();
   $('rte-err').textContent = '';
+  const taken = takes;
   try {
     await loadList();
   } catch (e) {
     $('rte-err').textContent = e instanceof Error ? e.message : String(e);
     return;
   }
+  if (takes !== taken) return;
   const first = name && list.some((e) => e.file === name) ? name : list[0]?.file;
   if (first) await load(first);
   else take(starterTemplate(), 'New Template', 'new');

@@ -8,6 +8,12 @@
 // ENGINE's map is the unit suites' and the corpus's question (docs/RMG.md), not
 // this one's — here a tiny map is enough.
 //
+// And that the install is read OFF the main process, once: the first opening
+// shows a spinner while the child reads, the window keeps answering under it,
+// and the second opening reads nothing. THE METRIC IS CHECKED BY SABOTAGE in
+// the last test: with HOMM5_RMG_INLINE=1 the same read happens in the main
+// process, and the same measurement has to fail.
+//
 // The generator reads the game's executable, so the sandbox install needs a
 // readable copy of it: the shipped one from the real game, unwrapped the way
 // the first run does it. No extension, no mods — the generator needs neither.
@@ -20,7 +26,7 @@ import { modFile } from '../src/game/mod-paths.ts';
 import { userTemplateFile } from '../src/rmg/user-templates.ts';
 import { DATA, REPO_ROOT, closeEditor, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { bar } from './bar.ts';
+import { bar, openBarMenu } from './bar.ts';
 import { REAL_GAME } from './mods.ts';
 import { MADE } from './artifacts.ts';
 
@@ -69,6 +75,48 @@ async function untilGenerated(ed: Launched, timeoutMs: number): Promise<void> {
   }
 }
 
+/** How the main process behaved while the dialog's lists were read. */
+interface Watch {
+  /** Milliseconds from the click to the lists being filled. */
+  total: number;
+  /** Cheap main-process calls that came back during it. */
+  answers: number;
+  /** The longest the main process went without answering, in ms. */
+  worstWait: number;
+}
+
+/**
+ * Open the dialog while asking the main process something cheap over and
+ * over, until its spinner goes. `maps:list` is the ping: cached per install,
+ * so what it measures is whether the main process got round to answering.
+ *
+ * The click and the pinging are ONE evaluate: Playwright reaches the window
+ * through the main process, and with the read happening there (the
+ * sabotage) a second evaluate would only arrive once it was over.
+ */
+async function openWhilePinging(ed: Launched): Promise<Watch> {
+  const { page } = ed;
+  await openBarMenu(page, '#rmgbtn');
+  return page.evaluate(async () => {
+    (document.getElementById('rmgbtn') as HTMLButtonElement).click();
+    const loading = document.getElementById('rmg-loading') as HTMLElement;
+    let answers = 0, worstWait = 0;
+    const t0 = performance.now();
+    while (!loading.hidden) {
+      const t = performance.now();
+      await window.editor.listMaps();
+      worstWait = Math.max(worstWait, performance.now() - t);
+      answers++;
+      const left = 200 - (performance.now() - t);
+      if (left > 0) await new Promise((r) => setTimeout(r, left));
+    }
+    return { total: performance.now() - t0, answers, worstWait };
+  });
+}
+
+/** How many times the install was mounted, by the log — the child's lines come through prefixed. */
+const mounts = (ed: Launched): number => ed.log.filter((l) => l.includes('[rmg] install mounted')).length;
+
 test.beforeAll(async () => {
   test.skip(!existsSync(join(DATA, 'RMG', 'Templates')), 'needs the game data (RMG/Templates)');
   test.skip(!REAL_GAME || !existsSync(join(REAL_GAME, SHIPPED_EXE)), 'needs a real game to take the executable from (HOMM5_ROOT)');
@@ -86,8 +134,17 @@ test('generates a tiny map through the dialog and opens it', async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
 
-  await bar(page, '#rmgbtn');
+  // The first opening reads the install — in the child, with the window
+  // answering throughout. Measured: ~7s of reading, one answer per 200ms;
+  // the failure this guards against is ZERO answers for the length of it.
+  const w = await openWhilePinging(ed);
+  console.log(`[rmg-thread] read in ${w.total | 0}ms · ${w.answers} answers · worst wait ${w.worstWait | 0}ms`);
   await expect(page.locator('#rmg')).toBeVisible();
+  await expect(page.locator('#rmg-loading')).toBeHidden();
+  expect(w.total).toBeGreaterThan(1000);
+  expect(w.answers).toBeGreaterThan(w.total / 400);
+  expect(w.worstWait).toBeLessThan(1000);
+  expect(mounts(ed)).toBe(1);
 
   // The lists are the install's, each with Random in front: seven sizes with
   // their tile counts, five monster levels, and a template list that narrows
@@ -170,6 +227,10 @@ test('generates a tiny map through the dialog and opens it', async () => {
 test('a name already taken is refused and the dialog stays open', async () => {
   const { page } = ed;
   await bar(page, '#rmgbtn');
+  // The second opening reads nothing: the lists are there before the spinner could show.
+  await expect(page.locator('#rmg-loading')).toBeHidden();
+  await expect(page.locator('#rmg-size option')).toHaveCount(8);
+  expect(mounts(ed)).toBe(1);
   await page.locator('#rmg-size').selectOption('0');
   await page.locator('#rmg-name').fill(NAME);
   await page.locator('#rmg-ok').click();
@@ -327,4 +388,25 @@ test('the template editor: a template drawn, saved, and generated from', async (
   expect(xdb).toContain(`<Template href="/RMG/Templates/${TEMPLATE}.h5et`);
   // Three zones with a town each: three towns on the map.
   expect(xdb.match(/\(AdvMapTownShared\)/g)?.length ?? 0).toBeGreaterThanOrEqual(3);
+});
+
+test('the sabotage: read in the main process, the app goes deaf', async () => {
+  test.setTimeout(120_000);
+  // The editor of the suite is stopped for this: two editors on one sandbox
+  // would both hold its H5E, and the measurement is about one process.
+  await closeEditor(ed);
+  const inline = await launchEditor({ HOMM5_ROOT: GAME, HOMM5_RMG_INLINE: '1' });
+  try {
+    const w = await openWhilePinging(inline);
+    console.log(`[rmg-thread] inline: read in ${w.total | 0}ms · ${w.answers} answers · worst wait ${w.worstWait | 0}ms`);
+    await expect(inline.page.locator('#rmg-size option')).toHaveCount(8);
+    // The same read, the same seconds — and the main process silent for them.
+    expect(w.total).toBeGreaterThan(1000);
+    expect(w.worstWait).toBeGreaterThan(w.total / 2);
+    expect(mounts(inline)).toBe(1);
+    await inline.page.locator('#rmg-cancel').click();
+  } finally {
+    await closeEditor(inline);
+  }
+  ed = await launchEditor({ HOMM5_ROOT: GAME });
 });

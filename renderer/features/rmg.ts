@@ -5,13 +5,18 @@
 // change, the way the game's does), players inside the template's range,
 // water, the monster level, the two multipliers, random towns, the grail, the
 // minimap, and a seed — blank means the generator draws one, the way the game
-// does. The lists come from the install through main, so a mod's template is
-// offered beside the shipped ones and nothing here is typed twice.
+// does. The lists come from the install, so a mod's template is offered
+// beside the shipped ones and nothing here is typed twice — and they come
+// from a process of the generator's own (electron/channels/rmg.ts), which
+// reads the install ONCE a session: the dialog opens at once and shows a
+// spinner while the first answer is on its way, and the window keeps
+// painting under it; every later opening is filled from memory.
 //
 // AND EVERY CHOICE CAN BE LEFT TO CHANCE. "Random" is the first option of
-// each list; main draws it before the run, in the order the dialog's own
-// dependencies go (size, levels, template, players), and the HUD says what
-// came out. A fixed template with a random size is a size the template fits.
+// each list; the generator draws it before the run, in the order the dialog's
+// own dependencies go (size, levels, template, players), and the HUD says
+// what came out. A fixed template with a random size is a size the template
+// fits.
 //
 // Generating lands the map as New Map does — packed into `<game>/H5E/`, opened
 // from that archive — so from the moment it exists it is a map like any other.
@@ -138,9 +143,18 @@ function updateWhere(): void {
   $('rmg-where').textContent = `→ <game>/H5E/${name}.h5m · inside it Maps/RMG/<guid>, where the game keeps its own`;
 }
 
-/** The lists, read once per opening — a mod installed meanwhile shows up next time. */
+/**
+ * The lists, asked for on every opening and read once a session: the first
+ * answer takes seconds (the spinner says so), the rest are immediate. A mod
+ * installed meanwhile shows up after a restart.
+ */
 async function fill(): Promise<void> {
-  choices = await api.rmgChoices();
+  $('rmg-loading').hidden = false;
+  try {
+    choices = await api.rmgChoices();
+  } finally {
+    $('rmg-loading').hidden = true;
+  }
   const sizeSel = $select('rmg-size');
   const keepSize = sizeSel.value;
   fillSelect(sizeSel, withRandom(choices.sizes.map((s, i) => ({ id: String(i), label: `${pretty(s.name, 'MAP_SIZE_')} (${s.tiles}×${s.tiles})` }))),

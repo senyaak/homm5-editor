@@ -40,8 +40,8 @@
 /* The spinner animates a compositor-only transform, so it keeps turning on
    the GPU even while the main thread is blocked decoding a scene — which is
    the whole point: a frozen "loading…" reads as a hang, a turning one does
-   not. */
-#loading .spin { width: 20px; height: 20px; flex: none; border-radius: 50%;
+   not. Any wait may use it (the Random Map dialog does). */
+.spin { width: 20px; height: 20px; flex: none; border-radius: 50%;
   border: 3px solid #30363d; border-top-color: #58a6ff;
   animation: spin 0.8s linear infinite; will-change: transform; }
 @keyframes spin { to { transform: rotate(360deg); } }

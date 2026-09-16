@@ -38,8 +38,11 @@ way the game's does, players in the template's range, water, monster level,
 both multipliers, random towns, grail, minimap, a seed or a drawn one — every
 choice but the name and the minimap can be left to Random, and "All random"
 leaves them all — and the map lands like a new one, in `<game>/H5E/`, opened from its archive. The
-generation runs in a process of its own, so the editor keeps answering while a
-large map is made. A map opened from a `.h5m` of ours is now titled after the
+generator lives in a process of its own, so the editor keeps answering while a
+large map is made — and while the dialog's lists are read: the install is
+read once a session, off the window, with the dialog open and a spinner
+turning the first time and every later opening immediate (it used to freeze
+the window for seconds on each). A map opened from a `.h5m` of ours is now titled after the
 file rather than the folder inside it, which for a generated map was a GUID.
 What a template can and cannot ask for is written down field by field, and
 the last record was closed this time: a connection's `TwoWay`, `Guarded` and
