@@ -204,16 +204,6 @@ export interface RmgTemplate {
    * as taken. False when absent: the engine's draw, repeats and all.
    */
   uniqueRaces: boolean;
-  /**
-   * OURS: `<CostlyGround>true</CostlyGround>` — a zone that is no player's
-   * start never draws a race whose ground costs nobody: grass is free for
-   * every class (the penalty table, `docs/RMG.md`), so Haven, Sylvan and a
-   * surface Dungeon (painted with Haven's grass) are kept off the middle of
-   * a star. With `<UniqueRaces>` the start zones then cannot be the
-   * middle's faction either, and every other ground is one faction's. False
-   * when absent.
-   */
-  costlyGround: boolean;
 }
 
 const int = (el: XmlElement, name: string): number => Number.parseInt(childText(el, name), 10) || 0;
@@ -320,7 +310,6 @@ export function parseTemplate(xml: string): RmgTemplate {
     zoneLayout: zoneLayoutKind(childText(t, 'ZoneLayout')),
     layoutJitter: Math.min(1, Math.max(0, Number.parseFloat(childText(t, 'LayoutJitter')) || 0)),
     uniqueRaces: bool(t, 'UniqueRaces'),
-    costlyGround: bool(t, 'CostlyGround'),
   };
 }
 

@@ -29,9 +29,7 @@
 // OURS, on top (`<UniqueRaces>` in an `.h5et`): the random draw is among the
 // races not yet taken — by a zone already made, or by a lobby slot still to
 // be seated — so no faction repeats and a middle zone is nobody's home
-// ground. `<CostlyGround>` keeps a zone nobody starts in off grass, the one
-// surface ground that costs every class nothing. The draw count is the
-// engine's still; only the list shrinks.
+// ground. The draw count is the engine's still; only the list shrinks.
 //
 // The underground's flavour: Dwarven when the map-setup roll's parity said
 // so, otherwise one unconditional coin decides Subterra against SubInferno —
@@ -95,13 +93,6 @@ export function engineSort<T>(items: readonly T[], before: (a: T, b: T) => boole
   }
   return src;
 }
-
-/**
- * OURS: the surface races whose ground costs every class nothing — grass
- * (the move cost's penalty table, `docs/RMG.md`). Dungeon is here because a
- * surface Dungeon zone paints with Haven's preset (`terrainRace` below).
- */
-const FREE_GROUND_RACES: ReadonlySet<number> = new Set([RACE.HEAVEN, RACE.PRESERVE, RACE.DUNGEON]);
 
 export type ZoneKind = 'zone' | 'waterBordered' | 'dwarven' | 'subterra' | 'subInferno';
 
@@ -227,15 +218,6 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
       }
     } else {
       let list = t.floor === 0 ? surface : underground;
-      if (template.costlyGround && !t.item.canBePlayerStart && t.floor === 0) {
-        // OURS: a zone nobody starts in is kept off the grounds that cost
-        // nobody — grass, which Haven and Sylvan stand on and a surface
-        // Dungeon paints with — so the middle of a star is a penalty for
-        // every player. Dry only when a template has no other ground.
-        const costly = list.filter((r) => !FREE_GROUND_RACES.has(r));
-        if (costly.length) list = costly;
-        else warnings.push(`zone ${t.item.index}: CostlyGround asked, but every race left stands on free ground`);
-      }
       if (template.uniqueRaces) {
         // OURS: the draw is among the races no zone has yet and no lobby
         // slot still to be seated has fixed — so the middle of a star is
