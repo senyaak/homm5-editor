@@ -27,22 +27,35 @@
 //      short of its share reaches further next round), so the areas land on
 //      the template's proportions the way the engine's jitter makes them.
 //
-//   3. JITTER, or the map is the same map every time. The relaxed picture of
-//      a star is one picture — the diamond in the middle, four wedges — and
-//      with the borders on the same tiles every seed, the passages the engine
-//      digs (a straight stretch of border, a draw among its tiles) and the
-//      roads to them fell in the same places too. So, from the seed: every
-//      centre is SCATTERED a little after the relaxation, and the cut is
-//      DOMAIN-WARPED — each tile looks up its zone from a nearby point, the
-//      offset a smooth noise field over the map — so the borders wander the
-//      way the engine's blobs do, differently every seed. The template's
-//      `<LayoutJitter>` scales both, 0 for the bare geometry; the areas still
-//      converge, the warp being a bending of the borders, not a bias.
+//   3. ROUGH BORDERS, always — or the passages have nowhere to go. The engine
+//      digs a passage on a STRAIGHT stretch of border: a tile with exactly one
+//      foreign zone among its eight neighbours, seen 3 to 5 times, and eight
+//      such tiles at least. A Voronoi border is a line, and a line in a grid
+//      is a staircase whose steps depend on its slope: at some slopes every
+//      tile qualifies, at others hardly any — measured, a border with 4 to 6
+//      candidates where its neighbour's had 40, and the connection went
+//      undug, to a monolith pair. The engine's blobs never have this problem,
+//      their borders being ragged everywhere. So the cut is DOMAIN-WARPED by
+//      a fine noise field — each tile looks its zone up from a point a tile
+//      or two away, the offset smooth over a few tiles — which ragged-ens
+//      every border the way the engine's are, without moving it: the shapes
+//      stay, every border grows dozens of straight-enough stretches, and the
+//      passage's draw among them lands somewhere else each seed.
+//
+//   4. JITTER, on top and optional. The relaxed picture of a star is one
+//      picture — the diamond in the middle, four wedges — and a map that is
+//      that picture every seed is dull. `<LayoutJitter>` (0..1, 0 when
+//      absent: the author's shapes are the author's) scatters every centre a
+//      little after the relaxation and bends the borders with a coarse noise
+//      field, so the same template comes out a different map each seed; the
+//      areas still converge, the warp being a bending of the borders, not a
+//      bias.
 //
 // Floors are laid out one at a time — a connection across floors is not a
 // spring, it becomes a gate pair later, the same as in the engine's layout.
 // The draws: two per zone for the starting centre, two per zone for the
-// scatter, and the noise field's lattice, all from the engine's stream.
+// scatter, and the two noise fields' lattices, all from the engine's stream
+// and all spent whatever the jitter.
 
 import type { RmgRandom } from './random.ts';
 import type { RmgConnection } from './template.ts';
@@ -60,6 +73,8 @@ export interface VoronoiInput {
   jitter: number;
 }
 
+/** Starts the relaxation is run from; the least strained rest is kept. */
+const RESTARTS = 8;
 /** Relaxation rounds for the centres, and how far a spring moves a disc per round. */
 const RELAX_ROUNDS = 300;
 const PULL = 0.05;
@@ -74,8 +89,11 @@ const EDGE = 2;
 /** At jitter 1: how far a centre may be scattered, and how far the warp bends a border, as fractions of the side. */
 const JITTER_SCATTER = 0.08;
 const JITTER_WARP = 0.10;
-/** The noise lattice: cells per side; the field is bilinear between them. */
+/** The jitter's noise lattice: cells per side; the field is bilinear between them. */
 const NOISE_CELLS = 6;
+/** The roughness: its lattice cell in tiles, and the offset in tiles at the knots. Always on. */
+const ROUGH_CELL = 3;
+const ROUGH_TILES = 2.5;
 
 interface Disc {
   index: number;
@@ -101,10 +119,31 @@ export function voronoiLayout(input: VoronoiInput, rng: RmgRandom): ZoneLayout {
     const seeds = input.zones.filter((z) => z.floor === f).sort((a, b) => a.index - b.index);
     if (!seeds.length) continue;
 
-    const discs = makeDiscs(seeds, size, rng);
-    relax(discs, size, joined, startZones);
+    // THE RELAXATION HAS MORE THAN ONE RESTING PLACE, and not all of them
+    // are the picture. Started from the wrong points a star settles with
+    // its hub in a corner and two of its arms touching it at a point — seen
+    // on the fourth seed tried, after three had happened to be right — and
+    // the passages then have nowhere to be dug. So the springs are run from
+    // several starts and the one that rests with the least strain is kept:
+    // joined pairs apart, pairs overlapping, start pairs near — each
+    // squared. Every start costs its two draws a zone whichever is kept.
+    let discs: Disc[] | null = null;
+    let least = Number.POSITIVE_INFINITY;
+    for (let attempt = 0; attempt < RESTARTS; attempt++) {
+      const trial = makeDiscs(seeds, size, rng);
+      relax(trial, size, joined, startZones);
+      const e = strain(trial, size, joined, startZones);
+      if (e < least) { least = e; discs = trial; }
+    }
+    if (!discs) continue;
     scatter(discs, size, input.jitter, rng);
-    const warp = noiseField(size, input.jitter * JITTER_WARP * size, rng);
+    const coarse = noiseField(size, NOISE_CELLS, input.jitter * JITTER_WARP * size, rng);
+    const fine = noiseField(size, Math.max(1, Math.round(size / ROUGH_CELL)), ROUGH_TILES, rng);
+    const warp: WarpField = (a, b) => {
+      const [ca, cb] = coarse(a, b);
+      const [fa, fb] = fine(a, b);
+      return [ca + fa, cb + fb];
+    };
     const areas = cut(discs, grid, size, warp);
     for (const d of discs) {
       const seed = seeds.find((z) => z.index === d.index)!;
@@ -134,6 +173,27 @@ function makeDiscs(seeds: ZoneSeed[], size: number, rng: RmgRandom): Disc[] {
   });
 }
 
+/**
+ * How far a rest is from what the springs asked: joined discs apart, any
+ * discs overlapping, start discs nearer than the map's side — each squared
+ * and summed, in tiles². Zero is the picture.
+ */
+function strain(discs: Disc[], size: number, joined: ReadonlySet<string>, startZones: ReadonlySet<number>): number {
+  let e = 0;
+  for (let i = 0; i < discs.length; i++) {
+    for (let j = i + 1; j < discs.length; j++) {
+      const a = discs[i]!;
+      const b = discs[j]!;
+      const d = Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+      const touch = a.r + b.r;
+      if (joined.has(pairKey(a.index, b.index)) && d > touch) e += (d - touch) ** 2;
+      if (d < touch) e += (touch - d) ** 2;
+      if (startZones.has(a.index) && startZones.has(b.index) && d < size) e += (size - d) ** 2;
+    }
+  }
+  return e;
+}
+
 /** Step 3a: every centre moved by a draw of up to the scatter, walls kept — two draws a zone, spent at jitter 0 too. */
 function scatter(discs: Disc[], size: number, jitter: number, rng: RmgRandom): void {
   const reach = jitter * JITTER_SCATTER * size;
@@ -149,22 +209,22 @@ function scatter(discs: Disc[], size: number, jitter: number, rng: RmgRandom): v
 export type WarpField = (a: number, b: number) => [number, number];
 
 /**
- * Step 3b's field: `(NOISE_CELLS + 1)^2` knots a component, each a draw in
- * [-1, 1], scaled to `amplitude` tiles. Spent whatever the amplitude, so a
- * template at jitter 0 draws what one at 1 does.
+ * A value-noise field over `cells × cells`: `(cells + 1)^2` knots a
+ * component, each a draw in [-1, 1], scaled to `amplitude` tiles. Spent
+ * whatever the amplitude, so a template at jitter 0 draws what one at 1 does.
  */
-function noiseField(size: number, amplitude: number, rng: RmgRandom): WarpField {
-  const n = NOISE_CELLS + 1;
+function noiseField(size: number, cells: number, amplitude: number, rng: RmgRandom): WarpField {
+  const n = cells + 1;
   const kx = new Float64Array(n * n);
   const ky = new Float64Array(n * n);
   for (let i = 0; i < n * n; i++) {
     kx[i] = rng.betweenFloat(-1, 1);
     ky[i] = rng.betweenFloat(-1, 1);
   }
-  const cell = size / NOISE_CELLS;
+  const cell = size / cells;
   const at = (k: Float64Array, u: number, v: number): number => {
-    const fu = Math.min(u / cell, NOISE_CELLS - 1e-9);
-    const fv = Math.min(v / cell, NOISE_CELLS - 1e-9);
+    const fu = Math.min(u / cell, cells - 1e-9);
+    const fv = Math.min(v / cell, cells - 1e-9);
     const i = Math.floor(fu);
     const j = Math.floor(fv);
     const tu = fu - i;

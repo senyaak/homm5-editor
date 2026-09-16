@@ -72,7 +72,16 @@ for (const seed of [1785351845, 202, 7]) {
   }, rng);
   const grid = laid.floors[0]!;
   console.log(`  seed ${seed}:`);
-  check('four draws a zone and the noise lattice, no more', rng.draws === 4 * seeds.length + 2 * 49, `${rng.draws}`);
+  // The stream is the same whatever the jitter: every draw is spent at 0 too.
+  const bare = new RmgRandom(seed);
+  layoutZones('Voronoi', {
+    size: SIZE, zones: seeds, templateZones: jebus.zones, connections: jebus.connections, twoFloors: false, layoutJitter: 0,
+  }, bare);
+  const full = new RmgRandom(seed);
+  layoutZones('Voronoi', {
+    size: SIZE, zones: seeds, templateZones: jebus.zones, connections: jebus.connections, twoFloors: false, layoutJitter: 1,
+  }, full);
+  check('the same draws at jitter 0 and at 1', rng.draws === bare.draws && bare.draws === full.draws, `${rng.draws} / ${bare.draws} / ${full.draws}`);
   check('every tile is somebody\'s', countOf(grid, -1) === 0, `${countOf(grid, -1)} unassigned`);
   const touching = adjacency(grid, SIZE);
   check('the middle zone touches every start zone',
@@ -100,6 +109,33 @@ for (const seed of [1785351845, 202, 7]) {
   }, new RmgRandom(seed));
   check('the same seed gives the same layout', sameGrid(grid, again.floors[0]!));
   if (args.includes('--png')) draw(laid, `jebus-${seed}`);
+}
+
+// THE RESTING PLACE IS THE PICTURE ON EVERY SEED, not on the three above:
+// the relaxation has more than one, and the fourth seed once rested with the
+// hub in a corner, two arms touching it at a point and two connections left
+// undug. Twenty seeds, the corners and the borders the passages need.
+console.log("Voronoi on twenty seeds: the corners are the starts' and every border is diggable");
+{
+  const { collectCandidates } = await import('../src/rmg/connections.ts');
+  let cornersOk = 0;
+  let diggable = 0;
+  let fewest = Number.POSITIVE_INFINITY;
+  for (let seed = 1; seed <= 20; seed++) {
+    const laid = layoutZones('Voronoi', {
+      size: 136, zones: seeds, templateZones: jebus.zones, connections: jebus.connections, twoFloors: false, layoutJitter: 0,
+    }, new RmgRandom(seed));
+    const grid = laid.floors[0]!;
+    const corners = [grid[0]![0]!, grid[0]![135]!, grid[135]![0]!, grid[135]![135]!];
+    if (new Set(corners).size === 4 && corners.every((c) => starts.includes(c))) cornersOk++;
+    const cand = collectCandidates(grid, 136, middle);
+    const least = Math.min(...starts.map((z) => cand.get(z)?.length ?? 0));
+    fewest = Math.min(fewest, least);
+    if (least >= 8) diggable++;
+  }
+  check('every seed seats the four starts in the four corners', cornersOk === 20, `${cornersOk} of 20`);
+  check('every seed leaves the middle a diggable border with each start (8 candidates or more)', diggable === 20,
+    `${diggable} of 20, fewest ${fewest}`);
 }
 
 console.log('Voronoi on two floors: each floor its own layout');

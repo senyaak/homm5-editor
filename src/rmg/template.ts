@@ -183,8 +183,9 @@ export interface RmgTemplate {
   /**
    * OURS: `<LayoutJitter>`, 0..1, how far the Voronoi layout wanders from
    * its bare geometry — the centres scattered, the borders bent — so the
-   * same template is a different map every seed. 0.5 when absent; 0 is the
-   * bare geometry. The engine's layout ignores it.
+   * same template is a different map every seed. 0 when absent: the shapes
+   * the author drew are kept (the borders are always roughened a tile or two
+   * for the passages' sake, which is not this). The engine's layout ignores it.
    */
   layoutJitter: number;
 }
@@ -290,7 +291,7 @@ export function parseTemplate(xml: string): RmgTemplate {
     underground: bool(t, 'Underground'),
     testTemplate: bool(t, 'TestTemplate'),
     zoneLayout: zoneLayoutKind(childText(t, 'ZoneLayout')),
-    layoutJitter: childText(t, 'LayoutJitter') === '' ? 0.5 : Math.min(1, Math.max(0, Number.parseFloat(childText(t, 'LayoutJitter')) || 0)),
+    layoutJitter: Math.min(1, Math.max(0, Number.parseFloat(childText(t, 'LayoutJitter')) || 0)),
   };
 }
 
