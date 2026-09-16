@@ -1162,6 +1162,22 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       (played: an orc hired for a dwarf, with and without him in the map's
       list). Per player there is only `StartHero`, a placed hero object with
       no choice ⬜
+- [ ] **New grounds** — a swamp, say, the way Heroes III has one everyone
+      wades through. The terrain type is an enum of fifteen in the code
+      (`TT_DIRT` … `TT_WASTELAND`, strings at `0xFAB520`), and a sixteenth
+      wants the SWITCHES that key on it patched, all found while reading
+      the road type (16.09): the move cost's penalty table (`0xD87444`,
+      with its unreferenced twin `0xD8755C`) — where a swamp would get its
+      +50 with nobody's class native to it; the class-to-native table
+      (`0xC1C5DC`); the tile class (`0x9EC370`, land/road/sea/river); the
+      layer validation (`0x9ECEE8`) and the layer classification for the
+      renderer (`0xA2321C`); the ambience switch (`0xB70430`) and the
+      terrain-type gate at `0xBAF190`. Plus types.xml's enum for the
+      editor, a tile document (texture, minimap colour, ambient set,
+      music) and the RMG side: a preset naming it and the generator's
+      terrain race carrying it. A native extension the way the ninth
+      faction is — same discipline: a probe clone of an existing ground
+      first, the verdict from the game. Recorded, not started ⬜
 
 **Before it can be released — three things, in a chat of their own:**
 
