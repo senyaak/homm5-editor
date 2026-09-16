@@ -54,6 +54,29 @@ interface Winner {
 }
 
 /**
+ * An archive's index, read once per (size, mtime): the editor mounts the
+ * chain on every generator call and every palette scan, and re-reading
+ * thirty central directories each time was two seconds of a frozen window
+ * (the main process reads them, and the window waits on the main process).
+ */
+const indexCache = new Map<string, { stamp: string; entries: ReturnType<typeof readIndex> }>();
+
+function cachedIndex(archive: string): ReturnType<typeof readIndex> {
+  const st = statSync(archive);
+  const stamp = `${st.size}:${Math.round(st.mtimeMs)}`;
+  const have = indexCache.get(archive);
+  if (have && have.stamp === stamp) return have.entries;
+  const fd = openSync(archive, 'r');
+  try {
+    const entries = readIndex(fd, st.size);
+    indexCache.set(archive, { stamp, entries });
+    return entries;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
  * The chain the game reads: the mounted archives, newest member first, over
  * `base` (the unpacked data). `cacheDir` holds one unpacked folder per archive.
  */
@@ -61,14 +84,11 @@ export function mountArchives(gameRoot: string, cacheDir: string, base: string):
   const winners = new Map<string, Winner>();
   const roots: string[] = [];
   for (const archive of mountableArchives(gameRoot)) {
-    const fd = openSync(archive, 'r');
     let entries;
     try {
-      entries = readIndex(fd, statSync(archive).size);
+      entries = cachedIndex(archive);
     } catch {
       continue; // not an archive the engine could read either
-    } finally {
-      closeSync(fd);
     }
     const root = unpackCached(archive, cacheDir);
     roots.push(root);
