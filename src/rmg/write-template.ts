@@ -3,24 +3,25 @@
 // The reader (`template.ts`) turns the file into numbers; this turns the
 // numbers into the file, and the shape it makes is the shape of the twenty-two
 // shipped `.xdb` — the same tags in the same order, a tab per level, CRLF, one
-// `<Item>` per line — so that reading a shipped template and writing it out
-// again gives back the bytes it came from (`tools/test-rmg-write-template.ts`
-// holds it to that over all 22). That is the whole reason for a writer of our
-// own rather than a generic pretty-printer: a template the editor saves must
-// be one the game's own parser would read the same, and the only proof of the
-// shape is the game's files.
+// `<Item>` per line, an empty list self-closed — so that reading a shipped
+// template and writing it out again gives back the bytes it came from
+// (`tools/test-rmg-write-template.ts` holds it to that over all 22). That is
+// the whole reason for a writer of our own rather than a generic
+// pretty-printer: a template the editor saves must be one the game's own
+// parser would read the same, and the only proof of the shape is the game's
+// files.
 //
-// Fields of OURS (`.h5et`: ZoneLayout, LayoutJitter, UniqueRaces; a zone's
-// GuardMultiplier, TreasureBlocks, Objects; a connection's Road) are written
-// only when they say something the engine's default does not — so a template
-// with none of them writes as a plain `.xdb`, byte for byte, and one with them
-// is the same file with a few tags more, each where `Jebus Cross.h5et` puts
-// it. The DEAD fields (TwoWay, Guarded, Wide, GraalOnMap, Underground and the
-// rest) are written like any other: the format carries them, and a writer
-// that dropped them would write a different format.
+// The order comes from the field tables (`template-game.ts`): the game's
+// fields in the order they stand there, and after each the fields of ours
+// that name it in `after` — written only when they say something the default
+// does not, so a template with none of them writes as a plain `.xdb`, byte
+// for byte. The DEAD fields (TwoWay, Guarded, Wide, GraalOnMap, Underground
+// and the rest) are written like any other: the format carries them, and a
+// writer that dropped them would write a different format.
 
 import { encodeEntities as escape } from '../format/xml.ts';
-import type { RmgConnection, RmgTemplate, RmgZone, RmgZoneObject } from './template.ts';
+import { GAME_CONNECTION_FIELDS, GAME_TEMPLATE_FIELDS, GAME_ZONE_FIELDS, OUR_CONNECTION_FIELDS, OUR_TEMPLATE_FIELDS, OUR_ZONE_FIELDS } from './template.ts';
+import type { FieldSpec, RmgConnection, RmgTemplate, RmgTreasureRange, RmgZone, RmgZoneObject } from './template.ts';
 
 const EOL = '\r\n';
 
@@ -48,89 +49,109 @@ class Lines {
     body();
     this.line(depth, `</${name}>`);
   }
-  /** `<Mines><Item>n</Item>…</Mines>` — the tier counts, as many as the list holds, one a line. */
-  items(depth: number, name: string, values: readonly number[]): void {
-    this.list(depth, name, values.length, () => { for (const v of values) this.field(depth + 1, 'Item', v); });
-  }
   text(): string { return this.out.join(EOL) + EOL; }
 }
 
-function writeZone(w: Lines, z: RmgZone): void {
-  const d = 2;
-  w.line(d, '<Item>');
-  w.field(d + 1, 'Index', z.index);
-  w.field(d + 1, 'Setting', z.setting);
-  w.field(d + 1, 'CanBeWater', z.canBeWater);
-  w.field(d + 1, 'Size', z.size);
-  w.field(d + 1, 'CanBePlayerStart', z.canBePlayerStart);
-  w.field(d + 1, 'Town', z.town);
-  w.field(d + 1, 'TownGuardStrenght', z.townGuardStrenght);
-  // Written only where the file wrote it (template.ts, `shipyard`): the
-  // engine defaults it true, and two shipped templates spell that out.
-  if (z.shipyard !== null) w.field(d + 1, 'Shipyard', z.shipyard);
-  // Ours, after the town's guard — it scales the guards the zone seats for itself.
-  if (z.guardMultiplier !== 1) w.field(d + 1, 'GuardMultiplier', z.guardMultiplier);
-  // As many tiers as the list holds: the length is the file's (template.ts, `mines`).
-  w.items(d + 1, 'Mines', z.mines);
-  w.field(d + 1, 'AbandonedMines', z.abandonedMines);
-  w.items(d + 1, 'Dwellings', z.dwellings);
-  w.field(d + 1, 'UpgBuildingsDensity', z.upgBuildingsDensity);
-  w.field(d + 1, 'TreasureDensity', z.treasureDensity);
-  w.field(d + 1, 'TreasureChestDensity', z.treasureChestDensity);
-  w.field(d + 1, 'Prisons', z.prisons);
-  w.field(d + 1, 'LandCartographer', z.landCartographer);
-  w.field(d + 1, 'ShopPoints', z.shopPoints);
-  w.field(d + 1, 'ShrinePoints', z.shrinePoints);
-  w.field(d + 1, 'LuckMoralBuildingsDensity', z.luckMoralBuildingsDensity);
-  w.field(d + 1, 'ResourceBuildingsDensity', z.resourceBuildingsDensity);
-  w.field(d + 1, 'TreasureBuildingPoints', z.treasureBuildingPoints);
-  w.field(d + 1, 'TreasureBlocksTotalValue', z.treasureBlocksTotalValue);
-  // Ours, beside the total it replaces.
-  if (z.treasureBlocks.length) {
-    w.list(d + 1, 'TreasureBlocks', z.treasureBlocks.length, () => {
-      for (const r of z.treasureBlocks) {
-        w.line(d + 2, '<Item>');
-        w.field(d + 3, 'Min', r.min);
-        w.field(d + 3, 'Max', r.max);
-        w.field(d + 3, 'Count', r.count);
-        w.line(d + 2, '</Item>');
-      }
-    });
+/** `<Item><Min>…</Min><Max>…</Max><Count>…</Count></Item>` per range. */
+function writeRanges(w: Lines, d: number, ranges: RmgTreasureRange[]): void {
+  for (const r of ranges) {
+    w.line(d, '<Item>');
+    w.field(d + 1, 'Min', r.min);
+    w.field(d + 1, 'Max', r.max);
+    w.field(d + 1, 'Count', r.count);
+    w.line(d, '</Item>');
   }
-  w.field(d + 1, 'DenOfThieves', z.denOfThieves);
-  w.field(d + 1, 'RedwoodObservatoryDensity', z.redwoodObservatoryDensity);
-  w.field(d + 1, 'BuffPoints', z.buffPoints);
-  // Ours, last: the named objects.
-  if (z.objects.length) w.list(d + 1, 'Objects', z.objects.length, () => { for (const o of z.objects) writeObject(w, d + 2, o); });
-  w.line(d, '</Item>');
 }
 
 /**
- * One `<Objects>` line. `Max` absent is "no ceiling" (the reader gives
+ * One `<Objects>` line each. `Max` absent is "no ceiling" (the reader gives
  * Infinity), so Infinity writes no tag; a guard of 0 is the reader's default
  * for an absent tag and writes none either.
  */
-function writeObject(w: Lines, d: number, o: RmgZoneObject): void {
-  w.line(d, '<Item>');
-  w.field(d + 1, 'Href', o.href);
-  w.field(d + 1, 'Min', o.min);
-  if (Number.isFinite(o.max)) w.field(d + 1, 'Max', o.max);
-  if (o.guardStrenght) w.field(d + 1, 'GuardStrenght', o.guardStrenght);
-  w.line(d, '</Item>');
+function writeObjects(w: Lines, d: number, objects: RmgZoneObject[]): void {
+  for (const o of objects) {
+    w.line(d, '<Item>');
+    w.field(d + 1, 'Href', o.href);
+    w.field(d + 1, 'Min', o.min);
+    if (Number.isFinite(o.max)) w.field(d + 1, 'Max', o.max);
+    if (o.guardStrenght) w.field(d + 1, 'GuardStrenght', o.guardStrenght);
+    w.line(d, '</Item>');
+  }
 }
 
-function writeConnection(w: Lines, c: RmgConnection): void {
-  const d = 2;
-  w.line(d, '<Item>');
-  w.field(d + 1, 'SourceZoneIndex', c.sourceZoneIndex);
-  w.field(d + 1, 'DestZoneIndex', c.destZoneIndex);
-  w.field(d + 1, 'TwoWay', c.twoWay);
-  w.field(d + 1, 'GuardStrenght', c.guardStrenght);
-  w.field(d + 1, 'Guarded', c.guarded);
-  w.field(d + 1, 'Wide', c.wide);
-  // Ours: true is the engine's passage and needs no tag.
-  if (!c.road) w.field(d + 1, 'Road', false);
-  w.line(d, '</Item>');
+/** Whether a field of ours says something: not its default, or a list with entries. */
+function speaks(f: FieldSpec, value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  return value !== f.default;
+}
+
+/** One field, by its kind, at `depth`. */
+function writeField(w: Lines, depth: number, f: FieldSpec, value: unknown): void {
+  switch (f.kind) {
+    case 'int':
+    case 'float':
+    case 'bool':
+    case 'text':
+    case 'layout':
+      // An optional bool left unwritten (`Shipyard` in twenty templates).
+      if (value === null) return;
+      w.field(depth, f.tag, value as string | number | boolean);
+      return;
+    case 'href':
+      if (value === null) return;
+      w.line(depth, `<${f.tag} href="${escape(value as string)}"/>`);
+      return;
+    case 'tiers': {
+      const counts = value as number[];
+      w.list(depth, f.tag, counts.length, () => { for (const n of counts) w.field(depth + 1, 'Item', n); });
+      return;
+    }
+    case 'ranges': {
+      const ranges = value as RmgTreasureRange[];
+      w.list(depth, f.tag, ranges.length, () => writeRanges(w, depth + 1, ranges));
+      return;
+    }
+    case 'objects': {
+      const objects = value as RmgZoneObject[];
+      w.list(depth, f.tag, objects.length, () => writeObjects(w, depth + 1, objects));
+      return;
+    }
+    case 'zones': {
+      const zones = value as RmgZone[];
+      w.list(depth, f.tag, zones.length, () => {
+        for (const z of zones) writeRecord(w, depth + 1, z, GAME_ZONE_FIELDS, OUR_ZONE_FIELDS);
+      });
+      return;
+    }
+    case 'connections': {
+      const connections = value as RmgConnection[];
+      w.list(depth, f.tag, connections.length, () => {
+        for (const c of connections) writeRecord(w, depth + 1, c, GAME_CONNECTION_FIELDS, OUR_CONNECTION_FIELDS);
+      });
+      return;
+    }
+  }
+}
+
+/**
+ * A record's fields at `depth`: the game's in their table's order, and after
+ * each the fields of ours that follow it, when they speak.
+ */
+function writeFields(w: Lines, depth: number, record: object, game: Record<string, FieldSpec>, ours: Record<string, FieldSpec>): void {
+  const values = record as Record<string, unknown> & { carried: Record<string, unknown> };
+  for (const [key, f] of Object.entries(game)) {
+    // A dead field is kept in the record's `carried` bag (template-game.ts).
+    writeField(w, depth, f, f.dead ? values.carried[key] : values[key]);
+    for (const [ourKey, o] of Object.entries(ours)) {
+      if (o.after === key && speaks(o, values[ourKey])) writeField(w, depth, o, values[ourKey]);
+    }
+  }
+}
+
+function writeRecord(w: Lines, depth: number, record: object, game: Record<string, FieldSpec>, ours: Record<string, FieldSpec>): void {
+  w.line(depth, '<Item>');
+  writeFields(w, depth + 1, record, game, ours);
+  w.line(depth, '</Item>');
 }
 
 /** The template as the file's text — CRLF, tabs, the game's tag order. */
@@ -138,22 +159,7 @@ export function writeTemplate(t: RmgTemplate): string {
   const w = new Lines();
   w.line(0, '<?xml version="1.0" encoding="UTF-8"?>');
   w.line(0, '<RMGTemplate>');
-  if (t.nameFileRef !== null) w.line(1, `<NameFileRef href="${escape(t.nameFileRef)}"/>`);
-  w.line(1, `<DescriptionFileRef href="${escape(t.descriptionFileRef)}"/>`);
-  w.field(1, 'Name', t.name);
-  // Ours, after the name: how the zones are laid out and what the races may do.
-  if (t.zoneLayout !== 'Engine') w.field(1, 'ZoneLayout', t.zoneLayout);
-  if (t.layoutJitter !== 0) w.field(1, 'LayoutJitter', t.layoutJitter);
-  if (t.uniqueRaces) w.field(1, 'UniqueRaces', true);
-  w.list(1, 'Zones', t.zones.length, () => { for (const z of t.zones) writeZone(w, z); });
-  w.list(1, 'Connections', t.connections.length, () => { for (const c of t.connections) writeConnection(w, c); });
-  w.field(1, 'GraalOnMap', t.graalOnMap);
-  w.field(1, 'MinPlayers', t.minPlayers);
-  w.field(1, 'MaxPlayers', t.maxPlayers);
-  w.field(1, 'MinMapSize', t.minMapSize);
-  w.field(1, 'MaxMapSize', t.maxMapSize);
-  w.field(1, 'Underground', t.underground);
-  w.field(1, 'TestTemplate', t.testTemplate);
+  writeFields(w, 1, t, GAME_TEMPLATE_FIELDS, OUR_TEMPLATE_FIELDS);
   w.line(0, '</RMGTemplate>');
   return w.text();
 }
@@ -165,7 +171,9 @@ export function writeTemplate(t: RmgTemplate): string {
  * save it as `.h5et`, but the answer tells it when the two are the same file.
  */
 export function usesOwnFields(t: RmgTemplate): boolean {
-  return t.zoneLayout !== 'Engine' || t.layoutJitter !== 0 || t.uniqueRaces
-    || t.zones.some((z) => z.guardMultiplier !== 1 || z.treasureBlocks.length > 0 || z.objects.length > 0)
-    || t.connections.some((c) => !c.road);
+  const any = (record: object, ours: Record<string, FieldSpec>): boolean =>
+    Object.entries(ours).some(([key, f]) => speaks(f, (record as Record<string, unknown>)[key]));
+  return any(t, OUR_TEMPLATE_FIELDS)
+    || t.zones.some((z) => any(z, OUR_ZONE_FIELDS))
+    || t.connections.some((c) => any(c, OUR_CONNECTION_FIELDS));
 }

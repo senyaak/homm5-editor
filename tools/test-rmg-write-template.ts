@@ -64,6 +64,16 @@ const plain = readTemplate(join(dir, 'S1P2Z2M1.xdb'));
 check('S1P2Z2M1 reads Shipyard as absent', plain.zones.every((z) => z.shipyard === null));
 check('and names its text file', plain.nameFileRef === 'S1P2Z2M1.txt');
 
+// The dead fields ride in each record's `carried` bag and nowhere else —
+// a phase or a panel walking a record's keys never meets one.
+const dead = ['canBeWater', 'denOfThieves', 'redwoodObservatoryDensity', 'buffPoints', 'twoWay', 'guarded', 'wide', 'graalOnMap', 'underground'];
+const keysOf = (o: object): string[] => Object.keys(o);
+check('no dead field sits on a record', [plain, ...plain.zones, ...plain.connections].every((r) => !keysOf(r).some((k) => dead.includes(k))));
+check('the zone\'s four ride in carried', plain.zones.every((z) => keysOf(z.carried).sort().join(',') === 'buffPoints,canBeWater,denOfThieves,redwoodObservatoryDensity'));
+check('the connection\'s three', plain.connections.every((c) => keysOf(c.carried).sort().join(',') === 'guarded,twoWay,wide'));
+check('the template\'s two', keysOf(plain.carried).sort().join(',') === 'graalOnMap,underground');
+check('and they are read, not defaulted — TwoWay is true in the file', plain.connections.every((c) => c.carried.twoWay === true));
+
 console.log('\nJebus Cross, by meaning');
 const jebusPath = join(import.meta.dirname, '..', 'assets', 'rmg', 'RMG', 'Templates', 'Jebus Cross.h5et');
 const jebus = readTemplate(jebusPath);

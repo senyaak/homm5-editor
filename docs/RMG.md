@@ -3965,6 +3965,27 @@ lie beside a start zone this way), and REPEATED connections between one pair
 the spring stronger, and `mt_outcast` joins opposite zones of its ring by
 teleport on top of the ring's ground passages).
 
+### The model: the game's template, and ours on top of it
+
+`template-game.ts` is the game's format and nothing more — `GameZone`,
+`GameConnection`, `GameTemplate`, and beside each a TABLE describing every
+field in file order: the tag, the kind of value (`FieldKind`: int, bool,
+text, an href attribute, a tier list, a list of records), what it means,
+and whether the engine reads it. `satisfies Record<keyof …, FieldSpec>`
+holds each table to its type, so a field cannot be added to one and not
+the other. `template.ts` extends the three (`RmgZone extends GameZone`,
+and so on) with what an `.h5et` adds, and describes those the same way
+with two more things per field: a `default` (what an absent tag reads
+as, and what the writer leaves unwritten) and an `after` (which field of
+the game's it is written behind). The reader and the writer both walk the
+tables — one description reads, writes, and will drive the template
+editor's panel. The dead fields are not on the records at all: each has a
+`carried` bag (`GameZoneCarried`, `GameConnectionCarried`,
+`GameTemplateCarried`) that the reader fills and the writer empties, so
+`keyof GameZone` names only what something reads, and nothing reaches
+`TwoWay` or `DenOfThieves` but by way of the bag. `CanBeWater` went into
+the bag with them: read by nothing, probed to no effect (below).
+
 ### Writing a template back — the editor's first brick
 
 `write-template.ts` turns an `RmgTemplate` into the file, and its shape is

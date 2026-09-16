@@ -1,26 +1,18 @@
-// An RMG template, as the generator reads it.
+// An RMG template of OURS — the game's, plus what an `.h5et` can say on top.
 //
-// A template is the whole design of a map minus the dice: how many zones, which
-// of them hold a town, how densely each is stocked, and which are joined to
-// which. `data-unpacked/RMG/Templates/*.xdb` holds 22 of them, plain XML, and
-// nothing here interprets any of it — that is the phases' job. This only turns
-// the file into numbers.
+// `template-game.ts` is the base: the game's three records and a described
+// table of every field, in file order. This extends each record with our own
+// fields and describes them the same way, each with a `default` (what an
+// absent tag reads as, and what the writer leaves unwritten) and an `after`
+// (which field of the game's it is written behind, so ours land where `Jebus
+// Cross.h5et` puts them). A template with nothing of ours is then the game's
+// file, tag for tag; one with them is that file with a few tags more, and the
+// game's own serialiser would not know them — which is why such a file is an
+// `.h5et` kept out of the folder the game lists (`TEMPLATE_EXTENSIONS`).
 //
-// The field names are the game's own, spelling included: `TownGuardStrenght`
-// and `LuckMoralBuildingsDensity` are what the files say, and renaming them on
-// the way in would mean every reader of this port has to translate back before
-// they can grep the data. See docs/RMG.md.
-//
-// SEVEN OF THESE FIELDS FEED NOTHING, and they are marked below rather than
-// dropped: the format carries them, so a reader that skipped them would be a
-// reader of a different format. `GraalOnMap` and `Underground` are read by no
-// instruction in either executable; `RedwoodObservatoryDensity` and
-// `DenOfThieves` are handed to the step that places those objects, which never
-// looks at them and decides both from the zone's tile count and a roll. Each
-// was checked twice — over the whole image, and by generating the same map with
-// the field changed. A connection's `TwoWay`, `Guarded` and `Wide` are the
-// other three, checked the same two ways. See "Which fields the engine
-// actually reads".
+// The reader walks the tables. Nothing here interprets a field — that is the
+// phases' job; this only turns the file into numbers, and `write-template.ts`
+// turns them back.
 
 import { readFileSync } from 'node:fs';
 
@@ -30,85 +22,13 @@ import { readText, toAssets } from './data.ts';
 import type { DataRoot } from './data.ts';
 import { zoneLayoutKind } from './layout.ts';
 import type { ZoneLayoutKind } from './layout.ts';
+import { GAME_CONNECTION_FIELDS, GAME_TEMPLATE_FIELDS, GAME_ZONE_FIELDS } from './template-game.ts';
+import type { FieldSpec, GameConnection, GameConnectionCarried, GameTemplate, GameTemplateCarried, GameZone, GameZoneCarried, LiveKeys } from './template-game.ts';
 
-/** Seven, one per creature tier — the shape of `Mines` and `Dwellings`. */
-export const TIERS = 7;
-
-export interface RmgZone {
-  index: number;
-  /** `RACE_RANDOM_TYPE`, or a specific town — the zone's flavour. */
-  setting: string;
-  canBeWater: boolean;
-  /** Relative, not tiles: zones divide the map in proportion to these. */
-  size: number;
-  canBePlayerStart: boolean;
-  town: boolean;
-  townGuardStrenght: number;
-  /**
-   * In the schema (item+0x1C, default TRUE); two shipped templates write it
-   * explicitly (S0-1P2Z2K3.2T and S3-5P2-8Z8K2M, every zone, always true),
-   * the rest rely on the default. A water-bordered zone copies it to its own
-   * +0x164; nothing else reads it yet.
-   *
-   * `null` is the field NOT WRITTEN — the engine's default, true — and it is
-   * kept apart from an explicit true so that the writer can put the file
-   * back the way it was: twenty templates omit the tag, two spell it out,
-   * and a model that folded the two would write all twenty-two one way.
-   * Readers wanting the value take `shipyardOf(zone)`.
-   */
-  shipyard: boolean | null;
-  /**
-   * Per tier: how many mines of that resource the zone wants. AS WRITTEN —
-   * the file lists as many tiers as the author gave (every shipped `Mines`
-   * has seven; `Dwellings` runs two to seven, fifteen templates stopping
-   * short), and a tier past the list is nothing, which is what the placers
-   * read (`counts[tier] ?? 0`). The length is data: `S1P2Z2M1` spells out
-   * `1,0,0,0,0,0,0` where `S1-2P2-4Z4K1S` writes `1,0`, and the writer
-   * gives each back as it came.
-   */
-  mines: number[];
-  abandonedMines: number;
-  /** Per tier: dwellings of that tier, as written (see `mines`). */
-  dwellings: number[];
-  upgBuildingsDensity: number;
-  treasureDensity: number;
-  treasureChestDensity: number;
-  prisons: number;
-  landCartographer: number;
-  shopPoints: number;
-  shrinePoints: number;
-  luckMoralBuildingsDensity: number;
-  resourceBuildingsDensity: number;
-  treasureBuildingPoints: number;
-  treasureBlocksTotalValue: number;
-  /** DEAD: the step rolls 2-in-10 for a den and never reads this. */
-  denOfThieves: number;
-  /** DEAD: the step places the zone's tiles / 1000 + 1, whatever this says. */
-  redwoodObservatoryDensity: number;
-  /** Read, and handed to a worker whose whole body is `ret 4`. */
-  buffPoints: number;
-  /**
-   * OURS (`.h5et`): objects this zone must have, or may not — see
-   * `RmgZoneObject`. Empty for every template of the game's.
-   */
-  objects: RmgZoneObject[];
-  /**
-   * OURS (`.h5et`): `<GuardMultiplier>`, a factor on the power of every
-   * guard the zone seats for ITSELF — its mines, its upgrade buildings,
-   * its treasure blocks, its named objects — the way a Heroes III zone is
-   * `weak` or `strong`. 1 when absent, which is the engine's map. It does
-   * not touch the guards between zones (the passages and teleports take the
-   * connection's `GuardStrenght`) nor the town's (`TownGuardStrenght`).
-   */
-  guardMultiplier: number;
-  /**
-   * OURS (`.h5et`): `<TreasureBlocks>` — the blocks' values as ranges with
-   * counts, Heroes III's `Low / High / Density`, instead of one total split
-   * by distance. Empty for the game's templates, and then the total rules.
-   * See `RmgTreasureRange` and `valueBlocksByRanges`.
-   */
-  treasureBlocks: RmgTreasureRange[];
-}
+export { GAME_CONNECTION_FIELDS, GAME_TEMPLATE_FIELDS, GAME_ZONE_FIELDS, TIERS, shipyardOf } from './template-game.ts';
+export type {
+  FieldKind, FieldSpec, GameConnection, GameConnectionCarried, GameTemplate, GameTemplateCarried, GameZone, GameZoneCarried, LiveKeys,
+} from './template-game.ts';
 
 /**
  * One line of a zone's `<TreasureBlocks>`: `Count` blocks worth a draw in
@@ -149,105 +69,107 @@ export interface RmgZoneObject {
   guardStrenght: number;
 }
 
-/**
- * A connection is read at three of its six fields — the two zones and the
- * guard's strength — by the land digger and the teleport pass alike, in both
- * builds; the three flags are registered by the serialiser and read by no
- * instruction, and flipping each on every connection of the reference
- * template changes no byte of the map (docs/RMG.md, "The template's
- * CONNECTION"). Whether a pair gets a guarded land passage or a teleport is
- * geometry's decision alone, which is why a switch for it has to be our own
- * field in our own template format, not a reading of these.
- */
-export interface RmgConnection {
-  sourceZoneIndex: number;
-  destZoneIndex: number;
-  /** DEAD: varies across the shipped templates, and nothing reads it. */
-  twoWay: boolean;
-  /** How strong the army sitting on the passage is. */
-  guardStrenght: number;
-  /** DEAD: true on all 150 shipped connections; false takes no guard off. */
-  guarded: boolean;
-  /** DEAD: false on all 150 shipped connections; true widens nothing. */
-  wide: boolean;
+/** A zone of ours: the game's, and what an `.h5et` adds. */
+export interface RmgZone extends GameZone {
   /**
-   * OURS (`.h5et`): `<Road>false</Road>` digs the passage and guards it but
-   * keeps it off the roads phase — a back way, the way a Heroes III
-   * connection with `Road -` is. True when absent, which is the engine's
-   * passage. A pair written TWICE in a template of ours gets two passages,
-   * each with its own guard and its own road flag (`connections.ts`).
+   * `<GuardMultiplier>`, a factor on the power of every guard the zone
+   * seats for ITSELF — its mines, its upgrade buildings, its treasure
+   * blocks, its named objects — the way a Heroes III zone is `weak` or
+   * `strong`. 1 when absent, which is the engine's map. It does not touch
+   * the guards between zones (the passages and teleports take the
+   * connection's `GuardStrenght`) nor the town's (`TownGuardStrenght`).
+   */
+  guardMultiplier: number;
+  /**
+   * `<TreasureBlocks>` — the blocks' values as ranges with counts, Heroes
+   * III's `Low / High / Density`, instead of one total split by distance.
+   * Empty for the game's templates, and then the total rules. See
+   * `RmgTreasureRange` and `valueBlocksByRanges`.
+   */
+  treasureBlocks: RmgTreasureRange[];
+  /** `<Objects>` — objects this zone must have, or may not; see `RmgZoneObject`. */
+  objects: RmgZoneObject[];
+}
+
+/** A connection of ours: the game's, and what an `.h5et` adds. */
+export interface RmgConnection extends GameConnection {
+  /**
+   * `<Road>false</Road>` digs the passage and guards it but keeps it off
+   * the roads phase — a back way, the way a Heroes III connection with
+   * `Road -` is. True when absent, which is the engine's passage. A pair
+   * written TWICE in a template of ours gets two passages, each with its
+   * own guard and its own road flag (`connections.ts`).
    */
   road: boolean;
 }
 
-export interface RmgTemplate {
-  name: string;
-  /**
-   * `<NameFileRef href="…"/>` — the localised name's text file, which the
-   * game's dialog shows in place of `Name`. Nineteen shipped templates name
-   * one, three carry no tag at all: `null` is the tag absent, `''` an empty
-   * href, and the writer keeps the two apart.
-   */
-  nameFileRef: string | null;
-  /** `<DescriptionFileRef href="…"/>` — every shipped template writes it empty. */
-  descriptionFileRef: string;
+/** A template of ours: the game's, and what an `.h5et` adds. */
+export interface RmgTemplate extends GameTemplate {
   zones: RmgZone[];
   connections: RmgConnection[];
-  /** DEAD: parsed, defaulted, copied, and branched on by no instruction. */
-  graalOnMap: boolean;
-  /** The four `CreateMap` reads to decide players and size. */
-  minPlayers: number;
-  maxPlayers: number;
-  minMapSize: number;
-  maxMapSize: number;
-  /** DEAD as well: the ORDER decides the underground, never the template. */
-  underground: boolean;
-  /** Read by the editor's template list, to hide a template from the dialog. */
-  testTemplate: boolean;
   /**
-   * OURS, not the game's: `<ZoneLayout>` names how the zones are laid out —
-   * the engine's own way when absent, or one of `layout.ts`'s. The game's
-   * serialiser does not know the tag, which is why a template that carries
-   * it is an `.h5et` of ours rather than an `.xdb` in its folder.
+   * `<ZoneLayout>` names how the zones are laid out — the engine's own way
+   * when absent, or one of `layout.ts`'s.
    */
   zoneLayout: ZoneLayoutKind;
   /**
-   * OURS: `<LayoutJitter>`, 0..1, how far the Voronoi layout wanders from
-   * its bare geometry — the centres scattered, the borders bent — so the
-   * same template is a different map every seed. 0 when absent: the shapes
-   * the author drew are kept (the borders are always roughened a tile or two
+   * `<LayoutJitter>`, 0..1, how far the Voronoi layout wanders from its
+   * bare geometry — the centres scattered, the borders bent — so the same
+   * template is a different map every seed. 0 when absent: the shapes the
+   * author drew are kept (the borders are always roughened a tile or two
    * for the passages' sake, which is not this). The engine's layout ignores it.
    */
   layoutJitter: number;
   /**
-   * OURS: `<UniqueRaces>true</UniqueRaces>` — no two zones of a floor draw
-   * the same race, so a five-zone map is five factions and the middle zone
-   * is nobody's home ground (the terrain penalty, `docs/RMG.md`). A zone
-   * with a concrete Setting, and a race the lobby fixed for a player, count
-   * as taken. False when absent: the engine's draw, repeats and all.
+   * `<UniqueRaces>true</UniqueRaces>` — no two zones of a floor draw the
+   * same race, so a five-zone map is five factions and the middle zone is
+   * nobody's home ground (the terrain penalty, `docs/RMG.md`). A zone with
+   * a concrete Setting, and a race the lobby fixed for a player, count as
+   * taken. False when absent: the engine's draw, repeats and all.
    */
   uniqueRaces: boolean;
 }
 
-const int = (el: XmlElement, name: string): number => Number.parseInt(childText(el, name), 10) || 0;
-const bool = (el: XmlElement, name: string): boolean => childText(el, name) === 'true';
+/** The fields of ours on a zone, each behind the game's field it follows. */
+export const OUR_ZONE_FIELDS = {
+  guardMultiplier: { tag: 'GuardMultiplier', kind: 'float', default: 1, after: 'townGuardStrenght', doc: 'A factor on the guards the zone seats for itself — mines, upgrade buildings, treasure blocks, named objects — on top of the map\'s monster level. 1 is the engine\'s.' },
+  treasureBlocks: { tag: 'TreasureBlocks', kind: 'ranges', after: 'treasureBlocksTotalValue', doc: 'The treasure blocks by value ranges with counts, the richest farthest from the town; the total is then not read. 15000 and up is where the relics live.' },
+  objects: { tag: 'Objects', kind: 'objects', after: 'buffPoints', doc: 'Named objects: a floor placed before the budgets, a ceiling the budgets honour (0 forbids), a guard if asked.' },
+} as const satisfies Record<Exclude<keyof RmgZone, keyof GameZone>, FieldSpec>;
 
-/** `<Mines><Item>1</Item>…</Mines>` — a list of counts, as long as the file makes it (`RmgZone.mines`). */
-function items(el: XmlElement, name: string): number[] {
-  const holder = find(el, name);
-  return holder ? findAll(holder, 'Item').map((i) => Number.parseInt(text(i), 10) || 0) : [];
-}
+/** The fields of ours on a connection. */
+export const OUR_CONNECTION_FIELDS = {
+  road: { tag: 'Road', kind: 'bool', default: true, after: 'wide', doc: 'False keeps the passage off the roads — a guarded back way. A pair written twice is two passages.' },
+} as const satisfies Record<Exclude<keyof RmgConnection, keyof GameConnection>, FieldSpec>;
 
-/** `<TreasureBlocks><Item><Min>15000</Min><Max>30000</Max><Count>4</Count></Item>…</TreasureBlocks>`, ours. */
-function treasureRanges(z: XmlElement): RmgTreasureRange[] {
-  const holder = find(z, 'TreasureBlocks');
+/** The fields of ours on the template, all behind its name. */
+export const OUR_TEMPLATE_FIELDS = {
+  zoneLayout: { tag: 'ZoneLayout', kind: 'layout', default: 'Engine', after: 'name', doc: 'How the zones are laid out: Engine, the game\'s own; Voronoi, ours — centres settled by the connections, start zones at the corners.' },
+  layoutJitter: { tag: 'LayoutJitter', kind: 'float', default: 0, min: 0, max: 1, after: 'name', doc: 'How far the Voronoi layout wanders from its bare geometry, 0..1; 0 keeps the shapes the graph gives.' },
+  uniqueRaces: { tag: 'UniqueRaces', kind: 'bool', default: false, after: 'name', doc: 'No faction twice: each zone draws a race not yet taken, and the middle is nobody\'s home ground.' },
+} as const satisfies Record<Exclude<keyof RmgTemplate, keyof GameTemplate | 'zones' | 'connections'>, FieldSpec>;
+
+/** The three records' fields, the game's and ours together — the dead ones (`carried`) among them, by their own keys. */
+export const ZONE_FIELDS: Record<LiveKeys<RmgZone> | keyof GameZoneCarried, FieldSpec> = { ...GAME_ZONE_FIELDS, ...OUR_ZONE_FIELDS };
+export const CONNECTION_FIELDS: Record<LiveKeys<RmgConnection> | keyof GameConnectionCarried, FieldSpec> = { ...GAME_CONNECTION_FIELDS, ...OUR_CONNECTION_FIELDS };
+export const TEMPLATE_FIELDS: Record<LiveKeys<RmgTemplate> | keyof GameTemplateCarried, FieldSpec> = { ...GAME_TEMPLATE_FIELDS, ...OUR_TEMPLATE_FIELDS };
+
+// ---------------------------------------------------------------------------
+// Reading
+// ---------------------------------------------------------------------------
+
+const intText = (s: string): number => Number.parseInt(s, 10) || 0;
+
+/** `<TreasureBlocks><Item><Min>15000</Min><Max>30000</Max><Count>4</Count></Item>…</TreasureBlocks>`. */
+function treasureRanges(holder: XmlElement | null): RmgTreasureRange[] {
   if (!holder) return [];
-  return findAll(holder, 'Item').map((r) => ({ min: int(r, 'Min'), max: int(r, 'Max'), count: int(r, 'Count') }));
+  return findAll(holder, 'Item').map((r) => ({
+    min: intText(childText(r, 'Min')), max: intText(childText(r, 'Max')), count: intText(childText(r, 'Count')),
+  }));
 }
 
-/** `<Objects><Item><Href>…</Href><Min>1</Min><Max>1</Max></Item>…</Objects>`, ours. */
-function zoneObjects(z: XmlElement): RmgZoneObject[] {
-  const holder = find(z, 'Objects');
+/** `<Objects><Item><Href>…</Href><Min>1</Min><Max>1</Max></Item>…</Objects>`. */
+function zoneObjects(holder: XmlElement | null): RmgZoneObject[] {
   if (!holder) return [];
   return findAll(holder, 'Item').map((o) => {
     const href = decodeEntities(childText(o, 'Href'));
@@ -255,89 +177,57 @@ function zoneObjects(z: XmlElement): RmgZoneObject[] {
     const max = childText(o, 'Max');
     return {
       href,
-      min: int(o, 'Min'),
-      max: max === '' ? Number.POSITIVE_INFINITY : Number.parseInt(max, 10) || 0,
-      guardStrenght: int(o, 'GuardStrenght'),
+      min: intText(childText(o, 'Min')),
+      max: max === '' ? Number.POSITIVE_INFINITY : intText(max),
+      guardStrenght: intText(childText(o, 'GuardStrenght')),
     };
   });
+}
+
+/** One field's value out of its record's element, by its kind (`FieldKind`). */
+function readField(el: XmlElement, f: FieldSpec): unknown {
+  const child = find(el, f.tag);
+  switch (f.kind) {
+    case 'int': return intText(childText(el, f.tag));
+    case 'float': {
+      if (!child) return f.default ?? 0;
+      let v = Number.parseFloat(text(child)) || 0;
+      if (f.min !== undefined) v = Math.max(f.min, v);
+      if (f.max !== undefined) v = Math.min(f.max, v);
+      return v;
+    }
+    case 'bool':
+      if (!child) return f.optional ? null : (f.default ?? false);
+      return text(child) === 'true';
+    case 'text': return decodeEntities(childText(el, f.tag));
+    case 'href':
+      if (!child) return f.optional ? null : '';
+      return decodeEntities(child.attrs.href ?? '');
+    case 'tiers': return child ? findAll(child, 'Item').map((i) => intText(text(i))) : [];
+    case 'layout': return zoneLayoutKind(childText(el, f.tag));
+    case 'ranges': return treasureRanges(child);
+    case 'objects': return zoneObjects(child);
+    // Only direct Items are records; `Mines`/`Dwellings` have Items too, so
+    // a zone is told from a tier count by its Index.
+    case 'zones': return child ? findAll(child, 'Item').filter((z) => find(z, 'Index') !== null).map((z) => readRecord<RmgZone>(z, ZONE_FIELDS)) : [];
+    case 'connections': return child ? findAll(child, 'Item').map((c) => readRecord<RmgConnection>(c, CONNECTION_FIELDS)) : [];
+  }
+}
+
+/** A record out of its element: every field of the table, by its kind — the dead ones into its `carried` bag. */
+function readRecord<T extends object>(el: XmlElement, table: Record<string, FieldSpec>): T {
+  const out: Record<string, unknown> = {};
+  const carried: Record<string, unknown> = {};
+  for (const [key, f] of Object.entries(table)) (f.dead ? carried : out)[key] = readField(el, f);
+  out.carried = carried;
+  return out as T;
 }
 
 export function parseTemplate(xml: string): RmgTemplate {
   const root = parse(xml);
   const t = find(root, 'RMGTemplate');
   if (!t) throw new Error('not an RMGTemplate');
-
-  const zonesEl = find(t, 'Zones');
-  const zones = (zonesEl ? findAll(zonesEl, 'Item') : [])
-    // Only direct children are zones; `Mines`/`Dwellings` have Items too.
-    .filter((z) => find(z, 'Index') !== null)
-    .map((z): RmgZone => ({
-      index: int(z, 'Index'),
-      setting: childText(z, 'Setting'),
-      canBeWater: bool(z, 'CanBeWater'),
-      size: int(z, 'Size'),
-      canBePlayerStart: bool(z, 'CanBePlayerStart'),
-      town: bool(z, 'Town'),
-      townGuardStrenght: int(z, 'TownGuardStrenght'),
-      // Absent in twenty of the shipped templates; the engine's item
-      // constructor (0xBA71D0) then has it TRUE. Kept as "absent" here.
-      shipyard: find(z, 'Shipyard') === null ? null : childText(z, 'Shipyard') === 'true',
-      mines: items(z, 'Mines'),
-      abandonedMines: int(z, 'AbandonedMines'),
-      dwellings: items(z, 'Dwellings'),
-      upgBuildingsDensity: int(z, 'UpgBuildingsDensity'),
-      treasureDensity: int(z, 'TreasureDensity'),
-      treasureChestDensity: int(z, 'TreasureChestDensity'),
-      prisons: int(z, 'Prisons'),
-      landCartographer: int(z, 'LandCartographer'),
-      shopPoints: int(z, 'ShopPoints'),
-      shrinePoints: int(z, 'ShrinePoints'),
-      luckMoralBuildingsDensity: int(z, 'LuckMoralBuildingsDensity'),
-      resourceBuildingsDensity: int(z, 'ResourceBuildingsDensity'),
-      treasureBuildingPoints: int(z, 'TreasureBuildingPoints'),
-      treasureBlocksTotalValue: int(z, 'TreasureBlocksTotalValue'),
-      denOfThieves: int(z, 'DenOfThieves'),
-      redwoodObservatoryDensity: int(z, 'RedwoodObservatoryDensity'),
-      buffPoints: int(z, 'BuffPoints'),
-      objects: zoneObjects(z),
-      guardMultiplier: childText(z, 'GuardMultiplier') === '' ? 1 : Number.parseFloat(childText(z, 'GuardMultiplier')) || 0,
-      treasureBlocks: treasureRanges(z),
-    }));
-
-  const connectionsEl = find(t, 'Connections');
-  const connections = (connectionsEl ? findAll(connectionsEl, 'Item') : []).map((c): RmgConnection => ({
-    sourceZoneIndex: int(c, 'SourceZoneIndex'),
-    destZoneIndex: int(c, 'DestZoneIndex'),
-    twoWay: bool(c, 'TwoWay'),
-    guardStrenght: int(c, 'GuardStrenght'),
-    guarded: bool(c, 'Guarded'),
-    wide: bool(c, 'Wide'),
-    road: childText(c, 'Road') !== 'false',
-  }));
-
-  const nameRef = find(t, 'NameFileRef');
-  return {
-    name: decodeEntities(childText(t, 'Name')),
-    nameFileRef: nameRef ? decodeEntities(nameRef.attrs.href ?? '') : null,
-    descriptionFileRef: decodeEntities(find(t, 'DescriptionFileRef')?.attrs.href ?? ''),
-    zones,
-    connections,
-    graalOnMap: bool(t, 'GraalOnMap'),
-    minPlayers: int(t, 'MinPlayers'),
-    maxPlayers: int(t, 'MaxPlayers'),
-    minMapSize: int(t, 'MinMapSize'),
-    maxMapSize: int(t, 'MaxMapSize'),
-    underground: bool(t, 'Underground'),
-    testTemplate: bool(t, 'TestTemplate'),
-    zoneLayout: zoneLayoutKind(childText(t, 'ZoneLayout')),
-    layoutJitter: Math.min(1, Math.max(0, Number.parseFloat(childText(t, 'LayoutJitter')) || 0)),
-    uniqueRaces: bool(t, 'UniqueRaces'),
-  };
-}
-
-/** The zone's Shipyard bit as the engine holds it: written, or the constructor's true. */
-export function shipyardOf(zone: RmgZone): boolean {
-  return zone.shipyard ?? true;
+  return readRecord<RmgTemplate>(t, TEMPLATE_FIELDS);
 }
 
 /** A template by its full path on disk — the tests' door. */
@@ -348,9 +238,9 @@ export function readTemplate(path: string): RmgTemplate {
 /**
  * The two spellings of a template file. `.xdb` is the game's; `.h5et` is
  * OURS — the same document with the fields of our own the game's serialiser
- * would not know (`ZoneLayout`), kept out of the folder the game lists so
- * that its own generator never meets them. One name may exist in both;
- * ours wins, the way a mod's file wins over the shipped one.
+ * would not know, kept out of the folder the game lists so that its own
+ * generator never meets them. One name may exist in both; ours wins, the
+ * way a mod's file wins over the shipped one.
  */
 export const TEMPLATE_EXTENSIONS = ['.h5et', '.xdb'] as const;
 
