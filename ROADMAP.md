@@ -1151,9 +1151,11 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       for each in the data) and its generator lays only cobblestone
       (`RoadTile` of every preset; the `SecondaryRoadTile` under the mine
       roads is often not a road at all). Needs: the painter painting per
-      route rather than per list, a tile per (terrain, type) — not every
-      terrain has all three — and FIRST a reading of what the game does with
-      the type (movement, as in Heroes III, or a picture only) ⬜
+      route rather than per list, and a tile per (terrain, type) — not every
+      terrain has all three. READ (16.09, `docs/RMG.md` "What the game does
+      with a road's TYPE"): the move cost `0xD87340` gives 75 to all three
+      alike, against 100 + a terrain penalty off-road — the type is a
+      picture and a sound, not movement. Cosmetic if done at all ⬜
 - [ ] **Heroes per player** — no way found (16.09): `AvailableHeroes` is the
       map's one list (lobby and taverns alike; the taverns of a restricted
       map are empty), `ReserveHeroes` on the player restricts nothing

@@ -6140,6 +6140,41 @@ counter stands at 20420 through the whole pass, and the suite holds all
 seven layers to the file byte for byte, 607 SandRoad, 131 LavaRoad and
 175 Dead_Land vertices among them.
 
+**What the game does with a road's TYPE (16.09).** Read for the
+road-types-per-connection item, in the GAME build (`H5_Game_H5E.exe`),
+since movement is the game's business. The per-tile move cost is
+`0xD87340` (a twin at `0xD87480`, unreferenced), called from the
+pathfinder (`0xBFB419`) and the walk (`0xC24D10`) with the cell's pair
+of terrain types — `[cell+0]` the ground, `[cell+4]` the tile on top —
+the hero's movement params, and whether the step is diagonal. In full:
+
+```
+cost = 100
+kind 1, 2, 4 (sea, air, ...):  cost stays 100
+kind 3:                        cost = params[+4]
+kind 0 (a land step):
+    if top in {TT_DIRT_ROAD, TT_GRAVEL_ROAD, TT_COBBLESTONE_ROAD}:  cost = 75
+    else (top == TT_NONE too):
+        penalty = 0 if ground == params[+0xC] (the hero's native terrain) else
+                  DIRT 25, GRASS 0, SAND 50, SNOW 50, LAVA 25, SUBTERRANEAN 25,
+                  DWARVENMINES 0, TAIGA 25, WASTELAND 25, roads/NONE/water 0
+        if params[+0]:  penalty = trunc(penalty * 0.5)        ; the Pathfinding perk
+        if params[+1]:  penalty = 0
+        if params[+0x14] > 0: penalty = trunc((1 - params[+0x14] / 100) * penalty)
+        cost = 100 + penalty
+diagonal: trunc(cost * 1.4142135), with a last-step allowance on the points left
+```
+
+So the three road types are ONE branch: `edx-6 == 0 || edx-7 == 0 ||
+edx-8 == 0 → 75` (`0xD87370`), and nothing else in the image tells them
+apart — the tile class (`0x9EC370`) folds all three into class 1 for
+the layer arithmetic, the ambient sound and music come from the tile
+DOCUMENT (`+0x70`, `+0x78`), the minimap colour from `+0x64`. Unlike
+Heroes III (dirt 75, gravel 65, cobblestone 50), a road's type in Heroes
+V is a picture and a sound: the same 75 whichever it is. A road type
+per connection is therefore a cosmetic choice, and the roadmap item says
+so now.
+
 ### Phase 15 — the height plane (`0xECF760`) — ported, bit-identical
 
 `src/rmg/heights.ts`, `test-rmg-heights` — the whole surface reference
