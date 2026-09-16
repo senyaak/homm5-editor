@@ -5,7 +5,8 @@
      zone goes; the layout below reads the graph and puts the players at the
      edges and the treasure between them. An .h5et is our template format:
      the game's RMGTemplate plus the fields of our own the game's serialiser
-     does not know (ZoneLayout on the template; Objects, GuardMultiplier and
+     does not know (ZoneLayout and UniqueRaces on the template — five zones,
+     five factions, the middle nobody's home ground; Objects, GuardMultiplier and
      TreasureBlocks on a zone: the middle guards at twice the power and holds
      the relics, the start zones guard at half; Road on a connection, and a
      pair written twice: each start has a road into the middle and a harder
@@ -15,6 +16,7 @@
 	<DescriptionFileRef href=""/>
 	<Name>Jebus Cross</Name>
 	<ZoneLayout>Voronoi</ZoneLayout>
+	<UniqueRaces>true</UniqueRaces>
 	<Zones>
 		<Item>
 			<Index>1</Index>

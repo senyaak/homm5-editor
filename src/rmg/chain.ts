@@ -386,6 +386,7 @@ export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain
     players: options.playerRaces ? [...options.playerRaces] : undefined,
     races: exe,
   }, rng);
+  warnings.push(...loaded.warnings);
   phase('loadTemplate');
   // WHICH WAY THE ZONES ARE LAID OUT is the template's choice — the engine's
   // own two phases by default, byte for byte, or one of ours. See `layout.ts`.

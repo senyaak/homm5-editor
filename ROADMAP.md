@@ -1177,7 +1177,9 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       music) and the RMG side: a preset naming it and the generator's
       terrain race carrying it. A native extension the way the ninth
       faction is — same discipline: a probe clone of an existing ground
-      first, the verdict from the game. Recorded, not started ⬜
+      first, the verdict from the game. Recorded, not started. Done
+      meanwhile (16.09): `<UniqueRaces>` — no faction twice, the middle
+      nobody's own, which is the same idea short of a ground of its own ⬜
 
 **Before it can be released — three things, in a chat of their own:**
 

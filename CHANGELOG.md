@@ -77,7 +77,12 @@ is not refused: the map is made with what fits, and the HUD line says
 what was left out. And a zone's treasure blocks can be valued by ranges
 with counts, the way a Heroes III zone's are (`<TreasureBlocks>`), which
 is the lever between relics and trinkets: Jebus's middle holds three
-blocks of the relic range, its start zones none.
+blocks of the relic range, its start zones none. And a template can ask
+that no faction repeat (`<UniqueRaces>`): Jebus Cross is five zones,
+five factions, and its middle is never a player's own — which matters
+because a hero pays a terrain penalty everywhere but on his class's
+ground (read out of the game, with the rest of the move cost, in
+`docs/RMG.md`).
 
 **The heroes a random map offers.** The generator's dialog has a hero
 select per player: the game's choice, one of the player's race drawn, or

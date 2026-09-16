@@ -3898,6 +3898,35 @@ eighteen seats there are, all relics, and three lines saying so). On the
 shipped Jebus the middle's three dearest artifacts come out at 20000+ on
 both seeds tried, its start zones on their split totals never above 6400.
 
+### Every zone its own faction
+
+`<UniqueRaces>true</UniqueRaces>` on a template of ours, `loadTemplate`,
+`test-rmg-unique-races`. The engine draws every random zone's race from
+one list — surface `[HEAVEN, PRESERVE, ACADEMY, DWARF, INFERNO,
+NECROMANCY, STRONGHOLD]`, plus DUNGEON with one floor — with no memory
+of what it drew before, so a five-zone star repeats a faction on 33 seeds
+of 40, and its middle is one player's own faction as often as not. That
+matters since the move cost was read (Phase 14's coda): a hero pays a
+terrain penalty everywhere but on his class's ground, so a middle zone
+of somebody's faction is a middle zone that player crosses for free.
+
+With the flag the draw is among the races NOT YET TAKEN: by a zone
+already made (ascending index, so Jebus's middle draws first and the
+starts avoid it), or by a lobby slot still to be seated whose race the
+operator fixed. The draw count is the engine's still — one `below` on a
+shorter list — so the stream after LoadTemplate is untouched. Two
+players fixed to the same faction is the lobby's business and stays;
+every other zone still avoids it. A pool run dry (nine random zones on
+one floor against eight races) draws among the whole list and says so in
+the warnings, with the map still made — 40 seeds of 40 five factions,
+the middle a player's on none. The flag is per map, not per floor: an
+underground list of four runs dry fast under a surface of seven, and
+the warning says which zone.
+
+Still not Heroes III's sand: a middle that draws Haven or Sylvan is
+grass, which costs nobody anything. The ground everyone wades through
+wants a ground of its own — "New grounds" in the roadmap.
+
 ### The heroes a map offers — an order's choice
 
 A generated map writes `<AvailableHeroes/>` — every hero that is not a

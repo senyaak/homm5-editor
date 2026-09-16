@@ -196,6 +196,14 @@ export interface RmgTemplate {
    * for the passages' sake, which is not this). The engine's layout ignores it.
    */
   layoutJitter: number;
+  /**
+   * OURS: `<UniqueRaces>true</UniqueRaces>` — no two zones of a floor draw
+   * the same race, so a five-zone map is five factions and the middle zone
+   * is nobody's home ground (the terrain penalty, `docs/RMG.md`). A zone
+   * with a concrete Setting, and a race the lobby fixed for a player, count
+   * as taken. False when absent: the engine's draw, repeats and all.
+   */
+  uniqueRaces: boolean;
 }
 
 const int = (el: XmlElement, name: string): number => Number.parseInt(childText(el, name), 10) || 0;
@@ -301,6 +309,7 @@ export function parseTemplate(xml: string): RmgTemplate {
     testTemplate: bool(t, 'TestTemplate'),
     zoneLayout: zoneLayoutKind(childText(t, 'ZoneLayout')),
     layoutJitter: Math.min(1, Math.max(0, Number.parseFloat(childText(t, 'LayoutJitter')) || 0)),
+    uniqueRaces: bool(t, 'UniqueRaces'),
   };
 }
 

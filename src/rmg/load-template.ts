@@ -26,6 +26,11 @@
 // operator filled with a CONCRETE race wins over the drawn one, a slot left
 // RANDOM takes it.
 //
+// OURS, on top (`<UniqueRaces>` in an `.h5et`): the random draw is among the
+// races not yet taken — by a zone already made, or by a lobby slot still to
+// be seated — so no faction repeats and a middle zone is nobody's home
+// ground. The draw count is the engine's still; only the list shrinks.
+//
 // The underground's flavour: Dwarven when the map-setup roll's parity said
 // so, otherwise one unconditional coin decides Subterra against SubInferno —
 // for the whole map, not per zone. Water makes floor-0 zones WaterBordered
@@ -150,6 +155,8 @@ export interface LoadedTemplate {
   zones: LoadedZone[];
   /** The player races as the phase left them. */
   players: number[];
+  /** OURS: a `<UniqueRaces>` template with more zones than races says so here. */
+  warnings: string[];
 }
 
 export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions, rng: RmgRandom): LoadedTemplate {
@@ -188,6 +195,7 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
   let slot = 0;
 
   const zones: LoadedZone[] = [];
+  const warnings: string[] = [];
   for (const t of byIndex) {
     const setting = RACE_BY_NAME[t.item.setting];
     if (setting === undefined) throw new Error(`loadTemplate: unknown Setting "${t.item.setting}"`);
@@ -209,7 +217,18 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
         playerNo++;
       }
     } else {
-      const list = t.floor === 0 ? surface : underground;
+      let list = t.floor === 0 ? surface : underground;
+      if (template.uniqueRaces) {
+        // OURS: the draw is among the races no zone has yet and no lobby
+        // slot still to be seated has fixed — so the middle of a star is
+        // never a player's own faction. A pool run dry falls back to the
+        // engine's whole list, with a line in the warnings.
+        const taken = new Set<number>(zones.map((z) => z.race));
+        for (let s = slot; s < players.length; s++) if (players[s] !== RACE.RANDOM) taken.add(players[s]!);
+        const free = list.filter((r) => !taken.has(r));
+        if (free.length) list = free;
+        else warnings.push(`zone ${t.item.index}: UniqueRaces asked, but every race of its floor is taken — drawn among all of them`);
+      }
       race = list[rng.below(list.length)]!;
       if (t.item.canBePlayerStart) {
         // Against the vector's LIVE count — an entry a concrete-race zone
@@ -271,5 +290,5 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
     }
   }
 
-  return { zones, players };
+  return { zones, players, warnings };
 }
