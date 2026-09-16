@@ -520,7 +520,7 @@ export function abilitiesLine(data: Assets, abilities: readonly string[]): strin
  * unreadable is '' rather than an error: a roster entry without a name still
  * shows, under its id.
  */
-function gameText(data: Assets, href: string): string {
+export function gameText(data: Assets, href: string): string {
   const b = data.bytes(refPath(href));
   if (!b || !b.length) return '';
   const s = b.length >= 2 && b[0] === 0xff && b[1] === 0xfe ? b.toString('utf16le', 2) : b.toString('utf8');

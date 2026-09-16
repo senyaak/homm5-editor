@@ -234,6 +234,9 @@ export function registerRmg(): void {
     console.log(`[rmg] ${archive} · ${order.template} ${order.tiles}×${order.tiles}${order.underground ? ' two-level' : ''}, ${order.players} players, seed ${seed}`
       + ` · ${r.draws} draws, ${r.objects} objects · ${r.ms}ms in the ${ran}, ${ms}ms in all`);
     for (const w of r.warnings) console.warn(`[rmg] ${w}`);
-    return { mapPath: join(mapDir, 'map.xdb'), mapDir, archive, seed, order, draws: r.draws, objects: r.objects, where: ran, ms, warnings: r.warnings };
+    return {
+      mapPath: join(mapDir, 'map.xdb'), mapDir, archive, seed, order, draws: r.draws, objects: r.objects, where: ran, ms,
+      warnings: r.warnings, playerRaces: r.playerRaces, heroes: r.heroes,
+    };
   });
 }

@@ -145,7 +145,9 @@ export interface RmgChoicesResult {
   expMultipliers: string[];
   /** Every template the install mounts, with the ranges the filter reads. */
   templates: RmgTemplateEntry[];
-  /** OURS: every hero the lobby would offer — href, `TOWN_*`, file name. */
+  /** OURS: the races a player slot may be set to, `TOWN_*` names. */
+  races: string[];
+  /** OURS: every hero the lobby would offer — href, `TOWN_*`, the name the game shows. */
   heroes: { href: string; town: string; name: string }[];
 }
 
@@ -220,6 +222,10 @@ export interface RmgGenerateResult extends NewMapResult {
   ms: number;
   /** What the generator wanted said and did not stop for — shown, not thrown. */
   warnings: string[];
+  /** The players' races as they came out, `TOWN_*` in slot order. */
+  playerRaces: string[];
+  /** The heroes the map lists — empty for the engine's own roster. */
+  heroes: string[];
 }
 
 /** Result of `map:load`. */

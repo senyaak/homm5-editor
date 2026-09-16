@@ -3927,33 +3927,39 @@ Still not Heroes III's sand: a middle that draws Haven or Sylvan is
 grass, which costs nobody anything. The ground everyone wades through
 wants a ground of its own — "New grounds" in the roadmap.
 
-### The heroes a map offers — an order's choice
+### The heroes a map offers, and the players' races — an order's choice
 
 A generated map writes `<AvailableHeroes/>` — every hero that is not a
 scenario's, the lobby lets each player pick among their race's and the
 taverns hire from the rest (a shipped multiplayer map, `A2M3`, lists 71 of
-the 118 by hand). Ours can say who: per player slot, `any` (the game's
-choice), `random` (one of the player's race, drawn from the seed on a
-stream of its own, so the engine's stream and the map are untouched) or a
-hero's href — and `AvailableHeroes` becomes the union, a slot left to the
-game contributing its whole race so a restricted map still offers that
-player a choice. `HeroInTown` stays true: the lobby still picks, from the
-list. A named hero names the player's race (`playerRaces`, the concrete
-slot the lobby would have set). The roster (`heroes.ts`): every
+the 118 by hand). Ours can say who, and it can say the RACES: the dialog
+has a race select a player (Random, or one of the executable's own list for
+a random slot, `slotRaceList`, as `TOWN_*` names), and a named race is the
+concrete slot a lobby would have set (`playerRaces`, load-template.ts).
+The heroes are under a spoiler, two lists and a rule: the WHITE list is
+the map's `AvailableHeroes`, exactly — built one hero a click through a
+picker (the roster by town, a search box); the rule "every hero of the
+players' races" lists every hero of the races the players came out as,
+resolved after the run since a race may be random, and locks the lists;
+the BLACK list beside them is for keeping track and is not written — the
+map has only the one list (`heroes.ts`, `availableHeroes`). Nothing asked
+writes the engine's empty roster. `HeroInTown` stays true: the lobby still
+picks, from the list. The roster (`hireableHeroes`): every
 `AdvMapHeroShared` whose `ScenarioHero` is not true and whose `Class` is
 not `HERO_CLASS_NONE` (the EntryPoint under `Utility/` is one and is not a
 hero), by its `TownType` — eight a race, the dwarves under
-`MapObjects/Dwarves/`, a mod's beside them. The dialog shows a select per
-player slot, grouped by race; `test-rmg-heroes` holds the roster, the
-choice and the file, `e2e/rmg.spec.ts` drives the select and reads the
-map. Played on `Jebus Heroes` (16.09): the lobby offers exactly the heroes
-listed, one per slot, and the TAVERNS are empty — every hero the map lists
-is seated at the start, and nobody is left to hire. Two slots naming ONE
-hero get one hero between them, the second slot starting without; that is
-a warning now, and a mirrored two-player map will want two documents of
-one hero (the Outcast's business). A map that should still hire wants the
-list longer than the players — a slot left to the game does that for its
-race, and a tavern list of the order's own is the whitelist's business.
+`MapObjects/Dwarves/`, a mod's beside them — under the name the game shows
+(`Editable/NameFileRef`, in the install's language: an orc's file is
+`Hero1`, his name is not). `test-rmg-heroes` holds the roster, the offer
+and the file, `e2e/rmg.spec.ts` drives the race select and the picker and
+reads the map; the result carries the races as they came out and the
+heroes listed, for the HUD. Played on `Jebus Heroes` (16.09): the lobby
+offers exactly the heroes listed, one per slot, and the TAVERNS are empty —
+every hero the map lists is seated at the start, and nobody is left to
+hire; a map that should still hire wants the list longer than the players.
+A listed hero of a race no player has is never offered — a warning. A
+mirrored two-player map wanting one hero in two slots wants two documents
+of him (the Outcast's business).
 
 What the Voronoi layout does NOT yet read, and HotA's templates do — noted
 for the template editor, not for now: a connection's TYPE (`teleport`

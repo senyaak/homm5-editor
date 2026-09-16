@@ -20,8 +20,8 @@ import { toAssets, enumNames } from './data.ts';
 import { installTables } from './install.ts';
 import type { RmgInstall } from './install.ts';
 import { runFull } from './run.ts';
-import { chooseHeroes, hireableHeroes } from './heroes.ts';
-import type { HeroChoice, HireableHero } from './heroes.ts';
+import { availableHeroes, hireableHeroes } from './heroes.ts';
+import type { HireableHero } from './heroes.ts';
 import { RACE } from './load-template.ts';
 import { TEMPLATE_EXTENSIONS, readTemplateNamed } from './template-files.ts';
 import type { RmgTemplate } from './template.ts';
@@ -59,12 +59,19 @@ export interface RmgOrder {
   /** `CoCreateGuid`'s shape; drawn when left out. */
   guid?: string;
   /**
-   * OURS — the dialog of the game's has no such field: per active player,
-   * `any` (the game's choice), `random` (one of the race, drawn from the seed)
-   * or a hero's href. The map's `AvailableHeroes` is built from it; absent
-   * or all `any` writes the engine's empty roster. See `heroes.ts`.
+   * OURS — the game's dialog has no such field: per active player, the race
+   * as a `TOWN_*` name (one of `dialogChoices().races`), or `random` for the
+   * engine's own draw — the concrete slot a lobby would have set
+   * (`playerRaces`, load-template.ts). Absent: every slot random.
    */
-  heroes?: HeroChoice[];
+  races?: string[];
+  /**
+   * OURS: which heroes the map offers (`AvailableHeroes`, see heroes.ts).
+   * `heroesOfRaces` lists every hero of the races the players came out as;
+   * else `heroes` is the list, exactly; else the engine's empty roster.
+   */
+  heroesOfRaces?: boolean;
+  heroes?: string[];
 }
 
 /** What the dialog's lists say, read from the install rather than typed here. */
@@ -75,6 +82,8 @@ export interface DialogChoices {
   monsterLevels: string[];
   resourceMultipliers: string[];
   expMultipliers: string[];
+  /** OURS: the races a player slot may be set to — the executable's own list for a random slot, as `TOWN_*` names. */
+  races: string[];
   /** OURS: every hero the lobby would offer, for the dialog's hero lists. */
   heroes: HireableHero[];
 }
@@ -88,6 +97,7 @@ export function dialogChoices(install: RmgInstall): DialogChoices {
     monsterLevels: enumNames(data, 'MonsterLevel'),
     resourceMultipliers: enumNames(data, 'ResourceMultiplier'),
     expMultipliers: enumNames(data, 'ExpMultiplier'),
+    races: installTables(install).slotRaceList.map((r) => TOWN_BY_RACE[r]).filter((t): t is string => !!t),
     heroes: hireableHeroes(data),
   };
 }
@@ -174,6 +184,10 @@ export interface GeneratedMap {
   objects: number;
   /** What the run wanted said — see `Chain.warnings`. Empty on a clean run. */
   warnings: string[];
+  /** OURS: the players' races as the run seated them, `TOWN_*` names in slot order. */
+  playerRaces: string[];
+  /** OURS: the heroes the map lists — empty for the engine's own roster. */
+  heroes: string[];
 }
 
 /**
@@ -202,18 +216,15 @@ export function generateMap(install: RmgInstall, order: RmgOrder): GeneratedMap 
   if (order.players < template.minPlayers || order.players > template.maxPlayers) {
     throw new Error(`${order.template} takes ${template.minPlayers}..${template.maxPlayers} players, not ${order.players}`);
   }
-  // A NAMED HERO NAMES THE PLAYER'S RACE: a slot given Glen is Haven, the
-  // way a lobby slot set to Haven is — the concrete race wins over the draw
-  // (`load-template.ts`), and the draw is spent either way.
-  const choices = order.heroes?.slice(0, order.players) ?? [];
-  const roster = choices.some((h) => h !== 'any') ? hireableHeroes(install.data) : [];
+  // A NAMED RACE IS THE PLAYER'S: the concrete slot a lobby would have set
+  // wins over the draw (`load-template.ts`), and the draw is spent either way.
   const raceOfTown = new Map(Object.entries(TOWN_BY_RACE).map(([race, town]) => [town, Number(race)]));
-  const playerRaces = choices.some((h) => h !== 'any' && h !== 'random')
-    ? Array.from({ length: order.players }, (_, i) => {
-      const h = choices[i];
-      const named = h && h !== 'any' && h !== 'random' ? roster.find((r) => r.href === h) : undefined;
-      return named ? raceOfTown.get(named.town) ?? RACE.RANDOM : RACE.RANDOM;
-    })
+  const asked = order.races?.slice(0, order.players) ?? [];
+  for (const r of asked) {
+    if (r !== 'random' && !raceOfTown.has(r)) throw new Error(`${r} is not a race a player can be set to`);
+  }
+  const playerRaces = asked.some((r) => r !== 'random')
+    ? Array.from({ length: order.players }, (_, i) => raceOfTown.get(asked[i] ?? 'random') ?? RACE.RANDOM)
     : undefined;
   const options: ChainOptions = {
     seed: order.seed, template: order.template, size: tiles, underground: order.underground,
@@ -223,26 +234,26 @@ export function generateMap(install: RmgInstall, order: RmgOrder): GeneratedMap 
   };
   const run = runFull(install, options);
   const guid = order.guid ?? newGuid();
-  // The heroes, after the run and outside its stream: the map's races are
-  // known now, and the draw is on a stream of its own.
-  let availableHeroes: string[] | undefined;
-  if (roster.length) {
-    const heroes = chooseHeroes({
-      choices,
-      races: Array.from({ length: order.players }, (_, i) =>
-        TOWN_BY_RACE[run.c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!),
-      roster, seed: order.seed,
+  // The heroes, after the run and outside its stream: the players' races
+  // are known now, and the engine's stream is what it was with none asked.
+  const playerTowns = Array.from({ length: order.players }, (_, i) =>
+    TOWN_BY_RACE[run.c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!);
+  let heroes: string[] = [];
+  if (order.heroesOfRaces || order.heroes?.length) {
+    const offered = availableHeroes({
+      ofRaces: order.heroesOfRaces ? playerTowns : undefined, listed: order.heroes,
+      races: playerTowns, roster: hireableHeroes(install.data),
     });
-    availableHeroes = heroes.available;
-    run.c.warnings.push(...heroes.warnings);
+    heroes = offered.available;
+    run.c.warnings.push(...offered.warnings);
   }
   // An `.h5m` is what the editor's SAVE writes, so its caption numbering is
   // the dialog's: two unreferenced documents at 0 and 1, the scenario's at 2.
   const files = buildMapFiles(install, run, {
     seed: order.seed, template: order.template, players: order.players, underground: order.underground,
-    water: order.water, guid, mapName: order.mapName, minimap: order.minimap, availableHeroes,
+    water: order.water, guid, mapName: order.mapName, minimap: order.minimap, availableHeroes: heroes,
   }, { captionBase: 2 });
-  return { files, guid, draws: run.c.rng.draws, objects: run.objects.length, warnings: run.c.warnings };
+  return { files, guid, draws: run.c.rng.draws, objects: run.objects.length, warnings: run.c.warnings, playerRaces: playerTowns, heroes };
 }
 
 /**

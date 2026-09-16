@@ -71,11 +71,11 @@ export interface RmgWish {
   expMultiplier: Wish<number>;
   grail: Wish<boolean>;
   randomTowns: Wish<boolean>;
-  /**
-   * OURS: per player slot, `any` (the game's choice), `random` (one of the
-   * race, drawn) or a hero's href; the first `players` entries count. See
-   * `heroes.ts`.
-   */
+  /** OURS: per player slot, a `TOWN_*` race or `random`; the first `players` entries count. */
+  races?: string[];
+  /** OURS: every hero of the players' races, once the run has seated them — see `heroes.ts`. */
+  heroesOfRaces?: boolean;
+  /** OURS: or exactly these — the dialog's white list of hrefs. */
   heroes?: string[];
 }
 
@@ -92,7 +92,10 @@ export interface RmgResolvedOrder {
   expMultiplier: number;
   grail: boolean;
   randomTowns: boolean;
-  /** The wish's hero choices, cut to the players; absent when all `any`. */
+  /** The wish's races, cut to the players; absent when all random. */
+  races?: string[];
+  heroesOfRaces?: boolean;
+  /** The white list, when there is one and the races' rule is off. */
   heroes?: string[];
 }
 
@@ -120,6 +123,10 @@ export interface RmgGenerated {
   ms: number;
   /** The generator's warnings — a named object the zone had no room for, say. */
   warnings: string[];
+  /** The players' races as the run seated them, in slot order. */
+  playerRaces: string[];
+  /** The heroes the map lists; empty for the engine's own roster. */
+  heroes: string[];
 }
 
 /** The answer to each kind of request. */
@@ -215,7 +222,9 @@ export function resolve(install: RmgInstall, w: RmgWish): RmgResolvedOrder {
     expMultiplier: w.expMultiplier === 'random' ? below(c.expMultipliers.length) : w.expMultiplier,
     grail: w.grail === 'random' ? below(2) === 1 : w.grail,
     randomTowns: w.randomTowns === 'random' ? below(2) === 1 : w.randomTowns,
-    heroes: w.heroes?.slice(0, players).some((h) => h !== 'any') ? w.heroes.slice(0, players) : undefined,
+    races: w.races?.slice(0, players).some((r) => r !== 'random') ? w.races.slice(0, players) : undefined,
+    heroesOfRaces: w.heroesOfRaces || undefined,
+    heroes: !w.heroesOfRaces && w.heroes?.length ? [...w.heroes] : undefined,
   };
 }
 
@@ -252,7 +261,7 @@ export function answer<R extends RmgRequest>(req: R): RmgAnswers[R['kind']] {
         return {
           order, guid: map.guid, seed: req.seed, draws: map.draws, objects: map.objects,
           files: map.files.map((f) => f.name), ms: Math.round(performance.now() - started),
-          warnings: map.warnings,
+          warnings: map.warnings, playerRaces: map.playerRaces, heroes: map.heroes,
         };
       }
     }

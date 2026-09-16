@@ -3,15 +3,16 @@
 //   node tools/test-rmg-heroes.ts
 //
 // The roster comes from the hero documents (every `AdvMapHeroShared` that is
-// not a scenario's, by its `TownType`), the choice per player slot is `any`,
-// `random` or a named hero, and what the map gets is `AvailableHeroes` — plus,
-// for a named hero, the player's race. Held on the roster's shape, on the
-// choice's rules and draws, and on a generated map's file.
+// not a scenario's, by its `TownType`, with the name the game shows), an
+// order names a race a player and either a white list of heroes or "every
+// hero of the players' races", and what the map gets is `AvailableHeroes` and
+// the players' races. Held on the roster's shape, on the offer's rules, and
+// on a generated map's file.
 
 import { join } from 'node:path';
 
 import { inFront } from '../src/game/assets.ts';
-import { chooseHeroes, hireableHeroes } from '../src/rmg/heroes.ts';
+import { availableHeroes, hireableHeroes } from '../src/rmg/heroes.ts';
 import { generateMap } from '../src/rmg/index.ts';
 import { dataAssets, gameDirIfAny, gameInstall } from './game-dir.ts';
 
@@ -32,34 +33,29 @@ check('Orrin is Haven and hireable', roster.some((h) => h.href.includes('/Haven/
 check('an EntryPoint is not a hero', !roster.some((h) => h.href.includes('/Utility/')));
 check('Isabell and Glen are scenario heroes and not on offer', !roster.some((h) => h.href.includes('/Haven/Isabell') || h.href.includes('/Haven/Glen.')));
 check('the dwarves live under MapObjects/Dwarves', roster.some((h) => h.href.includes('/Dwarves/') && h.town === 'TOWN_FORTRESS'));
+check('the names are the game\'s, not the files\' — no orc is Hero1',
+  !roster.some((h) => /^Hero\d$/.test(h.name)) && roster.every((h) => h.name.length > 0),
+  roster.filter((h) => h.town === 'TOWN_STRONGHOLD').map((h) => h.name).join(', '));
 
-console.log('the choice');
+console.log('the offer');
 {
   const races = ['TOWN_HEAVEN', 'TOWN_INFERNO', 'TOWN_ACADEMY'];
   const orrin = roster.find((h) => h.href.includes('/Haven/Orrin.'))!.href;
-  const none = chooseHeroes({ choices: ['any', 'any', 'any'], races, roster, seed: 7 });
-  check('all any: nothing listed, nothing chosen', none.available.length === 0 && none.chosen.every((c) => c === null));
-  const one = chooseHeroes({ choices: [orrin, 'any', 'any'], races, roster, seed: 7 });
-  check('a named hero is listed, and the slots left to the game keep their whole race',
-    one.chosen[0] === orrin && one.available.includes(orrin) && one.available.length === 1 + 8 + 8, `${one.available.length}`);
-  const drawn = chooseHeroes({ choices: ['random', 'random', 'any'], races, roster, seed: 7 });
-  const again = chooseHeroes({ choices: ['random', 'random', 'any'], races, roster, seed: 7 });
-  check('random draws one of the race, and the same seed the same one',
-    roster.find((h) => h.href === drawn.chosen[0])?.town === 'TOWN_HEAVEN'
-      && roster.find((h) => h.href === drawn.chosen[1])?.town === 'TOWN_INFERNO'
-      && drawn.chosen.join() === again.chosen.join());
-  const other = chooseHeroes({ choices: ['random', 'random', 'any'], races, roster, seed: 8 });
-  check('another seed draws otherwise (on one of the two slots at least)', other.chosen.join() !== drawn.chosen.join());
-  const shifted = chooseHeroes({ choices: ['any', 'random', 'any'], races, roster, seed: 7 });
-  check('one slot\'s choice does not move another\'s draw', shifted.chosen[1] === drawn.chosen[1]);
-  const wrong = chooseHeroes({ choices: [orrin], races: ['TOWN_INFERNO'], roster, seed: 1 });
-  check('a hero of another race is listed with a warning', wrong.chosen[0] === orrin && wrong.warnings.length === 1, wrong.warnings.join('; '));
-  const twice = chooseHeroes({ choices: [orrin, orrin], races: ['TOWN_HEAVEN', 'TOWN_HEAVEN'], roster, seed: 1 });
-  check('one hero named twice is listed once and warned about — the lobby seats him once',
-    twice.available.length === 1 && twice.warnings.length === 1 && twice.warnings[0]!.includes('already player 1'), twice.warnings.join('; '));
-  const missing = chooseHeroes({ choices: ['/MapObjects/Haven/Nobody.(AdvMapHeroShared).xdb'], races: ['TOWN_HEAVEN'], roster, seed: 1 });
-  check('a hero not in the data is a warning and the slot is left to the game',
-    missing.chosen[0] === null && missing.warnings.length === 1 && missing.available.length === 8);
+  const none = availableHeroes({ races, roster });
+  check('nothing asked: nothing listed', none.available.length === 0 && none.warnings.length === 0);
+  const ofRaces = availableHeroes({ ofRaces: races, races, roster });
+  check('of the races: every hero of the three, nobody else',
+    ofRaces.available.length === 24 && ofRaces.available.every((href) => races.includes(roster.find((h) => h.href === href)!.town)), `${ofRaces.available.length}`);
+  const one = availableHeroes({ listed: [orrin], races, roster });
+  check('a white list of one is listed as is, no warning', one.available.length === 1 && one.available[0] === orrin && one.warnings.length === 0);
+  const bare = availableHeroes({ listed: [orrin.replace(/#.*$/, '')], races, roster });
+  check('an href without its pointer names the same hero, listed with the pointer', bare.available[0] === orrin);
+  const wrong = availableHeroes({ listed: [orrin], races: ['TOWN_INFERNO'], roster });
+  check('a hero of a race no player has is listed with a warning', wrong.available.length === 1 && wrong.warnings.length === 1, wrong.warnings.join('; '));
+  const twice = availableHeroes({ listed: [orrin, orrin], races, roster });
+  check('one hero listed twice is listed once', twice.available.length === 1 && twice.warnings.length === 0);
+  const missing = availableHeroes({ listed: ['/MapObjects/Haven/Nobody.(AdvMapHeroShared).xdb', orrin], races, roster });
+  check('a hero not in the data is a warning and left out', missing.available.length === 1 && missing.warnings.length === 1, missing.warnings.join('; '));
 }
 
 const game = gameDirIfAny();
@@ -75,15 +71,21 @@ if (!game) {
     minimap: false, mapName: 'Heroes', guid: '00000000-0000-0000-0000-000000000000',
   };
   const plain = generateMap(install, base);
-  const named = generateMap(install, { ...base, heroes: [orrin, 'random'] });
+  const named = generateMap(install, { ...base, races: ['TOWN_HEAVEN', 'random'], heroes: [orrin] });
   const xdb = (m: typeof plain): string => m.files.find((f) => f.name === 'map.xdb')!.data.toString('latin1');
-  check('no heroes asked: the engine\'s empty roster', xdb(plain).includes('<AvailableHeroes/>'));
-  const listed = /<AvailableHeroes>([\s\S]*?)<\/AvailableHeroes>/.exec(xdb(named))?.[1] ?? '';
-  const hrefs = [...listed.matchAll(/href="([^"]+)"/g)].map((m) => m[1]!);
-  check('Orrin and one drawn hero listed, nobody else', hrefs.length === 2 && hrefs.includes(orrin), hrefs.join(' '));
-  check('player 1 is Haven, because Orrin is', /<Race>TOWN_HEAVEN<\/Race>/.test(xdb(named).split('<PlayersInfo>')[1] ?? ''));
+  check('no heroes asked: the engine\'s empty roster', xdb(plain).includes('<AvailableHeroes/>') && plain.heroes.length === 0);
+  const hrefsOf = (m: typeof plain): string[] => [...(/<AvailableHeroes>([\s\S]*?)<\/AvailableHeroes>/.exec(xdb(m))?.[1] ?? '').matchAll(/href="([^"]+)"/g)].map((x) => x[1]!);
+  check('the white list is the map\'s list — Orrin, nobody else', hrefsOf(named).join() === orrin && named.heroes.join() === orrin, hrefsOf(named).join(' '));
+  check('player 1 is Haven, because the order says so', /<Race>TOWN_HEAVEN<\/Race>/.test(xdb(named).split('<PlayersInfo>')[1] ?? '') && named.playerRaces[0] === 'TOWN_HEAVEN');
+  check('player 2 came out as a race of the map, and the run says which', /^TOWN_[A-Z]+$/.test(named.playerRaces[1] ?? ''), named.playerRaces.join(', '));
   check('HeroInTown stays true — the lobby still picks', (xdb(named).match(/<HeroInTown>true<\/HeroInTown>/g) ?? []).length === 2);
   check('no warnings on a clean order', named.warnings.length === 0, named.warnings.join('; '));
+  const ofRaces = generateMap(install, { ...base, races: ['TOWN_HEAVEN', 'TOWN_INFERNO'], heroesOfRaces: true, heroes: [orrin] });
+  check('of the races: sixteen heroes of the two, the white list not read', hrefsOf(ofRaces).length === 16
+    && hrefsOf(ofRaces).every((href) => ['TOWN_HEAVEN', 'TOWN_INFERNO'].includes(roster.find((h) => h.href === href)!.town)), `${hrefsOf(ofRaces).length}`);
+  let refused = '';
+  try { generateMap(install, { ...base, races: ['TOWN_MARS'] }); } catch (e) { refused = e instanceof Error ? e.message : String(e); }
+  check('a race that is not one is refused', refused.includes('TOWN_MARS'), refused);
 }
 
 console.log(failures ? `\n${failures} FAILED` : '\nall good');

@@ -8,41 +8,37 @@
 // never reads it, measured) nor the lobby's choice (played), so the pool is
 // dead data and the roster comes from the hero documents themselves: every
 // `*.(AdvMapHeroShared).xdb` whose `<ScenarioHero>` is not true, grouped by
-// its `<TownType>` — eight a race in the shipped data, a mod's beside them.
+// its `<TownType>` — eight a race in the shipped data, a mod's beside them —
+// each with the name the game shows (`Editable/NameFileRef`, in the
+// install's language; the file's base name is `Hero1` for an orc).
 //
-// What an order can say, per player slot:
+// What an order can say:
 //
-//   any      leave it to the game — nothing of theirs is listed, the whole
-//            race stays on offer
-//   random   one hero of the player's race, drawn from the seed, listed
-//   <href>   that hero, listed
+//   nothing            the engine's map — `<AvailableHeroes/>` empty
+//   of the races       every hero of the races the players came out as,
+//                      known only after the run (a race may be random)
+//   a list             exactly these — the WHITE list of the dialog; the
+//                      map has no other kind of list, so the dialog's black
+//                      one is for the eye and is not written
 //
-// and the map's `AvailableHeroes` becomes the union — a slot that said
-// `any` contributes its race's whole roster, so a restricted map still
-// offers that player a choice. Nothing listed when every slot says `any`,
-// which is the generated map as the engine writes it. Two slots naming ONE
-// hero get one hero between them: the lobby seats him for the first and
-// leaves the second without (played, 16.09) — so that is a warning, and a
-// mirrored map wants two documents of one hero, which is the Outcast's
-// business (ROADMAP, Phase 10).
-//
-// The draw is on a stream of its own, seeded from the order's seed, so the
-// engine's stream — and with it the map — is what it was with no heroes
-// asked for.
+// Played (16.09): the lobby offers exactly the heroes listed, one per slot,
+// and the TAVERNS are empty when the list is short — every listed hero is
+// seated at the start. A hero of a race no player has is never offered, so
+// that is a warning; a mirrored map wanting one hero in two slots wants two
+// documents of him, which is the Outcast's business (ROADMAP, Phase 10).
 
 import { childText, find, parse } from '../format/xml.ts';
 import type { Assets } from '../game/assets.ts';
-import { Registry } from '../schema/registry.ts';
+import { Registry, gameText } from '../schema/registry.ts';
 import { readText, toAssets } from './data.ts';
 import type { DataRoot } from './data.ts';
-import { RmgRandom } from './random.ts';
 
 export interface HireableHero {
   /** `/MapObjects/Haven/Orrin.(AdvMapHeroShared).xdb#xpointer(/AdvMapHeroShared)`. */
   href: string;
   /** `TOWN_HEAVEN` and the like — the document's own `<TownType>`. */
   town: string;
-  /** The file's base name; the localized name is the UI's business. */
+  /** What the game shows — `Editable/NameFileRef` read through the chain; the file's base name when it has none. */
   name: string;
 }
 
@@ -82,73 +78,52 @@ function readRoster(data: Assets): HireableHero[] {
     if (childText(doc, 'Class') === 'HERO_CLASS_NONE') continue;
     const town = childText(doc, 'TownType');
     if (!town) continue;
-    out.push({ href: entry.id, town, name: entry.name ?? path });
+    const nameRef = find(doc, 'NameFileRef')?.attrs.href;
+    const shown = nameRef ? gameText(data, nameRef) : '';
+    out.push({ href: entry.id, town, name: shown || entry.name || path });
   }
-  return out.sort((a, b) => a.href.localeCompare(b.href));
+  return out.sort((a, b) => a.town.localeCompare(b.town) || a.name.localeCompare(b.name) || a.href.localeCompare(b.href));
 }
 
-/** What an order says about one player slot. */
-export type HeroChoice = 'any' | 'random' | string;
-
-export interface HeroesOrderInput {
-  /** Per active player, in slot order. */
-  choices: readonly HeroChoice[];
-  /** Per active player, the race's `TOWN_*` name — what the chain seated. */
+export interface AvailableHeroesInput {
+  /** Every hero of these races — the players' races as the run seated them, `TOWN_*` names. */
+  ofRaces?: readonly string[];
+  /** Or exactly these hrefs, as the dialog's white list holds them. */
+  listed?: readonly string[];
+  /** The players' races, for the warning about a listed hero nobody can take. */
   races: readonly string[];
   roster: readonly HireableHero[];
-  seed: number;
 }
 
-export interface HeroesOrderResult {
+export interface AvailableHeroesResult {
   /** The map's `AvailableHeroes`, empty when nothing was asked. */
   available: string[];
-  /** Per player: the hero listed for them, or null for `any`. */
-  chosen: Array<string | null>;
   warnings: string[];
 }
 
-export function chooseHeroes(input: HeroesOrderInput): HeroesOrderResult {
+/** The document's path without the pointer — one hero, however the href spells it. */
+const docOf = (href: string): string => href.replace(/#.*$/, '');
+
+export function availableHeroes(input: AvailableHeroesInput): AvailableHeroesResult {
   const { roster } = input;
   const warnings: string[] = [];
-  const chosen: Array<string | null> = [];
-  const available = new Set<string>();
-  const restricted = input.choices.some((c) => c !== 'any');
-  // A draw per slot in slot order, spent whether or not the slot uses it, so
-  // changing one player's choice does not move another's hero.
-  const rng = new RmgRandom(input.seed);
-  input.choices.forEach((choice, i) => {
-    const race = input.races[i] ?? '';
-    const ofRace = roster.filter((h) => h.town === race);
-    const draw = rng.below(Math.max(1, ofRace.length));
-    if (choice === 'any') {
-      chosen.push(null);
-      if (restricted) for (const h of ofRace) available.add(h.href);
-      return;
+  if (input.ofRaces) {
+    const races = new Set(input.ofRaces);
+    return { available: roster.filter((h) => races.has(h.town)).map((h) => h.href), warnings };
+  }
+  const available: string[] = [];
+  const seen = new Set<string>();
+  const races = new Set(input.races);
+  for (const href of input.listed ?? []) {
+    const hero = roster.find((h) => h.href === href || docOf(h.href) === docOf(href));
+    if (!hero) {
+      warnings.push(`${href} is not a hireable hero in the data — left out`);
+      continue;
     }
-    if (choice === 'random') {
-      const h = ofRace[draw];
-      if (!h) {
-        warnings.push(`player ${i + 1}: no hireable hero of ${race} in the data — left to the game`);
-        chosen.push(null);
-        return;
-      }
-      chosen.push(h.href);
-      available.add(h.href);
-      return;
-    }
-    const named = roster.find((h) => h.href === choice || h.href.replace(/#.*$/, '') === choice.replace(/#.*$/, ''));
-    if (!named) {
-      warnings.push(`player ${i + 1}: ${choice} is not a hireable hero in the data — left to the game`);
-      chosen.push(null);
-      if (restricted) for (const h of ofRace) available.add(h.href);
-      return;
-    }
-    if (named.town !== race) warnings.push(`player ${i + 1}: ${named.name} is ${named.town}, the player is ${race}`);
-    if (chosen.includes(named.href)) {
-      warnings.push(`player ${i + 1}: ${named.name} is already player ${chosen.indexOf(named.href) + 1}'s — the lobby seats a hero once, and this slot will start without one`);
-    }
-    chosen.push(named.href);
-    available.add(named.href);
-  });
-  return { available: [...available], chosen, warnings };
+    if (seen.has(hero.href)) continue;
+    seen.add(hero.href);
+    available.push(hero.href);
+    if (!races.has(hero.town)) warnings.push(`${hero.name} is ${hero.town}, and no player is — never offered`);
+  }
+  return { available, warnings };
 }
