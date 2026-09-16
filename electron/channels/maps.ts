@@ -15,7 +15,8 @@ import { gameData, gameRoot, mountedAssets, readSettings, tmpRoot } from '#elect
 import { assetRootFor, historyState, state, syncMapTiles } from '#electron/state.ts';
 import type { Session } from '#electron/state.ts';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { removeTree } from '#src/game/remove-tree.ts';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { extractMapFolder, gameArchives, listOurMaps, listStockMaps, mapFolderIn } from '#src/map/map-source.ts';
 import type { MapSource } from '#src/map/map-source.ts';
@@ -172,7 +173,7 @@ function pruneWorkspaces(keep: string): void {
     .sort((a, b) => b.at - a.at);
   for (const { d } of dirs.slice(KEEP_WORKSPACES)) {
     try { if (status(findMapDir(d) ?? d).dirty) continue; } catch { /* unreadable — let it go */ }
-    rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    removeTree(d);
   }
 }
 
@@ -334,7 +335,7 @@ export function registerMaps(): void {
     if (stale) {
       const open = state.session;
       if (open && open.mapDir.startsWith(stale)) { open.watch.stop(); state.session = null; }
-      rmSync(stale, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+      removeTree(stale);
     }
     if (!shared) pruneWorkspaces(root);
 

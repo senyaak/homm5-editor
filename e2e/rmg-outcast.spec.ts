@@ -135,16 +135,23 @@ async function addRange(page: Page, count: number, min: number, max: number): Pr
   }
 }
 
-/** A named object on the selected zone, chosen through the picker: `search` typed into its filter, `name` the entry clicked. */
-async function addObject(page: Page, search: string, name: RegExp, min: number, max: number | null, guard: number): Promise<void> {
+/**
+ * A named object on the selected zone, chosen through the picker: the
+ * building's FILE stem typed into the filter (which matches the href too)
+ * and the entry with that document clicked — by its href, never by the name
+ * on it: the picker shows the game's name in the install's language
+ * ("Garden of the Wee Folk" for Mystical_Garden on this data), and a name
+ * typed here would be a guess at a translation.
+ */
+async function addObject(page: Page, file: string, min: number, max: number | null, guard: number): Promise<void> {
   const list = page.locator('#rte-panel .rte-list').nth(1);
   const before = await list.locator('.rte-item').count();
   await page.locator('#rte-panel .rte-add').nth(1).click();
   const item = page.locator('#rte-panel .rte-list').nth(1).locator('.rte-item').nth(before);
   await item.locator('button', { hasText: '…' }).click();
   await expect(page.locator('#objpick')).toBeVisible();
-  await page.locator('#op-search').fill(search);
-  await page.locator('#op-list .op-opt', { hasText: name }).first().click();
+  await page.locator('#op-search').fill(file);
+  await page.locator(`#op-list .op-opt[title*="/MapObjects/${file}.(AdvMapBuildingShared)"]`).first().click();
   await page.locator('#op-ok').click();
   await expect(page.locator('#objpick')).toBeHidden();
   const numbers = page.locator('#rte-panel .rte-list').nth(1).locator('.rte-item').nth(before).locator('input.num');
@@ -205,9 +212,9 @@ test('Jebus Outcast, drawn click by click, saved, and generated from', { tag: '@
   await addRange(page, 2, 30000, 39000);
   await addRange(page, 6, 20000, 30000);
   await addRange(page, 8, 10000, 20000);
-  await addObject(page, 'Utopia', /^Dragon[ _]Utopia$/, 1, 1, 30);
-  await addObject(page, 'Pyramid', /^Pyramid$/, 12, null, 20); // +63 0 20000 100 d 12
-  await addObject(page, 'Trading', /Trading/, 0, 0, 0);          // the middle's list opens with -n: nothing unlisted, and 95 is unlisted
+  await addObject(page, 'Dragon_Utopia', 1, 1, 30);
+  await addObject(page, 'Pyramid', 12, null, 20); // +63 0 20000 100 d 12
+  await addObject(page, 'Trading_Post', 0, 0, 0);          // the middle's list opens with -n: nothing unlisted, and 95 is unlisted
   // The box says how much, not what: sixteen blocks over 10k–39k, thirteen
   // objects forced and one barred; the panel has the lists.
   await expect(page.locator('#rte-svg .rte-zone[data-index="1"] text', { hasText: '16× 10k–39k' })).toHaveCount(1);
@@ -225,13 +232,13 @@ test('Jebus Outcast, drawn click by click, saved, and generated from', { tag: '@
   await addRange(page, 6, 5000, 12000);
   await addRange(page, 7, 100, 5000);
   // The start zone's objects, HotA's explicit floors and its one forbid:
-  await addObject(page, 'Utopia', /^Dragon[ _]Utopia$/, 3, null, 30);   // +25 0 d d d 3
-  await addObject(page, 'Witch', /^Witch[ _]Hut$/, 3, null, 0);           // +109 0 d 100 d 3
-  await addObject(page, 'Mystical', /^Mystical[ _]Garden$/, 6, null, 0);  // +55 0 d d d 6
-  await addObject(page, 'Library', /Library/, 3, null, 0);                // +41 0 10000 45 d 3
-  await addObject(page, 'Tomb', /Tomb/, 2, null, 0);                      // +104 0 d 100 d 2
-  await addObject(page, 'Dwarven', /Dwarven ?Treasur/, 1, null, 10);      // +16 1 1500 350 d d — a bank the pools never draw
-  await addObject(page, 'Trading', /Trading/, 0, 0, 0);                   // -95 0
+  await addObject(page, 'Dragon_Utopia', 3, null, 30);   // +25 0 d d d 3
+  await addObject(page, 'Witch_Hut', 3, null, 0);           // +109 0 d 100 d 3
+  await addObject(page, 'Mystical_Garden', 6, null, 0);  // +55 0 d d d 6
+  await addObject(page, 'LibraryOfEnlightenment', 3, null, 0);                // +41 0 10000 45 d 3
+  await addObject(page, 'TombOfTheWarrior', 2, null, 0);                      // +104 0 d 100 d 2
+  await addObject(page, 'DwarvenTreasury', 1, null, 10);      // +16 1 1500 350 d d — a bank the pools never draw
+  await addObject(page, 'Trading_Post', 0, 0, 0);                   // -95 0
   await expect(page.locator('#rte-svg .rte-zone[data-index="2"] text', { hasText: /^\+18 −1$/ })).toHaveCount(1);
   for (const index of [3, 4, 5]) {
     await page.locator('#rte-add-zone').click();
@@ -261,8 +268,8 @@ test('Jebus Outcast, drawn click by click, saved, and generated from', { tag: '@
   // budget that seats them.
   for (let i = 0; i < 7; i++) await page.locator('#rte-panel .rte-list').nth(1).locator('.rte-item button').last().click();
   await expect(page.locator('#rte-panel .rte-list').nth(1).locator('.rte-item')).toHaveCount(0);
-  await addObject(page, 'Dwarven', /Dwarven ?Treasur/, 1, null, 10);
-  await addObject(page, 'Trading', /Trading/, 0, 0, 0);
+  await addObject(page, 'DwarvenTreasury', 1, null, 10);
+  await addObject(page, 'Trading_Post', 0, 0, 0);
   await setNumber(page, 'ShrinePoints', 0);
   await page.locator('#rte-add-zone').click();
   await expect(page.locator('#rte-panel h3')).toHaveText('Zone #7');
