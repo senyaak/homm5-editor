@@ -4066,8 +4066,17 @@ the last zone with the next index. `e2e/rmg.spec.ts` opens the editor,
 reads Jebus's rows off the boxes, draws a three-zone template through the
 panel, saves it, and generates a tiny map from it.
 
-Not done: an object picker for `<Objects>` (the href is typed; the
-palette's picker is the door to add), and variants / packs (the roadmap).
+An `<Objects>` href is picked from the palette's buildings (the `…`
+beside it; `pickFromEntries`, the editor's one list picker) — a named
+object is placed and written as a building, so nothing else is offered.
+`e2e/rmg-outcast.spec.ts` draws HotA's Jebus Outcast click by click from
+its `.h3t` (the [1 hero] variant: base sizes 64 / 10 / 2, the treasure
+ranges with their counts, strong and weak, a Utopia in the middle), reads
+the saved file back through the generator's reader, and generates a medium
+map from it — the outcast zones on roadless passages to the middle until
+a connection of ours can say teleport and fictive.
+
+Not done: variants / packs (the roadmap).
 
 ## Which fields the engine actually reads
 
