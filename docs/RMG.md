@@ -3923,9 +3923,17 @@ the middle a player's on none. The flag is per map, not per floor: an
 underground list of four runs dry fast under a surface of seven, and
 the warning says which zone.
 
-Still not Heroes III's sand: a middle that draws Haven or Sylvan is
-grass, which costs nobody anything. The ground everyone wades through
-wants a ground of its own — "New grounds" in the roadmap.
+Grass is the catch: it costs EVERY class nothing, not only the two that
+stand on it, so a middle that draws Haven or Sylvan — or Dungeon on the
+surface, which paints with Haven's preset — is a middle everybody
+crosses for free, and UniqueRaces alone leaves it there on 15 seeds of
+40. `<CostlyGround>true</CostlyGround>` is the second flag: a zone
+nobody starts in never draws a race whose ground is free, so Jebus's
+middle is sand, snow, lava, dirt or taiga — each one faction's own, and
+that faction, by the first flag, is not at the table. The start zones
+may still be Haven or Sylvan. Still not Heroes III's sand, which costs
+the one faction too: that wants a ground of its own — "New grounds" in
+the roadmap.
 
 ### The heroes a map offers — an order's choice
 

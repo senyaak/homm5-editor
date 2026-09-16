@@ -1,4 +1,5 @@
-// `<UniqueRaces>` — ours, on a template's random zones: no faction twice.
+// `<UniqueRaces>` and `<CostlyGround>` — ours, on a template's random zones:
+// no faction twice, and a zone nobody starts in never on grass.
 //
 //   node tools/test-rmg-unique-races.ts
 //
@@ -8,7 +9,9 @@
 // hero pays a terrain penalty everywhere but on his own class's ground
 // (`docs/RMG.md`, the move cost). With the flag the draw is among the races
 // not yet taken: by a zone already made, or by a lobby slot still to be
-// seated. Held on LoadTemplate alone, seed by seed, against the flag off.
+// seated. And grass costs EVERY class nothing, so the second flag keeps a
+// non-start zone off Haven, Sylvan and a surface Dungeon. Held on
+// LoadTemplate alone, seed by seed, against the flags off.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -35,7 +38,10 @@ function check(name: string, ok: boolean, detail = ''): void {
 const OWN = join(import.meta.dirname, '..', 'assets', 'rmg', 'RMG', 'Templates');
 const jebusXml = readFileSync(join(OWN, 'Jebus Cross.h5et'), 'utf8');
 const jebus = parseTemplate(jebusXml);
-const plain = parseTemplate(jebusXml.replace('<UniqueRaces>true</UniqueRaces>', ''));
+const plain = parseTemplate(jebusXml.replace('<UniqueRaces>true</UniqueRaces>', '').replace('<CostlyGround>true</CostlyGround>', ''));
+const uniqueOnly = parseTemplate(jebusXml.replace('<CostlyGround>true</CostlyGround>', ''));
+/** The races whose surface ground is grass — free for every class. */
+const GRASS = new Set<number>([RACE.HEAVEN, RACE.PRESERVE, RACE.DUNGEON]);
 const raceName = (r: number): string => Object.entries(RACE).find(([, v]) => v === r)?.[0] ?? `${r}`;
 
 const load = (t: typeof jebus, seed: number, players?: number[], twoFloors = false) => loadTemplate(t, {
@@ -45,6 +51,7 @@ const load = (t: typeof jebus, seed: number, players?: number[], twoFloors = fal
 
 console.log('reading');
 check('Jebus Cross asks for unique races, the same file without the tag does not', jebus.uniqueRaces && !plain.uniqueRaces);
+check('and for costly ground', jebus.costlyGround && !plain.costlyGround && !uniqueOnly.costlyGround);
 
 console.log('the draw, 40 seeds, one floor');
 {
@@ -52,9 +59,13 @@ console.log('the draw, 40 seeds, one floor');
   let middleForeign = 0;
   let sameDraws = 0;
   let plainRepeats = 0;
+  let grassMiddle = 0;
+  let grassMiddleUniqueOnly = 0;
   for (let seed = 1; seed <= 40; seed++) {
     const a = load(jebus, seed);
     const b = load(plain, seed);
+    if (GRASS.has(a.zones.find((z) => z.index === 1)!.race)) grassMiddle++;
+    if (GRASS.has(load(uniqueOnly, seed).zones.find((z) => z.index === 1)!.race)) grassMiddleUniqueOnly++;
     const races = a.zones.map((z) => z.race);
     if (new Set(races).size === races.length) distinct++;
     const middle = a.zones.find((z) => z.index === 1)!.race;
@@ -74,6 +85,11 @@ console.log('the draw, 40 seeds, one floor');
   check('every seed: the middle is no player\'s faction', middleForeign === 40, `${middleForeign}/40`);
   check('the flag spends the draws the engine spends', sameDraws === 40, `${sameDraws}/40`);
   check('and without it the engine repeats a faction on most seeds (the metric sees)', plainRepeats > 20, `${plainRepeats}/40`);
+  check('the middle is never on grass, which costs nobody', grassMiddle === 0, `${grassMiddle}/40`);
+  check('with UniqueRaces alone it is on grass about three seeds of eight (the metric sees)', grassMiddleUniqueOnly > 5, `${grassMiddleUniqueOnly}/40`);
+  const starts = load(jebus, 11).zones.filter((z) => z.playerNo > 0).map((z) => z.race);
+  check('the start zones may still be Haven or Sylvan', [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].some((seed) =>
+    load(jebus, seed).zones.some((z) => z.playerNo > 0 && GRASS.has(z.race))), starts.map(raceName).join(' '));
 }
 
 console.log('the lobby\'s picks count as taken');
@@ -85,7 +101,7 @@ console.log('the lobby\'s picks count as taken');
     const a = load(jebus, seed, [RACE.HEAVEN, RACE.INFERNO, RACE.RANDOM, RACE.RANDOM]);
     const races = a.zones.map((z) => z.race);
     const middle = a.zones.find((z) => z.index === 1)!.race;
-    if (new Set(races).size === 5 && middle !== RACE.HEAVEN && middle !== RACE.INFERNO
+    if (new Set(races).size === 5 && middle !== RACE.HEAVEN && middle !== RACE.INFERNO && !GRASS.has(middle)
       && a.players[0] === RACE.HEAVEN && a.players[1] === RACE.INFERNO) ok++;
   }
   check('with two slots fixed, still five factions and the middle avoids both', ok === 40, `${ok}/40`);
