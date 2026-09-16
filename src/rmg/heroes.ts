@@ -31,6 +31,7 @@
 // asked for.
 
 import { childText, find, parse } from '../format/xml.ts';
+import type { Assets } from '../game/assets.ts';
 import { Registry } from '../schema/registry.ts';
 import { readText, toAssets } from './data.ts';
 import type { DataRoot } from './data.ts';
@@ -45,9 +46,26 @@ export interface HireableHero {
   name: string;
 }
 
-/** Every hero the lobby would offer, from the mounted data — mods included. */
+/**
+ * Every hero the lobby would offer, from the mounted data — mods included.
+ *
+ * READ ONCE PER CHAIN. The roster walks every object folder of every root
+ * and reads the head of thousands of files — five seconds on the shipped
+ * data — and it does not change under a running editor. So it is kept by
+ * the chain object: the chain the generator's service mounts once is read
+ * once a launch, while a plain folder string makes a chain of its own each
+ * call and is read each call, as the tools always have been.
+ */
 export function hireableHeroes(dataRoot: DataRoot): HireableHero[] {
-  const data = toAssets(dataRoot);
+  if (typeof dataRoot === 'string') return readRoster(toAssets(dataRoot));
+  let roster = rosters.get(dataRoot);
+  if (!roster) rosters.set(dataRoot, roster = readRoster(dataRoot));
+  return roster;
+}
+
+const rosters = new WeakMap<Assets, HireableHero[]>();
+
+function readRoster(data: Assets): HireableHero[] {
   const out: HireableHero[] = [];
   for (const entry of new Registry(data).heroes()) {
     const path = entry.id.replace(/#.*$/, '').replace(/^\/+/, '');

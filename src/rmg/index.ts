@@ -11,6 +11,7 @@
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import type { Assets } from '../game/assets.ts';
 import { initProject, packProject } from '../map/project.ts';
 import { TOWN_BY_RACE, buildMapFiles, mapSizes } from './build.ts';
 import type { MapFile } from './build.ts';
@@ -105,9 +106,30 @@ export interface OfferedTemplate {
   path: string;
 }
 
-/** Every template the install mounts — a mod's beside the shipped ones. */
+/**
+ * Every template the install mounts — a mod's beside the shipped ones.
+ *
+ * Kept by the chain object, like the hero roster (`heroes.ts`): the list is
+ * every template file parsed, and the dialog asks for it on every change of
+ * size. The one thing that changes it under a running editor is the template
+ * editor saving or removing a file, and that says so — `forgetTemplates`.
+ */
 export function allTemplates(install: RmgInstall): OfferedTemplate[] {
-  const assets = toAssets(install.data);
+  const data = install.data;
+  if (typeof data === 'string') return listTemplates(toAssets(data));
+  let list = templateLists.get(data);
+  if (!list) templateLists.set(data, list = listTemplates(data));
+  return list;
+}
+
+const templateLists = new WeakMap<Assets, OfferedTemplate[]>();
+
+/** The list is a file out of date: the next `allTemplates` reads the folders again. */
+export function forgetTemplates(install: RmgInstall): void {
+  if (typeof install.data !== 'string') templateLists.delete(install.data);
+}
+
+function listTemplates(assets: Assets): OfferedTemplate[] {
   const seen = new Set<string>();
   const out: OfferedTemplate[] = [];
   for (const dir of assets.dirs('RMG/Templates')) {
