@@ -1142,7 +1142,24 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       eight times, seven fictive and one real, to pull harder — count the
       records, or an explicit `<Weight>`). Then `mt_outcast` itself as an
       `.h5et`. Left for later on purpose: the creature banks and what else
-      the outcast zones hold want thinking about first ⬜
+      the outcast zones hold want thinking about first. Done of it already
+      (16.09): a pair written twice is two passages, `<Road>false</Road>`
+      keeps one off the roads ⬜
+- [ ] **Road types per connection**, the way Heroes III has dirt / gravel /
+      cobblestone. The engine HAS the three (`TT_DIRT_ROAD`,
+      `TT_GRAVEL_ROAD`, `TT_COBBLESTONE_ROAD` in types.xml, tile documents
+      for each in the data) and its generator lays only cobblestone
+      (`RoadTile` of every preset; the `SecondaryRoadTile` under the mine
+      roads is often not a road at all). Needs: the painter painting per
+      route rather than per list, a tile per (terrain, type) — not every
+      terrain has all three — and FIRST a reading of what the game does with
+      the type (movement, as in Heroes III, or a picture only) ⬜
+- [ ] **Heroes per player** — no way found (16.09): `AvailableHeroes` is the
+      map's one list (lobby and taverns alike; the taverns of a restricted
+      map are empty), `ReserveHeroes` on the player restricts nothing
+      (played: an orc hired for a dwarf, with and without him in the map's
+      list). Per player there is only `StartHero`, a placed hero object with
+      no choice ⬜
 
 **Before it can be released — three things, in a chat of their own:**
 
