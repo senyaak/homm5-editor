@@ -20,8 +20,11 @@
 // and the map's `AvailableHeroes` becomes the union — a slot that said
 // `any` contributes its race's whole roster, so a restricted map still
 // offers that player a choice. Nothing listed when every slot says `any`,
-// which is the generated map as the engine writes it. Two slots may name
-// one hero; whether the game seats him twice is the lobby's business.
+// which is the generated map as the engine writes it. Two slots naming ONE
+// hero get one hero between them: the lobby seats him for the first and
+// leaves the second without (played, 16.09) — so that is a warning, and a
+// mirrored map wants two documents of one hero, which is the Outcast's
+// business (ROADMAP, Phase 10).
 //
 // The draw is on a stream of its own, seeded from the order's seed, so the
 // engine's stream — and with it the map — is what it was with no heroes
@@ -123,6 +126,9 @@ export function chooseHeroes(input: HeroesOrderInput): HeroesOrderResult {
       return;
     }
     if (named.town !== race) warnings.push(`player ${i + 1}: ${named.name} is ${named.town}, the player is ${race}`);
+    if (chosen.includes(named.href)) {
+      warnings.push(`player ${i + 1}: ${named.name} is already player ${chosen.indexOf(named.href) + 1}'s — the lobby seats a hero once, and this slot will start without one`);
+    }
     chosen.push(named.href);
     available.add(named.href);
   });

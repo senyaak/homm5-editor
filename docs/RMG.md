@@ -3868,8 +3868,11 @@ hero), by its `TownType` — eight a race, the dwarves under
 `MapObjects/Dwarves/`, a mod's beside them. The dialog shows a select per
 player slot, grouped by race; `test-rmg-heroes` holds the roster, the
 choice and the file, `e2e/rmg.spec.ts` drives the select and reads the
-map. Two slots may name one hero; whether the game seats him twice is
-still to be played.
+map. Played on `Jebus Heroes` (16.09): the lobby offers exactly the heroes
+listed, one per slot — and two slots naming ONE hero get one hero between
+them, the second slot starting without; that is a warning now, and a
+mirrored two-player map will want two documents of one hero (the
+Outcast's business).
 
 What the Voronoi layout does NOT yet read, and HotA's templates do — noted
 for the template editor, not for now: a connection's TYPE (`teleport`

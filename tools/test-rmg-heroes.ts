@@ -54,6 +54,9 @@ console.log('the choice');
   check('one slot\'s choice does not move another\'s draw', shifted.chosen[1] === drawn.chosen[1]);
   const wrong = chooseHeroes({ choices: [orrin], races: ['TOWN_INFERNO'], roster, seed: 1 });
   check('a hero of another race is listed with a warning', wrong.chosen[0] === orrin && wrong.warnings.length === 1, wrong.warnings.join('; '));
+  const twice = chooseHeroes({ choices: [orrin, orrin], races: ['TOWN_HEAVEN', 'TOWN_HEAVEN'], roster, seed: 1 });
+  check('one hero named twice is listed once and warned about — the lobby seats him once',
+    twice.available.length === 1 && twice.warnings.length === 1 && twice.warnings[0]!.includes('already player 1'), twice.warnings.join('; '));
   const missing = chooseHeroes({ choices: ['/MapObjects/Haven/Nobody.(AdvMapHeroShared).xdb'], races: ['TOWN_HEAVEN'], roster, seed: 1 });
   check('a hero not in the data is a warning and the slot is left to the game',
     missing.chosen[0] === null && missing.warnings.length === 1 && missing.available.length === 8);
