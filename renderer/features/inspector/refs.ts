@@ -37,14 +37,21 @@ const newDialog = (): HTMLDialogElement => {
   return el;
 };
 
+/** What the picker lists: an id to hand back, a name to show, a group to head. */
+export type PickEntry = Pick<RosterEntryDTO, 'id' | 'name' | 'group'>;
+
 // A picker session, held while its <dialog> is open. `resolve` is called once,
 // with the chosen id or null (cancel), and cleared so late clicks are inert.
-let pick: { entries: RosterEntryDTO[]; sel: string; resolve: (v: string | null) => void } | null = null;
+let pick: { entries: PickEntry[]; sel: string; resolve: (v: string | null) => void } | null = null;
 
-/** Open the type-constrained picker for `className`, preselecting `current`.
- *  Resolves the chosen ref id, or null if cancelled. */
-function pickFromClass(className: string, current: string): Promise<string | null> {
-  $('op-title').textContent = `Select ${className}`;
+/**
+ * Open the picker over `entries` (or a promise of them — "loading…" until
+ * they land), preselecting `current`. Resolves the chosen id, or null if
+ * cancelled. The one list dialog for anything that is a choice among named
+ * things: a class's objects below, the template editor's buildings.
+ */
+export function pickFromEntries(title: string, entries: PickEntry[] | Promise<PickEntry[]>, current: string): Promise<string | null> {
+  $('op-title').textContent = title;
   const search = $input('op-search');
   search.value = '';
   const list = $('op-list');
@@ -52,13 +59,18 @@ function pickFromClass(className: string, current: string): Promise<string | nul
   pickDialog().showModal();
   search.focus();
   return new Promise<string | null>((resolve) => {
-    const session = pick = { entries: [] as RosterEntryDTO[], sel: current, resolve };
-    void objectsOfClass(className).then((entries) => {
+    const session = pick = { entries: [] as PickEntry[], sel: current, resolve };
+    void Promise.resolve(entries).then((loaded) => {
       if (pick !== session) return; // closed, or another picker opened, before it loaded
-      pick.entries = entries;
+      pick.entries = loaded;
       renderPickList('');
     });
   });
+}
+
+/** Open the type-constrained picker for `className`, preselecting `current`. */
+function pickFromClass(className: string, current: string): Promise<string | null> {
+  return pickFromEntries(`Select ${className}`, objectsOfClass(className), current);
 }
 
 /** (Re)build the picker list, filtered by `q`, grouped like the roster. */

@@ -248,6 +248,19 @@ test('the template editor: a template drawn, saved, and generated from', async (
   await field('Size').locator('input').press('Tab');
   await expect(page.locator('#rte-svg .rte-zone[data-index="3"]')).not.toHaveClass(/start/);
   await expect(page.locator('#rte-svg .rte-zone[data-index="3"] text', { hasText: /^20$/ })).toHaveCount(1);
+  // A named object through the picker: the palette's buildings, chosen by
+  // name, land as the shared href the template writes.
+  await page.locator('#rte-panel .rte-add').nth(1).click(); // Objects, under TreasureBlocks
+  await expect(page.locator('#rte-panel .rte-item input[type=text]')).toHaveValue(/Dragon_Utopia/);
+  await page.locator('#rte-panel .rte-item button', { hasText: '…' }).click();
+  await expect(page.locator('#objpick')).toBeVisible();
+  await page.locator('#op-search').fill('Crypt');
+  await page.locator('#op-list .op-opt', { hasText: /^Crypt$/ }).click();
+  await page.locator('#op-ok').click();
+  await expect(page.locator('#objpick')).toBeHidden();
+  await expect(page.locator('#rte-panel .rte-item input[type=text]')).toHaveValue('/MapObjects/Crypt.(AdvMapBuildingShared).xdb#xpointer(/AdvMapBuildingShared)');
+  await expect(page.locator('#rte-svg .rte-zone[data-index="3"] text', { hasText: 'Crypt 1..1' })).toHaveCount(1);
+
   // The warning line speaks, never refuses: #3 is joined to nothing yet.
   await expect(page.locator('#rte-warn')).toContainText('joined to nothing: #3');
 
@@ -287,6 +300,7 @@ test('the template editor: a template drawn, saved, and generated from', async (
   expect(h5et).toContain('<UniqueRaces>true</UniqueRaces>');
   expect(h5et.match(/<Index>/g)).toHaveLength(3 + 3); // three zones, and the three of the picture
   expect(h5et).toContain('<Road>false</Road>');
+  expect(h5et).toContain('<Href>/MapObjects/Crypt.(AdvMapBuildingShared).xdb#xpointer(/AdvMapBuildingShared)</Href>');
   expect(h5et).toContain('<Diagram>');
   await expect(page.locator('#rte-list option')).toHaveCount(24);
   await expect(page.locator('#rte-list option', { hasText: TEMPLATE })).toHaveText(/yours/);

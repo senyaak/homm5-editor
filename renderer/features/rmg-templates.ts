@@ -26,7 +26,9 @@
 import { $, $button, $input, $select, fillSelect } from '#core/dom.ts';
 import { ask, modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
-import type { RmgTemplateEntry } from '#electron/ipc.ts';
+import type { PlaceableObject, RmgTemplateEntry } from '#electron/ipc.ts';
+import { pickFromEntries } from '#features/inspector/refs.ts';
+import type { PickEntry } from '#features/inspector/refs.ts';
 import { layoutDiagram } from '#src/rmg/diagram-layout.ts';
 import { RACE_BY_NAME } from '#src/rmg/load-template.ts';
 import { CONNECTION_FIELDS, TEMPLATE_FIELDS, ZONE_FIELDS, ZONE_LAYOUT_KINDS, OUR_CONNECTION_FIELDS, OUR_TEMPLATE_FIELDS, OUR_ZONE_FIELDS } from '#src/rmg/template.ts';
@@ -514,6 +516,21 @@ function removeButton(remove: () => void): HTMLButtonElement {
   return b;
 }
 
+/**
+ * What a zone may name: the palette's buildings, each by the shared
+ * document a placed one points at (the href the template writes), labelled
+ * as the palette labels it and grouped as the original's filter groups it.
+ * Read once; the palette scans the same catalogue.
+ */
+let buildingsLoad: Promise<PickEntry[]> | null = null;
+function buildings(): Promise<PickEntry[]> {
+  buildingsLoad ??= api.listObjects().then((r) => r.objects
+    .filter((o: PlaceableObject) => o.type === 'AdvMapBuilding' && !o.random && !o.hidden)
+    .sort((a, b) => a.group.localeCompare(b.group) || a.label.localeCompare(b.label))
+    .map((o) => ({ id: o.shared, name: o.label, group: o.group })));
+  return buildingsLoad;
+}
+
 function zonePanel(z: RmgZone): void {
   const p = $('rte-panel');
   p.replaceChildren(heading(`Zone #${z.index}`));
@@ -553,7 +570,21 @@ function zonePanel(z: RmgZone): void {
     href.title = 'Href — the building\'s document';
     href.spellcheck = false;
     href.addEventListener('change', () => { o.href = href.value.trim(); markDirty(); render(); });
-    d.append(href,
+    // The picker: the palette's buildings, since a named object is placed
+    // and written as a building (`run.ts`, `priced`).
+    const browse = document.createElement('button');
+    browse.textContent = '…';
+    browse.title = 'pick a building from the palette';
+    browse.addEventListener('click', () => {
+      void pickFromEntries('Select a building', buildings(), o.href).then((picked) => {
+        if (picked === null) return;
+        o.href = picked;
+        markDirty();
+        render();
+        zonePanel(z);
+      });
+    });
+    d.append(href, browse,
       smallNumber(o.min, 'Min — placed before the budgets', (v) => { o.min = v; markDirty(); render(); }),
       smallNumber(o.max, 'Max — the ceiling; blank for none, 0 to forbid', (v) => { o.max = v; markDirty(); render(); }, true),
       smallNumber(o.guardStrenght, 'GuardStrenght — on each forced one; 0 for none', (v) => { o.guardStrenght = v; markDirty(); render(); }),
