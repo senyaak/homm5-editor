@@ -3965,6 +3965,34 @@ lie beside a start zone this way), and REPEATED connections between one pair
 the spring stronger, and `mt_outcast` joins opposite zones of its ring by
 teleport on top of the ring's ground passages).
 
+### Writing a template back — the editor's first brick
+
+`write-template.ts` turns an `RmgTemplate` into the file, and its shape is
+held to the game's: every one of the twenty-two shipped `.xdb`, read and
+written, is the bytes it was (`test-rmg-write-template`). What that took
+was reading the files rather than the schema. The serialiser writes a tab
+a level, CRLF, one `<Item>` a line, and an EMPTY list self-closed
+(`<Dwellings/>` in three zones of `S1-3P2Z7V3`); it writes `NameFileRef`
+where the template has one (nineteen) and no tag where it has none
+(three); it writes `Shipyard` only where the author set it (two, both
+`true`, which is also the default the constructor gives an absent one); and
+it writes a tier list AS LONG AS IT IS — every `Mines` has seven entries,
+`Dwellings` runs from none to seven, `S1P2Z2M1` spelling out
+`1,0,0,0,0,0,0` where `S1-2P2-4Z4K1S` stops at `1,0`. The reader used to
+pad the lists to seven, which read the same and wrote differently, so the
+model now holds them as written and the placers read a missing tier as
+nothing (`counts[tier] ?? 0`, which they did already); `shipyard` became
+`true | false | null` for the same reason, with `shipyardOf` for the
+engine's value. Fields of ours are written only when they say something
+the default does not, each where `Jebus Cross.h5et` puts it — so a template
+without them writes as a plain `.xdb`, and `usesOwnFields` says which a
+template is. Jebus itself round-trips by meaning, not bytes: it carries
+comments and one-line items the model does not keep, and the writer is
+fixed on its own output instead. Free text (`Name`, the hrefs) goes
+through the five XML entities both ways (`encodeEntities` /
+`decodeEntities` in `xml.ts`; `text()` stays verbatim for the round trips
+that keep bytes).
+
 ## Which fields the engine actually reads
 
 A data format read out of an executable comes with a second question behind

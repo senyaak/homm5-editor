@@ -90,6 +90,12 @@ a named hero — a named one makes the player that race — and a map with
 any hero named offers only the heroes named (a slot left to the game keeps
 its whole race), in the lobby and in the taverns alike.
 
+**A template can be written, not only read** — the first brick of a
+template editor. The writer makes the file the game's own serialiser
+makes: each of the twenty-two shipped templates, read and written back,
+is the bytes it was, and a template of ours writes its own fields only
+where they say something (`docs/RMG.md`, "Writing a template back").
+
 **The generator reads the install the game reads.** Every document the port
 opens — the preset table, the templates, the tiles, every shared building,
 the creature roster — now comes through the same archive chain the

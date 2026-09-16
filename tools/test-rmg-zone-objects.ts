@@ -61,7 +61,9 @@ if (!game) {
     // The middle: the Utopia as shipped, plus no Crypt at all.
     .replace('</Objects>', `<Item><Href>${CRYPT}</Href><Max>0</Max></Item></Objects>`)
     // Every start zone: two trading posts, and not a third.
-    .replace(/<BuffPoints>0<\/BuffPoints>\n\t\t<\/Item>/g, (m, offset: number, whole: string) =>
+    // `\r?\n`: the checkout decides the file's line ending (autocrlf), and
+    // a pattern bound to one of them matched nothing on the other.
+    .replace(/<BuffPoints>0<\/BuffPoints>\r?\n\t\t<\/Item>/g, (m, offset: number, whole: string) =>
       // The middle zone's block already has its own list; the rest get theirs.
       whole.lastIndexOf('<Objects>', offset) > whole.lastIndexOf('<Index>', offset)
         ? m
@@ -135,7 +137,7 @@ if (!game) {
   {
     const flat = jebusXml
       .replace('<Name>Jebus Cross</Name>', '<Name>Jebus Flat</Name>')
-      .replace(/<GuardMultiplier>[^<]*<\/GuardMultiplier>\n/g, '');
+      .replace(/<GuardMultiplier>[^<]*<\/GuardMultiplier>\r?\n/g, '');
     writeFileSync(join(root, 'RMG', 'Templates', 'Jebus Flat.h5et'), flat);
     const thousand = jebusXml
       .replace('<Name>Jebus Cross</Name>', '<Name>Jebus Thousand</Name>')

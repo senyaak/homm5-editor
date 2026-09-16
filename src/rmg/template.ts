@@ -24,7 +24,7 @@
 
 import { readFileSync } from 'node:fs';
 
-import { childText, find, findAll, parse, text } from '../format/xml.ts';
+import { childText, decodeEntities, find, findAll, parse, text } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
 import { readText, toAssets } from './data.ts';
 import type { DataRoot } from './data.ts';
@@ -49,12 +49,26 @@ export interface RmgZone {
    * explicitly (S0-1P2Z2K3.2T and S3-5P2-8Z8K2M, every zone, always true),
    * the rest rely on the default. A water-bordered zone copies it to its own
    * +0x164; nothing else reads it yet.
+   *
+   * `null` is the field NOT WRITTEN — the engine's default, true — and it is
+   * kept apart from an explicit true so that the writer can put the file
+   * back the way it was: twenty templates omit the tag, two spell it out,
+   * and a model that folded the two would write all twenty-two one way.
+   * Readers wanting the value take `shipyardOf(zone)`.
    */
-  shipyard: boolean;
-  /** Per tier: how many mines of that resource the zone wants. */
+  shipyard: boolean | null;
+  /**
+   * Per tier: how many mines of that resource the zone wants. AS WRITTEN —
+   * the file lists as many tiers as the author gave (every shipped `Mines`
+   * has seven; `Dwellings` runs two to seven, fifteen templates stopping
+   * short), and a tier past the list is nothing, which is what the placers
+   * read (`counts[tier] ?? 0`). The length is data: `S1P2Z2M1` spells out
+   * `1,0,0,0,0,0,0` where `S1-2P2-4Z4K1S` writes `1,0`, and the writer
+   * gives each back as it came.
+   */
   mines: number[];
   abandonedMines: number;
-  /** Per tier: dwellings of that tier. */
+  /** Per tier: dwellings of that tier, as written (see `mines`). */
   dwellings: number[];
   upgBuildingsDensity: number;
   treasureDensity: number;
@@ -168,6 +182,15 @@ export interface RmgConnection {
 
 export interface RmgTemplate {
   name: string;
+  /**
+   * `<NameFileRef href="…"/>` — the localised name's text file, which the
+   * game's dialog shows in place of `Name`. Nineteen shipped templates name
+   * one, three carry no tag at all: `null` is the tag absent, `''` an empty
+   * href, and the writer keeps the two apart.
+   */
+  nameFileRef: string | null;
+  /** `<DescriptionFileRef href="…"/>` — every shipped template writes it empty. */
+  descriptionFileRef: string;
   zones: RmgZone[];
   connections: RmgConnection[];
   /** DEAD: parsed, defaulted, copied, and branched on by no instruction. */
@@ -209,14 +232,10 @@ export interface RmgTemplate {
 const int = (el: XmlElement, name: string): number => Number.parseInt(childText(el, name), 10) || 0;
 const bool = (el: XmlElement, name: string): boolean => childText(el, name) === 'true';
 
-/** `<Mines><Item>1</Item>…</Mines>` — a fixed-length list of counts. */
-function items(el: XmlElement, name: string, length = TIERS): number[] {
+/** `<Mines><Item>1</Item>…</Mines>` — a list of counts, as long as the file makes it (`RmgZone.mines`). */
+function items(el: XmlElement, name: string): number[] {
   const holder = find(el, name);
-  const out = holder ? findAll(holder, 'Item').map((i) => Number.parseInt(text(i), 10) || 0) : [];
-  // Padded rather than trusted: a short list would otherwise read as undefined
-  // at a tier the phases index blindly.
-  while (out.length < length) out.push(0);
-  return out;
+  return holder ? findAll(holder, 'Item').map((i) => Number.parseInt(text(i), 10) || 0) : [];
 }
 
 /** `<TreasureBlocks><Item><Min>15000</Min><Max>30000</Max><Count>4</Count></Item>…</TreasureBlocks>`, ours. */
@@ -231,7 +250,7 @@ function zoneObjects(z: XmlElement): RmgZoneObject[] {
   const holder = find(z, 'Objects');
   if (!holder) return [];
   return findAll(holder, 'Item').map((o) => {
-    const href = childText(o, 'Href');
+    const href = decodeEntities(childText(o, 'Href'));
     if (!href) throw new Error('a zone <Objects> item needs an <Href>');
     const max = childText(o, 'Max');
     return {
@@ -260,9 +279,9 @@ export function parseTemplate(xml: string): RmgTemplate {
       canBePlayerStart: bool(z, 'CanBePlayerStart'),
       town: bool(z, 'Town'),
       townGuardStrenght: int(z, 'TownGuardStrenght'),
-      // Defaulted TRUE like the engine's item constructor (0xBA71D0) — the
-      // one field no shipped template writes, so absence is the normal case.
-      shipyard: childText(z, 'Shipyard') !== 'false',
+      // Absent in twenty of the shipped templates; the engine's item
+      // constructor (0xBA71D0) then has it TRUE. Kept as "absent" here.
+      shipyard: find(z, 'Shipyard') === null ? null : childText(z, 'Shipyard') === 'true',
       mines: items(z, 'Mines'),
       abandonedMines: int(z, 'AbandonedMines'),
       dwellings: items(z, 'Dwellings'),
@@ -296,8 +315,11 @@ export function parseTemplate(xml: string): RmgTemplate {
     road: childText(c, 'Road') !== 'false',
   }));
 
+  const nameRef = find(t, 'NameFileRef');
   return {
-    name: childText(t, 'Name'),
+    name: decodeEntities(childText(t, 'Name')),
+    nameFileRef: nameRef ? decodeEntities(nameRef.attrs.href ?? '') : null,
+    descriptionFileRef: decodeEntities(find(t, 'DescriptionFileRef')?.attrs.href ?? ''),
     zones,
     connections,
     graalOnMap: bool(t, 'GraalOnMap'),
@@ -311,6 +333,11 @@ export function parseTemplate(xml: string): RmgTemplate {
     layoutJitter: Math.min(1, Math.max(0, Number.parseFloat(childText(t, 'LayoutJitter')) || 0)),
     uniqueRaces: bool(t, 'UniqueRaces'),
   };
+}
+
+/** The zone's Shipyard bit as the engine holds it: written, or the constructor's true. */
+export function shipyardOf(zone: RmgZone): boolean {
+  return zone.shipyard ?? true;
 }
 
 /** A template by its full path on disk — the tests' door. */

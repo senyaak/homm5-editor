@@ -1210,8 +1210,12 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       connection, click either for its panel; the template's own fields
       (name, sizes, players, ZoneLayout, LayoutJitter, UniqueRaces) in a
       panel of their own. Warnings on the diagram, never refusals. First
-      brick: the `.h5et` WRITER, held by a round trip over the game's 22
-      and Jebus, byte for byte. Then a "Templates…" door from the
+      brick DONE (16.09): the `.h5et` WRITER (`src/rmg/write-template.ts`),
+      the game's 22 byte for byte and Jebus by meaning (it carries comments
+      the model does not; `test-rmg-write-template`) — which taught the
+      model two things the reader had folded: a tier list's LENGTH is data
+      (`Dwellings` runs none to seven) and `Shipyard` is written or not.
+      Next: the module itself, then a "Templates…" door from the
       generator's dialog, saving where the dialog lists from, and an e2e:
       add a zone and a connection, save, generate from it ⬜
 - [ ] **Generate only from a whitelist.** A second dialog inside the

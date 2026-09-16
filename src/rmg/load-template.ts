@@ -46,6 +46,7 @@
 // vector upstream is the LOBBY.
 
 import type { RmgRandom } from './random.ts';
+import { shipyardOf } from './template.ts';
 import type { RmgTemplate, RmgZone } from './template.ts';
 
 /** The Setting enum as the executable numbers it (strings at 0xFBD4D4). */
@@ -272,7 +273,7 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
       terrainRace,
       playerNo: assignedPlayer,
       kind,
-      shipyard: t.item.shipyard,
+      shipyard: shipyardOf(t.item),
       ctorRoll: rng.next(),
     });
   }

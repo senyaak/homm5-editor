@@ -11,7 +11,7 @@ import { join } from 'node:path';
 
 import { createMap, unitsToSize } from '../src/rmg/create-map.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
-import { readTemplate, TIERS } from '../src/rmg/template.ts';
+import { readTemplate, shipyardOf, TIERS } from '../src/rmg/template.ts';
 import { dataDir } from './game-dir.ts';
 import { exeTables } from '../src/rmg/exe.ts';
 import { gameExeIfAny } from './game-dir.ts';
@@ -57,9 +57,12 @@ for (const file of files) {
       check(`${file}: connection ${c.sourceZoneIndex}→${c.destZoneIndex} names a real zone`, false);
     }
   }
+  // As written: every Mines lists seven, a Dwellings may stop short (none to
+  // seven across the 22 — `S1-3P2Z7V3` has three zones with `<Dwellings/>`),
+  // and neither runs past the tiers there are.
   for (const z of t.zones) {
-    if (z.mines.length !== TIERS || z.dwellings.length !== TIERS) {
-      check(`${file}: zone ${z.index} has ${TIERS} tiers of mines and dwellings`, false,
+    if (z.mines.length !== TIERS || z.dwellings.length > TIERS) {
+      check(`${file}: zone ${z.index} lists seven mines and up to ${TIERS} dwellings`, false,
         `${z.mines.length}/${z.dwellings.length}`);
     }
   }
@@ -83,7 +86,8 @@ check('and its treasure block budget is 10000', s1.zones[0]!.treasureBlocksTotal
 check('the guarded passage between the towns is the strong one',
   Math.max(...s1.connections.map((c) => c.guardStrenght)) === 12);
 
-check('shipyard defaults to true where no template writes it', s1.zones.every((z) => z.shipyard));
+check('shipyard is read as absent where no template writes it, and the engine takes it true',
+  s1.zones.every((z) => z.shipyard === null && shipyardOf(z)));
 
 console.log('\nCreateMap');
 
