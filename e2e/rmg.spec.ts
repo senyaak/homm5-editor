@@ -225,8 +225,8 @@ test('the template editor: a template drawn, saved, and generated from', async (
   await expect(page.locator('#rte-svg .rte-zone')).toHaveCount(5);
   const middle = page.locator('#rte-svg .rte-zone[data-index="1"] text');
   await expect(middle.filter({ hasText: /^×2$/ })).toHaveCount(1);
-  await expect(middle.filter({ hasText: '3× 15k–28k' })).toHaveCount(1);
-  await expect(middle.filter({ hasText: 'Dragon_Utopia 1..1 ⚔30' })).toHaveCount(1);
+  await expect(middle.filter({ hasText: '13× 2.5k–28k' })).toHaveCount(1); // the three ranges, summed
+  await expect(middle.filter({ hasText: /^\+1$/ })).toHaveCount(1);          // one object forced
   await expect(page.locator('#rte-svg .rte-conn')).toHaveCount(8);
   await expect(page.locator('#rte-svg .rte-conn.roadless')).toHaveCount(4);
   await page.locator('#rte .mp-card').screenshot({ path: join(REPO_ROOT, '_tmp', 'e2e-rmg-template-editor-jebus.png') });
@@ -259,7 +259,7 @@ test('the template editor: a template drawn, saved, and generated from', async (
   await page.locator('#op-ok').click();
   await expect(page.locator('#objpick')).toBeHidden();
   await expect(page.locator('#rte-panel .rte-item input[type=text]')).toHaveValue('/MapObjects/Crypt.(AdvMapBuildingShared).xdb#xpointer(/AdvMapBuildingShared)');
-  await expect(page.locator('#rte-svg .rte-zone[data-index="3"] text', { hasText: 'Crypt 1..1' })).toHaveCount(1);
+  await expect(page.locator('#rte-svg .rte-zone[data-index="3"] text', { hasText: /^\+1$/ })).toHaveCount(1);
 
   // The warning line speaks, never refuses: #3 is joined to nothing yet.
   await expect(page.locator('#rte-warn')).toContainText('joined to nothing: #3');

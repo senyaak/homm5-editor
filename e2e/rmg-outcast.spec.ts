@@ -208,8 +208,10 @@ test('Jebus Outcast, drawn click by click, saved, and generated from', async () 
   await addObject(page, 'Utopia', /^Dragon[ _]Utopia$/, 1, 1, 30);
   await addObject(page, 'Pyramid', /^Pyramid$/, 12, null, 20); // +63 0 20000 100 d 12
   await addObject(page, 'Trading', /Trading/, 0, 0, 0);          // the middle's list opens with -n: nothing unlisted, and 95 is unlisted
-  await expect(page.locator('#rte-svg .rte-zone[data-index="1"] text', { hasText: 'Dragon_Utopia 1..1 ⚔30' })).toHaveCount(1);
-  await expect(page.locator('#rte-svg .rte-zone[data-index="1"] text', { hasText: '2× 30k–39k' })).toHaveCount(1);
+  // The box says how much, not what: sixteen blocks over 10k–39k, thirteen
+  // objects forced and one barred; the panel has the lists.
+  await expect(page.locator('#rte-svg .rte-zone[data-index="1"] text', { hasText: '16× 10k–39k' })).toHaveCount(1);
+  await expect(page.locator('#rte-svg .rte-zone[data-index="1"] text', { hasText: /^\+13 −1$/ })).toHaveCount(1);
 
   // Zone 2, a start: HotA's base 10, "weak", its ranges (12–22k ×2,
   // 5–12k ×11, 0.1–5k ×7). Zones 3–5 are copies of it — "+ Zone" copies the
@@ -230,7 +232,7 @@ test('Jebus Outcast, drawn click by click, saved, and generated from', async () 
   await addObject(page, 'Tomb', /Tomb/, 2, null, 0);                      // +104 0 d 100 d 2
   await addObject(page, 'Dwarven', /Dwarven ?Treasur/, 1, null, 10);      // +16 1 1500 350 d d — a bank the pools never draw
   await addObject(page, 'Trading', /Trading/, 0, 0, 0);                   // -95 0
-  await expect(page.locator('#rte-svg .rte-zone[data-index="2"] text', { hasText: 'Trading_Post 0..0' })).toHaveCount(1);
+  await expect(page.locator('#rte-svg .rte-zone[data-index="2"] text', { hasText: /^\+18 −1$/ })).toHaveCount(1);
   for (const index of [3, 4, 5]) {
     await page.locator('#rte-add-zone').click();
     await expect(page.locator('#rte-panel h3')).toHaveText(`Zone #${index}`);

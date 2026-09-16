@@ -149,20 +149,37 @@ const GLYPHS: Record<string, { d: string; solid?: boolean }> = {
 /** One row of a zone's box: which glyph, and what it says. */
 interface Row { glyph: string; text: string; title: string }
 
+/**
+ * The rows of a zone's box — the essentials, one line a notion, the way the
+ * HotA editor's picture shows a zone's size, owner, towns and riches and
+ * leaves the lists to the settings: which mines, which tiers, each range,
+ * each named object are the panel's; the box says how much of each there
+ * is, and the full list is on hover.
+ */
 function zoneRows(z: RmgZone): Row[] {
+  const sum = (a: number[]): number => a.reduce((s, n) => s + n, 0);
   const rows: Row[] = [{ glyph: 'area', text: String(z.size), title: 'Size — relative; the zones divide the map in proportion' }];
   if (z.town) rows.push({ glyph: 'castle', text: String(z.townGuardStrenght), title: 'Town, and its guard (TownGuardStrenght)' });
   if (z.guardMultiplier !== 1) rows.push({ glyph: 'times', text: `×${z.guardMultiplier}`, title: 'GuardMultiplier — the zone\'s own guards, scaled' });
-  if (z.mines.some((m) => m > 0)) rows.push({ glyph: 'pick', text: z.mines.join(' '), title: 'Mines by type: wood, ore, mercury, crystal, sulfur, gems, gold' });
-  if (z.dwellings.some((d) => d > 0)) rows.push({ glyph: 'house', text: z.dwellings.join(' '), title: 'Dwellings by tier' });
+  if (sum(z.mines)) rows.push({ glyph: 'pick', text: String(sum(z.mines)), title: `Mines: ${z.mines.join(' ')} — wood, ore, mercury, crystal, sulfur, gems, gold` });
+  if (sum(z.dwellings)) rows.push({ glyph: 'house', text: String(sum(z.dwellings)), title: `Dwellings by tier: ${z.dwellings.join(' ')}` });
   if (z.treasureBlocks.length) {
-    for (const r of z.treasureBlocks) rows.push({ glyph: 'gem', text: `${r.count}× ${thousands(r.min)}–${thousands(r.max)}`, title: 'TreasureBlocks — blocks worth a draw in this range' });
+    const lo = Math.min(...z.treasureBlocks.map((r) => r.min));
+    const hi = Math.max(...z.treasureBlocks.map((r) => r.max));
+    const each = z.treasureBlocks.map((r) => `${r.count}× ${thousands(r.min)}–${thousands(r.max)}`).join(', ');
+    rows.push({ glyph: 'gem', text: `${sum(z.treasureBlocks.map((r) => r.count))}× ${thousands(lo)}–${thousands(hi)}`, title: `TreasureBlocks — ${each}` });
   } else {
     rows.push({ glyph: 'coins', text: thousands(z.treasureBlocksTotalValue), title: 'TreasureBlocksTotalValue' });
   }
-  for (const o of z.objects) {
-    const ceiling = Number.isFinite(o.max) ? `..${o.max}` : '+';
-    rows.push({ glyph: 'crate', text: `${objectWord(o.href)} ${o.min}${ceiling}${o.guardStrenght ? ` ⚔${o.guardStrenght}` : ''}`, title: `Objects — ${o.href}` });
+  if (z.objects.length) {
+    const forced = sum(z.objects.map((o) => o.min));
+    const barred = z.objects.filter((o) => o.max === 0).length;
+    const each = z.objects.map((o) => {
+      const how = o.max === 0 ? 'barred' : `${o.min}${Number.isFinite(o.max) ? `..${o.max}` : '+'}`;
+      return `${objectWord(o.href)} ${how}${o.guardStrenght ? ` ⚔${o.guardStrenght}` : ''}`;
+    }).join(', ');
+    const text = [forced ? `+${forced}` : '', barred ? `−${barred}` : ''].filter(Boolean).join(' ') || '∅';
+    rows.push({ glyph: 'crate', text, title: `Objects — ${each}` });
   }
   return rows;
 }

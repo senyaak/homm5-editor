@@ -1205,7 +1205,14 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       Utopia through the object picker — the palette's buildings, since a
       named object is placed as one) and generates a medium map from it,
       the outcasts on roadless passages until a connection can say
-      teleport / fictive. Not yet: variants and packs (below). Our own, a module of its own embedded
+      teleport / fictive. The boxes show the ESSENTIALS (size, town and
+      guard, multiplier, mine and dwelling counts, the blocks summed, the
+      objects as +forced −barred), the lists on hover and in the panel.
+      Not yet: variants and packs (below); a diagram pan/zoom; and
+      `<Objects>` names BUILDINGS only (the placer writes a building) — a
+      Refugee Camp (`AdvMapDwelling`), a Seer's Hut, a shrine, a Hill
+      Fort cannot be forced or barred until the placer emits by the
+      document's type, each with the fields its type needs. Our own, a module of its own embedded
       in the editor, writing `.h5et` (settled 16.09; HotA's editor and
       zomle's open reimplementation of it are the picture, not the code).
       The zones as RECTANGLES, the way an ER diagram draws an entity: index
