@@ -11,7 +11,7 @@
 // Everything file-format lives in ../src, shared with the CLI tools. Nothing
 // here decodes anything.
 
-import { app, BrowserWindow, ipcMain, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, screen } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { dirname } from 'node:path';
 import { buildScene } from '#src/scene/scene.ts';
@@ -99,6 +99,22 @@ function createWindow(): void {
   // re-narrowing the mutable shared `state.win` after every call.
   const w = state.win;
   w.setMenuBarVisibility(false);
+  // No application menu at all: a hidden menu bar still answers its
+  // accelerators, and Electron's stock one reloads the page on Ctrl+R (the
+  // editor's state with it) and opens DevTools on Ctrl+Shift+I. Windows
+  // handles the clipboard keys in an input without a menu. DevTools still
+  // opens through the app's own door (`app:open-devtools`).
+  Menu.setApplicationMenu(null);
+  // And the browser's own keys, which no menu owns: the reloads and the
+  // DevTools toggles are swallowed before the page sees them.
+  w.webContents.on('before-input-event', (e, input) => {
+    if (input.type !== 'keyDown') return;
+    const key = input.key.toLowerCase();
+    const ctrl = input.control || input.meta;
+    const reload = key === 'f5' || (ctrl && key === 'r');
+    const devtools = key === 'f12' || (ctrl && key === 'i');
+    if (reload || devtools) e.preventDefault();
+  });
   if (NO_FOCUS) w.once('ready-to-show', () => showQuietly(w));
   // Renderer failures, in the terminal that launched the app. Until this was
   // here, a renderer that died on its first line left no trace anywhere the
