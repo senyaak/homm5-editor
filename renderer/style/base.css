@@ -1,10 +1,13 @@
 html, body { margin: 0; height: 100%; overflow: hidden;
   background: #0d1014; color: #c9d1d9; font: 13px/1.5 system-ui, sans-serif; }
-/* A <dialog> does not inherit the page's colour: the platform sheet sets
-   CanvasText on it, which is black in a page that declares no colour
-   scheme — the Confirm box's question was black on the card. Every dialog
-   of ours is the page's colour. */
-dialog { color: #c9d1d9; }
+/* A <dialog> comes with the platform's chrome — a white box with a border,
+   padding and CanvasText, black in a page that declares no colour scheme —
+   and the Confirm box wore it: its question black on the card, the card
+   inside a pale frame. Every dialog of ours is a transparent, colourless
+   frame around its own card, and this is the default; a dialog that wants
+   otherwise (the tree's, the film's) says so by id. */
+dialog { padding: 0; border: 0; background: transparent; color: #c9d1d9; }
+dialog::backdrop { background: #0d1014cc; }
 
 /* Dark, thin scrollbars — the platform default is a wide light bar that
    reads as broken chrome inside these panels. */
