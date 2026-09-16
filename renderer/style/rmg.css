@@ -12,3 +12,6 @@
 .de-foot #rmg-random { margin-right: auto; }
 .rmg-checks { display: flex; gap: 16px; flex-wrap: wrap; }
 .rmg-busy { font-size: 12px; color: #d29922; }
+.rmg-hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+.rmg-hero-grid .rmg-short span { flex: 0 0 auto; padding-left: 4px; }
+.rmg-hero-grid .on-row select { min-width: 0; }

@@ -134,6 +134,7 @@ function resolve(inst: RmgInstall, p: RmgGeneratePayload): RmgResolvedOrder {
     expMultiplier: p.expMultiplier === 'random' ? below(choices.expMultipliers.length) : p.expMultiplier,
     grail: p.grail === 'random' ? below(2) === 1 : p.grail,
     randomTowns: p.randomTowns === 'random' ? below(2) === 1 : p.randomTowns,
+    heroes: p.heroes?.slice(0, players).some((h) => h !== 'any') ? p.heroes.slice(0, players) : undefined,
   };
 }
 

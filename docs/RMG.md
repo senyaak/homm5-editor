@@ -3849,6 +3849,28 @@ eighteen seats there are, all relics, and three lines saying so). On the
 shipped Jebus the middle's three dearest artifacts come out at 20000+ on
 both seeds tried, its start zones on their split totals never above 6400.
 
+### The heroes a map offers — an order's choice
+
+A generated map writes `<AvailableHeroes/>` — every hero that is not a
+scenario's, the lobby lets each player pick among their race's and the
+taverns hire from the rest (a shipped multiplayer map, `A2M3`, lists 71 of
+the 118 by hand). Ours can say who: per player slot, `any` (the game's
+choice), `random` (one of the player's race, drawn from the seed on a
+stream of its own, so the engine's stream and the map are untouched) or a
+hero's href — and `AvailableHeroes` becomes the union, a slot left to the
+game contributing its whole race so a restricted map still offers that
+player a choice. `HeroInTown` stays true: the lobby still picks, from the
+list. A named hero names the player's race (`playerRaces`, the concrete
+slot the lobby would have set). The roster (`heroes.ts`): every
+`AdvMapHeroShared` whose `ScenarioHero` is not true and whose `Class` is
+not `HERO_CLASS_NONE` (the EntryPoint under `Utility/` is one and is not a
+hero), by its `TownType` — eight a race, the dwarves under
+`MapObjects/Dwarves/`, a mod's beside them. The dialog shows a select per
+player slot, grouped by race; `test-rmg-heroes` holds the roster, the
+choice and the file, `e2e/rmg.spec.ts` drives the select and reads the
+map. Two slots may name one hero; whether the game seats him twice is
+still to be played.
+
 What the Voronoi layout does NOT yet read, and HotA's templates do — noted
 for the template editor, not for now: a connection's TYPE (`teleport`
 against `ground` — ours would be a field on the connection, since the
@@ -4243,6 +4265,16 @@ Three fields of the preset's statics block — `SetProbability`,
 `ConcurentProbability`, `BorderWidth` — also came out inert, but only five
 races carry that block and the reference order may not use one of them, so
 that is a lead rather than a verdict.
+
+**`HeroPool` is dead on both sides** (16.09). The preset record's reader
+`0xB98D50` puts it at `+0x1C`, eight heroes a race in the shipped table.
+Every race's pool emptied in a loose table: the generator's map is byte
+for byte the same (`--preset --field HeroPool=`, with `GuardStrenght` 9 as
+the live control in the same run, and `withField` now replaces a
+list-valued field whole), and the GAME, started on a generated map with
+the same loose table in place, still offered the hero choice in the lobby
+(played). So the heroes a map offers come from the hero documents, and
+what an order of ours says about them is below.
 
 ## What the executable says about itself
 

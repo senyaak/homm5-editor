@@ -88,6 +88,48 @@ function refreshPlayers(): void {
   const keep = $select('rmg-players').value;
   const opts = withRandom(Array.from({ length: max - min + 1 }, (_, i) => ({ id: String(min + i), label: String(min + i) })));
   fillSelect($select('rmg-players'), opts, opts.some((o) => o.id === keep) ? keep : RANDOM);
+  showHeroSlots();
+}
+
+/** The hero lists: the game's choice, one of the race drawn, or a named hero, grouped by race. */
+function fillHeroes(): void {
+  const byTown = new Map<string, { href: string; name: string }[]>();
+  for (const h of choices?.heroes ?? []) {
+    if (!byTown.has(h.town)) byTown.set(h.town, []);
+    byTown.get(h.town)!.push(h);
+  }
+  for (let i = 1; i <= 8; i++) {
+    const sel = $select(`rmg-hero-${i}`);
+    const keep = sel.value;
+    sel.replaceChildren();
+    for (const [id, label] of [['any', "the game's choice"], ['random', 'one of the race, drawn']] as const) {
+      const o = document.createElement('option');
+      o.value = id;
+      o.textContent = label;
+      sel.appendChild(o);
+    }
+    for (const [town, heroes] of [...byTown].sort(([a], [b]) => a.localeCompare(b))) {
+      const g = document.createElement('optgroup');
+      g.label = pretty(town, 'TOWN_');
+      for (const h of heroes) {
+        const o = document.createElement('option');
+        o.value = h.href;
+        o.textContent = h.name;
+        g.appendChild(o);
+      }
+      sel.appendChild(g);
+    }
+    sel.value = keep && [...sel.options].some((o) => o.value === keep) ? keep : 'any';
+  }
+}
+
+/** Only the slots the players count reaches — all eight while it is left to chance. */
+function showHeroSlots(): void {
+  const players = $select('rmg-players').value;
+  const shown = players === RANDOM ? 8 : Number(players);
+  // `display`, not the `hidden` attribute: the row's own `display: flex`
+  // would win over the attribute and the slot would stay on screen.
+  for (let i = 1; i <= 8; i++) $select(`rmg-hero-${i}`).parentElement!.style.display = i > shown ? 'none' : '';
 }
 
 function updateWhere(): void {
@@ -105,6 +147,7 @@ async function fill(): Promise<void> {
   fillSelect($select('rmg-monsters'), enumOptions(choices.monsterLevels, 'MONSTER_LEVEL_'), $select('rmg-monsters').value || '1');
   fillSelect($select('rmg-resource'), enumOptions(choices.resourceMultipliers, 'RESOURCE_'), $select('rmg-resource').value || '2');
   fillSelect($select('rmg-exp'), enumOptions(choices.expMultipliers, 'EXP_'), $select('rmg-exp').value || '2');
+  fillHeroes();
   await refreshTemplates();
 }
 
@@ -169,6 +212,7 @@ async function submit(open: (path: string, archive: string) => Promise<void>, re
       grail: boolOr('rmg-grail'),
       randomTowns: boolOr('rmg-towns'),
       minimap: $input('rmg-minimap').checked,
+      heroes: Array.from({ length: 8 }, (_, i) => $select(`rmg-hero-${i + 1}`).value),
     });
     dialog().close();
     await open(r.mapPath, r.archive);
@@ -211,4 +255,5 @@ export function initRmg(openMap: (path: string, archive: string) => Promise<void
   $select('rmg-size').addEventListener('change', () => { void refreshTemplates(); });
   $select('rmg-two').addEventListener('change', () => { void refreshTemplates(); });
   $select('rmg-template').addEventListener('change', refreshPlayers);
+  $select('rmg-players').addEventListener('change', showHeroSlots);
 }

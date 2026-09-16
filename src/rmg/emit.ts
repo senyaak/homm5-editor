@@ -507,6 +507,12 @@ export interface RmgMapInput {
    * two lines, and nothing else about the map changes.
    */
   minimap?: boolean;
+  /**
+   * OURS: the map's `AvailableHeroes` — the heroes the lobby and the taverns
+   * may offer. Empty or absent writes the engine's `<AvailableHeroes/>`, which
+   * the game reads as every hero that is not a scenario's. See `heroes.ts`.
+   */
+  availableHeroes?: readonly string[];
   sRMG: {
     version: number;
     seed: number;
@@ -695,6 +701,14 @@ export function buildRmgMapDesc(input: RmgMapInput): string {
   // The empty rosters — an RMG map writes both self-closed.
   text = patch(text, `\t<spellIDs>${NL}\t</spellIDs>`, '\t<spellIDs/>');
   text = patch(text, `\t<artifactIDs>${NL}\t</artifactIDs>`, '\t<artifactIDs/>');
+  // The hero roster: the engine's is empty; an order of ours may name it.
+  if (input.availableHeroes?.length) {
+    text = patch(text, '\t<AvailableHeroes/>', [
+      '\t<AvailableHeroes>',
+      ...input.availableHeroes.map((href) => `\t\t<Item href="${href}"/>`),
+      '\t</AvailableHeroes>',
+    ].join(NL));
+  }
 
   // The minimap thumbnails — one per floor, or the stock picture when the
   // order asked for no minimap at all.

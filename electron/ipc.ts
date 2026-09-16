@@ -143,6 +143,8 @@ export interface RmgChoicesResult {
   expMultipliers: string[];
   /** Every template the install mounts, with the ranges the filter reads. */
   templates: RmgTemplateEntry[];
+  /** OURS: every hero the lobby would offer — href, `TOWN_*`, file name. */
+  heroes: { href: string; town: string; name: string }[];
 }
 
 export interface RmgTemplateEntry {
@@ -185,6 +187,12 @@ export interface RmgGeneratePayload {
   grail: boolean | 'random';
   randomTowns: boolean | 'random';
   minimap: boolean;
+  /**
+   * OURS: per player slot, `any` (the game's choice), `random` (one of the
+   * race, drawn) or a hero's href; the first `players` entries count. See
+   * `src/rmg/heroes.ts`.
+   */
+  heroes?: string[];
 }
 
 /** The order as it was generated — every `'random'` of the payload resolved. */
@@ -200,6 +208,8 @@ export interface RmgResolvedOrder {
   expMultiplier: number;
   grail: boolean;
   randomTowns: boolean;
+  /** The payload's hero choices, cut to the players; absent when all `any`. */
+  heroes?: string[];
 }
 
 /** Result of `rmg:generate` — the map, landed and packed like a new one, plus what the run cost. */

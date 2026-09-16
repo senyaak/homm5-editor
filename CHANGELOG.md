@@ -72,6 +72,12 @@ with counts, the way a Heroes III zone's are (`<TreasureBlocks>`), which
 is the lever between relics and trinkets: Jebus's middle holds three
 blocks of the relic range, its start zones none.
 
+**The heroes a random map offers.** The generator's dialog has a hero
+select per player: the game's choice, one of the player's race drawn, or
+a named hero — a named one makes the player that race — and a map with
+any hero named offers only the heroes named (a slot left to the game keeps
+its whole race), in the lobby and in the taverns alike.
+
 **The generator reads the install the game reads.** Every document the port
 opens — the preset table, the templates, the tiles, every shared building,
 the creature roster — now comes through the same archive chain the

@@ -76,6 +76,8 @@ export interface MapOrder {
    * minimap debt rather than paying it, which is the whole of what it does.
    */
   minimap?: boolean;
+  /** OURS: the map's `AvailableHeroes`; see `heroes.ts`. Absent or empty is the engine's. */
+  availableHeroes?: readonly string[];
 }
 
 /** One entry of the archive, named the way the map folder holds it. */
@@ -84,7 +86,7 @@ export interface MapFile {
   data: Buffer;
 }
 
-const TOWN_BY_RACE: Record<number, string> = {
+export const TOWN_BY_RACE: Record<number, string> = {
   [RACE.HEAVEN]: 'TOWN_HEAVEN', [RACE.PRESERVE]: 'TOWN_PRESERVE', [RACE.ACADEMY]: 'TOWN_ACADEMY',
   [RACE.DUNGEON]: 'TOWN_DUNGEON', [RACE.NECROMANCY]: 'TOWN_NECROMANCY', [RACE.INFERNO]: 'TOWN_INFERNO',
   [RACE.DWARF]: 'TOWN_FORTRESS', [RACE.STRONGHOLD]: 'TOWN_STRONGHOLD',
@@ -318,6 +320,7 @@ export function buildMapFiles(
           mapName: order.mapName,
         },
         minimap: order.minimap !== false,
+        availableHeroes: order.availableHeroes,
         captionBase: opts.captionBase,
       }), 'utf8'),
     },

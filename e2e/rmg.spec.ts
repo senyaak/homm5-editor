@@ -45,6 +45,23 @@ function cleanup(): void {
   for (const d of ourFolders()) rmSync(d, { recursive: true, force: true });
 }
 
+/**
+ * Wait for the dialog to close on success — or fail the moment it reports an
+ * error or the renderer throws, instead of sitting out the whole allowance.
+ */
+async function untilGenerated(ed: Launched, timeoutMs: number): Promise<void> {
+  const page = ed.page;
+  const started = Date.now();
+  for (;;) {
+    const err = (await page.locator('#rmg-err').textContent())?.trim();
+    if (err) throw new Error(`the dialog reports: ${err}`);
+    if (ed.errors.length) throw new Error(`the renderer threw: ${ed.errors.join(' | ')}`);
+    if (await page.locator('#rmg').isHidden()) return;
+    if (Date.now() - started > timeoutMs) throw new Error(`the dialog is still open after ${timeoutMs / 1000}s`);
+    await page.waitForTimeout(500);
+  }
+}
+
 test.beforeAll(async () => {
   test.skip(!existsSync(join(DATA, 'RMG', 'Templates')), 'needs the game data (RMG/Templates)');
   test.skip(!REAL_GAME || !existsSync(join(REAL_GAME, SHIPPED_EXE)), 'needs a real game to take the executable from (HOMM5_ROOT)');
@@ -97,12 +114,25 @@ test('generates a tiny map through the dialog and opens it', async () => {
   await page.locator('#rmg-players').selectOption('2');
   await page.locator('#rmg-name').fill(NAME);
   await page.locator('#rmg-seed').fill('1785351845');
+  // The heroes: two slots shown for two players, the rest hidden; player 1
+  // named, player 2 left to the game. A named hero names the player's race,
+  // and the map then lists him beside player 2's whole race — checked on
+  // the file below.
+  await expect(page.locator('#rmg-hero-2')).toBeVisible();
+  await expect(page.locator('#rmg-hero-3')).toBeHidden();
+  const orrin = '/MapObjects/Haven/Orrin.(AdvMapHeroShared).xdb#xpointer(/AdvMapHeroShared)';
+  await page.locator('#rmg-hero-1').selectOption(orrin);
+  await expect(page.locator('#rmg-hero-1')).toHaveValue(orrin);
   await expect(page.locator('#rmg-where')).toContainText(`${NAME}.h5m`);
   await page.locator('#rmg-ok').click();
 
   // The dialog closes only on success; an error would leave it open with a
-  // message, so this also asserts the generation did not fail.
-  await expect(page.locator('#rmg')).toBeHidden({ timeout: 4 * 60_000 });
+  // message, so this also asserts the generation did not fail — and FAILS
+  // FAST on the message rather than sitting out the four minutes a large
+  // map is allowed: a dialog that is still open with an error in it is a
+  // verdict already, and a renderer throw before the order even left (a
+  // missing element, once) looked like a hang for exactly that long.
+  await untilGenerated(ed, 4 * 60_000);
   await expect(page.locator('#title')).toContainText(NAME, { timeout: 60_000 });
   await expect(page.locator('#pack')).toBeEnabled();
   // And it ran where it was meant to: in a child of its own, not in main.
@@ -125,6 +155,9 @@ test('generates a tiny map through the dialog and opens it', async () => {
   expect(xdb).toContain('<Template href="/RMG/Templates/S1P2Z2M1.xdb');
   expect(xdb).toContain('<MapSize>MAP_SIZE_TINY</MapSize>');
   expect(xdb).toContain('<TileX>72</TileX>');
+  expect(xdb).toMatch(new RegExp(`<AvailableHeroes>\\s*<Item href="${orrin.replace(/[.()]/g, '\\$&')}"/>`));
+  expect(xdb.match(/<Item href="\/MapObjects\/[^"]+\(AdvMapHeroShared\)[^"]*"\/>/g)).toHaveLength(1 + 8);
+  expect(xdb.split('<PlayersInfo>')[1]).toContain('<Race>TOWN_HEAVEN</Race>');
 });
 
 test('a name already taken is refused and the dialog stays open', async () => {
