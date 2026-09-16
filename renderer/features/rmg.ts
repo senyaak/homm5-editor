@@ -8,8 +8,8 @@
 // does. The lists come from the install, so a mod's template is offered
 // beside the shipped ones and nothing here is typed twice — and they come
 // from a process of the generator's own (electron/channels/rmg.ts), which
-// reads the install ONCE a session: the dialog opens at once and shows a
-// spinner while the first answer is on its way, and the window keeps
+// reads the install ONCE a session: the dialog opens at once, covered by a
+// loading overlay while the first answer is on its way, and the window keeps
 // painting under it; every later opening is filled from memory.
 //
 // AND EVERY CHOICE CAN BE LEFT TO CHANCE. "Random" is the first option of

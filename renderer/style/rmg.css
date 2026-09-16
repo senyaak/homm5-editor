@@ -12,12 +12,7 @@
 .de-foot #rmg-random { margin-right: 4px; }
 .de-foot #rmg-templates { margin-right: auto; }
 .rmg-checks { display: flex; gap: 16px; flex-wrap: wrap; }
-/* The two waits — the install being read, a map being generated — with the
-   spinner of the loading overlay (status.css). `display` beats the `hidden`
-   attribute, so hidden is spelled out. */
-.rmg-wait { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #d29922; }
-.rmg-wait[hidden] { display: none; }
-.rmg-wait .spin { width: 14px; height: 14px; border-width: 2px; }
+/* The two waits — the install being read, a map being generated — cover the card (.card-wait, status.css). */
 .rmg-hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
 .rmg-hero-grid .rmg-short span { flex: 0 0 auto; padding-left: 4px; }
 .rmg-hero-grid .on-row select { min-width: 0; }

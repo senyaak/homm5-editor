@@ -819,9 +819,9 @@ async function remove(): Promise<void> {
 /**
  * Open the editor, on the named template or the first listed.
  *
- * The list may be seconds away (the first read of the install), and the
- * editor is usable meanwhile — New, and everything after it. Whatever was
- * taken up during the wait stays: the list arrives into the select, and the
+ * The list may be seconds away (the first read of the install); the card is
+ * covered while it is, but a keyboard still reaches New. Whatever was taken
+ * up during the wait stays: the list arrives into the select, and the
  * template it would have opened is not loaded over the user's.
  */
 export async function openTemplateEditor(name?: string): Promise<void> {

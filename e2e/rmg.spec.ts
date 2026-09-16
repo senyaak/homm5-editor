@@ -137,9 +137,14 @@ test('generates a tiny map through the dialog and opens it', async () => {
   // The first opening reads the install — in the child, with the window
   // answering throughout. Measured: ~7s of reading, one answer per 200ms;
   // the failure this guards against is ZERO answers for the length of it.
-  const w = await openWhilePinging(ed);
-  console.log(`[rmg-thread] read in ${w.total | 0}ms · ${w.answers} answers · worst wait ${w.worstWait | 0}ms`);
+  // Meanwhile the dialog is up and COVERED: a loading overlay over the card,
+  // not a half-filled form (the picture is in _tmp for the eye).
+  const watching = openWhilePinging(ed);
   await expect(page.locator('#rmg')).toBeVisible();
+  await expect(page.locator('#rmg-loading')).toBeVisible();
+  await page.screenshot({ path: join(REPO_ROOT, '_tmp', 'e2e-rmg-loading.png') });
+  const w = await watching;
+  console.log(`[rmg-thread] read in ${w.total | 0}ms · ${w.answers} answers · worst wait ${w.worstWait | 0}ms`);
   await expect(page.locator('#rmg-loading')).toBeHidden();
   expect(w.total).toBeGreaterThan(1000);
   expect(w.answers).toBeGreaterThan(w.total / 400);

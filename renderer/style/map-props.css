@@ -6,7 +6,7 @@
 #mapprops { padding: 0; border: 0; background: transparent; color: #c9d1d9;
   max-width: 92vw; max-height: 82vh; overflow: visible; }
 #mapprops::backdrop { background: #0d1014cc; }
-.mp-card { width: min(600px, 94vw); max-height: 82vh; background: #161b22;
+.mp-card { position: relative; width: min(600px, 94vw); max-height: 82vh; background: #161b22;
   border: 1px solid #30363d; border-radius: 10px; display: flex; flex-direction: column;
   box-shadow: 0 12px 40px #000a; overflow: hidden; }
 .mp-head { display: flex; align-items: center; padding: 11px 14px; border-bottom: 1px solid #21262d; }

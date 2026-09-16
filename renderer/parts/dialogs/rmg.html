@@ -12,7 +12,6 @@
         <button id="rmg-close" title="close (Esc)">✕</button>
       </div>
       <div class="mp-body on-body">
-        <div id="rmg-loading" class="rmg-wait" hidden><div class="spin"></div><span>reading the install — its archives, templates and heroes…</span></div>
         <label class="on-row"><span>Name<b class="req">*</b></span><input id="rmg-name" type="text" spellcheck="false" autocomplete="off" value="Random Map"></label>
         <div class="rmg-two">
           <label class="on-row"><span>Size</span><select id="rmg-size"></select></label>
@@ -75,8 +74,11 @@
         <div id="rmg-where" class="nm-where"></div>
         <div id="rmg-missing" class="um-missing"></div>
         <div id="rmg-err" class="on-err"></div>
-        <div id="rmg-busy" class="rmg-wait" hidden><div class="spin"></div><span>Generating… a large map takes a few minutes.</span></div>
       </div>
+      <!-- Over the whole card: the lists on their way (the first opening of a
+           session reads the install), and a map being generated. -->
+      <div id="rmg-loading" class="card-wait" hidden><div class="box"><div class="spin"></div><span>reading the install — its archives, templates and heroes…</span></div></div>
+      <div id="rmg-busy" class="card-wait" hidden><div class="box"><div class="spin"></div><span>Generating… a large map takes a few minutes.</span></div></div>
       <div class="de-foot">
         <button id="rmg-random" class="ghost" title="every choice to Random — the name and the minimap stay">All random</button>
         <button id="rmg-templates" class="ghost" title="the template editor — the template chosen above opens in it">Templates…</button>
