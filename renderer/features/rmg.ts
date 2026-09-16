@@ -18,13 +18,22 @@
 // what came out. A fixed template with a random size is a size the template
 // fits.
 //
+// TWO FIELDS OF OURS the game's dialog has not: a race a player, and the
+// heroes. The race goes to the generator as a lobby's concrete slot would.
+// The heroes are the map's `AvailableHeroes`, under a spoiler: a white list
+// — the map offers these and nobody else — built one hero a click through a
+// picker, or the rule "every hero of the players' races" (resolved after
+// the run, since a race may be random), which locks the lists. The black
+// list beside it is for keeping track and is not written: the map has only
+// the one list.
+//
 // Generating lands the map as New Map does — packed into `<game>/H5E/`, opened
 // from that archive — so from the moment it exists it is a map like any other.
 
 import { $, $button, $input, $select, fillSelect } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
 import { requireFilled } from '#core/form-gate.ts';
-import type { RmgChoicesResult, RmgResolvedOrder, RmgTemplateEntry } from '#electron/ipc.ts';
+import type { RmgChoicesResult, RmgGenerateResult, RmgTemplateEntry } from '#electron/ipc.ts';
 import { openTemplateEditor } from '#features/rmg-templates.ts';
 
 const RANDOM = 'random';
@@ -38,6 +47,9 @@ const dialog = (): HTMLDialogElement => {
 let choices: RmgChoicesResult | null = null;
 /** What the template list holds now — the offered ones, or all of them when the size or levels are random. */
 let listed: RmgTemplateEntry[] = [];
+/** The two hero lists, hrefs — kept between openings like every other control. */
+const white: string[] = [];
+const black: string[] = [];
 
 /** `MAP_SIZE_EXTRALARGE` → `Extra Large`; the enum's spelling, made readable. */
 function pretty(name: string, prefix: string): string {
@@ -94,48 +106,107 @@ function refreshPlayers(): void {
   const keep = $select('rmg-players').value;
   const opts = withRandom(Array.from({ length: max - min + 1 }, (_, i) => ({ id: String(min + i), label: String(min + i) })));
   fillSelect($select('rmg-players'), opts, opts.some((o) => o.id === keep) ? keep : RANDOM);
-  showHeroSlots();
+  showRaceSlots();
 }
 
-/** The hero lists: the game's choice, one of the race drawn, or a named hero, grouped by race. */
-function fillHeroes(): void {
-  const byTown = new Map<string, { href: string; name: string }[]>();
-  for (const h of choices?.heroes ?? []) {
-    if (!byTown.has(h.town)) byTown.set(h.town, []);
-    byTown.get(h.town)!.push(h);
-  }
+/** The race lists, one a player: the engine's draw, or one of the races a slot can be set to. */
+function fillRaces(): void {
+  const opts = withRandom((choices?.races ?? []).map((t) => ({ id: t, label: pretty(t, 'TOWN_') })));
   for (let i = 1; i <= 8; i++) {
-    const sel = $select(`rmg-hero-${i}`);
-    const keep = sel.value;
-    sel.replaceChildren();
-    for (const [id, label] of [['any', "the game's choice"], ['random', 'one of the race, drawn']] as const) {
-      const o = document.createElement('option');
-      o.value = id;
-      o.textContent = label;
-      sel.appendChild(o);
-    }
-    for (const [town, heroes] of [...byTown].sort(([a], [b]) => a.localeCompare(b))) {
-      const g = document.createElement('optgroup');
-      g.label = pretty(town, 'TOWN_');
-      for (const h of heroes) {
-        const o = document.createElement('option');
-        o.value = h.href;
-        o.textContent = h.name;
-        g.appendChild(o);
-      }
-      sel.appendChild(g);
-    }
-    sel.value = keep && [...sel.options].some((o) => o.value === keep) ? keep : 'any';
+    const sel = $select(`rmg-race-${i}`);
+    fillSelect(sel, opts, opts.some((o) => o.id === sel.value) ? sel.value : RANDOM);
   }
 }
 
 /** Only the slots the players count reaches — all eight while it is left to chance. */
-function showHeroSlots(): void {
+function showRaceSlots(): void {
   const players = $select('rmg-players').value;
   const shown = players === RANDOM ? 8 : Number(players);
   // `display`, not the `hidden` attribute: the row's own `display: flex`
   // would win over the attribute and the slot would stay on screen.
-  for (let i = 1; i <= 8; i++) $select(`rmg-hero-${i}`).parentElement!.style.display = i > shown ? 'none' : '';
+  for (let i = 1; i <= 8; i++) $select(`rmg-race-${i}`).parentElement!.style.display = i > shown ? 'none' : '';
+}
+
+// --- the hero lists ---------------------------------------------------------
+
+const heroOf = (href: string): { href: string; town: string; name: string } | undefined =>
+  choices?.heroes.find((h) => h.href === href);
+
+/** Both lists drawn from their arrays: a name, its town, an arrow to the other list, a cross. */
+function renderLists(): void {
+  const draw = (id: string, own: string[], other: string[], arrow: string): void => {
+    const body = $(id);
+    body.replaceChildren();
+    for (const href of own) {
+      const h = heroOf(href);
+      const row = document.createElement('div');
+      row.className = 'rmg-hero';
+      const name = document.createElement('span');
+      name.className = 'rmg-hero-name';
+      name.textContent = h?.name ?? href;
+      const town = document.createElement('span');
+      town.className = 'rmg-hero-town';
+      town.textContent = h ? pretty(h.town, 'TOWN_') : '';
+      const move = document.createElement('button');
+      move.textContent = arrow;
+      move.title = 'to the other list';
+      move.onclick = () => { own.splice(own.indexOf(href), 1); other.push(href); renderLists(); };
+      const drop = document.createElement('button');
+      drop.textContent = '×';
+      drop.title = 'remove';
+      drop.onclick = () => { own.splice(own.indexOf(href), 1); renderLists(); };
+      row.append(name, town, move, drop);
+      body.appendChild(row);
+    }
+  };
+  draw('rmg-white', white, black, '→');
+  draw('rmg-black', black, white, '←');
+  $('rmg-lists').classList.toggle('locked', $input('rmg-heroes-of-races').checked);
+}
+
+/** The picker: every hero not yet in either list, by town, narrowed by the search; a click adds one and closes. */
+function openPicker(into: string[], title: string): void {
+  const d = $('rmg-pick');
+  if (!(d instanceof HTMLDialogElement)) throw new Error('#rmg-pick is not a <dialog>');
+  $('rmg-pick-title').textContent = title;
+  const search = $input('rmg-pick-search');
+  search.value = '';
+  const fill = (): void => {
+    const q = search.value.trim().toLowerCase();
+    const list = $('rmg-pick-list');
+    list.replaceChildren();
+    const taken = new Set([...white, ...black]);
+    const byTown = new Map<string, { href: string; name: string }[]>();
+    for (const h of choices?.heroes ?? []) {
+      if (taken.has(h.href)) continue;
+      if (q && !h.name.toLowerCase().includes(q) && !pretty(h.town, 'TOWN_').toLowerCase().includes(q)) continue;
+      if (!byTown.has(h.town)) byTown.set(h.town, []);
+      byTown.get(h.town)!.push(h);
+    }
+    for (const [town, heroes] of [...byTown].sort(([a], [b]) => a.localeCompare(b))) {
+      const head = document.createElement('div');
+      head.className = 'rmg-pick-town';
+      head.textContent = pretty(town, 'TOWN_');
+      list.appendChild(head);
+      for (const h of heroes) {
+        const b = document.createElement('button');
+        b.className = 'rmg-pick-hero';
+        b.textContent = h.name;
+        b.onclick = () => { into.push(h.href); renderLists(); d.close(); };
+        list.appendChild(b);
+      }
+    }
+    if (!byTown.size) {
+      const none = document.createElement('div');
+      none.className = 'rmg-pick-none';
+      none.textContent = q ? 'nobody by that name' : 'everybody is listed already';
+      list.appendChild(none);
+    }
+  };
+  search.oninput = fill;
+  fill();
+  d.showModal();
+  search.focus();
 }
 
 function updateWhere(): void {
@@ -162,7 +233,8 @@ async function fill(): Promise<void> {
   fillSelect($select('rmg-monsters'), enumOptions(choices.monsterLevels, 'MONSTER_LEVEL_'), $select('rmg-monsters').value || '1');
   fillSelect($select('rmg-resource'), enumOptions(choices.resourceMultipliers, 'RESOURCE_'), $select('rmg-resource').value || '2');
   fillSelect($select('rmg-exp'), enumOptions(choices.expMultipliers, 'EXP_'), $select('rmg-exp').value || '2');
-  fillHeroes();
+  fillRaces();
+  renderLists();
   await refreshTemplates();
 }
 
@@ -191,14 +263,17 @@ async function allRandom(): Promise<void> {
   gate.check();
 }
 
-/** The order in one line for the HUD — what was drawn, spelled the way the lists spell it. */
-function describe(o: RmgResolvedOrder): string {
+/** The order in one line for the HUD — what was drawn, spelled the way the lists spell it, and what came out. */
+function describe(r: RmgGenerateResult): string {
   const c = choices!;
+  const o = r.order;
   return `${o.template} ${o.tiles}×${o.tiles}${o.underground ? ' two-level' : ''}, ${o.players} players`
+    + ` (${r.playerRaces.map((t) => pretty(t, 'TOWN_')).join(', ')})`
     + `${o.water ? ', island map' : ''}, ${pretty(c.monsterLevels[o.monsterLevel] ?? '', 'MONSTER_LEVEL_').toLowerCase()} monsters`
     + `, resources ${pretty(c.resourceMultipliers[o.resourceMultiplier] ?? '', 'RESOURCE_').toLowerCase()}`
     + `, experience ${pretty(c.expMultipliers[o.expMultiplier] ?? '', 'EXP_').toLowerCase()}`
-    + `${o.randomTowns ? ', random towns' : ''}${o.grail ? ', grail' : ''}`;
+    + `${o.randomTowns ? ', random towns' : ''}${o.grail ? ', grail' : ''}`
+    + `${r.heroes.length ? `, ${r.heroes.length} heroes listed` : ''}`;
 }
 
 async function submit(open: (path: string, archive: string) => Promise<void>, refresh: () => void): Promise<void> {
@@ -227,7 +302,9 @@ async function submit(open: (path: string, archive: string) => Promise<void>, re
       grail: boolOr('rmg-grail'),
       randomTowns: boolOr('rmg-towns'),
       minimap: $input('rmg-minimap').checked,
-      heroes: Array.from({ length: 8 }, (_, i) => $select(`rmg-hero-${i + 1}`).value),
+      races: Array.from({ length: 8 }, (_, i) => $select(`rmg-race-${i + 1}`).value),
+      heroesOfRaces: $input('rmg-heroes-of-races').checked,
+      heroes: [...white],
     });
     dialog().close();
     await open(r.mapPath, r.archive);
@@ -236,7 +313,7 @@ async function submit(open: (path: string, archive: string) => Promise<void>, re
     // for. Each is on the console in full.
     for (const w of r.warnings) console.warn(`random map: ${w}`);
     const warned = r.warnings.length ? ` · ⚠ ${r.warnings.length === 1 ? r.warnings[0] : `${r.warnings.length} warnings (see console)`}` : '';
-    $('hud').textContent = `random map → ${r.archive} · ${describe(r.order)} · seed ${r.seed} · ${r.objects} objects in ${(r.ms / 1000).toFixed(1)}s${warned}`;
+    $('hud').textContent = `random map → ${r.archive} · ${describe(r)} · seed ${r.seed} · ${r.objects} objects in ${(r.ms / 1000).toFixed(1)}s${warned}`;
     refresh();
   } catch (e) {
     // Stay open on failure — a name clash is fixed by editing the name.
@@ -284,5 +361,11 @@ export function initRmg(openMap: (path: string, archive: string) => Promise<void
   $select('rmg-size').addEventListener('change', () => { void refreshTemplates(); });
   $select('rmg-two').addEventListener('change', () => { void refreshTemplates(); });
   $select('rmg-template').addEventListener('change', refreshPlayers);
-  $select('rmg-players').addEventListener('change', showHeroSlots);
+  $select('rmg-players').addEventListener('change', showRaceSlots);
+  // The hero lists: a + each, the rule that makes them moot, and a clean slate.
+  $('rmg-white-add').onclick = () => openPicker(white, 'Add to the white list');
+  $('rmg-black-add').onclick = () => openPicker(black, 'Add to the black list');
+  $input('rmg-heroes-of-races').addEventListener('change', renderLists);
+  $('rmg-heroes-clear').onclick = () => { white.length = 0; black.length = 0; renderLists(); };
+  $('rmg-pick-close').onclick = () => ($('rmg-pick') as HTMLDialogElement).close();
 }

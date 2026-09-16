@@ -183,15 +183,33 @@ test('generates a tiny map through the dialog and opens it', async () => {
   await page.locator('#rmg-players').selectOption('2');
   await page.locator('#rmg-name').fill(NAME);
   await page.locator('#rmg-seed').fill('1785351845');
-  // The heroes: two slots shown for two players, the rest hidden; player 1
-  // named, player 2 left to the game. A named hero names the player's race,
-  // and the map then lists him beside player 2's whole race — checked on
-  // the file below.
-  await expect(page.locator('#rmg-hero-2')).toBeVisible();
-  await expect(page.locator('#rmg-hero-3')).toBeHidden();
+  // The races: two slots shown for two players, the rest hidden; player 1
+  // Haven, player 2 left to the engine. The heroes under the spoiler: Orrin
+  // picked into the white list, one click; the map lists him and nobody else,
+  // under the name the game shows — checked on the file below.
+  await expect(page.locator('#rmg-race-2')).toBeVisible();
+  await expect(page.locator('#rmg-race-3')).toBeHidden();
+  await expect(page.locator('#rmg-race-1 option')).toHaveCount(9); // Random + the eight races
+  await page.locator('#rmg-race-1').selectOption('TOWN_HEAVEN');
   const orrin = '/MapObjects/Haven/Orrin.(AdvMapHeroShared).xdb#xpointer(/AdvMapHeroShared)';
-  await page.locator('#rmg-hero-1').selectOption(orrin);
-  await expect(page.locator('#rmg-hero-1')).toHaveValue(orrin);
+  // The picker shows the name the game shows — in the install's language,
+  // which the file name is not (Orrin is Дугал on a Russian install).
+  const orrinName = readFileSync(join(DATA, 'Text', 'Game', 'Heroes', 'Persons', 'Haven', 'Orrin', 'Name.txt')).toString('utf16le', 2).trim();
+  await page.locator('#rmg-heroes summary').click();
+  await page.locator('#rmg-white-add').click();
+  await expect(page.locator('#rmg-pick')).toBeVisible();
+  await page.locator('#rmg-pick-search').fill(orrinName);
+  await expect(page.locator('#rmg-pick-list .rmg-pick-hero', { hasText: orrinName })).toHaveCount(1);
+  await page.locator('#rmg-pick-list .rmg-pick-hero', { hasText: orrinName }).click();
+  await expect(page.locator('#rmg-pick')).toBeHidden();
+  await expect(page.locator('#rmg-white .rmg-hero')).toHaveCount(1);
+  await expect(page.locator('#rmg-white .rmg-hero-name')).toHaveText(orrinName);
+  // The arrow moves him to the black list and back; the black list is not the map's.
+  await page.locator('#rmg-white .rmg-hero button').first().click();
+  await expect(page.locator('#rmg-black .rmg-hero')).toHaveCount(1);
+  await expect(page.locator('#rmg-white .rmg-hero')).toHaveCount(0);
+  await page.locator('#rmg-black .rmg-hero button').first().click();
+  await expect(page.locator('#rmg-white .rmg-hero')).toHaveCount(1);
   await expect(page.locator('#rmg-where')).toContainText(`${NAME}.h5m`);
   await page.locator('#rmg-ok').click();
 
@@ -225,8 +243,10 @@ test('generates a tiny map through the dialog and opens it', async () => {
   expect(xdb).toContain('<MapSize>MAP_SIZE_TINY</MapSize>');
   expect(xdb).toContain('<TileX>72</TileX>');
   expect(xdb).toMatch(new RegExp(`<AvailableHeroes>\\s*<Item href="${orrin.replace(/[.()]/g, '\\$&')}"/>`));
-  expect(xdb.match(/<Item href="\/MapObjects\/[^"]+\(AdvMapHeroShared\)[^"]*"\/>/g)).toHaveLength(1 + 8);
+  expect(xdb.match(/<Item href="\/MapObjects\/[^"]+\(AdvMapHeroShared\)[^"]*"\/>/g)).toHaveLength(1);
   expect(xdb.split('<PlayersInfo>')[1]).toContain('<Race>TOWN_HEAVEN</Race>');
+  await expect(page.locator('#hud')).toContainText('(Heaven, ');
+  await expect(page.locator('#hud')).toContainText('1 heroes listed');
 });
 
 test('a name already taken is refused and the dialog stays open', async () => {

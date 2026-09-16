@@ -16,3 +16,38 @@
 .rmg-hero-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
 .rmg-hero-grid .rmg-short span { flex: 0 0 auto; padding-left: 4px; }
 .rmg-hero-grid .on-row select { min-width: 0; }
+
+/* The heroes, under a spoiler: the two lists side by side, each with its +. */
+.rmg-heroes { margin-top: 6px; border-top: 1px solid #21262d; padding-top: 6px; }
+.rmg-heroes > summary { cursor: pointer; color: #c9d1d9; font-size: 12px; user-select: none; }
+.rmg-heroes .nm-check { display: block; margin: 6px 0; }
+.rmg-lists { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.rmg-lists.locked { opacity: 0.45; pointer-events: none; }
+.rmg-list { border: 1px solid #30363d; border-radius: 6px; background: #0d1014; min-height: 64px; display: flex; flex-direction: column; }
+.rmg-list-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 4px 8px;
+  font-size: 11px; color: #8b949e; border-bottom: 1px solid #21262d; }
+.rmg-list-head button { padding: 0 8px; font-size: 13px; line-height: 18px; }
+.rmg-list-body { max-height: 180px; overflow-y: auto; padding: 2px 0; }
+.rmg-hero { display: flex; align-items: center; gap: 6px; padding: 2px 6px 2px 8px; font-size: 12px; }
+.rmg-hero:hover { background: #161b22; }
+.rmg-hero-name { color: #e6edf3; }
+.rmg-hero-town { color: #6e7681; font-size: 11px; margin-right: auto; }
+.rmg-hero button { background: transparent; border: 1px solid transparent; color: #8b949e; border-radius: 4px;
+  padding: 0 5px; font: inherit; font-size: 12px; cursor: pointer; }
+.rmg-hero button:hover { color: #e6edf3; border-color: #30363d; }
+.rmg-lists-foot { display: flex; justify-content: flex-end; margin-top: 6px; }
+
+/* The picker over the dialog. */
+#rmg-pick { padding: 0; border: 0; background: transparent; max-width: 92vw; overflow: visible; }
+#rmg-pick::backdrop { background: #0d1014aa; }
+.rmg-pick-card { width: min(420px, 92vw); max-height: 70vh; }
+.rmg-pick-card .mp-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+#rmg-pick-search { background: #0d1014; border: 1px solid #30363d; color: #c9d1d9; padding: 5px 8px;
+  border-radius: 4px; font: inherit; }
+#rmg-pick-search:focus { outline: none; border-color: #1f6feb; }
+.rmg-pick-list { overflow-y: auto; min-height: 120px; }
+.rmg-pick-town { font-size: 11px; color: #8b949e; padding: 6px 6px 2px; text-transform: uppercase; letter-spacing: 0.04em; }
+.rmg-pick-hero { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: #e6edf3;
+  padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; border-radius: 4px; }
+.rmg-pick-hero:hover { background: #1f6feb33; }
+.rmg-pick-none { color: #6e7681; font-size: 12px; padding: 8px 10px; }
