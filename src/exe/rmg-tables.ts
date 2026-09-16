@@ -23,7 +23,6 @@
 // in registers — and its tables are the same, but the decoders below follow
 // the game's instruction shapes and are not asked to follow the editor's.
 
-import { readExe } from './creature-limit.ts';
 import { disassemble } from './disasm.ts';
 import type { Instruction } from './disasm.ts';
 import { PEFile } from './pe.ts';
@@ -84,13 +83,6 @@ export interface RmgExeTables {
   unflaggableDwellingTypes: readonly number[];
   /** Creature ids the one-stack guard branch skips. */
   unplaceableCreatures: readonly number[];
-  /**
-   * How many rows of the creature table the executable reads — the ceiling
-   * compiled into it (180 shipped; a units mod patches it, `creature-limit.ts`).
-   * A row past it is in the file and not in the game, and the guard setter
-   * never draws it.
-   */
-  creatureCount: number;
 }
 
 /** Read every table from the game executable. */
@@ -175,9 +167,6 @@ class Reader {
     const templateBranch = this.calleesOf(setMonster).find((c) => this.slotsOf(c).length > 0)!;
     const armyTemplateGroup = this.stringGlobal(this.slotsOf(templateBranch)[0]!);
     const unplaceableCreatures = this.creatureSkips(setMonster);
-    const ceiling = readExe(this.pe.buf);
-    if (ceiling.limit === null) throw new Error(`creature ceiling: ${ceiling.problems.join('; ') || 'not read'}`);
-    const creatureCount = ceiling.limit;
 
     // The treasure-block distributor names the seven resource piles as a run
     // and the chest on its own; the string it logs is shared by its two halves.
@@ -224,7 +213,6 @@ class Reader {
       monolith, gateIn, gateOut, observatory, denOfThieves, armyTemplateGroup, blockResources, blockChest, minimapIcons, birds,
       mapSizes, sizeUnits, unitsToSize, waterDepth, densityMultipliers,
       raceEnum, ...races, slotRaceList, lakeRaces, lightNames, unflaggableDwellingTypes, unplaceableCreatures,
-      creatureCount,
     };
   }
 

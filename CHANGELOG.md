@@ -45,10 +45,7 @@ turning the first time and every later opening immediate (it used to freeze
 the window for seconds on each). Two fields the game's dialog has not: a
 race a player, and the heroes the map offers — a white list built one hero
 a click from a picker of the roster under the names the game shows, or
-every hero of the races the players come out as. The generator reads the
-creature table only as far as the executable's ceiling, the way the engine
-does — on an install with a units mod it used to draw guards from rows the
-engine never sees. A map opened from a `.h5m` of ours is now titled after the
+every hero of the races the players come out as. A map opened from a `.h5m` of ours is now titled after the
 file rather than the folder inside it, which for a generated map was a GUID.
 What a template can and cannot ask for is written down field by field, and
 the last record was closed this time: a connection's `TwoWay`, `Guarded` and
