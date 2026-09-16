@@ -12,7 +12,21 @@ its section by version number, so this heading is inert until it is renamed to
 one. A version with a `-` in it (`-alpha.1`, `-rc.1`) is published as a GitHub
 pre-release.
 
-## Unreleased
+## 0.11.0-alpha.1 — 2026-09-16
+
+**Still an alpha, for the same reason as before.** The multiplayer half is as
+0.10.0-alpha.1 left it: real games over a relay, but two players from two
+different home networks announce the same address and port and the lobby
+refuses the second (§4.2 of the plan, untouched this time round). One
+household, one LAN, or one player per network. Everything else in this
+release is the random map generator — a port of the game's own, held to
+byte-identity with it, and then taken past it. What it does not do yet, so
+nobody goes looking: a whitelist of what the generator may place; a mirrored
+"Outcast" template — HotA's Jebus Outcast can be drawn and generated, but a
+connection cannot yet say teleport or fictive, so its ring's shortcuts come
+out as roadless passages and the two halves do not mirror; a template's
+variations and packs; and a hero per PLAYER — the game has one hero list per
+map, in the lobby and the taverns alike, and no way round it was found.
 
 **The random map generator, ported.** The editor can generate a map the way the
 game's own dialog does, and the port is held to the strictest standard we have:
@@ -153,6 +167,21 @@ draws such a map with real towns standing in for the placeholders, and which
 race each one is turned out to be a hash of the record's name and tile — read
 out of the game and reproduced, so a random-towns map comes out byte-identical
 in every entry, eight of them so far.
+
+**The shell, on the side.** Ctrl+S saves the map — the same button, from
+the keyboard, when it is enabled and no dialog is up. The hidden menu bar
+still answered Electron's stock keys: Ctrl+R reloaded the page with the
+editor's state in it, Ctrl+Shift+I opened DevTools; the menu is gone and the
+browser's keys (F5, Ctrl+R, F12, Ctrl+I with or without Shift) are swallowed
+before the page sees them. Every dialog is the page's colour with none of the
+platform's white box, border and padding — the Confirm box's question was
+black on the dark card, and the mod editors' dialogs wore all of it. The map
+picker's three buttons keep their one line each once **Random map…** joined
+the row. And a refusal from the generator is shown in its own words, without
+the bridge's "Error invoking remote method" wrapper around it. For whoever
+publishes: a version with a dash in it is now actually published as a
+pre-release — the workflow handed `gh` a bare `-` and it went looking for an
+asset file by that name.
 
 ## 0.10.0-alpha.1 — 2026-08-16
 
