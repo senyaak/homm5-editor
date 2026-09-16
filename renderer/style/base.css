@@ -1,5 +1,10 @@
 html, body { margin: 0; height: 100%; overflow: hidden;
   background: #0d1014; color: #c9d1d9; font: 13px/1.5 system-ui, sans-serif; }
+/* A <dialog> does not inherit the page's colour: the platform sheet sets
+   CanvasText on it, which is black in a page that declares no colour
+   scheme — the Confirm box's question was black on the card. Every dialog
+   of ours is the page's colour. */
+dialog { color: #c9d1d9; }
 
 /* Dark, thin scrollbars — the platform default is a wide light bar that
    reads as broken chrome inside these panels. */
