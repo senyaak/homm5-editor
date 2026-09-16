@@ -17,6 +17,7 @@
 // is the one with 181 entries in it.
 
 import { closeSync, openSync, readFileSync, readSync, readdirSync, statSync } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import { join, basename, relative, sep } from 'node:path';
 import { parse, find, children, childText } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
@@ -547,14 +548,14 @@ function byLabel(entries: RosterEntry[]): RosterEntry[] {
 
 /** Walk a directory tree, yielding files whose name matches `test`. */
 function walkFiles(dir: string, test: (name: string) => boolean, out: string[] = []): string[] {
-  let ents: string[];
-  try { ents = readdirSync(dir); } catch { return out; }
-  for (const name of ents) {
-    const full = join(dir, name);
-    let dirent = false;
-    try { dirent = statSync(full).isDirectory(); } catch { continue; }
-    if (dirent) walkFiles(full, test, out);
-    else if (test(name)) out.push(full);
+  // The directory entries carry their kind: a stat per file on top of the
+  // listing was most of a class scan's time on Windows.
+  let ents: Dirent[];
+  try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  for (const ent of ents) {
+    const full = join(dir, ent.name);
+    if (ent.isDirectory()) walkFiles(full, test, out);
+    else if (test(ent.name)) out.push(full);
   }
   return out;
 }
