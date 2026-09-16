@@ -11,10 +11,14 @@
 #empty button { background: #238636; color: #fff; border: 0; border-radius: 6px;
   padding: 9px 18px; font-size: 14px; cursor: pointer; }
 /* in-window map picker */
-#picker { width: min(560px, 90vw); background: #161b22; border: 1px solid #21262d;
+#picker { width: min(620px, 90vw); background: #161b22; border: 1px solid #21262d;
   border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; max-height: 60vh; }
 #picker .head { padding: 10px 12px; border-bottom: 1px solid #21262d; display: flex; gap: 8px; align-items: center; }
-#search { flex: 1; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+/* Three buttons beside the search: each keeps its one line and its width,
+   the search takes what is left — a flex item's floor is its longest word,
+   and a button let to shrink folds "New map…" onto two lines. */
+#picker .head button { flex: none; white-space: nowrap; padding: 9px 14px; }
+#search { flex: 1; min-width: 0; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
   padding: 7px 10px; color: #c9d1d9; font-size: 13px; }
 #maplist { overflow-y: auto; }
 #maplist .m { padding: 8px 14px; cursor: pointer; border-bottom: 1px solid #1b2027;
