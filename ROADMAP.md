@@ -1179,7 +1179,15 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       faction is — same discipline: a probe clone of an existing ground
       first, the verdict from the game. Recorded, not started. Done
       meanwhile (16.09): `<UniqueRaces>` — no faction twice, the middle
-      nobody's own, which is the same idea short of a ground of its own ⬜
+      nobody's own, which is the same idea short of a ground of its own;
+      and `<CostlyGround>`, a non-start zone kept off grass, which costs
+      every class nothing ⬜
+- [ ] **Redo how a zone's ground is chosen** — a thing of its own (Senya,
+      16.09), after the grounds above: today the ground IS the zone's race
+      (the preset's tiles), so what a zone costs to cross and which
+      faction lives in it are one draw. Separate them: a zone's ground as
+      its own choice in a template of ours, with the penalty table in
+      mind, the race choosing the town and the dwellings only ⬜
 
 **Before it can be released — three things, in a chat of their own:**
 
