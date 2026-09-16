@@ -71,8 +71,13 @@ if (!game) {
     // 15000..28000 admits costs 11000..28000 (cost/5 + 500 < value < cost*7/5).
     check('three blocks of the relic range, each with an artifact of 11000 or dearer',
       middle.length >= 3 && middle.slice(0, 3).every((c) => c >= 11000));
-    check('the thirteen seats the ranges ask for were all served',
-      run.c.warnings.length === 0 && middle.length >= 10, `${middle.length} artifacts; ${run.c.warnings.join('; ')}`);
+    // The richest ranges are served first; the cheapest takes the seats that
+    // remain, and how many there are is the roads' and the guards' business
+    // (a seed with the back ways' guards on the border has one seat fewer).
+    // So: the dearer two whole, the cheapest short only with a line saying so.
+    check('the two dearer ranges are served whole, the cheapest says so if short',
+      middle.length >= 7 && run.c.warnings.every((w) => w.includes('2500..4000')),
+      `${middle.length} artifacts; ${run.c.warnings.join('; ') || 'no warnings'}`);
     const starts = [2, 3, 4, 5].flatMap((z) => costsIn(run, z));
     check('a start zone, on its split total, gets no relic', starts.every((c) => c < 11000), starts.join(' '));
   }

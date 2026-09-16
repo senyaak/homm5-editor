@@ -3781,6 +3781,23 @@ GAME dereferences that href when it loads a generated map is not known;
 its own maps carry one that names a file in its data, ours names a file
 that is not there. To be watched when such a map is first played.
 
+### A second passage, and one without a road
+
+The engine digs ONE passage per pair of neighbouring zones and marks the
+pair done from both sides, and the roads phase wires every mouth it dug
+into the zone's road network. A Heroes III template writes a pair as
+often as it wants passages and says of each whether it carries a road
+(`Road +/-`); so does ours: a pair written twice in an `.h5et` is two
+passages, the second drawn among the border's candidates left eight tiles
+or more clear of the first, each with its own record's guard — and
+`<Road>false</Road>` on a record keeps its passage off the roads phase
+(`ConnectionsResult.roadless`), dug and guarded all the same. Jebus Cross
+gives every start zone a road into the middle at 25 and a harder guarded
+back way at 35 without one. A template of the game's writes every pair
+once and no `Road`, so its loop runs once and draws what it drew
+(`test-rmg-connections`, `test-rmg-pack`); `test-rmg-layout` holds the
+two mouths apart, the roaded one a road tile and the roadless one not.
+
 ### A zone's named objects
 
 The game's zone says how many mines and dwellings by tier and how many

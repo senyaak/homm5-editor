@@ -39,6 +39,7 @@ import {
 } from './statics-one-tile.ts';
 import { markPassability } from './passability.ts';
 import type { LakePaint } from './terrain.ts';
+import { passageKey } from './connections.ts';
 import { buildTreasureBlocks, fillTreasureBlocks, valueBlocksByRanges } from './treasure-blocks.ts';
 import type { ArtifactEntry } from './treasure-blocks.ts';
 import { RACE } from './load-template.ts';
@@ -497,7 +498,9 @@ export function runFull(
         occupancy: c.floors[f]!.occ, zoneIndex: z.index,
         townEntry: zone.town && centre ? [centre.b, centre.a] : null,
         connectionPoints: [
-          ...(c.conn.passages.get(z.index) ?? []).map(([a, b]) => [b, a] as Tile),
+          // A passage a template of ours keeps roadless is dug and guarded
+          // and not wired; every passage of the game's is.
+          ...(c.conn.passages.get(z.index) ?? []).filter(([a, b]) => !c.conn.roadless.has(passageKey(a, b))).map(([a, b]) => [b, a] as Tile),
           ...c.teleportActives(z.index),
         ],
         mineActives: mineActives.get(z.index) ?? [],

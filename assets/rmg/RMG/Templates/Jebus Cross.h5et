@@ -7,7 +7,9 @@
      the game's RMGTemplate plus the fields of our own the game's serialiser
      does not know (ZoneLayout on the template; Objects, GuardMultiplier and
      TreasureBlocks on a zone: the middle guards at twice the power and holds
-     the relics, the start zones guard at half). -->
+     the relics, the start zones guard at half; Road on a connection, and a
+     pair written twice: each start has a road into the middle and a harder
+     guarded back way without one). -->
 <RMGTemplate>
 	<NameFileRef href=""/>
 	<DescriptionFileRef href=""/>
@@ -259,11 +261,33 @@
 		</Item>
 		<Item>
 			<SourceZoneIndex>1</SourceZoneIndex>
+			<DestZoneIndex>2</DestZoneIndex>
+			<TwoWay>true</TwoWay>
+			<GuardStrenght>35</GuardStrenght>
+			<Guarded>true</Guarded>
+			<Wide>false</Wide>
+			<!-- Ours: the pair again is a second passage, and Road false keeps it
+			     off the roads — a back way into the middle, harder guarded. -->
+			<Road>false</Road>
+		</Item>
+		<Item>
+			<SourceZoneIndex>1</SourceZoneIndex>
 			<DestZoneIndex>3</DestZoneIndex>
 			<TwoWay>true</TwoWay>
 			<GuardStrenght>25</GuardStrenght>
 			<Guarded>true</Guarded>
 			<Wide>false</Wide>
+		</Item>
+		<Item>
+			<SourceZoneIndex>1</SourceZoneIndex>
+			<DestZoneIndex>3</DestZoneIndex>
+			<TwoWay>true</TwoWay>
+			<GuardStrenght>35</GuardStrenght>
+			<Guarded>true</Guarded>
+			<Wide>false</Wide>
+			<!-- Ours: the pair again is a second passage, and Road false keeps it
+			     off the roads — a back way into the middle, harder guarded. -->
+			<Road>false</Road>
 		</Item>
 		<Item>
 			<SourceZoneIndex>1</SourceZoneIndex>
@@ -275,11 +299,33 @@
 		</Item>
 		<Item>
 			<SourceZoneIndex>1</SourceZoneIndex>
+			<DestZoneIndex>4</DestZoneIndex>
+			<TwoWay>true</TwoWay>
+			<GuardStrenght>35</GuardStrenght>
+			<Guarded>true</Guarded>
+			<Wide>false</Wide>
+			<!-- Ours: the pair again is a second passage, and Road false keeps it
+			     off the roads — a back way into the middle, harder guarded. -->
+			<Road>false</Road>
+		</Item>
+		<Item>
+			<SourceZoneIndex>1</SourceZoneIndex>
 			<DestZoneIndex>5</DestZoneIndex>
 			<TwoWay>true</TwoWay>
 			<GuardStrenght>25</GuardStrenght>
 			<Guarded>true</Guarded>
 			<Wide>false</Wide>
+		</Item>
+		<Item>
+			<SourceZoneIndex>1</SourceZoneIndex>
+			<DestZoneIndex>5</DestZoneIndex>
+			<TwoWay>true</TwoWay>
+			<GuardStrenght>35</GuardStrenght>
+			<Guarded>true</Guarded>
+			<Wide>false</Wide>
+			<!-- Ours: the pair again is a second passage, and Road false keeps it
+			     off the roads — a back way into the middle, harder guarded. -->
+			<Road>false</Road>
 		</Item>
 	</Connections>
 	<GraalOnMap>false</GraalOnMap>

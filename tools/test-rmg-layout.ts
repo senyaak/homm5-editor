@@ -167,11 +167,26 @@ if (!game) {
   check('the chain read our template', c.template.zoneLayout === 'Voronoi' && c.template.name === 'Jebus Cross');
   check('four players seated', c.loaded.zones.filter((z) => z.playerNo > 0).length === 4);
   check('a town in every zone', c.townResult.centres.size === 5, `${c.townResult.centres.size}`);
-  check('four passages, one per connection, none left for a teleport',
-    c.conn.guards.length === 4 && c.conn.unconnected.length === 0,
+  check('eight passages, one per connection record, none left for a teleport',
+    c.conn.guards.length === 8 && c.conn.unconnected.length === 0,
     `${c.conn.guards.length} guards, ${c.conn.unconnected.length} unconnected`);
   check('every passage joins the middle to a start zone',
     c.conn.guards.every((g) => g.between.includes(middle) && starts.some((s) => g.between.includes(s))));
+  // The pair written twice: two mouths on the middle's side of each border,
+  // eight tiles or more apart, one of them roadless — dug and guarded, and
+  // off the roads: the roaded mouth is a road tile, the roadless one is not.
+  const middleMouths = c.conn.passages.get(middle) ?? [];
+  check("two mouths per border on the middle's side, apart", middleMouths.length === 8 && starts.every((s) => {
+    const mine = c.conn.guards.filter((g) => g.between.includes(s)).map((g) => [g.y, g.x] as const);
+    return mine.length === 2 && (Math.abs(mine[0]![0] - mine[1]![0]) >= 8 || Math.abs(mine[0]![1] - mine[1]![1]) >= 8);
+  }), `${middleMouths.length} mouths`);
+  check('four of them roadless', [...c.conn.roadless].length === 8 && middleMouths.filter(([a, b]) => c.conn.roadless.has(`${a}:${b}`)).length === 4);
+  const roadTiles = new Set([...run.roads.values()].flat().map(([a, b]) => `${a}:${b}`));
+  const roaded = middleMouths.filter(([a, b]) => !c.conn.roadless.has(`${a}:${b}`));
+  const roadless = middleMouths.filter(([a, b]) => c.conn.roadless.has(`${a}:${b}`));
+  check('every roaded mouth is a road tile, no roadless one is',
+    roaded.every(([a, b]) => roadTiles.has(`${b}:${a}`)) && roadless.every(([a, b]) => !roadTiles.has(`${b}:${a}`)),
+    `${roaded.filter(([a, b]) => roadTiles.has(`${b}:${a}`)).length}/4 roaded on a road, ${roadless.filter(([a, b]) => roadTiles.has(`${b}:${a}`)).length}/4 roadless on a road`);
   check('objects placed in every zone', run.objects.length > 100, `${run.objects.length}`);
   const files = buildMapFiles(install, run, {
     seed: order.seed, template: order.template, players: 4, underground: false, water: 0,

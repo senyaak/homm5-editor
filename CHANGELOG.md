@@ -62,7 +62,11 @@ game's twenty-two. A template without the field is still the engine's map,
 byte for byte; the zones keep the shapes the graph gives them, their
 borders are roughened a tile or two so the passages between them fall
 elsewhere each seed, and a template may ask (`<LayoutJitter>`) for the
-whole picture to wander. A zone of ours can also NAME its objects, the way a Heroes
+whole picture to wander. A pair of zones written twice in a template of
+ours gets two passages, and a connection may say `<Road>false</Road>` — a
+guarded back way the roads leave alone, the way a Heroes III template has
+them; Jebus Cross's start zones each have one into the middle. A zone of
+ours can also NAME its objects, the way a Heroes
 III template does: `<Objects>` gives a building a floor (placed before the
 budgets are spent, with a guard if asked) and a ceiling (the budgets stop
 buying it; 0 forbids it) — Jebus Cross's middle carries one guarded Dragon

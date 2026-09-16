@@ -87,8 +87,13 @@ export interface PassageGuard {
 
 export interface ConnectionsResult {
   guards: PassageGuard[];
-  /** Per zone index, the tiles a passage opens onto. */
+  /** Per zone index, the tiles a passage opens onto — every passage, road or not. */
   passages: Map<number, Array<[number, number]>>;
+  /**
+   * OURS: of those, the ones a template's `<Road>false</Road>` keeps off the
+   * roads phase, as `a:b` keys. Empty for a template of the game's.
+   */
+  roadless: Set<string>;
   /** Connections no land passage could be dug for — teleport territory. */
   unconnected: RmgConnection[];
 }
@@ -150,16 +155,30 @@ export function collectCandidates(
   return ordered;
 }
 
-/** The connection a pair of zones is named by, whichever way round it is. */
-function connectionBetween(template: RmgTemplate, a: number, b: number): RmgConnection | undefined {
-  return template.connections.find((c) =>
+/**
+ * The connections a pair of zones is named by, whichever way round — ONE in
+ * every template of the game's; a template of ours may write a pair twice
+ * for two passages, each record its own guard and road flag, in file order.
+ */
+function connectionsBetween(template: RmgTemplate, a: number, b: number): RmgConnection[] {
+  return template.connections.filter((c) =>
     (c.sourceZoneIndex === a && c.destZoneIndex === b) || (c.sourceZoneIndex === b && c.destZoneIndex === a));
 }
+
+/**
+ * OURS: a second passage of a pair keeps this far (in tiles, either axis)
+ * from the first, or it would be the same gap dug twice.
+ */
+const PASSAGE_SPACING = 8;
+
+/** The passage tile key the roadless set is kept by. */
+export const passageKey = (a: number, b: number): string => `${a}:${b}`;
 
 export function zoneConnections(input: ConnectionsInput, rng: RmgRandom): ConnectionsResult {
   const { size, template, zones, floors, distances, guardPowerUnit, monsterStrength, tables } = input;
   const guards: PassageGuard[] = [];
   const passages = new Map<number, Array<[number, number]>>();
+  const roadless = new Set<string>();
   const done = new Map<number, Set<number>>();
   const byIndex = new Map(zones.map((z) => [z.index, z]));
 
@@ -193,38 +212,48 @@ export function zoneConnections(input: ConnectionsInput, rng: RmgRandom): Connec
       for (const [neighbour, tiles] of candidates) {
         if (done.get(zone.index)?.has(neighbour)) continue;
         if (!byIndex.has(neighbour)) continue;
-        const connection = connectionBetween(template, zone.index, neighbour);
-        if (!connection) continue;
+        const records = connectionsBetween(template, zone.index, neighbour);
+        if (!records.length) continue;
         if (tiles.length < MIN_CANDIDATES) continue;
 
-        const [ta, tb] = tiles[rng.below(tiles.length)]!;
-        openMouth(dist, grid, zone.index, ta, tb);
+        // One passage per record — one for every template of the game's, so
+        // the loop below runs once and draws what the engine draws. A second
+        // record (ours) draws again among the tiles left clear of the first.
+        let pool = tiles;
+        for (const connection of records) {
+          if (pool.length === 0) break;
+          const [ta, tb] = pool[rng.below(pool.length)]!;
+          openMouth(dist, grid, zone.index, ta, tb);
 
-        const guard = setMonster(guardPowerUnit * connection.guardStrenght, monsterStrength, tables, rng);
-        if (guard) {
-          guards.push({
-            name: guard.name,
-            x: tb,
-            y: ta,
-            stacks: guard.stacks,
-            mood: guard.mood,
-            floor: f,
-            between: [zone.index, neighbour],
-          });
-        }
-        addPassage(zone.index, [ta, tb]);
+          const guard = setMonster(guardPowerUnit * connection.guardStrenght, monsterStrength, tables, rng);
+          if (guard) {
+            guards.push({
+              name: guard.name,
+              x: tb,
+              y: ta,
+              stacks: guard.stacks,
+              mood: guard.mood,
+              floor: f,
+              between: [zone.index, neighbour],
+            });
+          }
+          addPassage(zone.index, [ta, tb]);
+          if (!connection.road) roadless.add(passageKey(ta, tb));
 
-        // The neighbour takes the passage from its own side: the first of
-        // its tiles adjacent to the mouth, orthogonals before diagonals —
-        // and the offsets are (dx, dy), so dx moves the SECOND index.
-        for (const [dx, dy] of NEIGHBOURS) {
-          const na = ta + dy;
-          const nb = tb + dx;
-          if (na < 0 || na >= size || nb < 0 || nb >= size) continue;
-          if (grid[na]![nb] !== neighbour) continue;
-          openMouth(dist, grid, neighbour, na, nb);
-          addPassage(neighbour, [na, nb]);
-          break;
+          // The neighbour takes the passage from its own side: the first of
+          // its tiles adjacent to the mouth, orthogonals before diagonals —
+          // and the offsets are (dx, dy), so dx moves the SECOND index.
+          for (const [dx, dy] of NEIGHBOURS) {
+            const na = ta + dy;
+            const nb = tb + dx;
+            if (na < 0 || na >= size || nb < 0 || nb >= size) continue;
+            if (grid[na]![nb] !== neighbour) continue;
+            openMouth(dist, grid, neighbour, na, nb);
+            addPassage(neighbour, [na, nb]);
+            if (!connection.road) roadless.add(passageKey(na, nb));
+            break;
+          }
+          pool = pool.filter(([a, b]) => Math.abs(a - ta) >= PASSAGE_SPACING || Math.abs(b - tb) >= PASSAGE_SPACING);
         }
         markDone(zone.index, neighbour);
       }
@@ -233,5 +262,5 @@ export function zoneConnections(input: ConnectionsInput, rng: RmgRandom): Connec
 
   const unconnected = template.connections.filter((c) =>
     !done.get(c.sourceZoneIndex)?.has(c.destZoneIndex));
-  return { guards, passages, unconnected };
+  return { guards, passages, roadless, unconnected };
 }

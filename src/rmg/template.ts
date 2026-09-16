@@ -156,6 +156,14 @@ export interface RmgConnection {
   guarded: boolean;
   /** DEAD: false on all 150 shipped connections; true widens nothing. */
   wide: boolean;
+  /**
+   * OURS (`.h5et`): `<Road>false</Road>` digs the passage and guards it but
+   * keeps it off the roads phase — a back way, the way a Heroes III
+   * connection with `Road -` is. True when absent, which is the engine's
+   * passage. A pair written TWICE in a template of ours gets two passages,
+   * each with its own guard and its own road flag (`connections.ts`).
+   */
+  road: boolean;
 }
 
 export interface RmgTemplate {
@@ -277,6 +285,7 @@ export function parseTemplate(xml: string): RmgTemplate {
     guardStrenght: int(c, 'GuardStrenght'),
     guarded: bool(c, 'Guarded'),
     wide: bool(c, 'Wide'),
+    road: childText(c, 'Road') !== 'false',
   }));
 
   return {
