@@ -1198,8 +1198,12 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       The zones as RECTANGLES, the way an ER diagram draws an entity: index
       and race in the header, the properties as rows below (size, start,
       town and its guard, the multiplier, the treasure ranges, the named
-      objects); a connection a line labelled with its guard, marked when
-      roadless, two lines for a pair written twice. Add a zone, drag it
+      objects), each row a GLYPH and a number rather than a field name —
+      a castle for the town, a sword for a guard, coins for the treasure
+      value, a gem for the relic ranges, a pick for the mines, a road or
+      a boot on a connection — one sign per notion, the name on hover; a
+      connection a line labelled with its guard, marked when roadless,
+      two lines for a pair written twice. Add a zone, drag it
       (the picture only — the file holds no coordinates, and the diagram is
       laid out from the graph on opening, by the same springs the map
       uses; a `<Diagram>` block of ours may keep a hand layout), draw a
