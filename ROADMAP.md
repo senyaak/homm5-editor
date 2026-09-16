@@ -1192,12 +1192,24 @@ or its data, so a mod's templates, creatures and artifacts reach it.
 
 **Before it can be released — three things, in a chat of their own:**
 
-- [ ] **A visual template editor** (HotA's for Heroes III is the model): the
-      zones as circles with sizes and races, the connections between them with
-      their guard strengths, the template's size and player ranges — written
-      back as `RMG/Templates/<name>.xdb`, which the dialog then offers. What
-      the engine reads of a template and what it ignores is already written
-      down (`docs/RMG.md`, "Which fields the engine actually reads") ⬜
+- [ ] **A visual template editor** — our own, a module of its own embedded
+      in the editor, writing `.h5et` (settled 16.09; HotA's editor and
+      zomle's open reimplementation of it are the picture, not the code).
+      The zones as RECTANGLES, the way an ER diagram draws an entity: index
+      and race in the header, the properties as rows below (size, start,
+      town and its guard, the multiplier, the treasure ranges, the named
+      objects); a connection a line labelled with its guard, marked when
+      roadless, two lines for a pair written twice. Add a zone, drag it
+      (the picture only — the file holds no coordinates, and the diagram is
+      laid out from the graph on opening, by the same springs the map
+      uses; a `<Diagram>` block of ours may keep a hand layout), draw a
+      connection, click either for its panel; the template's own fields
+      (name, sizes, players, ZoneLayout, LayoutJitter, UniqueRaces) in a
+      panel of their own. Warnings on the diagram, never refusals. First
+      brick: the `.h5et` WRITER, held by a round trip over the game's 22
+      and Jebus, byte for byte. Then a "Templates…" door from the
+      generator's dialog, saving where the dialog lists from, and an e2e:
+      add a zone and a connection, save, generate from it ⬜
 - [ ] **Generate only from a whitelist.** A second dialog inside the
       generator's: what the generator may place — creatures, dwellings,
       artifacts, buildings — so a thing that lives as a mod (the sharpshooter,
