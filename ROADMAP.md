@@ -1200,8 +1200,12 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       the field tables, warnings under the diagram; saved as the install's
       own `<game>/H5E/RMG/Templates/<file>.h5et`, listed in front of the
       editor's and the game's. `e2e/rmg.spec.ts` draws one, saves it and
-      generates from it. Not yet: an object picker for `<Objects>` (an href
-      is typed), variants and packs (below). Our own, a module of its own embedded
+      generates from it; `e2e/rmg-outcast.spec.ts` draws HotA's Jebus
+      Outcast click by click (sizes 64/10/2, the ranges, weak/strong, the
+      Utopia through the object picker — the palette's buildings, since a
+      named object is placed as one) and generates a medium map from it,
+      the outcasts on roadless passages until a connection can say
+      teleport / fictive. Not yet: variants and packs (below). Our own, a module of its own embedded
       in the editor, writing `.h5et` (settled 16.09; HotA's editor and
       zomle's open reimplementation of it are the picture, not the code).
       The zones as RECTANGLES, the way an ER diagram draws an entity: index

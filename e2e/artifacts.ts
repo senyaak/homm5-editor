@@ -75,6 +75,9 @@ export const MADE = {
   RANDOM_MAP_FROM_TEMPLATE: 'e2e Random Map from Template',
   /** The template rmg.spec draws in the template editor — a file under <game>/H5E/RMG/Templates/, not a map. */
   RANDOM_TEMPLATE: 'e2e Triangle',
+  /** rmg-outcast.spec draws HotA's Jebus Outcast in the template editor, and generates a map from it. */
+  OUTCAST_TEMPLATE: 'e2e Jebus Outcast',
+  OUTCAST_MAP: 'e2e Outcast Map',
   REACH: 'e2e Reach',
   RECONSTRUCT_C1M1: 'e2e Reconstruct C1M1',
   SCRIPT_EDITOR: 'e2e Script Editor',

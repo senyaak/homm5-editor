@@ -417,9 +417,12 @@ function selectInput(options: { id: string; label: string }[], value: string, on
 const boolOptions = [{ id: 'true', label: 'true' }, { id: 'false', label: 'false' }];
 
 /** Seven small boxes; a list shorter than seven grows as far as the edited tier (its length is the file's). */
-function tiersInput(values: number[], onChange: (v: number[]) => void): HTMLElement {
+function tiersInput(initial: number[], onChange: (v: number[]) => void): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'rte-tiers';
+  // The list as it stands NOW — each change starts from the last one, not
+  // from the list the row was built with (a second edit once undid the first).
+  let values = initial;
   for (let tier = 0; tier < 7; tier++) {
     const i = document.createElement('input');
     i.type = 'number';
@@ -430,6 +433,7 @@ function tiersInput(values: number[], onChange: (v: number[]) => void): HTMLElem
       const next = values.slice();
       while (next.length <= tier) next.push(0);
       next[tier] = Math.max(0, Math.round(Number(i.value) || 0));
+      values = next;
       onChange(next);
     });
     wrap.appendChild(i);
