@@ -1020,6 +1020,16 @@ $('save').onclick = async () => {
   markDirty(false);
   $('hud').textContent = r.output ? `saved → ${r.output}` : 'saved';
 };
+// Ctrl+S is the same button — when there is a map to save and no dialog is
+// up (a dialog's own Save is its own business, and the map's is not what
+// Ctrl+S in it means).
+addEventListener('keydown', (e) => {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's' || e.altKey) return;
+  e.preventDefault();
+  if (e.shiftKey || document.querySelector('dialog[open]')) return;
+  const save = $button('save');
+  if (!save.disabled) save.click();
+});
 $('undobtn').onclick = () => { void stepHistory('undo'); };
 $('redobtn').onclick = () => { void stepHistory('redo'); };
 $('pack').onclick = async () => {
