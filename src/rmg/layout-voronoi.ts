@@ -27,9 +27,22 @@
 //      short of its share reaches further next round), so the areas land on
 //      the template's proportions the way the engine's jitter makes them.
 //
+//   3. JITTER, or the map is the same map every time. The relaxed picture of
+//      a star is one picture — the diamond in the middle, four wedges — and
+//      with the borders on the same tiles every seed, the passages the engine
+//      digs (a straight stretch of border, a draw among its tiles) and the
+//      roads to them fell in the same places too. So, from the seed: every
+//      centre is SCATTERED a little after the relaxation, and the cut is
+//      DOMAIN-WARPED — each tile looks up its zone from a nearby point, the
+//      offset a smooth noise field over the map — so the borders wander the
+//      way the engine's blobs do, differently every seed. The template's
+//      `<LayoutJitter>` scales both, 0 for the bare geometry; the areas still
+//      converge, the warp being a bending of the borders, not a bias.
+//
 // Floors are laid out one at a time — a connection across floors is not a
 // spring, it becomes a gate pair later, the same as in the engine's layout.
-// The draws: two per zone, the starting centre, nothing else.
+// The draws: two per zone for the starting centre, two per zone for the
+// scatter, and the noise field's lattice, all from the engine's stream.
 
 import type { RmgRandom } from './random.ts';
 import type { RmgConnection } from './template.ts';
@@ -43,6 +56,8 @@ export interface VoronoiInput {
   /** Zone indices the template lets a player start in — they repel each other. */
   startZones: ReadonlySet<number>;
   twoFloors: boolean;
+  /** The template's `<LayoutJitter>`, 0..1; 1 is `JITTER_SCATTER`/`JITTER_WARP` of the map's side. */
+  jitter: number;
 }
 
 /** Relaxation rounds for the centres, and how far a spring moves a disc per round. */
@@ -56,6 +71,11 @@ const CELL_ROUNDS = 12;
 const LLOYD_STEP = 0.5;
 /** The nearest a centre may come to the map's edge, in tiles. */
 const EDGE = 2;
+/** At jitter 1: how far a centre may be scattered, and how far the warp bends a border, as fractions of the side. */
+const JITTER_SCATTER = 0.08;
+const JITTER_WARP = 0.10;
+/** The noise lattice: cells per side; the field is bilinear between them. */
+const NOISE_CELLS = 6;
 
 interface Disc {
   index: number;
@@ -83,7 +103,9 @@ export function voronoiLayout(input: VoronoiInput, rng: RmgRandom): ZoneLayout {
 
     const discs = makeDiscs(seeds, size, rng);
     relax(discs, size, joined, startZones);
-    const areas = cut(discs, grid, size);
+    scatter(discs, size, input.jitter, rng);
+    const warp = noiseField(size, input.jitter * JITTER_WARP * size, rng);
+    const areas = cut(discs, grid, size, warp);
     for (const d of discs) {
       const seed = seeds.find((z) => z.index === d.index)!;
       zones.push({
@@ -110,6 +132,53 @@ function makeDiscs(seeds: ZoneSeed[], size: number, rng: RmgRandom): Disc[] {
     const y = rng.betweenFloat(EDGE, size - EDGE);
     return { index: z.index, area, r, x, y, w: r };
   });
+}
+
+/** Step 3a: every centre moved by a draw of up to the scatter, walls kept — two draws a zone, spent at jitter 0 too. */
+function scatter(discs: Disc[], size: number, jitter: number, rng: RmgRandom): void {
+  const reach = jitter * JITTER_SCATTER * size;
+  for (const d of discs) {
+    const dx = rng.betweenFloat(-1, 1);
+    const dy = rng.betweenFloat(-1, 1);
+    d.x = clamp(d.x + dx * reach, EDGE, size - EDGE);
+    d.y = clamp(d.y + dy * reach, EDGE, size - EDGE);
+  }
+}
+
+/** A smooth offset per tile — two value-noise fields over a coarse lattice, bilinear between the knots. */
+export type WarpField = (a: number, b: number) => [number, number];
+
+/**
+ * Step 3b's field: `(NOISE_CELLS + 1)^2` knots a component, each a draw in
+ * [-1, 1], scaled to `amplitude` tiles. Spent whatever the amplitude, so a
+ * template at jitter 0 draws what one at 1 does.
+ */
+function noiseField(size: number, amplitude: number, rng: RmgRandom): WarpField {
+  const n = NOISE_CELLS + 1;
+  const kx = new Float64Array(n * n);
+  const ky = new Float64Array(n * n);
+  for (let i = 0; i < n * n; i++) {
+    kx[i] = rng.betweenFloat(-1, 1);
+    ky[i] = rng.betweenFloat(-1, 1);
+  }
+  const cell = size / NOISE_CELLS;
+  const at = (k: Float64Array, u: number, v: number): number => {
+    const fu = Math.min(u / cell, NOISE_CELLS - 1e-9);
+    const fv = Math.min(v / cell, NOISE_CELLS - 1e-9);
+    const i = Math.floor(fu);
+    const j = Math.floor(fv);
+    const tu = fu - i;
+    const tv = fv - j;
+    // Smoothstep on the fractions, so the field has no creases at the knots.
+    const su = tu * tu * (3 - 2 * tu);
+    const sv = tv * tv * (3 - 2 * tv);
+    const k00 = k[i * n + j]!;
+    const k10 = k[(i + 1) * n + j]!;
+    const k01 = k[i * n + j + 1]!;
+    const k11 = k[(i + 1) * n + j + 1]!;
+    return (k00 * (1 - su) + k10 * su) * (1 - sv) + (k01 * (1 - su) + k11 * su) * sv;
+  };
+  return (a, b) => [at(kx, a, b) * amplitude, at(ky, a, b) * amplitude];
 }
 
 /** Step 1: the three springs, `RELAX_ROUNDS` times, walls kept. */
@@ -155,7 +224,7 @@ function relax(discs: Disc[], size: number, joined: ReadonlySet<string>, startZo
  * with the centres and weights corrected between rounds. Returns each zone's
  * final tile count; the grid holds the final cut.
  */
-function cut(discs: Disc[], grid: Int32Array[], size: number): Map<number, number> {
+function cut(discs: Disc[], grid: Int32Array[], size: number, warp: WarpField): Map<number, number> {
   const counts = new Map<number, number>();
   const sumX = new Map<number, number>();
   const sumY = new Map<number, number>();
@@ -164,11 +233,13 @@ function cut(discs: Disc[], grid: Int32Array[], size: number): Map<number, numbe
     for (let a = 0; a < size; a++) {
       const row = grid[a]!;
       for (let b = 0; b < size; b++) {
+        // The tile asks from a nearby point, not from itself: the warp.
+        const [wa, wb] = warp(a + 0.5, b + 0.5);
         let best = -1;
         let bestScore = Infinity;
         for (const d of discs) {
-          const ex = a + 0.5 - d.x;
-          const ey = b + 0.5 - d.y;
+          const ex = a + 0.5 + wa - d.x;
+          const ey = b + 0.5 + wb - d.y;
           const score = Math.sqrt(ex * ex + ey * ey) / d.w;
           if (score < bestScore) { bestScore = score; best = d.index; }
         }

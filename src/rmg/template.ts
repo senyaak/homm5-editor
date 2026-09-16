@@ -180,6 +180,13 @@ export interface RmgTemplate {
    * it is an `.h5et` of ours rather than an `.xdb` in its folder.
    */
   zoneLayout: ZoneLayoutKind;
+  /**
+   * OURS: `<LayoutJitter>`, 0..1, how far the Voronoi layout wanders from
+   * its bare geometry — the centres scattered, the borders bent — so the
+   * same template is a different map every seed. 0.5 when absent; 0 is the
+   * bare geometry. The engine's layout ignores it.
+   */
+  layoutJitter: number;
 }
 
 const int = (el: XmlElement, name: string): number => Number.parseInt(childText(el, name), 10) || 0;
@@ -283,6 +290,7 @@ export function parseTemplate(xml: string): RmgTemplate {
     underground: bool(t, 'Underground'),
     testTemplate: bool(t, 'TestTemplate'),
     zoneLayout: zoneLayoutKind(childText(t, 'ZoneLayout')),
+    layoutJitter: childText(t, 'LayoutJitter') === '' ? 0.5 : Math.min(1, Math.max(0, Number.parseFloat(childText(t, 'LayoutJitter')) || 0)),
   };
 }
 

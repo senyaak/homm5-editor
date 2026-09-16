@@ -48,6 +48,8 @@ export interface ZoneLayoutInput {
   zones: ZoneSeed[];
   /** The template's zones, for what the layout reads of them beyond the seed. */
   templateZones: RmgZone[];
+  /** The template's `<LayoutJitter>`, 0..1 — see `layout-voronoi.ts`. */
+  layoutJitter: number;
   connections: RmgConnection[];
   twoFloors: boolean;
   arith?: Arith;
@@ -81,6 +83,7 @@ export function layoutZones(kind: ZoneLayoutKind, input: ZoneLayoutInput, rng: R
       const laid = voronoiLayout({
         size, zones, twoFloors, connections: input.connections,
         startZones: new Set(input.templateZones.filter((z) => z.canBePlayerStart).map((z) => z.index)),
+        jitter: input.layoutJitter,
       }, rng);
       input.phase?.('layoutZones');
       return laid;

@@ -48,7 +48,7 @@ console.log('the door: Engine is the engine\'s two phases, draw for draw');
   const b = new RmgRandom(1785351845);
   const labels: string[] = [];
   const laid = layoutZones('Engine', {
-    size: SIZE, zones: seeds, templateZones: jebus.zones, connections: jebus.connections, twoFloors: false,
+    size: SIZE, zones: seeds, templateZones: jebus.zones, connections: jebus.connections, twoFloors: false, layoutJitter: jebus.layoutJitter,
     phase: (l) => labels.push(l),
   }, b);
   check('the same draws', a.draws === b.draws, `${a.draws} vs ${b.draws}`);
@@ -68,11 +68,11 @@ const middle = jebus.zones.find((z) => !z.canBePlayerStart)!.index;
 for (const seed of [1785351845, 202, 7]) {
   const rng = new RmgRandom(seed);
   const laid = layoutZones('Voronoi', {
-    size: SIZE, zones: seeds, templateZones: jebus.zones, connections: jebus.connections, twoFloors: false,
+    size: SIZE, zones: seeds, templateZones: jebus.zones, connections: jebus.connections, twoFloors: false, layoutJitter: jebus.layoutJitter,
   }, rng);
   const grid = laid.floors[0]!;
   console.log(`  seed ${seed}:`);
-  check('two draws a zone, and no more', rng.draws === 2 * seeds.length, `${rng.draws}`);
+  check('four draws a zone and the noise lattice, no more', rng.draws === 4 * seeds.length + 2 * 49, `${rng.draws}`);
   check('every tile is somebody\'s', countOf(grid, -1) === 0, `${countOf(grid, -1)} unassigned`);
   const touching = adjacency(grid, SIZE);
   check('the middle zone touches every start zone',
@@ -96,7 +96,7 @@ for (const seed of [1785351845, 202, 7]) {
   check('a radius per zone, from its area',
     laid.zones.every((z) => z.r > 0 && Math.abs(z.r - Math.sqrt(countOf(grid, z.index) / Math.PI)) < 1));
   const again = layoutZones('Voronoi', {
-    size: SIZE, zones: seeds, templateZones: jebus.zones, connections: jebus.connections, twoFloors: false,
+    size: SIZE, zones: seeds, templateZones: jebus.zones, connections: jebus.connections, twoFloors: false, layoutJitter: jebus.layoutJitter,
   }, new RmgRandom(seed));
   check('the same seed gives the same layout', sameGrid(grid, again.floors[0]!));
   if (args.includes('--png')) draw(laid, `jebus-${seed}`);
@@ -106,7 +106,7 @@ console.log('Voronoi on two floors: each floor its own layout');
 {
   const two = seeds.map((z, i) => ({ ...z, floor: i % 2 }));
   const laid = layoutZones('Voronoi', {
-    size: SIZE, zones: two, templateZones: jebus.zones, connections: jebus.connections, twoFloors: true,
+    size: SIZE, zones: two, templateZones: jebus.zones, connections: jebus.connections, twoFloors: true, layoutJitter: jebus.layoutJitter,
   }, new RmgRandom(5));
   check('two grids', laid.floors.length === 2);
   check('a floor holds only its own zones',

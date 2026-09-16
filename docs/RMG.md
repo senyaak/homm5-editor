@@ -3729,6 +3729,21 @@ draws the layouts and the finished map to `_tmp/` for looking at. The
 picture is HotA's: four wedges in the corners, a rounded square between
 them.
 
+**And jitter, or the map is the same map every seed** (16.09). The relaxed
+picture of a star is one picture, and with the borders on the same tiles
+every seed the passages the engine digs — a draw among the tiles of a
+straight stretch of border — and the roads to them fell in the same places
+too (played: "the exits are always in the same spot"). So the layout takes
+`<LayoutJitter>` (0..1, 0.5 when absent): after the relaxation every centre
+is scattered by a draw of up to 8 % of the side at 1, and the cut is
+DOMAIN-WARPED — each tile looks its zone up from a nearby point, the offset
+a smooth value-noise field over a 6×6 lattice (two draws a knot), up to
+10 % of the side at 1 — so the borders wander the way the engine's blobs do
+and differently every seed, while the areas still converge (a bending of
+the borders, not a bias) and the corners stay the start zones'. The draws
+are spent whatever the jitter, so 0 is the bare geometry with the same
+stream.
+
 Start zones MAY touch in it — the diamond's tips reach the edge — and that
 is fine, because a border no passage opens gets the engine's border fence
 (`statics-one-tile.ts`, pass 1: a blocker on every border tile), which is

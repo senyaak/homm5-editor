@@ -391,7 +391,7 @@ export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain
   // own two phases by default, byte for byte, or one of ours. See `layout.ts`.
   const laid = layoutZones(template.zoneLayout, {
     size, zones: loaded.zones, templateZones: template.zones, connections: template.connections,
-    twoFloors: made.twoFloors,
+    twoFloors: made.twoFloors, layoutJitter: template.layoutJitter,
     arith: ar, swapZoneAxes, spy: trace, phase,
   }, rng);
   const placed = { zones: laid.zones };
