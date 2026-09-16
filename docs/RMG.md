@@ -6175,6 +6175,24 @@ V is a picture and a sound: the same 75 whichever it is. A road type
 per connection is therefore a cosmetic choice, and the roadmap item says
 so now.
 
+**And the terrain penalty, read while there.** The params block the cost
+function reads is built by `0xD87300` (the hero's native terrain, from
+his class through the table at `0xC1C5DC`) and `0xC24B00` (the flags):
+
+| class | Knight | Ranger | Wizard | Demon lord | Necromancer | Warlock | Runemage | Barbarian |
+|---|---|---|---|---|---|---|---|---|
+| native | GRASS | GRASS | SAND | LAVA | DIRT | SUBTERRANEAN | SNOW | TAIGA |
+
+Off his native ground a hero pays the penalty above — sand and snow
++50, dirt, lava, subterranean and taiga +25, grass and the dwarven
+mines nothing — halved by Pathfinding (skill 0x13), zeroed by artifact
+26 (`CountEquipped`, `0xB4C270`), and cut by 2% a level of skill 0x48.
+`RoadHome/NativeTerrain` in DefaultStats is not what the game reads:
+the table is in the code. So there is no Heroes III sand — a ground
+foreign to everyone: every ground that costs is somebody's home, and
+sand or snow (+50 for seven classes of eight) is the nearest thing. A
+road wipes the penalty whatever the ground: 75 flat.
+
 ### Phase 15 — the height plane (`0xECF760`) — ported, bit-identical
 
 `src/rmg/heights.ts`, `test-rmg-heights` — the whole surface reference
