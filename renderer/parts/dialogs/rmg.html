@@ -13,6 +13,11 @@
       </div>
       <div class="mp-body on-body">
         <label class="on-row"><span>Name<b class="req">*</b></span><input id="rmg-name" type="text" spellcheck="false" autocomplete="off" value="Random Map"></label>
+        <!-- OURS: what the generator reads. The game's generator reads the
+             install as mounted — every archive in H5E — and a mod there
+             changes the map (the creature table and its guards, the
+             templates, the roster). Off: the game's data alone. -->
+        <label class="nm-check" title="read the install with the archives of <game>/H5E mounted, as the game does — a mod's creatures, templates and heroes are in; off, the game's data alone"><input id="rmg-mods" type="checkbox" checked> Mods — generate with the archives of H5E mounted</label>
         <div class="rmg-two">
           <label class="on-row"><span>Size</span><select id="rmg-size"></select></label>
           <label class="on-row rmg-short"><span>Levels</span>

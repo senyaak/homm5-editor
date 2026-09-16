@@ -23,7 +23,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { inFront } from '../game/assets.ts';
+import { assets, inFront } from '../game/assets.ts';
 import { mountArchives } from '../game/mounted.ts';
 import { allTemplates, dialogChoices, forgetTemplates, generateMap, templatesOffered } from './index.ts';
 import type { DialogChoices, OfferedTemplate, RmgInstall, RmgOrder } from './index.ts';
@@ -36,6 +36,13 @@ export interface RmgPaths {
   gameRoot: string;
   /** The unpacked data the mounted archives sit over. */
   dataRoot: string;
+  /**
+   * With the archives of `<game>/H5E/` mounted over the data, the way the
+   * game would read it (true), or the game's data alone — a vanilla map
+   * from a modded install. A mod can change everything the generator reads:
+   * the creature table (and its guards), the templates, the roster.
+   */
+  mods: boolean;
   /** Where mounted archives are unpacked to (cached by size and date). */
   cacheDir: string;
   /** The game's UNWRAPPED executable. */
@@ -154,11 +161,11 @@ function installOf(paths: RmgPaths): RmgInstall {
   let have = installs.get(key);
   if (!have) {
     const started = performance.now();
-    const mounted = mountArchives(paths.gameRoot, paths.cacheDir, paths.dataRoot);
-    const data = (paths.ownRoots ?? []).reduceRight((chain, root) => inFront(root, chain), mounted);
+    const game = paths.mods ? mountArchives(paths.gameRoot, paths.cacheDir, paths.dataRoot) : assets([paths.dataRoot]);
+    const data = (paths.ownRoots ?? []).reduceRight((chain, root) => inFront(root, chain), game);
     have = { data, exe: paths.exe };
     installs.set(key, have);
-    console.log(`[rmg] install mounted: ${data.roots.length} roots in ${Math.round(performance.now() - started)}ms`);
+    console.log(`[rmg] install mounted: ${data.roots.length} roots${paths.mods ? '' : ', the data alone'} in ${Math.round(performance.now() - started)}ms`);
   }
   return have;
 }
@@ -245,9 +252,10 @@ export function answer<R extends RmgRequest>(req: R): RmgAnswers[R['kind']] {
         return { template: readTemplateNamed(install.data, req.file), entry };
       }
       case 'forget-templates': {
-        // An install never mounted has no list to forget — and is not mounted for it.
-        const have = installs.get(keyOf(req.paths));
-        if (have) forgetTemplates(have);
+        // Every install of this game folder, mods or not — the user's folder
+        // is in front of both. One never mounted has no list, and is not
+        // mounted for it.
+        for (const [key, have] of installs) if (key.includes(JSON.stringify(req.paths.gameRoot))) forgetTemplates(have);
         return null;
       }
       case 'generate': {

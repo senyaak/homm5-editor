@@ -135,6 +135,15 @@ export interface NewMapResult {
 // byte to the maps the engine writes. The dialog is the game's dialog: the
 // same lists, in the same units, read from the install rather than typed here.
 
+/**
+ * Where a generator question reads from: the install with its archives
+ * mounted (`mods` true, the default) or the game's data alone. On every
+ * question, because each is answered from the install it names.
+ */
+export interface RmgSource {
+  mods?: boolean;
+}
+
 /** What the generator's dialog offers — `rmg:choices`. */
 export interface RmgChoicesResult {
   /** `MapSize` names by index, with the side in tiles each stands for. */
@@ -187,9 +196,14 @@ export interface RmgTemplateSaveResult {
 }
 
 /** Payload of `rmg:templates` — which templates the dialog would offer for this size and floor count. */
-export interface RmgTemplatesPayload {
+export interface RmgTemplatesPayload extends RmgSource {
   sizeIndex: number;
   underground: boolean;
+}
+
+/** Payload of `rmg:template-read`. */
+export interface RmgTemplateReadPayload extends RmgSource {
+  file: string;
 }
 
 /**
@@ -201,7 +215,7 @@ export interface RmgTemplatesPayload {
  * are fixed), then the players inside its range; the rest independently.
  * What was drawn comes back in the result's `order`.
  */
-export interface RmgGeneratePayload extends RmgWish {
+export interface RmgGeneratePayload extends RmgWish, RmgSource {
   mapName: string;
   /** Left out: the generator draws one, the way the game's dialog does. */
   seed?: number;
@@ -1975,13 +1989,13 @@ export interface EditorApi {
   openMapDialog(): Promise<OpenMapDialogResult>;
   newMap(p: NewMapPayload): Promise<NewMapResult>;
   /** The generator's lists — sizes, water, monster levels, multipliers, templates. */
-  rmgChoices(): Promise<RmgChoicesResult>;
+  rmgChoices(p?: RmgSource): Promise<RmgChoicesResult>;
   /** The templates the game's dialog would offer for a size and floor count. */
   rmgTemplates(p: RmgTemplatesPayload): Promise<RmgTemplateEntry[]>;
   /** Generate a map from an order and land it as a new map, packed and ready to open. */
   rmgGenerate(p: RmgGeneratePayload): Promise<RmgGenerateResult>;
   /** The template editor: a template by its file name, through the generator's chain. */
-  rmgTemplateRead(file: string): Promise<RmgTemplateReadResult>;
+  rmgTemplateRead(p: RmgTemplateReadPayload): Promise<RmgTemplateReadResult>;
   /** Save it as the user's `.h5et` — the game's are never written, only copied. */
   rmgTemplateSave(p: RmgTemplateSavePayload): Promise<RmgTemplateSaveResult>;
   /** Remove a user's template; false when there was none of that name. */

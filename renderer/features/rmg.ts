@@ -51,6 +51,9 @@ let listed: RmgTemplateEntry[] = [];
 const white: string[] = [];
 const black: string[] = [];
 
+/** Where every question reads from: the install with its mods, or the data alone. */
+const source = (): { mods: boolean } => ({ mods: $input('rmg-mods').checked });
+
 /** `MAP_SIZE_EXTRALARGE` → `Extra Large`; the enum's spelling, made readable. */
 function pretty(name: string, prefix: string): string {
   const bare = name.startsWith(prefix) ? name.slice(prefix.length) : name;
@@ -85,7 +88,7 @@ async function refreshTemplates(): Promise<void> {
     note.textContent = 'any template — the size and the levels are drawn to fit it';
   } else {
     const underground = levels === '1';
-    listed = await api.rmgTemplates({ sizeIndex: Number(size), underground });
+    listed = await api.rmgTemplates({ sizeIndex: Number(size), underground, ...source() });
     note.textContent = listed.length
       ? `${listed.length} template${listed.length === 1 ? '' : 's'} fit this size${underground ? ' with an underground' : ''}`
       : `no template fits this size${underground ? ' with an underground' : ''} — the game would offer none either`;
@@ -239,7 +242,7 @@ function updateWhere(): void {
 async function fill(): Promise<void> {
   $('rmg-loading').hidden = false;
   try {
-    choices = await api.rmgChoices();
+    choices = await api.rmgChoices(source());
   } finally {
     $('rmg-loading').hidden = true;
   }
@@ -319,6 +322,7 @@ async function submit(open: (path: string, archive: string) => Promise<void>, re
       grail: boolOr('rmg-grail'),
       randomTowns: boolOr('rmg-towns'),
       minimap: $input('rmg-minimap').checked,
+      ...source(),
       races: Array.from({ length: 8 }, (_, i) => $select(`rmg-race-${i + 1}`).value),
       heroesOfRaces: $input('rmg-heroes-of-races').checked,
       heroes: [...white],
@@ -371,8 +375,10 @@ export function initRmg(openMap: (path: string, archive: string) => Promise<void
   // dialog, which stays as it was and picks up what was saved.
   $('rmg-templates').onclick = () => {
     const chosen = $select('rmg-template').value;
-    void openTemplateEditor(chosen === RANDOM ? undefined : chosen);
+    void openTemplateEditor(chosen === RANDOM ? undefined : chosen, source());
   };
+  // Another install to read: the lists come from it, so they are read again.
+  $input('rmg-mods').addEventListener('change', () => { void fill().catch((e) => { $('rmg-err').textContent = e instanceof Error ? e.message : String(e); }); });
   $('rmg-ok').onclick = () => { void submit(openMap, refresh); };
   $input('rmg-name').addEventListener('input', updateWhere);
   $select('rmg-size').addEventListener('change', () => { void refreshTemplates(); });

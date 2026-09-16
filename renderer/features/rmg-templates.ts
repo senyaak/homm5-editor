@@ -41,6 +41,8 @@ type Selection = { kind: 'zone'; index: number } | { kind: 'conn'; at: number } 
 interface Point { x: number; y: number }
 
 let list: RmgTemplateEntry[] = [];
+/** Where the list and the templates are read from — the Random Map dialog's choice, handed in on opening. */
+let readFrom: { mods: boolean } = { mods: true };
 let t: RmgTemplate | null = null;
 let file = '';
 let source: Source = 'new';
@@ -736,7 +738,7 @@ function refreshList(): void {
 async function loadList(): Promise<void> {
   $('rte-loading').hidden = false;
   try {
-    list = (await api.rmgChoices()).templates;
+    list = (await api.rmgChoices(readFrom)).templates;
   } finally {
     $('rte-loading').hidden = true;
   }
@@ -767,7 +769,7 @@ function take(template: RmgTemplate, name: string, from: Source): void {
 
 async function load(name: string): Promise<void> {
   try {
-    const r = await api.rmgTemplateRead(name);
+    const r = await api.rmgTemplateRead({ file: name, ...readFrom });
     take(r.template, r.file, r.source);
   } catch (e) {
     $('rte-err').textContent = e instanceof Error ? e.message : String(e);
@@ -824,7 +826,8 @@ async function remove(): Promise<void> {
  * up during the wait stays: the list arrives into the select, and the
  * template it would have opened is not loaded over the user's.
  */
-export async function openTemplateEditor(name?: string): Promise<void> {
+export async function openTemplateEditor(name?: string, from: { mods: boolean } = { mods: true }): Promise<void> {
+  readFrom = from;
   const d = dialog();
   if (!d.open) d.showModal();
   $('rte-err').textContent = '';

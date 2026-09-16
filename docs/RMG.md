@@ -3927,6 +3927,26 @@ Still not Heroes III's sand: a middle that draws Haven or Sylvan is
 grass, which costs nobody anything. The ground everyone wades through
 wants a ground of its own — "New grounds" in the roadmap.
 
+### Mods in, or the data alone — the dialog's choice
+
+The game's generator reads the install as mounted, every archive in
+`<game>/H5E/` over the data, and a mod there changes the map: the creature
+table (and with it the guards), the templates, the roster. The dialog's
+**Mods** box (on by default) reads the same way; off, the generator reads
+the game's data alone — a vanilla map from a modded install. Every
+question carries the choice (`RmgSource.mods`; `RmgPaths.mods` in the
+service), and each install is mounted once and kept, so switching costs
+one read. The map editor of a modded install is NOT the same oracle as its
+game: the units mod raises the creature ceiling compiled into the game's
+executable (181 on the Steam install, 16.09) and the map editor's copy
+keeps 180, so the editor draws guards from a table one row shorter than
+the game's — a Small S1P2Z3K5.1 (seed 610809267) ordered from that editor
+came back with three guards unlike the port's with mods (Druid Elder,
+Lich, Water Elemental against Rune Mage, Unicorn, Rune Mage), everything
+else byte for byte; with mods off the port reproduces the editor's map.
+The port reads the whole table on purpose — that is the mod's creature in
+the pool, which is what generating with mods means.
+
 ### The heroes a map offers, and the players' races — an order's choice
 
 A generated map writes `<AvailableHeroes/>` — every hero that is not a

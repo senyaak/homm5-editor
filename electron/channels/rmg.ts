@@ -21,8 +21,8 @@ import type { IpcMainInvokeEvent, UtilityProcess } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
-  RmgChoicesResult, RmgGeneratePayload, RmgGenerateResult, RmgTemplateEntry, RmgTemplateReadResult,
-  RmgTemplateSavePayload, RmgTemplateSaveResult, RmgTemplatesPayload,
+  RmgChoicesResult, RmgGeneratePayload, RmgGenerateResult, RmgSource, RmgTemplateEntry, RmgTemplateReadPayload,
+  RmgTemplateReadResult, RmgTemplateSavePayload, RmgTemplateSaveResult, RmgTemplatesPayload,
 } from '#electron/ipc.ts';
 import { APP_ROOT, gameData, gameRoot, tmpRoot } from '#electron/paths.ts';
 import { landAsArchive, unpackRoot } from '#electron/channels/maps.ts';
@@ -40,20 +40,21 @@ const mountCache = (): string => join(tmpRoot(), 'mounted');
 
 /**
  * Where the install is — what the service mounts: `<game>/H5E/` over the
- * unpacked data by the executable's rule, and the executable itself. Ours,
- * unwrapped, because the generator's tables are read out of its image; the
- * shipped one is encrypted and says nothing. In front of the mounted install,
- * the two roots of ours (`ownRoots`): the user's templates, then the
+ * unpacked data by the executable's rule (or the data alone, when the
+ * question says no mods), and the executable itself. Ours, unwrapped,
+ * because the generator's tables are read out of its image; the shipped
+ * one is encrypted and says nothing. In front of the mounted install, the
+ * two roots of ours (`ownRoots`): the user's templates, then the
  * application's.
  */
-function install(): { g: string; paths: RmgPaths } {
+function install(source: RmgSource | undefined): { g: string; paths: RmgPaths } {
   const g = gameRoot();
   if (!g) throw new Error('no game install configured — the generator reads the game\'s data and executable');
   const exe = join(g, PATCHED_EXE);
   if (!existsSync(exe)) {
     throw new Error(`no ${PATCHED_EXE} — this install has not been prepared yet (start the editor with --setup and press Prepare)`);
   }
-  return { g, paths: { gameRoot: g, dataRoot: gameData(), cacheDir: mountCache(), exe, ownRoots: ownRoots(g) } };
+  return { g, paths: { gameRoot: g, dataRoot: gameData(), cacheDir: mountCache(), exe, ownRoots: ownRoots(g), mods: source?.mods ?? true } };
 }
 
 /** The roots in front of the game's, first in front: the install's own templates, then the application's. */
@@ -169,14 +170,14 @@ export function stopRmg(): void {
 // --- the channels ------------------------------------------------------------
 
 export function registerRmg(): void {
-  ipcMain.handle('rmg:choices', async (): Promise<RmgChoicesResult> => {
-    const { g, paths } = install();
+  ipcMain.handle('rmg:choices', async (_e: IpcMainInvokeEvent, p?: RmgSource): Promise<RmgChoicesResult> => {
+    const { g, paths } = install(p);
     const c = await ask({ kind: 'choices', paths });
     return { ...c, templates: c.templates.map((t) => withSource(g, t)) };
   });
 
   ipcMain.handle('rmg:templates', async (_e: IpcMainInvokeEvent, p: RmgTemplatesPayload): Promise<RmgTemplateEntry[]> => {
-    const { g, paths } = install();
+    const { g, paths } = install(p);
     return (await ask({ kind: 'offered', paths, sizeIndex: p.sizeIndex, underground: p.underground })).map((t) => withSource(g, t));
   });
 
@@ -187,19 +188,19 @@ export function registerRmg(): void {
   // under whatever name the editor asks, and a copy under the SAME name
   // shadows the original the way a mod's file does. A save or a removal is
   // the one change the service's list cannot see for itself, so it is told.
-  ipcMain.handle('rmg:template-read', async (_e: IpcMainInvokeEvent, file: string): Promise<RmgTemplateReadResult> => {
-    const { g, paths } = install();
-    const { template, entry } = await ask({ kind: 'template', paths, file });
-    return { file, template, source: withSource(g, entry).source };
+  ipcMain.handle('rmg:template-read', async (_e: IpcMainInvokeEvent, p: RmgTemplateReadPayload): Promise<RmgTemplateReadResult> => {
+    const { g, paths } = install(p);
+    const { template, entry } = await ask({ kind: 'template', paths, file: p.file });
+    return { file: p.file, template, source: withSource(g, entry).source };
   });
   ipcMain.handle('rmg:template-save', async (_e: IpcMainInvokeEvent, p: RmgTemplateSavePayload): Promise<RmgTemplateSaveResult> => {
-    const { g, paths } = install();
+    const { g, paths } = install(undefined);
     const path = saveUserTemplate(g, p.file, p.template);
     await ask({ kind: 'forget-templates', paths });
     return { path };
   });
   ipcMain.handle('rmg:template-delete', async (_e: IpcMainInvokeEvent, file: string): Promise<boolean> => {
-    const { g, paths } = install();
+    const { g, paths } = install(undefined);
     const gone = deleteUserTemplate(g, file);
     if (gone) await ask({ kind: 'forget-templates', paths });
     return gone;
@@ -213,7 +214,7 @@ export function registerRmg(): void {
     const name = p.mapName.trim();
     if (!name) throw new Error('the map needs a name');
     if (/[\\/:*?"<>|]/.test(name)) throw new Error('the name cannot contain \\ / : * ? " < > |');
-    const { g, paths } = install();
+    const { g, paths } = install(p);
     const archive = modFile(g, 'map', name);
     if (existsSync(archive)) throw new Error(`${archive} already exists`);
     // The seed the way the game's dialog fills it in when nobody typed one: a
@@ -225,14 +226,14 @@ export function registerRmg(): void {
     if (existsSync(mapDir)) throw new Error(`${mapDir} already exists`);
     ensureModDir(g);
 
-    const { mapName: _name, seed: _seed, minimap, ...wish } = p;
+    const { mapName: _name, seed: _seed, minimap, mods: _mods, ...wish } = p;
     const started = performance.now();
     const { answer: r, where: ran } = await askWhere({ kind: 'generate', paths, wish, seed, guid, mapName: name, minimap, mapDir });
     landAsArchive(g, mapDir, archive, prefix);
     const ms = Math.round(performance.now() - started);
     const { order } = r;
     console.log(`[rmg] ${archive} · ${order.template} ${order.tiles}×${order.tiles}${order.underground ? ' two-level' : ''}, ${order.players} players, seed ${seed}`
-      + ` · ${r.draws} draws, ${r.objects} objects · ${r.ms}ms in the ${ran}, ${ms}ms in all`);
+      + `${paths.mods ? '' : ' · the data alone, no mods'} · ${r.draws} draws, ${r.objects} objects · ${r.ms}ms in the ${ran}, ${ms}ms in all`);
     for (const w of r.warnings) console.warn(`[rmg] ${w}`);
     return {
       mapPath: join(mapDir, 'map.xdb'), mapDir, archive, seed, order, draws: r.draws, objects: r.objects, where: ran, ms,
