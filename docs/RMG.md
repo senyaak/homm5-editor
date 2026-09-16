@@ -7894,8 +7894,8 @@ offered beside the shipped ones. Water is the checkbox the game has (it
 records `WATER_ISLAND_MAP`); random towns, the grail and the minimap are the
 other three; the seed is typed or left blank for a drawn one. **Every
 choice but the name and the minimap can be left to Random** ("All random"
-leaves them all): main draws them before the run (`resolve` in
-`electron/channels/rmg.ts`), in the order the dialog's own dependencies go —
+leaves them all): the generator draws them before the run (`resolve` in
+`src/rmg/service.ts`), in the order the dialog's own dependencies go —
 the size, then the levels, then a template the game's dialog would offer for
 those and that takes the players when they are fixed, then the players inside
 its range — so a fixed template with a random size is a size the template
@@ -7903,13 +7903,22 @@ fits, never one the engine would lift; water, the monster level, the
 multipliers, the towns and the grail are drawn independently. What came out
 is in the result and on the HUD.
 
-**A generation is a job in a child process** (`src/rmg/job.ts`,
+**The generator is a resident of a child process** (`src/rmg/service.ts`,
 `electron/rmg-worker.ts`, forked through `utilityProcess` the way the scene
-builder is): the job carries paths — the game folder, the data root, the
-mount cache, the executable, the folder to write into — and the child mounts
-`<game>/H5E/` by the engine's rule, generates, and writes the sixteen files
-where it was told. A child that cannot be forked (`HOMM5_RMG_INLINE=1` forces
-it) runs the same job in the main process, slower to everyone and correct.
+builder is, one for the session): every question the dialog asks — the
+lists, the templates a size fits, a template's fields, a map — goes to it as
+paths and numbers, and it mounts `<game>/H5E/` by the engine's rule ONCE and
+answers the rest from what it read. Reading the install is seconds (two to
+index the archives, five to walk the hero roster), and read in the main
+process on every opening those were seconds of a window that did not paint;
+now the dialog opens at once with a spinner the first time and is filled from
+memory after. The roster and the template list are kept by the chain object
+(`heroes.ts`, `index.ts`), the archive indexes by size and date
+(`mounted.ts`), the executable's tables by path (`exe.ts`); the one change
+the child cannot see — the template editor saving or removing a file — is
+told to it (`forget-templates`). A generation writes the sixteen files where
+it was told. A child that cannot be forked (`HOMM5_RMG_INLINE=1` forces it)
+answers in the main process, slower to everyone and correct.
 Then the map LANDS the way a New Map does (`landAsArchive` in
 `electron/channels/maps.ts`, factored out of `map:new`): a manifest, the
 `.h5m` in `<game>/H5E/<name>.h5m`, the manifest pointed back at it, and the
@@ -7922,7 +7931,12 @@ after the FILE: the folder's name, for a generated map, is the GUID.
 list narrows with the size and the floors, a tiny map on the reference
 template and seed comes back with that order in its `sRMGProps`, the run was
 the child's (the main process's log says so), and a taken name is refused
-with the dialog left open. The sandbox install it makes for itself
+with the dialog left open. The first opening is measured the way the scene
+builder's is (`scene-thread.spec.ts`): the main process is pinged while the
+child reads, has to keep answering, and the install has to be mounted once
+across the openings; the last test runs the same read with
+`HOMM5_RMG_INLINE=1` and the same measurement has to fail. The sandbox
+install it makes for itself
 (`_tmp/e2e-rmg`) holds only the unwrapped executable: the generator needs
 neither the extension nor a mod.
 

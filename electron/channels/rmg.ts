@@ -3,58 +3,57 @@
 // The generator is the game's own, ported (src/rmg, docs/RMG.md): for the
 // same order and seed it writes the archive the engine would. So the dialog
 // asks for what the game's dialog asks for, in the game's own lists — read
-// from the install through `src/rmg/index.ts`, the module's one door — and a
-// generated map lands exactly as a New Map does: a folder, packed into
-// `<game>/H5E/<name>.h5m`, opened from that archive like any other.
+// from the install through `src/rmg/service.ts`, the module's door for an
+// application — and a generated map lands exactly as a New Map does: a
+// folder, packed into `<game>/H5E/<name>.h5m`, opened from that archive like
+// any other.
 //
-// The run itself happens in a child (`electron/rmg-worker.ts`), one per
-// generation: a large map is minutes of arithmetic, and the main process has
-// nothing to do with them but wait. A child that cannot be forked falls back
-// to running here, slower to everyone and correct — the same bargain
-// `scene-jobs.ts` makes.
+// NOTHING HERE READS THE INSTALL. Every question goes to a child of its own
+// (`electron/rmg-worker.ts`, one for the session) that mounts the install
+// once and keeps it: the first opening of the dialog costs the read, every
+// later one is answered from memory, and the main process — which is the
+// window's ability to paint — does none of it. A child that cannot be forked
+// falls back to answering here, slower to everyone and correct — the same
+// bargain `scene-jobs.ts` makes.
 
 import { app, ipcMain, utilityProcess } from 'electron';
-import type { IpcMainInvokeEvent } from 'electron';
+import type { IpcMainInvokeEvent, UtilityProcess } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
-  RmgChoicesResult, RmgGeneratePayload, RmgGenerateResult, RmgResolvedOrder, RmgTemplateEntry, RmgTemplateReadResult,
+  RmgChoicesResult, RmgGeneratePayload, RmgGenerateResult, RmgTemplateEntry, RmgTemplateReadResult,
   RmgTemplateSavePayload, RmgTemplateSaveResult, RmgTemplatesPayload,
 } from '#electron/ipc.ts';
 import { APP_ROOT, gameData, gameRoot, tmpRoot } from '#electron/paths.ts';
 import { landAsArchive, unpackRoot } from '#electron/channels/maps.ts';
 import type { RmgWorkerReply } from '#electron/rmg-worker.ts';
-import { inFront } from '#src/game/assets.ts';
-import { mountArchives } from '#src/game/mounted.ts';
 import { ensureModDir, modFile } from '#src/game/mod-paths.ts';
 import { PATCHED_EXE } from '#src/exe/creature-limit.ts';
-import { allTemplates, dialogChoices, newGuid, templatesOffered } from '#src/rmg/index.ts';
-import type { RmgInstall } from '#src/rmg/index.ts';
-import { runRmgJob } from '#src/rmg/job.ts';
-import type { RmgJob, RmgJobResult } from '#src/rmg/job.ts';
+import { newGuid } from '#src/rmg/index.ts';
 import type { OfferedTemplate } from '#src/rmg/index.ts';
-import { readTemplateNamed } from '#src/rmg/template-files.ts';
+import { answer } from '#src/rmg/service.ts';
+import type { RmgAnswers, RmgPaths, RmgRequest } from '#src/rmg/service.ts';
 import { deleteUserTemplate, saveUserTemplate, userTemplateRoot } from '#src/rmg/user-templates.ts';
 
 /** Where mounted archives are unpacked to — the tools use the same rule under the OS temp. */
 const mountCache = (): string => join(tmpRoot(), 'mounted');
 
 /**
- * The install the generator reads: `<game>/H5E/` mounted over the unpacked
- * data by the executable's rule, and the executable itself. Ours, unwrapped,
- * because the generator's tables are read out of its image; the shipped one
- * is encrypted and says nothing. In front of the mounted install, the two
- * roots of ours (`ownRoots`): the user's templates, then the application's.
+ * Where the install is — what the service mounts: `<game>/H5E/` over the
+ * unpacked data by the executable's rule, and the executable itself. Ours,
+ * unwrapped, because the generator's tables are read out of its image; the
+ * shipped one is encrypted and says nothing. In front of the mounted install,
+ * the two roots of ours (`ownRoots`): the user's templates, then the
+ * application's.
  */
-function install(): { g: string; install: RmgInstall } {
+function install(): { g: string; paths: RmgPaths } {
   const g = gameRoot();
   if (!g) throw new Error('no game install configured — the generator reads the game\'s data and executable');
   const exe = join(g, PATCHED_EXE);
   if (!existsSync(exe)) {
     throw new Error(`no ${PATCHED_EXE} — this install has not been prepared yet (start the editor with --setup and press Prepare)`);
   }
-  const mounted = mountArchives(g, mountCache(), gameData());
-  return { g, install: { data: ownRoots(g).reduceRight((chain, root) => inFront(root, chain), mounted), exe } };
+  return { g, paths: { gameRoot: g, dataRoot: gameData(), cacheDir: mountCache(), exe, ownRoots: ownRoots(g) } };
 }
 
 /** The roots in front of the game's, first in front: the install's own templates, then the application's. */
@@ -75,97 +74,110 @@ function withSource(g: string, t: OfferedTemplate): RmgTemplateEntry {
  */
 const OWN_ROOT = join(APP_ROOT, 'assets', 'rmg');
 
+// --- the child ---------------------------------------------------------------
+
 /** The child's entry point: TypeScript from the repo, JavaScript from a build. */
 const workerFile = (): string =>
   join(APP_ROOT, 'electron', app.isPackaged ? 'rmg-worker.js' : 'rmg-worker.ts');
 
+/**
+ * Force every answer back into this process.
+ *
+ * For proving the child is doing anything: with it set, the same measurement
+ * has to show the app going deaf for the length of a read (e2e/rmg.spec.ts).
+ */
 const INLINE_ONLY = (): boolean => process.env.HOMM5_RMG_INLINE === '1';
 
-/** One generation in a child of its own; null when no child could be forked. */
-function generateInChild(job: RmgJob): Promise<RmgJobResult> | null {
+interface Pending {
+  resolve: (v: unknown) => void;
+  reject: (e: Error) => void;
+}
+
+let child: UtilityProcess | null = null;
+let nextId = 1;
+const pending = new Map<number, Pending>();
+
+/** Give up on the child: everything waiting on it fails, and the next request forks again. */
+function drop(why: string): void {
+  child = null;
+  for (const [, p] of pending) p.reject(new Error(why));
+  pending.clear();
+}
+
+function ensureChild(): UtilityProcess | null {
   if (INLINE_ONLY()) return null;
-  let proc;
+  if (child) return child;
   try {
-    proc = utilityProcess.fork(workerFile(), [], { serviceName: 'homm5-rmg', stdio: 'pipe' });
+    const proc = utilityProcess.fork(workerFile(), [], { serviceName: 'homm5-rmg', stdio: 'pipe' });
+    proc.stdout?.on('data', (b: Buffer) => process.stdout.write(`[rmg-worker] ${b}`));
+    proc.stderr?.on('data', (b: Buffer) => process.stderr.write(`[rmg-worker] ${b}`));
+    proc.on('message', (m: RmgWorkerReply) => {
+      const p = pending.get(m.id);
+      if (!p) return;
+      pending.delete(m.id);
+      if (m.ok) p.resolve(m.result);
+      else p.reject(new Error(m.error ?? 'the generator failed without saying why'));
+    });
+    proc.on('exit', (code) => drop(`the generator stopped (exit ${code})`));
+    child = proc;
+    return proc;
   } catch (e) {
     console.warn('[rmg] no background generator:', e instanceof Error ? e.message : String(e));
     return null;
   }
-  proc.stdout?.on('data', (b: Buffer) => process.stdout.write(`[rmg-worker] ${b}`));
-  proc.stderr?.on('data', (b: Buffer) => process.stderr.write(`[rmg-worker] ${b}`));
-  return new Promise<RmgJobResult>((resolve, reject) => {
-    let answered = false;
-    proc.on('message', (m: RmgWorkerReply) => {
-      answered = true;
-      if (m.ok && m.result) resolve(m.result);
-      else reject(new Error(m.error ?? 'the generator failed without saying why'));
-      proc.kill();
-    });
-    proc.on('exit', (code) => {
-      if (!answered) reject(new Error(`the generator stopped (exit ${code})`));
-    });
-    proc.postMessage({ id: 1, job });
-  });
 }
 
-/** A draw for the dialog's "Random" choices — the SUITE's kind, not the engine's stream. */
-const below = (n: number): number => Math.floor(Math.random() * n);
-const pick = <T>(xs: readonly T[]): T => xs[below(xs.length)]!;
+/** An answer, and where it came from — the result of `rmg:generate` reports the latter. */
+interface Answered<K extends RmgRequest['kind']> {
+  answer: RmgAnswers[K];
+  where: 'child' | 'main';
+}
 
 /**
- * Every 'random' of the payload, drawn — in the order the dialog's own
- * dependencies run: the size, then the floors, then a template the game's
- * dialog would offer for those (and one that takes the players, when they
- * are fixed), then the players inside its range. The rest are independent.
- * A fixed template narrows the sizes to the ones it fits, so "random size,
- * this template" never draws a size the engine would lift.
+ * One request, answered in the child when there is one.
+ *
+ * A request that FAILED fails the same way here — the fallback is for a
+ * child that could not run it, not for an order the generator refuses, and
+ * re-running a genuine refusal inline would cost the same read to be told
+ * the same thing. So it only catches a dead child.
  */
-function resolve(inst: RmgInstall, p: RmgGeneratePayload): RmgResolvedOrder {
-  const choices = dialogChoices(inst);
-  const tiles = choices.sizes.map((s) => s.tiles);
-  const fits = (t: OfferedTemplate): boolean =>
-    (p.template === 'random' || t.file === p.template)
-    && (p.players === 'random' || (t.minPlayers <= p.players && p.players <= t.maxPlayers));
-  const sizes = p.sizeIndex === 'random' ? tiles.map((_, i) => i) : [p.sizeIndex];
-  const floors = p.underground === 'random' ? [false, true] : [p.underground];
-  // What is on offer for each (size, floors) — and only the pairs with something on it.
-  const offered = new Map<string, OfferedTemplate[]>();
-  for (const s of sizes) for (const u of floors) {
-    const list = templatesOffered(inst, s, u).filter(fits);
-    if (list.length) offered.set(`${s}/${u}`, list);
+async function askWhere<R extends RmgRequest>(req: R): Promise<Answered<R['kind']>> {
+  const proc = ensureChild();
+  if (!proc) return { answer: answer(req), where: 'main' };
+  const id = nextId++;
+  try {
+    const got = await new Promise<RmgAnswers[R['kind']]>((resolve, reject) => {
+      pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
+      proc.postMessage({ id, req });
+    });
+    return { answer: got, where: 'child' };
+  } catch (e) {
+    if (child) throw e;
+    console.warn('[rmg] answering in the main process:', e instanceof Error ? e.message : String(e));
+    return { answer: answer(req), where: 'main' };
   }
-  if (!offered.size) {
-    throw new Error(`nothing the game's dialog would offer fits this order`
-      + `${p.template !== 'random' ? ` — ${p.template}` : ''}${p.players !== 'random' ? `, ${p.players} players` : ''}`
-      + `${p.sizeIndex !== 'random' ? `, ${choices.sizes[p.sizeIndex]?.name ?? p.sizeIndex}` : ''}`
-      + `${p.underground !== 'random' ? (p.underground ? ', with an underground' : ', one floor') : ''}`);
-  }
-  const sizeIndex = pick([...new Set([...offered.keys()].map((k) => Number(k.split('/')[0])))]);
-  const underground = pick([...new Set([...offered.keys()].filter((k) => k.startsWith(`${sizeIndex}/`)).map((k) => k.endsWith('true')))]);
-  const template = pick(offered.get(`${sizeIndex}/${underground}`)!);
-  const players = p.players === 'random' ? template.minPlayers + below(template.maxPlayers - template.minPlayers + 1) : p.players;
-  return {
-    template: template.file, sizeIndex, tiles: tiles[sizeIndex]!, underground, players,
-    // Water the way the checkbox records it, or none.
-    water: p.water === 'random' ? pick([0, 2]) : p.water,
-    monsterLevel: p.monsterLevel === 'random' ? below(choices.monsterLevels.length) : p.monsterLevel,
-    resourceMultiplier: p.resourceMultiplier === 'random' ? below(choices.resourceMultipliers.length) : p.resourceMultiplier,
-    expMultiplier: p.expMultiplier === 'random' ? below(choices.expMultipliers.length) : p.expMultiplier,
-    grail: p.grail === 'random' ? below(2) === 1 : p.grail,
-    randomTowns: p.randomTowns === 'random' ? below(2) === 1 : p.randomTowns,
-    heroes: p.heroes?.slice(0, players).some((h) => h !== 'any') ? p.heroes.slice(0, players) : undefined,
-  };
 }
+
+const ask = async <R extends RmgRequest>(req: R): Promise<RmgAnswers[R['kind']]> => (await askWhere(req)).answer;
+
+/** Stop the child. Called when the app quits, so no orphan outlives the window. */
+export function stopRmg(): void {
+  child?.kill();
+  drop('the app is closing');
+}
+
+// --- the channels ------------------------------------------------------------
 
 export function registerRmg(): void {
   ipcMain.handle('rmg:choices', async (): Promise<RmgChoicesResult> => {
-    const { g, install: inst } = install();
-    return { ...dialogChoices(inst), templates: allTemplates(inst).map((t) => withSource(g, t)) };
+    const { g, paths } = install();
+    const c = await ask({ kind: 'choices', paths });
+    return { ...c, templates: c.templates.map((t) => withSource(g, t)) };
   });
 
   ipcMain.handle('rmg:templates', async (_e: IpcMainInvokeEvent, p: RmgTemplatesPayload): Promise<RmgTemplateEntry[]> => {
-    const { g, install: inst } = install();
-    return templatesOffered(inst, p.sizeIndex, p.underground).map((t) => withSource(g, t));
+    const { g, paths } = install();
+    return (await ask({ kind: 'offered', paths, sizeIndex: p.sizeIndex, underground: p.underground })).map((t) => withSource(g, t));
   });
 
   // The template editor's three doors. A template is read through the same
@@ -173,20 +185,24 @@ export function registerRmg(): void {
   // the game's — and saved as the user's, whichever it was: the game's
   // templates are not written to, they are copied into the user's folder
   // under whatever name the editor asks, and a copy under the SAME name
-  // shadows the original the way a mod's file does.
+  // shadows the original the way a mod's file does. A save or a removal is
+  // the one change the service's list cannot see for itself, so it is told.
   ipcMain.handle('rmg:template-read', async (_e: IpcMainInvokeEvent, file: string): Promise<RmgTemplateReadResult> => {
-    const { g, install: inst } = install();
-    const entry = allTemplates(inst).find((t) => t.file === file);
-    if (!entry) throw new Error(`no template ${file} in the install`);
-    return { file, template: readTemplateNamed(inst.data, file), source: withSource(g, entry).source };
+    const { g, paths } = install();
+    const { template, entry } = await ask({ kind: 'template', paths, file });
+    return { file, template, source: withSource(g, entry).source };
   });
   ipcMain.handle('rmg:template-save', async (_e: IpcMainInvokeEvent, p: RmgTemplateSavePayload): Promise<RmgTemplateSaveResult> => {
-    const { g } = install();
-    return { path: saveUserTemplate(g, p.file, p.template) };
+    const { g, paths } = install();
+    const path = saveUserTemplate(g, p.file, p.template);
+    await ask({ kind: 'forget-templates', paths });
+    return { path };
   });
   ipcMain.handle('rmg:template-delete', async (_e: IpcMainInvokeEvent, file: string): Promise<boolean> => {
-    const { g } = install();
-    return deleteUserTemplate(g, file);
+    const { g, paths } = install();
+    const gone = deleteUserTemplate(g, file);
+    if (gone) await ask({ kind: 'forget-templates', paths });
+    return gone;
   });
 
   // Generate, then land it as a new map. The name doubles as the archive's
@@ -197,38 +213,27 @@ export function registerRmg(): void {
     const name = p.mapName.trim();
     if (!name) throw new Error('the map needs a name');
     if (/[\\/:*?"<>|]/.test(name)) throw new Error('the name cannot contain \\ / : * ? " < > |');
-    const { g, install: inst } = install();
+    const { g, paths } = install();
     const archive = modFile(g, 'map', name);
     if (existsSync(archive)) throw new Error(`${archive} already exists`);
     // The seed the way the game's dialog fills it in when nobody typed one: a
     // positive 31-bit number, which is what the engine's generator takes.
     const seed = p.seed ?? (1 + Math.floor(Math.random() * 2147483646));
-    const order = resolve(inst, p);
     const guid = newGuid();
     const prefix = `Maps/RMG/${guid}`;
     const mapDir = join(unpackRoot(archive).root, prefix);
     if (existsSync(mapDir)) throw new Error(`${mapDir} already exists`);
     ensureModDir(g);
 
-    const job: RmgJob = {
-      gameRoot: g, dataRoot: gameData(), cacheDir: mountCache(), exe: inst.exe, ownRoots: ownRoots(g), mapDir,
-      order: { ...order, seed, guid, minimap: p.minimap, mapName: name },
-    };
+    const { mapName: _name, seed: _seed, minimap, ...wish } = p;
     const started = performance.now();
-    let where: RmgGenerateResult['where'] = 'child';
-    let r: RmgJobResult;
-    const inChild = generateInChild(job);
-    if (inChild) {
-      r = await inChild;
-    } else {
-      where = 'main';
-      r = runRmgJob(job);
-    }
+    const { answer: r, where: ran } = await askWhere({ kind: 'generate', paths, wish, seed, guid, mapName: name, minimap, mapDir });
     landAsArchive(g, mapDir, archive, prefix);
     const ms = Math.round(performance.now() - started);
+    const { order } = r;
     console.log(`[rmg] ${archive} · ${order.template} ${order.tiles}×${order.tiles}${order.underground ? ' two-level' : ''}, ${order.players} players, seed ${seed}`
-      + ` · ${r.draws} draws, ${r.objects} objects · ${r.ms}ms in the ${where}, ${ms}ms in all`);
+      + ` · ${r.draws} draws, ${r.objects} objects · ${r.ms}ms in the ${ran}, ${ms}ms in all`);
     for (const w of r.warnings) console.warn(`[rmg] ${w}`);
-    return { mapPath: join(mapDir, 'map.xdb'), mapDir, archive, seed, order, draws: r.draws, objects: r.objects, where, ms, warnings: r.warnings };
+    return { mapPath: join(mapDir, 'map.xdb'), mapDir, archive, seed, order, draws: r.draws, objects: r.objects, where: ran, ms, warnings: r.warnings };
   });
 }

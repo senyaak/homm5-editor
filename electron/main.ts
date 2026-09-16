@@ -28,7 +28,7 @@ import { registerReach } from '#electron/channels/reach.ts';
 import { registerHistory } from '#electron/channels/history.ts';
 import { registerLoc } from '#electron/channels/loc.ts';
 import { registerMaps } from '#electron/channels/maps.ts';
-import { registerRmg } from '#electron/channels/rmg.ts';
+import { registerRmg, stopRmg } from '#electron/channels/rmg.ts';
 import { registerModArtifacts } from '#electron/channels/mods-artifacts.ts';
 import { registerModBuildings } from '#electron/channels/mods-buildings.ts';
 import { registerModCreatures } from '#electron/channels/mods-creatures.ts';
@@ -213,4 +213,4 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 // The scene builder is a child process of ours, so it goes when we do — an
 // orphan holding a 200 MB payload outliving the window is not a thing anyone
 // would think to look for.
-app.on('will-quit', () => { state.session?.watch.stop(); stopSceneBuilder(); });
+app.on('will-quit', () => { state.session?.watch.stop(); stopSceneBuilder(); stopRmg(); });

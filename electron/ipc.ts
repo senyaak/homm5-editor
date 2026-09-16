@@ -19,6 +19,7 @@ import type { PandoraContents } from '../src/mods/pandora-contents.ts';
 import type { FillDraft } from '../src/fill/preset.ts';
 import type { ActorView, ShotView } from '../src/dialog/play.ts';
 import type { SceneSource } from '../src/dialog/scene-source.ts';
+import type { RmgResolvedOrder, RmgWish } from '../src/rmg/service.ts';
 import type { RmgTemplate } from '../src/rmg/template.ts';
 export type { PlaceableObject } from '../src/map/objects.ts';
 
@@ -191,51 +192,22 @@ export interface RmgTemplatesPayload {
 
 /**
  * Payload of `rmg:generate` — an order in the dialog's own units (see
- * `RmgOrder` in src/rmg/index.ts), where any control but the name and the
- * minimap may say `'random'` and main draws it: the size, then the floors,
- * then a template the game's dialog would offer for those (and that takes the
- * players, when they are fixed), then the players inside its range; the rest
- * independently. What was drawn comes back in the result's `order`.
+ * `RmgOrder` in src/rmg/index.ts), where any control but the name, the seed
+ * and the minimap may say `'random'` and the generator draws it (`resolve`
+ * in src/rmg/service.ts): the size, then the floors, then a template the
+ * game's dialog would offer for those (and that takes the players, when they
+ * are fixed), then the players inside its range; the rest independently.
+ * What was drawn comes back in the result's `order`.
  */
-export interface RmgGeneratePayload {
+export interface RmgGeneratePayload extends RmgWish {
   mapName: string;
   /** Left out: the generator draws one, the way the game's dialog does. */
   seed?: number;
-  template: string | 'random';
-  sizeIndex: number | 'random';
-  underground: boolean | 'random';
-  water: number | 'random';
-  players: number | 'random';
-  monsterLevel: number | 'random';
-  resourceMultiplier: number | 'random';
-  expMultiplier: number | 'random';
-  grail: boolean | 'random';
-  randomTowns: boolean | 'random';
   minimap: boolean;
-  /**
-   * OURS: per player slot, `any` (the game's choice), `random` (one of the
-   * race, drawn) or a hero's href; the first `players` entries count. See
-   * `src/rmg/heroes.ts`.
-   */
-  heroes?: string[];
 }
 
 /** The order as it was generated — every `'random'` of the payload resolved. */
-export interface RmgResolvedOrder {
-  template: string;
-  sizeIndex: number;
-  tiles: number;
-  underground: boolean;
-  water: number;
-  players: number;
-  monsterLevel: number;
-  resourceMultiplier: number;
-  expMultiplier: number;
-  grail: boolean;
-  randomTowns: boolean;
-  /** The payload's hero choices, cut to the players; absent when all `any`. */
-  heroes?: string[];
-}
+export type { RmgResolvedOrder };
 
 /** Result of `rmg:generate` — the map, landed and packed like a new one, plus what the run cost. */
 export interface RmgGenerateResult extends NewMapResult {
