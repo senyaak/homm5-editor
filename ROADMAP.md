@@ -1111,6 +1111,28 @@ or its data, so a mod's templates, creatures and artifacts reach it.
       and listed by the dialog beside the game's. The whole generator runs on
       it (`test-rmg-layout`). A template's connection record was swept on
       the way: `TwoWay`, `Guarded`, `Wide` are read by nothing ✅
+- [x] **A zone of ours says more than the game's can** (`.h5et`, 16.09):
+      `<Objects>` names a building with a floor, a ceiling and a guard;
+      `<GuardMultiplier>` scales the guards the zone seats for itself, on top
+      of the map's monster level; `<TreasureBlocks>` values the blocks by
+      ranges with counts (relics by value, the Heroes III way). A template
+      asking for more than fits gets what fits and a warning on the HUD
+      line, never a refusal ✅
+
+**Written down, not started — after Jebus and the Outcasts are finished:**
+
+- [ ] **Variations**: any `<Item>` of a template (a zone, a connection, an
+      `<Objects>` line, a treasure range) may carry `<Variant>name</Variant>`;
+      neighbours with one name in one list are alternatives and ONE is kept,
+      drawn from the seed on a stream of its own, before the generator sees
+      the template. Zone alternatives must keep their `Index` (a warning
+      otherwise, not a refusal). Cheap: a pre-pass over the parsed template ⬜
+- [ ] **Packs**: one `.h5et` holding several `<RMGTemplate>` under one name,
+      each with its own size and player ranges and its own zones, the dialog
+      listing the name once and the first variant that fits the size and the
+      player count taken — HotA's `.h3t` (Jebus Outcast: 126 maps in one
+      file). Belongs to the template editor, which is where variants will be
+      authored ⬜
 
 **Before it can be released — three things, in a chat of their own:**
 
