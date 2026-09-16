@@ -337,7 +337,13 @@ export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain
   const randomTowns = Boolean(options.randomTowns);
   const randomTown = randomTowns ? readTownShared(dir, exe.randomTown) : undefined;
   const randomDwellings = [...exe.randomDwellings];
-  const creatures = readCreatures(dir);
+  // The table as the executable holds it: its first `creatureCount` rows and
+  // no more. A mod's table can run past the ceiling compiled into the
+  // executable (a units mod patches the game's; the map editor's stays at
+  // 180), and the rows past it are not creatures the guard setter can draw —
+  // reading them all gave a modded install different guards than its own
+  // editor drew (16.09).
+  const creatures = readCreatures(dir).slice(0, exe.creatureCount);
   const tables: GuardTables = {
     templates: readArmyTemplates(dir, exe.armyTemplateGroup),
     unplaceable: new Set(exe.unplaceableCreatures),
