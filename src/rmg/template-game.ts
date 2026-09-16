@@ -54,13 +54,13 @@ export const TIERS = 7;
  *                `Dwellings` runs from none (`<Dwellings/>`) to seven, and the
  *                placers read a missing tier as nothing. The length is data.
  *   zones        the list of zone records; `connections` likewise
- *   layout       ours — a `ZoneLayoutKind` name; `ranges` and `objects` are the
- *                two structured lists of ours (`template.ts`)
+ *   layout       ours — a `ZoneLayoutKind` name; `ranges`, `objects` and
+ *                `diagram` are the structured lists of ours (`template.ts`)
  */
 export type FieldKind =
   | 'int' | 'float' | 'bool' | 'text' | 'href' | 'tiers'
   | 'zones' | 'connections'
-  | 'layout' | 'ranges' | 'objects';
+  | 'layout' | 'ranges' | 'objects' | 'diagram';
 
 /** One field of a record: how it is spelled, what it holds, what it means. */
 export interface FieldSpec {

@@ -130,6 +130,7 @@
     "test-rmg-random": "node tools/test-rmg-random.ts",
     "test-rmg-template": "node tools/test-rmg-template.ts",
     "test-rmg-write-template": "node tools/test-rmg-write-template.ts",
+    "test-rmg-user-templates": "node tools/test-rmg-user-templates.ts",
     "test-rmg-params": "node tools/test-rmg-params.ts",
     "test-rmg-zones": "node tools/test-rmg-zones.ts",
     "test-rmg-fill-zones": "node tools/test-rmg-fill-zones.ts",

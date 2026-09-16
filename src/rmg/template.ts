@@ -12,16 +12,12 @@
 //
 // The reader walks the tables. Nothing here interprets a field — that is the
 // phases' job; this only turns the file into numbers, and `write-template.ts`
-// turns them back.
-
-import { readFileSync } from 'node:fs';
+// turns them back. Nothing here touches a file either: the model and its
+// reader are pure, so the template editor in the renderer can hold the same
+// model; the doors to disk and to the mounted chain are `template-files.ts`.
 
 import { childText, decodeEntities, find, findAll, parse, text } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
-import { readText, toAssets } from './data.ts';
-import type { DataRoot } from './data.ts';
-import { zoneLayoutKind } from './layout.ts';
-import type { ZoneLayoutKind } from './layout.ts';
 import { GAME_CONNECTION_FIELDS, GAME_TEMPLATE_FIELDS, GAME_ZONE_FIELDS } from './template-game.ts';
 import type { FieldSpec, GameConnection, GameConnectionCarried, GameTemplate, GameTemplateCarried, GameZone, GameZoneCarried, LiveKeys } from './template-game.ts';
 
@@ -29,6 +25,18 @@ export { GAME_CONNECTION_FIELDS, GAME_TEMPLATE_FIELDS, GAME_ZONE_FIELDS, TIERS, 
 export type {
   FieldKind, FieldSpec, GameConnection, GameConnectionCarried, GameTemplate, GameTemplateCarried, GameZone, GameZoneCarried, LiveKeys,
 } from './template-game.ts';
+
+/** The template's `<ZoneLayout>`; absent means `Engine`. */
+export type ZoneLayoutKind = 'Engine' | 'Voronoi';
+
+export const ZONE_LAYOUT_KINDS: readonly ZoneLayoutKind[] = ['Engine', 'Voronoi'];
+
+export function zoneLayoutKind(text: string): ZoneLayoutKind {
+  if (text === '') return 'Engine';
+  const kind = ZONE_LAYOUT_KINDS.find((k) => k === text);
+  if (!kind) throw new Error(`ZoneLayout "${text}" — one of ${ZONE_LAYOUT_KINDS.join(', ')}`);
+  return kind;
+}
 
 /**
  * One line of a zone's `<TreasureBlocks>`: `Count` blocks worth a draw in
@@ -103,10 +111,25 @@ export interface RmgConnection extends GameConnection {
   road: boolean;
 }
 
+/**
+ * Where the template editor drew a zone — the DIAGRAM's picture, not the
+ * map's: the generator lays the map out from the graph alone (`layout.ts`)
+ * and reads none of this. Kept so a hand-arranged diagram opens as it was
+ * left; absent, the editor lays the diagram out from the graph itself.
+ * `x`, `y` are thousandths of the diagram's square.
+ */
+export interface RmgDiagramNode {
+  index: number;
+  x: number;
+  y: number;
+}
+
 /** A template of ours: the game's, and what an `.h5et` adds. */
 export interface RmgTemplate extends GameTemplate {
   zones: RmgZone[];
   connections: RmgConnection[];
+  /** `<Diagram>` — see `RmgDiagramNode`; empty when the file keeps no picture. */
+  diagram: RmgDiagramNode[];
   /**
    * `<ZoneLayout>` names how the zones are laid out — the engine's own way
    * when absent, or one of `layout.ts`'s.
@@ -147,6 +170,7 @@ export const OUR_TEMPLATE_FIELDS = {
   zoneLayout: { tag: 'ZoneLayout', kind: 'layout', default: 'Engine', after: 'name', doc: 'How the zones are laid out: Engine, the game\'s own; Voronoi, ours — centres settled by the connections, start zones at the corners.' },
   layoutJitter: { tag: 'LayoutJitter', kind: 'float', default: 0, min: 0, max: 1, after: 'name', doc: 'How far the Voronoi layout wanders from its bare geometry, 0..1; 0 keeps the shapes the graph gives.' },
   uniqueRaces: { tag: 'UniqueRaces', kind: 'bool', default: false, after: 'name', doc: 'No faction twice: each zone draws a race not yet taken, and the middle is nobody\'s home ground.' },
+  diagram: { tag: 'Diagram', kind: 'diagram', after: 'testTemplate', doc: 'Where the template editor drew each zone — the picture only; the map is laid out from the graph.' },
 } as const satisfies Record<Exclude<keyof RmgTemplate, keyof GameTemplate | 'zones' | 'connections'>, FieldSpec>;
 
 /** The three records' fields, the game's and ours together — the dead ones (`carried`) among them, by their own keys. */
@@ -165,6 +189,14 @@ function treasureRanges(holder: XmlElement | null): RmgTreasureRange[] {
   if (!holder) return [];
   return findAll(holder, 'Item').map((r) => ({
     min: intText(childText(r, 'Min')), max: intText(childText(r, 'Max')), count: intText(childText(r, 'Count')),
+  }));
+}
+
+/** `<Diagram><Item><Index>1</Index><X>500</X><Y>500</Y></Item>…</Diagram>`. */
+function diagramNodes(holder: XmlElement | null): RmgDiagramNode[] {
+  if (!holder) return [];
+  return findAll(holder, 'Item').map((n) => ({
+    index: intText(childText(n, 'Index')), x: intText(childText(n, 'X')), y: intText(childText(n, 'Y')),
   }));
 }
 
@@ -207,6 +239,7 @@ function readField(el: XmlElement, f: FieldSpec): unknown {
     case 'layout': return zoneLayoutKind(childText(el, f.tag));
     case 'ranges': return treasureRanges(child);
     case 'objects': return zoneObjects(child);
+    case 'diagram': return diagramNodes(child);
     // Only direct Items are records; `Mines`/`Dwellings` have Items too, so
     // a zone is told from a tier count by its Index.
     case 'zones': return child ? findAll(child, 'Item').filter((z) => find(z, 'Index') !== null).map((z) => readRecord<RmgZone>(z, ZONE_FIELDS)) : [];
@@ -230,31 +263,3 @@ export function parseTemplate(xml: string): RmgTemplate {
   return readRecord<RmgTemplate>(t, TEMPLATE_FIELDS);
 }
 
-/** A template by its full path on disk — the tests' door. */
-export function readTemplate(path: string): RmgTemplate {
-  return parseTemplate(readFileSync(path, 'utf8'));
-}
-
-/**
- * The two spellings of a template file. `.xdb` is the game's; `.h5et` is
- * OURS — the same document with the fields of our own the game's serialiser
- * would not know, kept out of the folder the game lists so that its own
- * generator never meets them. One name may exist in both; ours wins, the
- * way a mod's file wins over the shipped one.
- */
-export const TEMPLATE_EXTENSIONS = ['.h5et', '.xdb'] as const;
-
-/** `RMG/Templates/<name>.h5et` or `.xdb`, whichever the mounted chain has first. */
-export function templateFile(dataRoot: DataRoot, name: string): string {
-  const data = toAssets(dataRoot);
-  for (const ext of TEMPLATE_EXTENSIONS) {
-    const rel = `RMG/Templates/${name}${ext}`;
-    if (data.text(rel) !== null) return rel;
-  }
-  throw new Error(`RMG/Templates/${name}: neither .h5et nor .xdb in any mounted root (${data.roots.join(', ')})`);
-}
-
-/** A template by name through the mounted chain — the generator's door. */
-export function readTemplateNamed(dataRoot: DataRoot, name: string): RmgTemplate {
-  return parseTemplate(readText(dataRoot, templateFile(dataRoot, name)));
-}

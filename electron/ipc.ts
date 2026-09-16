@@ -19,6 +19,7 @@ import type { PandoraContents } from '../src/mods/pandora-contents.ts';
 import type { FillDraft } from '../src/fill/preset.ts';
 import type { ActorView, ShotView } from '../src/dialog/play.ts';
 import type { SceneSource } from '../src/dialog/scene-source.ts';
+import type { RmgTemplate } from '../src/rmg/template.ts';
 export type { PlaceableObject } from '../src/map/objects.ts';
 
 /**
@@ -156,6 +157,30 @@ export interface RmgTemplateEntry {
   maxPlayers: number;
   minMapSize: number;
   maxMapSize: number;
+  /**
+   * Whose file answered: the user's (`<game>/H5E/RMG/Templates`, where the
+   * template editor saves), the application's (`assets/rmg`, shipped with
+   * it), or the game's. The first shadows the second shadows the third.
+   */
+  source: 'user' | 'app' | 'game';
+}
+
+/** Result of `rmg:template-read` — the template as the generator would read it, and whose file it is. */
+export interface RmgTemplateReadResult {
+  file: string;
+  template: RmgTemplate;
+  source: RmgTemplateEntry['source'];
+}
+
+/** Payload of `rmg:template-save` — written as the user's `<file>.h5et`, whatever it was read as. */
+export interface RmgTemplateSavePayload {
+  file: string;
+  template: RmgTemplate;
+}
+
+export interface RmgTemplateSaveResult {
+  /** Where it landed. */
+  path: string;
 }
 
 /** Payload of `rmg:templates` — which templates the dialog would offer for this size and floor count. */
@@ -1977,6 +2002,12 @@ export interface EditorApi {
   rmgTemplates(p: RmgTemplatesPayload): Promise<RmgTemplateEntry[]>;
   /** Generate a map from an order and land it as a new map, packed and ready to open. */
   rmgGenerate(p: RmgGeneratePayload): Promise<RmgGenerateResult>;
+  /** The template editor: a template by its file name, through the generator's chain. */
+  rmgTemplateRead(file: string): Promise<RmgTemplateReadResult>;
+  /** Save it as the user's `.h5et` — the game's are never written, only copied. */
+  rmgTemplateSave(p: RmgTemplateSavePayload): Promise<RmgTemplateSaveResult>;
+  /** Remove a user's template; false when there was none of that name. */
+  rmgTemplateDelete(file: string): Promise<boolean>;
   /** `stock` takes ONE map out of the game's own archives, which hold many. */
   openArchive(path: string, inner?: string, stock?: boolean): Promise<OpenArchiveResult>;
   loadMap(path: string): Promise<MapLoadResult>;

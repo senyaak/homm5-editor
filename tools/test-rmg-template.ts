@@ -11,7 +11,8 @@ import { join } from 'node:path';
 
 import { createMap, unitsToSize } from '../src/rmg/create-map.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
-import { readTemplate, shipyardOf, TIERS } from '../src/rmg/template.ts';
+import { shipyardOf, TIERS } from '../src/rmg/template.ts';
+import { readTemplate } from '../src/rmg/template-files.ts';
 import { dataDir } from './game-dir.ts';
 import { exeTables } from '../src/rmg/exe.ts';
 import { gameExeIfAny } from './game-dir.ts';

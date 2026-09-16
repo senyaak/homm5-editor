@@ -14,7 +14,8 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { parseTemplate, readTemplate } from '../src/rmg/template.ts';
+import { parseTemplate } from '../src/rmg/template.ts';
+import { readTemplate } from '../src/rmg/template-files.ts';
 import type { RmgTemplate } from '../src/rmg/template.ts';
 import { usesOwnFields, writeTemplate } from '../src/rmg/write-template.ts';
 import { dataDir } from './game-dir.ts';
@@ -125,6 +126,17 @@ console.log('\nthe edges');
   const oddBack = parseTemplate(writeTemplate(odd));
   check('a name with &, < and > survives', oddBack.name === 'A & B <C>', oddBack.name);
   check('a quote in an href survives', oddBack.nameFileRef === 'say "hi".txt', String(oddBack.nameFileRef));
+}
+
+console.log('\nthe diagram — the editor\'s picture, kept in the file');
+{
+  // Written after TestTemplate, only when there is one; read back as it went.
+  check('the game\'s templates keep no picture', plain.diagram.length === 0 && !writeTemplate(plain).includes('<Diagram>'));
+  const drawn = { ...plain, diagram: [{ index: 1, x: 250, y: 500 }, { index: 2, x: 750, y: 500 }] };
+  const drawnText = writeTemplate(drawn);
+  check('a picture is written after TestTemplate', /<\/TestTemplate>\r\n\t<Diagram>\r\n\t\t<Item>\r\n\t\t\t<Index>1<\/Index>\r\n\t\t\t<X>250<\/X>\r\n\t\t\t<Y>500<\/Y>/.test(drawnText));
+  check('and reads back as it went', JSON.stringify(parseTemplate(drawnText).diagram) === JSON.stringify(drawn.diagram));
+  check('a picture alone makes it an .h5et', usesOwnFields(drawn));
 }
 
 console.log(failures ? `\n${failures} failed` : '\nall good');

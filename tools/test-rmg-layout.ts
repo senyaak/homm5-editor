@@ -22,7 +22,7 @@ import { layoutZones } from '../src/rmg/layout.ts';
 import type { ZoneLayout } from '../src/rmg/layout.ts';
 import type { Tile } from '../src/rmg/placement.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
-import { readTemplate } from '../src/rmg/template.ts';
+import { readTemplate } from '../src/rmg/template-files.ts';
 import { runFull } from '../src/rmg/run.ts';
 import { generateGameZones } from '../src/rmg/zones.ts';
 import { dataAssets, gameDirIfAny, gameInstall } from './game-dir.ts';

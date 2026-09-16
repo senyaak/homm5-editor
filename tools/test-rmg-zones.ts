@@ -13,7 +13,7 @@ import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { RmgRandom } from '../src/rmg/random.ts';
-import { readTemplate } from '../src/rmg/template.ts';
+import { readTemplate } from '../src/rmg/template-files.ts';
 import { floorIterationOrder, generateGameZones, zoneRadius } from '../src/rmg/zones.ts';
 import type { ZoneSeed } from '../src/rmg/zones.ts';
 import { dataDir } from './game-dir.ts';

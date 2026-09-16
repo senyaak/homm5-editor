@@ -29,7 +29,7 @@ import { installTables } from './install.ts';
 import type { RmgInstall } from './install.ts';
 import { enumNames, readEnumValues } from './data.ts';
 import { RACE } from './load-template.ts';
-import { templateFile } from './template.ts';
+import { templateFile } from './template-files.ts';
 import { drawMinimap, drawTerrainLayer, waterTile, type MinimapFloor, type WaterTileInput } from './minimap.ts';
 import {
   drawIconLayer, iconList, iconNameFor, loadMinimapIcons, type IconObject,

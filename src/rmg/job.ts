@@ -26,11 +26,13 @@ export interface RmgJob {
   /** The game's UNWRAPPED executable. */
   exe: string;
   /**
-   * The application's own documents — `assets/rmg`, where our templates
-   * live — in front of everything the game mounts. Optional: a job without
-   * one reads the game's templates alone.
+   * Roots in front of everything the game mounts, the first in front of the
+   * rest: the install's own templates (`<game>/H5E`, where the editor saves
+   * them — `user-templates.ts`) and the application's (`assets/rmg`, the
+   * templates shipped with it). Optional: a job without them reads the
+   * game's templates alone.
    */
-  ownRoot?: string;
+  ownRoots?: string[];
   order: RmgOrder;
   /** The folder to write the map's files into; created if missing. */
   mapDir: string;
@@ -51,7 +53,7 @@ export interface RmgJobResult {
 export function runRmgJob(job: RmgJob): RmgJobResult {
   const started = performance.now();
   const mounted = mountArchives(job.gameRoot, job.cacheDir, job.dataRoot);
-  const data = job.ownRoot ? inFront(job.ownRoot, mounted) : mounted;
+  const data = (job.ownRoots ?? []).reduceRight((chain, root) => inFront(root, chain), mounted);
   const map = generateMap({ data, exe: job.exe }, job.order);
   mkdirSync(job.mapDir, { recursive: true });
   for (const f of map.files) writeFileSync(join(job.mapDir, f.name), f.data);

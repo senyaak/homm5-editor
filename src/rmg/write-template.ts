@@ -21,7 +21,7 @@
 
 import { encodeEntities as escape } from '../format/xml.ts';
 import { GAME_CONNECTION_FIELDS, GAME_TEMPLATE_FIELDS, GAME_ZONE_FIELDS, OUR_CONNECTION_FIELDS, OUR_TEMPLATE_FIELDS, OUR_ZONE_FIELDS } from './template.ts';
-import type { FieldSpec, RmgConnection, RmgTemplate, RmgTreasureRange, RmgZone, RmgZoneObject } from './template.ts';
+import type { FieldSpec, RmgConnection, RmgDiagramNode, RmgTemplate, RmgTreasureRange, RmgZone, RmgZoneObject } from './template.ts';
 
 const EOL = '\r\n';
 
@@ -79,6 +79,17 @@ function writeObjects(w: Lines, d: number, objects: RmgZoneObject[]): void {
   }
 }
 
+/** `<Item><Index>…</Index><X>…</X><Y>…</Y></Item>` per zone drawn. */
+function writeDiagram(w: Lines, d: number, nodes: RmgDiagramNode[]): void {
+  for (const n of nodes) {
+    w.line(d, '<Item>');
+    w.field(d + 1, 'Index', n.index);
+    w.field(d + 1, 'X', n.x);
+    w.field(d + 1, 'Y', n.y);
+    w.line(d, '</Item>');
+  }
+}
+
 /** Whether a field of ours says something: not its default, or a list with entries. */
 function speaks(f: FieldSpec, value: unknown): boolean {
   if (Array.isArray(value)) return value.length > 0;
@@ -114,6 +125,11 @@ function writeField(w: Lines, depth: number, f: FieldSpec, value: unknown): void
     case 'objects': {
       const objects = value as RmgZoneObject[];
       w.list(depth, f.tag, objects.length, () => writeObjects(w, depth + 1, objects));
+      return;
+    }
+    case 'diagram': {
+      const nodes = value as RmgDiagramNode[];
+      w.list(depth, f.tag, nodes.length, () => writeDiagram(w, depth + 1, nodes));
       return;
     }
     case 'zones': {

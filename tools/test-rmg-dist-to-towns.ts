@@ -23,7 +23,7 @@ import { readCreatures } from '../src/rmg/creatures.ts';
 import { readParams } from '../src/rmg/params.ts';
 import { readPresets } from '../src/rmg/preset-table.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
-import { readTemplate } from '../src/rmg/template.ts';
+import { readTemplate } from '../src/rmg/template-files.ts';
 import { readTownShared, readTownSpecializations } from '../src/rmg/town-data.ts';
 import type { TownShared } from '../src/rmg/town-data.ts';
 import { placeTowns } from '../src/rmg/towns.ts';

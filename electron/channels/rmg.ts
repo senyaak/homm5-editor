@@ -17,7 +17,10 @@ import { app, ipcMain, utilityProcess } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import type { RmgChoicesResult, RmgGeneratePayload, RmgGenerateResult, RmgResolvedOrder, RmgTemplateEntry, RmgTemplatesPayload } from '#electron/ipc.ts';
+import type {
+  RmgChoicesResult, RmgGeneratePayload, RmgGenerateResult, RmgResolvedOrder, RmgTemplateEntry, RmgTemplateReadResult,
+  RmgTemplateSavePayload, RmgTemplateSaveResult, RmgTemplatesPayload,
+} from '#electron/ipc.ts';
 import { APP_ROOT, gameData, gameRoot, tmpRoot } from '#electron/paths.ts';
 import { landAsArchive, unpackRoot } from '#electron/channels/maps.ts';
 import type { RmgWorkerReply } from '#electron/rmg-worker.ts';
@@ -29,6 +32,9 @@ import { allTemplates, dialogChoices, newGuid, templatesOffered } from '#src/rmg
 import type { RmgInstall } from '#src/rmg/index.ts';
 import { runRmgJob } from '#src/rmg/job.ts';
 import type { RmgJob, RmgJobResult } from '#src/rmg/job.ts';
+import type { OfferedTemplate } from '#src/rmg/index.ts';
+import { readTemplateNamed } from '#src/rmg/template-files.ts';
+import { deleteUserTemplate, saveUserTemplate, userTemplateRoot } from '#src/rmg/user-templates.ts';
 
 /** Where mounted archives are unpacked to — the tools use the same rule under the OS temp. */
 const mountCache = (): string => join(tmpRoot(), 'mounted');
@@ -37,7 +43,8 @@ const mountCache = (): string => join(tmpRoot(), 'mounted');
  * The install the generator reads: `<game>/H5E/` mounted over the unpacked
  * data by the executable's rule, and the executable itself. Ours, unwrapped,
  * because the generator's tables are read out of its image; the shipped one
- * is encrypted and says nothing.
+ * is encrypted and says nothing. In front of the mounted install, the two
+ * roots of ours (`ownRoots`): the user's templates, then the application's.
  */
 function install(): { g: string; install: RmgInstall } {
   const g = gameRoot();
@@ -46,7 +53,19 @@ function install(): { g: string; install: RmgInstall } {
   if (!existsSync(exe)) {
     throw new Error(`no ${PATCHED_EXE} — this install has not been prepared yet (start the editor with --setup and press Prepare)`);
   }
-  return { g, install: { data: inFront(OWN_ROOT, mountArchives(g, mountCache(), gameData())), exe } };
+  const mounted = mountArchives(g, mountCache(), gameData());
+  return { g, install: { data: ownRoots(g).reduceRight((chain, root) => inFront(root, chain), mounted), exe } };
+}
+
+/** The roots in front of the game's, first in front: the install's own templates, then the application's. */
+const ownRoots = (g: string): string[] => [userTemplateRoot(g), OWN_ROOT];
+
+/** Which root a listed template came from — the user's folder, the application's, or the game's. */
+function withSource(g: string, t: OfferedTemplate): RmgTemplateEntry {
+  const under = (root: string): boolean => t.path.toLowerCase().startsWith(join(root, 'RMG').toLowerCase());
+  const source: RmgTemplateEntry['source'] = under(userTemplateRoot(g)) ? 'user' : under(OWN_ROOT) ? 'app' : 'game';
+  const { path: _path, ...rest } = t;
+  return { ...rest, source };
 }
 
 /**
@@ -104,13 +123,13 @@ const pick = <T>(xs: readonly T[]): T => xs[below(xs.length)]!;
 function resolve(inst: RmgInstall, p: RmgGeneratePayload): RmgResolvedOrder {
   const choices = dialogChoices(inst);
   const tiles = choices.sizes.map((s) => s.tiles);
-  const fits = (t: RmgTemplateEntry): boolean =>
+  const fits = (t: OfferedTemplate): boolean =>
     (p.template === 'random' || t.file === p.template)
     && (p.players === 'random' || (t.minPlayers <= p.players && p.players <= t.maxPlayers));
   const sizes = p.sizeIndex === 'random' ? tiles.map((_, i) => i) : [p.sizeIndex];
   const floors = p.underground === 'random' ? [false, true] : [p.underground];
   // What is on offer for each (size, floors) — and only the pairs with something on it.
-  const offered = new Map<string, RmgTemplateEntry[]>();
+  const offered = new Map<string, OfferedTemplate[]>();
   for (const s of sizes) for (const u of floors) {
     const list = templatesOffered(inst, s, u).filter(fits);
     if (list.length) offered.set(`${s}/${u}`, list);
@@ -140,13 +159,34 @@ function resolve(inst: RmgInstall, p: RmgGeneratePayload): RmgResolvedOrder {
 
 export function registerRmg(): void {
   ipcMain.handle('rmg:choices', async (): Promise<RmgChoicesResult> => {
-    const { install: inst } = install();
-    return { ...dialogChoices(inst), templates: allTemplates(inst) };
+    const { g, install: inst } = install();
+    return { ...dialogChoices(inst), templates: allTemplates(inst).map((t) => withSource(g, t)) };
   });
 
   ipcMain.handle('rmg:templates', async (_e: IpcMainInvokeEvent, p: RmgTemplatesPayload): Promise<RmgTemplateEntry[]> => {
-    const { install: inst } = install();
-    return templatesOffered(inst, p.sizeIndex, p.underground);
+    const { g, install: inst } = install();
+    return templatesOffered(inst, p.sizeIndex, p.underground).map((t) => withSource(g, t));
+  });
+
+  // The template editor's three doors. A template is read through the same
+  // chain the generator reads — the user's file first, then the app's, then
+  // the game's — and saved as the user's, whichever it was: the game's
+  // templates are not written to, they are copied into the user's folder
+  // under whatever name the editor asks, and a copy under the SAME name
+  // shadows the original the way a mod's file does.
+  ipcMain.handle('rmg:template-read', async (_e: IpcMainInvokeEvent, file: string): Promise<RmgTemplateReadResult> => {
+    const { g, install: inst } = install();
+    const entry = allTemplates(inst).find((t) => t.file === file);
+    if (!entry) throw new Error(`no template ${file} in the install`);
+    return { file, template: readTemplateNamed(inst.data, file), source: withSource(g, entry).source };
+  });
+  ipcMain.handle('rmg:template-save', async (_e: IpcMainInvokeEvent, p: RmgTemplateSavePayload): Promise<RmgTemplateSaveResult> => {
+    const { g } = install();
+    return { path: saveUserTemplate(g, p.file, p.template) };
+  });
+  ipcMain.handle('rmg:template-delete', async (_e: IpcMainInvokeEvent, file: string): Promise<boolean> => {
+    const { g } = install();
+    return deleteUserTemplate(g, file);
   });
 
   // Generate, then land it as a new map. The name doubles as the archive's
@@ -171,7 +211,7 @@ export function registerRmg(): void {
     ensureModDir(g);
 
     const job: RmgJob = {
-      gameRoot: g, dataRoot: gameData(), cacheDir: mountCache(), exe: inst.exe, ownRoot: OWN_ROOT, mapDir,
+      gameRoot: g, dataRoot: gameData(), cacheDir: mountCache(), exe: inst.exe, ownRoots: ownRoots(g), mapDir,
       order: { ...order, seed, guid, minimap: p.minimap, mapName: name },
     };
     const started = performance.now();

@@ -33,7 +33,7 @@ import { join } from 'node:path';
 
 import { exeTables } from '../src/rmg/exe.ts';
 import { gameExe, gameInstall } from './game-dir.ts';
-import { readTemplateNamed } from '../src/rmg/template.ts';
+import { readTemplateNamed } from '../src/rmg/template-files.ts';
 import type { RmgTemplate } from '../src/rmg/template.ts';
 import { multiplierNames, sizeNames } from '../src/rmg/recorded-order.ts';
 import { mapSizes } from '../src/rmg/build.ts';

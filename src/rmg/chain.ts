@@ -51,7 +51,7 @@ import { placeZoneTeleports } from './teleports.ts';
 import { placeZoneObjects } from './zone-objects.ts';
 import type { PlacedZoneObject } from './zone-objects.ts';
 import type { PlacedTeleport } from './teleports.ts';
-import { readTemplateNamed } from './template.ts';
+import { readTemplateNamed } from './template-files.ts';
 import { placeObservatories, placeZoneTreasures } from './treasures.ts';
 import type { PlacedObject } from './treasures.ts';
 import type { RmgTemplate, RmgZone } from './template.ts';

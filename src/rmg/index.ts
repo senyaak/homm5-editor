@@ -22,7 +22,7 @@ import { runFull } from './run.ts';
 import { chooseHeroes, hireableHeroes } from './heroes.ts';
 import type { HeroChoice, HireableHero } from './heroes.ts';
 import { RACE } from './load-template.ts';
-import { TEMPLATE_EXTENSIONS, readTemplateNamed } from './template.ts';
+import { TEMPLATE_EXTENSIONS, readTemplateNamed } from './template-files.ts';
 import type { RmgTemplate } from './template.ts';
 
 export type { RmgInstall } from './install.ts';
@@ -101,6 +101,8 @@ export interface OfferedTemplate {
   maxPlayers: number;
   minMapSize: number;
   maxMapSize: number;
+  /** The file it was read from — which root of the chain answered. */
+  path: string;
 }
 
 /** Every template the install mounts — a mod's beside the shipped ones. */
@@ -117,7 +119,7 @@ export function allTemplates(install: RmgInstall): OfferedTemplate[] {
       seen.add(file);
       const t: RmgTemplate = readTemplateNamed(assets, file);
       out.push({ file, name: t.name, minPlayers: t.minPlayers, maxPlayers: t.maxPlayers,
-        minMapSize: t.minMapSize, maxMapSize: t.maxMapSize });
+        minMapSize: t.minMapSize, maxMapSize: t.maxMapSize, path: join(dir, f) });
     }
   }
   return out;

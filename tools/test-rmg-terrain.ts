@@ -18,7 +18,7 @@ import { mapSetup } from '../src/rmg/map-setup.ts';
 import { readParams } from '../src/rmg/params.ts';
 import { readPresets, readTileInfo } from '../src/rmg/preset-table.ts';
 import { RmgRandom } from '../src/rmg/random.ts';
-import { readTemplate } from '../src/rmg/template.ts';
+import { readTemplate } from '../src/rmg/template-files.ts';
 import { fillTerrain } from '../src/rmg/terrain.ts';
 import { generateGameZones } from '../src/rmg/zones.ts';
 import { parseTerrain, readMask, readTextureLayers } from '../src/terrain/terrain.ts';

@@ -25,21 +25,14 @@ import { fillZones } from './fill-zones.ts';
 import type { FillZonesSpy } from './fill-zones.ts';
 import { voronoiLayout } from './layout-voronoi.ts';
 import type { RmgRandom } from './random.ts';
-import type { RmgConnection, RmgZone } from './template.ts';
+import type { RmgConnection, RmgZone, ZoneLayoutKind } from './template.ts';
 import { generateGameZones } from './zones.ts';
 import type { PlacedZone, ZoneSeed } from './zones.ts';
 
-/** The template's `<ZoneLayout>`; absent means `Engine`. */
-export type ZoneLayoutKind = 'Engine' | 'Voronoi';
-
-export const ZONE_LAYOUT_KINDS: readonly ZoneLayoutKind[] = ['Engine', 'Voronoi'];
-
-export function zoneLayoutKind(text: string): ZoneLayoutKind {
-  if (text === '') return 'Engine';
-  const kind = ZONE_LAYOUT_KINDS.find((k) => k === text);
-  if (!kind) throw new Error(`ZoneLayout "${text}" — one of ${ZONE_LAYOUT_KINDS.join(', ')}`);
-  return kind;
-}
+// The kind itself — `ZoneLayoutKind`, `ZONE_LAYOUT_KINDS`, `zoneLayoutKind` —
+// is the template's field and lives in `template.ts`.
+export { ZONE_LAYOUT_KINDS, zoneLayoutKind } from './template.ts';
+export type { ZoneLayoutKind } from './template.ts';
 
 export interface ZoneLayoutInput {
   /** The map's side; the engine has one dimension. */
