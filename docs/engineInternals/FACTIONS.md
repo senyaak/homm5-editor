@@ -488,8 +488,10 @@ membership: `Towns/any.xdb`, `Heroes/Any.xdb`, `TownSpecs`.
   compiled per town; its skin one of eight `VisualStates` picked by town
   ordinal) and `buy_artifacts` (Academy's merchant and Stronghold's
   shelter alike). Launch 19 (2026-09-17): for the twelfth type a built
-  special shows its model and `EnterSpecial` is neither drawn nor enabled
-  — the ninth skin does not exist and the handler has no case.
+  special (Haven's `TB_SPECIAL_1` record, edited) went up in the centre of
+  the town inside the castle's model — which model, unseen — and
+  `EnterSpecial` was neither drawn nor enabled: the ninth skin does not
+  exist and the handler has no case.
 - **Magic.** `MagicSchool_0/1` of the shared (`+0x124`, `+0x128`) are the
   guild's favoured schools; `0xAC3B50` (a `CAdvMapTown` virtual, no direct
   caller) returns them and the other two of {Destructive 0, Dark 1, Light

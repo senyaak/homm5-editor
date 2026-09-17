@@ -141,9 +141,10 @@ fully, in the probe, one launch per question.
     Separate item; the Pandora box already depends on Lua.
   **Launch 19 (22:00):** a special of a type the engine never compiled
   BUILDS — the Bone Pit (Haven's `TB_SPECIAL_1` renamed, recosted, moved)
-  went up with nothing in the log; its model (the Training Grounds',
-  by `ModObjectName`) stood in the screen where Haven's scene puts it,
-  half hidden by the castle. **The `EnterSpecial` button was neither drawn
+  went up with nothing in the log; in the town screen it was built in the
+  CENTRE of the town, inside the castle's own model, so which model it got
+  was not seen — to look at again once a model of ours stands in the open
+  (1d). **The `EnterSpecial` button was neither drawn
   nor active** for the ninth type — no ninth skin, no compiled target —
   so the jog-dial slot is free for a button of ours. **Still unknown:**
   a click on the model, and the grail's common bonuses.
