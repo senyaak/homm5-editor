@@ -14,6 +14,11 @@ pre-release.
 
 ## Unreleased
 
+- The frame can be measured: `view.perf()` reports frame-time percentiles,
+  the loop's sections, draw calls and the particle side (systems, atlases,
+  bytes), plus Chromium's long-frame attribution and memory per process, and
+  `e2e/fx-perf.spec.ts` reads it all off a shipped map. Nothing is faster yet;
+  this is the baseline the effects work is held against.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

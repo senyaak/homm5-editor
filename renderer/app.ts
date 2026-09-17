@@ -56,6 +56,8 @@ import { initLocalization } from '#features/localization.ts';
 import type { IdleMode } from '#viewport/idle.ts';
 import { syncInstance, removeFromBatch, addToBatch, buildBatches, replaceInstances } from '#viewport/instancing.ts';
 import { loadFx, advanceFx, spawnFx, removeFx } from '#viewport/fx.ts';
+import { markFrame, perfStats, perfReset, lapStart, lap } from '#viewport/perf.ts';
+import type { LongFrame } from '#viewport/perf.ts';
 import { makeLightMap, bakeLightMap, markLightsDirty } from '#viewport/point-lights.ts';
 import { upgradeToSplat, projectBatch, applyProjectedMaterials, setGroundScale, setCliffAmount, cliffsOn, disposeSplats } from '#viewport/splat.ts';
 import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uShadeCol, uLmGain, uFxTint, uWhiten } from '#viewport/lighting.ts';
@@ -580,6 +582,30 @@ interface ViewApi {
     alive: number; visible: boolean; tint: number[];
   }[];
   /**
+   * Where the frame goes, over the last ten seconds: frame time and our own
+   * JS share of it as percentiles (a mean hides exactly the stutter being
+   * chased), the draw calls and triangles of the last frame, three's texture
+   * and geometry counts, and the particle side summed over the active floor —
+   * systems, instance slots, alive particles, atlas textures and their bytes
+   * as uploaded, and how many of those atlases are DISTINCT objects (copies of
+   * one effect building their own is the 644 MB in SLICE_fx_performance.md).
+   * `loaf` is Chromium's own attribution of the long frames, newest last.
+   */
+  perf(): {
+    frames: number;
+    frame: { p50: number; p95: number; max: number };
+    js: { p50: number; p95: number; max: number };
+    calls: number; triangles: number;
+    textures: number; geometries: number;
+    pixelRatio: number; size: number[];
+    /** The loop's sections — input, idle, scene, fx, lights, render — as percentiles. */
+    sections: Record<string, { p50: number; p95: number; max: number }>;
+    fx: { systems: number; slots: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number };
+    loaf: LongFrame[];
+  };
+  /** Forget the frames and long frames seen so far — to measure from here. */
+  perfReset(): void;
+  /**
    * Place an object through the renderer's own palette path — the one that
    * grafts the new instance onto the LIVE scene (idle, effects, batch).
    * `api.addObject` alone is only the main-process half; a test
@@ -806,6 +832,8 @@ const view: ViewApi = {
       };
     });
   },
+  perf: perfStats,
+  perfReset,
   async place(o) {
     if (!state.world) throw new Error('no map open');
     const res = await api.addObject({
@@ -1138,6 +1166,7 @@ function bakePendingLights(now: number): void {
   if (frame > JANK_MS) console.warn(`[perf] jank: main thread blocked ${frame | 0}ms`);
   const dt = Math.min(frame / 1000, 0.1); // clamp so a stall can't teleport
   lastT = now;
+  lapStart();
   keyPan(dt);
   // Resolve at most one deferred hover pick per frame (see hoverEv).
   if (hoverEv) { updateHoverCursor(tileUnderCursor(hoverEv)); hoverEv = null; }
@@ -1148,14 +1177,23 @@ function bakePendingLights(now: number): void {
   // was the map's viewpoint, however carefully the shot had been aimed.
   if (!playing.info) controls.update();
   if (cam.top) syncTopCamera(); // follow pan/zoom + the orbit target each frame
+  lap('input');
   advanceIdle(dt);
+  lap('idle');
   // A scene drives the camera and its actors' clips; does nothing while the
   // window is showing a map.
   advanceScene(dt);
+  lap('scene');
   advanceFx(dt);
+  lap('fx');
   bakePendingLights(now);
   updateShadowCamera(); // after controls.update(): it follows the orbit target
+  lap('lights');
   renderer.render(scene, cam.active);
+  lap('render');
+  // What this frame cost, for view.perf(): rAF to rAF, and the part of it that
+  // was this function (the rest is Chromium's — paint, compositing, waiting).
+  markFrame(frame, performance.now() - now);
 })();
 
 
