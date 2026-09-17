@@ -286,7 +286,14 @@ view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
   0, render 4.3), shadows off 3.3, idle off 3.7 — the 69 bodies cost ~0.9 ms
   now, all of it their draws. `visible` mode now hides off-screen bodies
   instead of merely not posing them; on the default view all 69 are in.
-* **The shadow pass is ~1.3 ms** of `render` now (was 3.7 with the bodies) — a second submission of every
+* **Since then (2026-09-18):** every creature of a kind on a floor is one
+  draw (`SkinnedInstances`, c06e3c8) — the creature stress map 2990 → 790
+  calls, JS 18 → ~8 ms; and the shadow map is redrawn only when something
+  in it changed (d3aabf4) — A2C1M1 JS 4.5 → **3.2 ms**. What is left, in
+  order: the effect batches' state changes and their canvas atlases (3.6),
+  the static batches' 229 calls (BatchedMesh), load-time bakes off the main
+  thread, and the per-edit map serialisation (§7a).
+* **The shadow pass was ~1.3 ms** of `render` (3.7 with the bodies) — a second submission of every
   caster. Fewer casters (animated bodies at rest pose, or none of them), or a
   shadow map that is only redrawn when something moved, since nothing but
   the idle bodies does.
