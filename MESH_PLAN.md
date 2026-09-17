@@ -161,6 +161,37 @@ What is still unknown is what the flag means on the ~380 proj parts that are
 neither sheer overlays nor have a SubTerrain twin; those still draw with their
 own texture. This resolves the mine, not the flag in general.
 
+## ProjectOnTerrain means DRAPE — the flag resolved (2026-09-17)
+
+The two sections above each read half of the flag and left the rest "unknown".
+What it means to the engine: **every vertex of the part takes the terrain
+height under its own XY** — the part is projected onto the ground the way a
+decal is, whatever its height. The evidence is the shipped maps: on A2S2 the
+ground under a mountain's footprint spans 3.75 units at the median and 10 at
+p90, against a mountain 5.4 units tall, so a mountain placed rigidly at its
+anchor floats on one side and is buried on the other — which is exactly what
+the editor showed and the game does not. The hero's path arrows and the
+creature selection ring carry the same flag, and they have to hug the slope.
+
+So the flag now has two halves, split by what the material blends like:
+
+- **draping**, for every part with the flag (`GeomPart.projectOnTerrain`,
+  388 opaque rocks and 74 alpha-tested bushes among them) — in the vertex
+  shader, off the instance matrix, against a float texture of the floor's
+  height plane (`renderer/viewport/drape.ts`). The shadow pass gets the same
+  displacement through a custom depth material.
+- **ground compositing**, for the flag on an `AM_OVERLAY` material
+  (`terrainProjected`): the ground splat sampled at the part's world XY with
+  the part's own texture laid over it BY ITS ALPHA — `mix(ground, tex, a)`,
+  not the darkening the mound version used. That one rule covers the mound
+  (11% opaque, mostly grass) and the mountain (96% opaque, grass only in the
+  fading skirt). The sheer gate is gone: the smear it was guarding against was
+  the darkening, and with the rock laid over by its alpha there is no ground
+  to see on a cliff face.
+
+Not draped: the pick handles, which keep the shared geometry — a click on a
+mountain on a steep slope tests the undraped shape.
+
 ## Everything was drawn at twice its size — FIXED (2026-07-19)
 
 Spotted by Senya: a random treasure that occupies 1x1 in the game was drawn 2x2

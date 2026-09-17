@@ -168,9 +168,13 @@ const STUB = `<script>
       log('loadMap', path);
       return {
         scene: { geoms: [box], floors: [floor] },
+        // The scene's textures travel in a table of their own (src/scene/
+        // tex-table.ts); the stub's are data URIs written in place, so its
+        // table is empty rather than absent — absent stopped the load.
+        textures: [],
         info: {
           name: 'harness', mapPath: path, tileX: V - 1, tileY: V - 1,
-          counts: { AdvMapStatic: 2, AdvMapMonster: 1 }, floors: [{ name: 'surface', objects: 3 }], placed: 3, skipped: 0,
+          counts: { AdvMapStatic: 2, AdvMapMonster: 1 }, floors: [{ name: 'surface', objects: 3 }], placed: 3, skipped: [],
         },
         status,
         history: hist.state(),
@@ -235,6 +239,10 @@ const STUB = `<script>
     save: async () => { log('save'); return { ok: true, status }; },
     pack: async () => ({ canceled: true }),
     status: async () => status,
+    // The app asks at start-up whether it was restarted onto the software
+    // renderer; a browser never was.
+    gpuSoftware: async () => false,
+    setGpuSoftware: async (on) => { log('setGpuSoftware', on); },
     // Two tiles, one of them present in the map so it is paintable.
     listTiles: async () => ({
       tiles: [

@@ -38,24 +38,33 @@ export interface GeomPart {
   /** How this part blends, as its material declares. */
   alphaMode: AlphaMode;
   /**
-   * The part is a decal lying ON the ground: its material sets
-   * <ProjectOnTerrain> AND the mesh is actually flat.
+   * The material sets `<ProjectOnTerrain>`: the part is DRAPED over the ground.
    *
-   * The flatness test is not redundant. Measured over the shipped models, 393
-   * parts carry the flag and the extreme is three times TALLER than it is wide.
-   * So the flag alone does not mean "this lies on the ground", and treating it
-   * that way sent a 10-unit mountain through the decal path — which sampled the
-   * ground by world XY and smeared one column of texels up every cliff face,
-   * the stripes and black wedges Senya reported on Mountain10x10.
+   * Every vertex takes the terrain height under its own world XY on top of its
+   * authored z — so a flat decal lies on the ground however the ground rolls, a
+   * mountain's skirt (authored at z = 0) meets the terrain all the way round,
+   * and the mountain itself follows the hill it was put on. That is what the
+   * flag means to the engine, and the shipped maps show it: on A2S2 the ground
+   * under a mountain's footprint spans 3.75 units at the median and 10 at p90,
+   * against a mountain 5.4 units tall — placed rigidly at one height it would
+   * float on one side and be buried on the other. The hero's path arrows and
+   * the creature selection ring carry the same flag, because they too have to
+   * hug the slope. The draping is done in the vertex shader
+   * (renderer/viewport/drape.ts), per instance, off the instance matrix.
+   *
+   * It says nothing about shading: 388 opaque rocks carry it beside the
+   * overlays. `terrainProjected` is the shading half.
    */
   projectOnTerrain: boolean;
   /**
    * The mesh lies flat, whatever its material says about projecting.
    *
-   * Kept for the ProjectOnTerrain nudge only. It is NOT what decides depth
-   * writing: flatness fails to tell a solid mountain from a feathered mound —
-   * Mountain10x10 (h/span 0.505) and the Abandoned Mine's hill (0.284) are both
-   * non-flat AM_OVERLAY bodies, yet one must occlude and the other must not.
+   * A draped flat part is coplanar with the ground it lies on and z-fights
+   * with it, so it wants a depth nudge; a body standing on the ground does not.
+   * It is NOT what decides depth writing: flatness fails to tell a solid
+   * mountain from a feathered mound — Mountain10x10 (h/span 0.505) and the
+   * Abandoned Mine's hill (0.284) are both non-flat AM_OVERLAY bodies, yet one
+   * must occlude and the other must not.
    */
   flat: boolean;
   /**
@@ -73,16 +82,25 @@ export interface GeomPart {
   /**
    * This part takes the TERRAIN it stands on as its surface: the renderer
    * shades it with the same ground splat the terrain uses, sampled at the
-   * part's own world position, with the part's own texture applied on top as a
-   * darkening. That is what the engine does for the Abandoned Mine's mound — the
-   * map's grass climbs up the hump — which Senya confirmed against the original.
+   * part's own world position, and lays the part's own texture over that by
+   * its alpha. Where the texture is solid the part shows its own skin; where it
+   * fades, the ground shows through IN the part — the map's grass climbing the
+   * Abandoned Mine's mound (11% opaque, which Senya confirmed against the
+   * original editor), and the same grass running up into a mountain's skirt,
+   * whose rock (96% opaque) fades out at the edges so that it reads as growing
+   * out of the ground rather than set down on it.
    *
-   * The signal is `<ProjectOnTerrain>` AND a sheer texture. The flag alone is
-   * not enough: 393 shipped parts carry it, most of them solid bodies, and
-   * projecting the ground onto Mountain10x10 (a 96%-opaque proj part) smeared
-   * one column of texels up its cliffs. But a proj part whose texture is a sheer
-   * overlay (the mound's GoldMineHill, 11% opaque) is exactly the take-the-
-   * ground case, and opacity separates the two with a wide margin.
+   * The signal is `<ProjectOnTerrain>` AND an `AM_OVERLAY` (or `_ZWRITE`)
+   * material that is not self-lit. OVERLAY is the mode the engine keeps for
+   * things laid over the ground — 357 of its 435 overlays carry the flag — and
+   * the alpha-mix is what makes the mound and the mountain one rule. Opacity
+   * used to be the discriminator, with the sheer mound composited and the
+   * opaque mountain drawn as a body; but a body drawn on its own can only blend
+   * its edges into whatever stands BEHIND it, which on a slope is not the
+   * ground it is standing on — Senya's "the edges are not painted with the
+   * surface they stand on". A self-lit overlay (a path arrow, a selection ring)
+   * is a marker drawn over the ground, and lit ground under it would be wrong,
+   * so it blends the ordinary way — draped, but not composited.
    */
   terrainProjected: boolean;
   /**

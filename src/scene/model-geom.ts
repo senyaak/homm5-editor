@@ -267,10 +267,14 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
     return blended && !!info && !info.opaque;
   };
   // A part takes the terrain as its surface when its material declares
-  // <ProjectOnTerrain> AND its texture is a sheer overlay. The projected shading
-  // is opaque and IS the body, so its coincident SubTerrain twin is redundant.
-  const projected = (meshIdx: number): boolean =>
-    (allMats[allPick[meshIdx] ?? 0]?.projectOnTerrain ?? false) && sheer(meshIdx);
+  // <ProjectOnTerrain> AND blends as an overlay laid over the ground (see
+  // GeomPart.terrainProjected). The projected shading is opaque and IS the
+  // body, so its coincident SubTerrain twin is redundant.
+  const projected = (meshIdx: number): boolean => {
+    const m = allMats[allPick[meshIdx] ?? 0];
+    return !!m && m.projectOnTerrain && !m.selfIllum
+      && (m.alphaMode === 'AM_OVERLAY' || m.alphaMode === 'AM_OVERLAY_ZWRITE');
+  };
   const keep = dropDuplicateMeshes(meshes, allPick, allMats, sheer, projected);
   // A world mesh textured with a minimap UI icon is a placeholder, not scene
   // geometry: the One-Way Exit's own model is one such quad, the real portal
@@ -322,8 +326,7 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
     const t = infoFor(mi);
     const alphaMode: AlphaMode = mats[mi]?.alphaMode ?? 'AM_OPAQUE';
     const flat = isFlat(meshes[i]!);
-    const blended = alphaMode === 'AM_OVERLAY' || alphaMode === 'AM_TRANSPARENT' || alphaMode === 'AM_DECAL';
-    const isSheer = blended && !!t && !t.opaque;
+    const proj = mats[mi]?.projectOnTerrain ?? false;
     // How to blend is the material's own declaration, not a guess from the
     // texels. Reading it off the image said "this has soft edges, alpha-test
     // it", which is the wrong answer for a decal that is meant to be blended.
@@ -332,12 +335,16 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
     parts.push({
       start, count, tex: hasUV && t ? t.uri : null,
       alphaMode,
-      projectOnTerrain: (mats[mi]?.projectOnTerrain ?? false) && flat,
+      projectOnTerrain: proj,
       flat,
       // No texture means nothing to read alpha from — an untextured body is
       // solid, so it occludes.
       opaque: t ? t.opaque : true,
-      terrainProjected: (mats[mi]?.projectOnTerrain ?? false) && isSheer,
+      // The overlay half of the flag: the ground composited into the part. The
+      // same test `projected` above applies to the dedup, on the unfiltered
+      // mesh list; this one runs on the kept meshes.
+      terrainProjected: proj && !(mats[mi]?.selfIllum ?? false)
+        && (alphaMode === 'AM_OVERLAY' || alphaMode === 'AM_OVERLAY_ZWRITE'),
       additive: mats[mi]?.additive ?? false,
       selfIllum: mats[mi]?.selfIllum ?? false,
       twoSided: mats[mi]?.twoSided ?? false,

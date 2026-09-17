@@ -12,6 +12,27 @@ its section by version number, so this heading is inert until it is renamed to
 one. A version with a `-` in it (`-alpha.1`, `-rc.1`) is published as a GitHub
 pre-release.
 
+## Unreleased
+
+**Mountains stand on the ground again — and grow out of it.** A mountain on a
+hillside floated on one side and was buried on the other, and its edges were
+cut off from the grass around it. The game drapes any part whose material says
+`<ProjectOnTerrain>` over the ground under each of its own vertices (the
+shipped maps depend on it: on A2S2 the ground under a mountain spans 3.75
+units at the median, against a mountain 5.4 tall), and the editor now does the
+same, on the GPU, for every such part — mountains, rocks, bushes, craters,
+swamps. The overlays among them (mountains, the Abandoned Mine's mound) are
+also shaded with the ground they stand on, their own texture laid over it by
+its alpha, so a mountain's fading skirt hands over to the map's grass instead
+of to whatever happened to be behind it. Their shadows fall from where they
+are drawn. Still to do: clicking selects by the undraped shape, so on a steep
+slope the pick can be a little off the picture.
+
+A ground-composited part on the underground floor took the SURFACE floor's
+textures (the material list was shared between floors); it now takes its own.
+The browser harness (`npm run harness`) had fallen behind the bridge and could
+not open its map; it opens again.
+
 ## 0.11.0-alpha.1 — 2026-09-16
 
 **Still an alpha, for the same reason as before.** The multiplayer half is as

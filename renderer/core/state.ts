@@ -94,6 +94,11 @@ export interface Floor3D {
   /** A light-carrying object moved or died; the render loop rebakes soon. */
   lightsDirty: boolean;
   terrainMesh: THREE.Mesh;
+  /**
+   * The height plane on the GPU, for the parts that drape over the ground
+   * (viewport/drape.ts). Refilled whenever the heights change.
+   */
+  heightTex: THREE.DataTexture | null;
   waterMesh: THREE.Mesh | null;
   /** The sea texture, kept so sculpting can raise a sheet on a map that began dry. */
   waterTex: string | null;

@@ -18,7 +18,8 @@ import * as THREE from 'three';
 import { heightOn, tileCenter } from '#core/coords.ts';
 import type { Floor3D, GeomBatch } from '#core/state.ts';
 import type { Instance } from '#src/scene/payload.ts';
-import { geomScale, worldGeos, worldMats } from '#viewport/geoms.ts';
+import { drapedDepthMaterial } from '#viewport/drape.ts';
+import { geomParts, geomScale, worldGeos, worldMats } from '#viewport/geoms.ts';
 import { reloadFx } from '#viewport/fx.ts';
 import { addIdle, clearIdle } from '#viewport/idle.ts';
 import { syncFootprints } from '#viewport/overlays.ts';
@@ -28,6 +29,20 @@ import { applyProjectedMaterials } from '#viewport/splat.ts';
 
 /** Spare slots kept so placing a few objects does not reallocate every time. */
 const BATCH_HEADROOM = 8;
+
+/**
+ * Cast a draped model's shadow from where it is drawn.
+ *
+ * Three's own shadow pass knows nothing of the draping, so a mountain would
+ * shade the ground from its authored position, off by the slope under it. The
+ * custom depth material is per object rather than per part (drape.ts), so only
+ * a model whose parts are ALL draped gets it; the mine — a draped mound under a
+ * rigid house — casts from the rigid position.
+ */
+function shadowAsDrawn(im: THREE.InstancedMesh, g: number): void {
+  const parts = geomParts.get(g);
+  if (parts?.length && parts.every((p) => p.projectOnTerrain)) im.customDepthMaterial = drapedDepthMaterial();
+}
 
 /** Write an object's transform into its slot of the instance buffer. */
 export function syncInstance(fl: Floor3D, inst: Instance): void {
@@ -104,6 +119,7 @@ export function addToBatch(fl: Floor3D, inst: Instance, mesh: THREE.Mesh): void 
     const im = new THREE.InstancedMesh(geo, mat, 1 + BATCH_HEADROOM);
     im.count = 0;
     im.frustumCulled = false;
+    shadowAsDrawn(im, inst.g);
     // A batch made after the floor was built misses the pass that hands out the
     // shadow roles, and a mesh that neither casts nor receives is the first
     // object of its model standing in flat light with no shadow under it.
@@ -118,6 +134,7 @@ export function addToBatch(fl: Floor3D, inst: Instance, mesh: THREE.Mesh): void 
     for (let i = 0; i < batch.im.count; i++) { batch.im.getMatrixAt(i, m); bigger.setMatrixAt(i, m); }
     bigger.count = batch.im.count;
     bigger.frustumCulled = false;
+    bigger.customDepthMaterial = batch.im.customDepthMaterial;
     // The roles do not come across with the matrices — a batch that outgrew
     // itself used to take every copy of that model out of the shadow map.
     markShadowRoles(bigger);
@@ -157,6 +174,7 @@ export function buildBatches(
     // Objects sit where the map puts them, which is nowhere near the origin the
     // shared geometry is centred on, so let three.js work the bounds out.
     im.frustumCulled = false;
+    shadowAsDrawn(im, g);
     const batch: GeomBatch = { im, slot: new Map(), at: [] };
     list.forEach((it, i) => {
       batch.slot.set(it, i);

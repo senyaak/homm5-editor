@@ -13,6 +13,7 @@ import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import type { TileInfo } from '#src/scene/payload.ts';
 import { $ } from '#core/dom.ts';
 import type { Floor3D } from '#core/state.ts';
+import { updateHeightTexture } from '#viewport/drape.ts';
 import { refreshBlocked } from '#viewport/overlays.ts';
 
 /**
@@ -305,6 +306,9 @@ export function remeshFloor(fl: Floor3D): void {
   const old = fl.terrainMesh.geometry;
   fl.terrainMesh.geometry = terrainGeometry(fl.V, fl.heights, fl.flags, fl.colors);
   old.dispose();
+  // The parts draped over the ground read the same plane off the GPU, so the
+  // mountain follows the brush as the ground under it moves.
+  updateHeightTexture(fl);
   // Flooding or draining changes which cells the sheet covers. On a map that
   // began dry there is no sheet yet, so digging the first basin creates one —
   // otherwise the new sea would not appear until a reload.
