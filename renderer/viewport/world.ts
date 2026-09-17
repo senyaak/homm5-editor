@@ -20,12 +20,12 @@ import { buildBatches } from '#viewport/instancing.ts';
 import { applyAmbient, refreshLighting } from '#viewport/lighting.ts';
 import { bakeLightMap, makeLightMap } from '#viewport/point-lights.ts';
 import { markShadowRoles } from '#viewport/shadows.ts';
-import type { IdleBody } from '#viewport/skinning.ts';
+import type { IdleBody, IdleKind } from '#viewport/skinning.ts';
 import { clearSky } from '#viewport/sky.ts';
 import { disposeSplats, upgradeToSplat } from '#viewport/splat.ts';
 import { cam, camera, controls, scene, syncTopCamera } from '#viewport/stage.ts';
 import { asTileSpace, makeWaterMesh, terrainGeometry } from '#viewport/terrain-mesh.ts';
-import type { Floor, Instance, Scene } from '#src/scene/payload.ts';
+import type { Floor, Instance, Scene, SkinnedGeom } from '#src/scene/payload.ts';
 import * as THREE from 'three';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 export function clearWorld(): void {
@@ -41,7 +41,7 @@ export function clearWorld(): void {
     // And the animated bodies, whose shared skeletons are reference-counted:
     // left in place they kept the old world's bone tables alive through every
     // reopen (tools/perf-stress.ts counted the tables doubling).
-    clearIdle(fl.objGroup, fl.idle);
+    clearIdle(fl.objGroup, fl.idle, fl.idleKinds);
     fl.lightMap.dispose();
     fl.heightTex?.dispose();
     fl.group.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
@@ -110,9 +110,10 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
   // the same model, and left in both an object would show its idle and its bind
   // pose at once, in the same place.
   const idle: IdleBody[] = [];
+  const idleKinds = new Map<SkinnedGeom, IdleKind>();
   const still = floor.instances.filter((it, i) => {
     const handle = meshes.get(it);
-    return !(handle && addIdle(objGroup, idle, it, handle));
+    return !(handle && addIdle(objGroup, idle, idleKinds, it, handle));
   });
   const batches = buildBatches(still, meshes, geos, mats, objGroup);
   const fl: Floor3D = {
@@ -120,7 +121,7 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
     passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [], footMeshes: [],
-    group, objGroup, meshes, batches, idle, fx: [], terrainMesh, heightTex: null, waterMesh, waterTex: floor.water?.tex ?? null,
+    group, objGroup, meshes, batches, idle, idleKinds, fx: [], terrainMesh, heightTex: null, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, ambient: floor.ambient, instances: floor.instances,
     lightMap: makeLightMap(V), lightsDirty: false,
   };

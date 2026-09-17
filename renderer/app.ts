@@ -794,14 +794,12 @@ const view: ViewApi = {
       // Which geoms took an animated body, and which stayed batched despite
       // having a skin on record — the two lists that localize "this creature
       // stands still" to a geom without reaching into the scene.
-      geoms: [...new Set(fl?.idle.map((o) => (o.mesh.userData.inst as Instance).g) ?? [])].sort((a, b) => a - b),
+      geoms: [...new Set(fl?.idle.map((o) => o.inst.g) ?? [])].sort((a, b) => a - b),
       skinned: [...geomSkin.keys()].sort((a, b) => a - b),
       fx: fl?.fx.length ?? 0,
       misplaced: (fl?.idle ?? []).filter((o) => {
-        const inst = o.mesh.userData.inst as Instance;
-        return Math.hypot(o.mesh.position.x - tileCenter(inst.x),
-          o.mesh.position.y - tileCenter(inst.y),
-          o.mesh.position.z - inst.z) > 1e-3;
+        const at = new THREE.Vector3().setFromMatrixPosition(o.matrix);
+        return Math.hypot(at.x - tileCenter(o.inst.x), at.y - tileCenter(o.inst.y), at.z - o.inst.z) > 1e-3;
       }).length,
     };
   },
@@ -902,7 +900,7 @@ const view: ViewApi = {
       : fl?.instances.find((i) => i.id === id) ?? fl?.instances.find((i) => !!i.id && i.id.endsWith(id));
     if (!inst) return null;
     // An animated object is drawn by its own skinned mesh, not by the batch.
-    const drawn = fl!.idle.find((a) => a.mesh.userData.inst === inst)?.mesh ?? fl!.batches.get(inst.g)?.im;
+    const drawn = fl!.idle.find((a) => a.inst === inst)?.kind.mesh ?? fl!.batches.get(inst.g)?.im;
     if (!drawn) return null;
     const list = Array.isArray(drawn.material) ? drawn.material : [drawn.material];
     return list.map((m) => `${m.type} visible=${m.visible} alphaTest=${m.alphaTest} blending=${m.blending}`);
@@ -921,8 +919,8 @@ const view: ViewApi = {
       if (bad.length) unprojected.push(`${what}: ${bad.join(', ')}`); else projected++;
     };
     for (const [g, b] of fl.batches) check(g, b.im.material, `batch g${g} ${b.at.find((it) => it)?.shared?.split('/').pop() ?? '?'}`);
-    for (const a of fl.idle) { const inst = a.mesh.userData.inst as Instance; check(inst.g, a.mesh.material, `animated ${inst.shared.split('/').pop()}`); }
-    return { terrain: terrain.type, splat: !!fl.splat, batches: fl.batches.size + fl.idle.length, projected, unprojected };
+    for (const k of fl.idleKinds.values()) { const inst = k.bodies[0]!.inst; check(inst.g, k.mesh.material, `animated ${inst.shared.split('/').pop()}`); }
+    return { terrain: terrain.type, splat: !!fl.splat, batches: fl.batches.size + fl.idleKinds.size, projected, unprojected };
   },
   shadowCasters() {
     const fl = state.world ? activeFloor() : null;
@@ -938,7 +936,7 @@ const view: ViewApi = {
       else missing.push(`${what} cast=${m.castShadow} receive=${m.receiveShadow}`);
     };
     for (const [g, b] of fl.batches) count(b.im, `batch g${g}`);
-    for (const a of fl.idle) count(a.mesh, `idle ${(a.mesh.userData.inst as Instance | undefined)?.shared ?? '?'}`);
+    for (const k of fl.idleKinds.values()) count(k.mesh, `idle ${k.bodies[0]?.inst.shared ?? '?'}`);
     return { drawn, casting, missing };
   },
   snapshot() {

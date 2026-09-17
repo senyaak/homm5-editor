@@ -14,7 +14,8 @@ import * as THREE from 'three';
 
 import type { Instance, SplatData, AmbientData } from '#src/scene/payload.ts';
 import type { PlacedFx } from '#viewport/fx.ts';
-import type { IdleBody } from '#viewport/skinning.ts';
+import type { IdleBody, IdleKind } from '#viewport/skinning.ts';
+import type { SkinnedGeom } from '#src/scene/payload.ts';
 import { uiPrefs } from '#core/prefs.ts';
 
 /** Every copy of one model on one floor, drawn in a single call. */
@@ -85,6 +86,8 @@ export interface Floor3D {
    * or it would be drawn twice, once moving and once frozen.
    */
   idle: IdleBody[];
+  /** The bodies' draws, one per creature kind on this floor (idle.ts). */
+  idleKinds: Map<SkinnedGeom, IdleKind>;
   /**
    * Playing particle effects, one batch per distinct effect payload with a
    * copy per placed object that carries it. Built asynchronously after the

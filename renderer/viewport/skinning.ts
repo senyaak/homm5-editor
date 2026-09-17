@@ -19,7 +19,7 @@
 // dragging an animated object keeps working.
 
 import * as THREE from 'three';
-import type { SkinnedGeom } from '#src/scene/payload.ts';
+import type { Instance, SkinnedGeom } from '#src/scene/payload.ts';
 
 /** One animated object: its own skeleton, its own place in the loop. */
 export interface IdleObject {
@@ -179,12 +179,22 @@ export class TableSkeleton extends THREE.Skeleton {
   /**
    * Where bone `b` stands at the current frame, in the body's own (model)
    * space: the row holds `world × boneInverse`, so `row × bind` — a multiply
-   * per ask rather than a second table; only glued effects ask.
+   * per ask rather than a second table; only glued effects ask. Every body
+   * of the kind asks for the same bone at the same frame, so the answer is
+   * kept until the frame moves.
    */
   boneWorld(b: number, out: THREE.Matrix4): THREE.Matrix4 {
-    out.fromArray(this.table.offsets, (this.frameAt() * this.table.bones + b) * 16);
-    return out.multiply(_bind.fromArray(this.table.bind, b * 16));
+    const f = this.frameAt();
+    let hit = this.worldCache.get(b);
+    if (!hit) { hit = { frame: -1, m: new THREE.Matrix4() }; this.worldCache.set(b, hit); }
+    if (hit.frame !== f) {
+      hit.frame = f;
+      hit.m.fromArray(this.table.offsets, (f * this.table.bones + b) * 16);
+      hit.m.multiply(_bind.fromArray(this.table.bind, b * 16));
+    }
+    return out.copy(hit.m);
   }
+  private readonly worldCache = new Map<number, { frame: number; m: THREE.Matrix4 }>();
 }
 
 /** One creature kind's idle, posed frame by frame. */
@@ -228,34 +238,51 @@ export function bakeBoneTable(skin: SkinnedGeom, geometry: THREE.BufferGeometry,
   return { bones, frames, duration, offsets, bind };
 }
 
-/** A map creature: its body, and the shared table skeleton that poses it. */
-export interface IdleBody {
-  mesh: THREE.SkinnedMesh;
-  skin: SkinnedGeom;
-  skel: TableSkeleton;
+/**
+ * Every body of one creature kind on a floor, drawn in ONE call.
+ *
+ * An InstancedMesh that three also takes for a skinned one: `isSkinnedMesh`
+ * puts the skinning chunks in its shaders and the skeleton's bone texture in
+ * its uniforms, `isInstancedMesh` (inherited) draws it instanced — and three's
+ * vertex shader applies them in that order, skinning in model space and the
+ * instance matrix after, which is exactly what a table posed at the origin
+ * and a placement per body want. The shadow pass picks its depth material
+ * by the same two flags. Detached bind mode with an identity bind, as
+ * `makeIdle` and the table both assume.
+ *
+ * Bodies are slots (`IdleBody.slot`), placed by `setMatrixAt`; a hidden body
+ * (idle stance `visible`, off screen) has a zero matrix in its slot.
+ */
+export class SkinnedInstances extends THREE.InstancedMesh {
+  readonly isSkinnedMesh = true;
+  readonly bindMode = THREE.DetachedBindMode;
+  readonly bindMatrix = new THREE.Matrix4();
+  readonly bindMatrixInverse = new THREE.Matrix4();
+  readonly skeleton: TableSkeleton;
+  constructor(geometry: THREE.BufferGeometry, material: THREE.Material[], capacity: number, skeleton: TableSkeleton) {
+    super(geometry, material, capacity);
+    this.skeleton = skeleton;
+    this.count = 0;
+    // The bones carry vertices outside the geometry's own bounds, and the
+    // bodies stand all over the map: what is on screen is decided by hand
+    // (advanceIdle), not by three's culling.
+    this.frustumCulled = false;
+  }
 }
 
-/**
- * A body over a table skeleton. The geometry and materials are the shared
- * ones; the skeleton is shared too, by every body of the same geom — the
- * clock is one, and so is the pose.
- *
- * Detached bind mode with an identity bind: the table's matrices are in model
- * space (the skeleton that baked them stood at the origin), and the body's
- * placement is applied by its own model matrix afterwards — the same reason
- * `makeIdle` binds with the identity, arrived at from the other side.
- */
-export function makeBody(skel: TableSkeleton, skin: SkinnedGeom, geometry: THREE.BufferGeometry, material: THREE.Material[]): IdleBody {
-  const mesh = new THREE.SkinnedMesh(geometry, material);
-  mesh.bindMode = THREE.DetachedBindMode;
-  mesh.bind(skel, new THREE.Matrix4());
-  // As in makeIdle: the bones carry vertices outside the geometry's own bounds.
-  mesh.frustumCulled = false;
-  // Three sorts transparent draws by a bounding sphere, and a SkinnedMesh
-  // computes its own by running every vertex through `skeleton.bones` — which
-  // this skeleton has none of. The unposed geometry's sphere is near enough
-  // for a sort key, and is what a plain Mesh would have used.
-  if (!geometry.boundingSphere) geometry.computeBoundingSphere();
-  mesh.boundingSphere = geometry.boundingSphere!.clone();
-  return { mesh, skin, skel };
+/** One creature kind on one floor: its draw, its skeleton, and its bodies in slot order. */
+export interface IdleKind {
+  mesh: SkinnedInstances;
+  skel: TableSkeleton;
+  skin: SkinnedGeom;
+  bodies: IdleBody[];
+}
+
+/** A map creature: which kind draws it, in which slot, and where it stands. */
+export interface IdleBody {
+  inst: Instance;
+  kind: IdleKind;
+  slot: number;
+  /** The body's placement — the object's world matrix (display scale included). */
+  matrix: THREE.Matrix4;
 }

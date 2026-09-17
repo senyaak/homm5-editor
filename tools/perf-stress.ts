@@ -129,6 +129,10 @@ try {
   await page.evaluate(() => window.view.pixelRatio(0.5));
   const half = await read('orbit ½px');
   await page.evaluate(() => window.view.pixelRatio(Math.min(devicePixelRatio, 2)));
+  // And without the shadow pass: the second submission of every caster.
+  await page.evaluate(() => window.view.shadows(false));
+  const noShadow = await read('no shadows');
+  await page.evaluate(() => window.view.shadows(true));
   const metrics = await page.evaluate(() => window.editor.appMetrics());
   console.log(`[perf] memory: ${metrics.map((m) => `${m.type} ${(m.workingSetKB / 1024) | 0} MB`).join(' · ')}`);
   mkdirSync(OUT, { recursive: true });
@@ -152,7 +156,7 @@ try {
   if (jank.length) console.log(`\n${jank.length} jank warning(s), worst: ${jank.map((l) => Number(/(\d+)ms/.exec(l)?.[1])).sort((a, b) => b - a).slice(0, 5).join(' ')} ms`);
 
   writeFileSync(join(OUT, `stress-${KIND}.json`), JSON.stringify({
-    when: new Date().toISOString(), kind: KIND, count: n, size, plan, close, orbit, half, reopened, loadMs, readyMs, metrics, appLog,
+    when: new Date().toISOString(), kind: KIND, count: n, size, plan, close, orbit, half, noShadow, reopened, loadMs, readyMs, metrics, appLog,
   }, null, 2));
   console.log('errors', ed.errors);
 } finally {

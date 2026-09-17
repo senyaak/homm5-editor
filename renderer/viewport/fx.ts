@@ -131,7 +131,7 @@ export function advanceFx(dt: number): void {
   for (const e of fl.fx) {
     e.batch.update(fxClock);
     if (!e.batch.glue || !e.batch.glueLocal) continue;
-    bodies ??= new Map(fl.idle.map((i) => [i.mesh.userData.inst, i]));
+    bodies ??= new Map(fl.idle.map((i) => [i.inst, i]));
     for (let slot = 0; slot < e.at.length; slot++) followBone(e, slot, bodies.get(e.at[slot]));
   }
 }
@@ -144,11 +144,11 @@ export function advanceFx(dt: number): void {
  * right until the idle clip moves the skeleton — then the head turns and the
  * eyes stay behind, hanging in the air where the head used to be.
  *
- * The bone's matrix comes out of the body's baked table in MODEL space, so the
- * body's own world matrix — its placement and the creature's display scale —
- * goes in front of it, and the bone-local transform behind. The body's world
- * matrix is current: it is written when the object is placed or moved, not by
- * the render.
+ * The bone's matrix comes out of the kind's baked table in MODEL space, so the
+ * body's own placement — the object's world matrix, display scale included —
+ * goes in front of it, and the bone-local transform behind. The placement is
+ * current: it is written when the object is placed or moved, not by the
+ * render.
  */
 export function followBone(e: PlacedFx, slot: number, body: IdleBody | undefined): void {
   const bone = body ? boneOf(body, e.batch.glue!) : -1;
@@ -158,15 +158,16 @@ export function followBone(e: PlacedFx, slot: number, body: IdleBody | undefined
     e.batch.setCopyMatrix(slot, e.rest[slot]!);
     return;
   }
-  _m4.multiplyMatrices(body!.mesh.matrixWorld, body!.skel.boneWorld(bone, _bone));
+  _m4.multiplyMatrices(body!.matrix, body!.kind.skel.boneWorld(bone, _bone));
   e.batch.setCopyMatrix(slot, _m4.multiply(e.batch.glueLocal!));
 }
 const _bone = new THREE.Matrix4();
 
 /** The bone an effect names: `<GlueToNamedBone>` by name, `<GlueToBone>` by index; -1 when the body has no such bone. */
 export function boneOf(body: IdleBody, glue: string): number {
-  if (/^\d+$/.test(glue)) return Number(glue) < body.skin.bones.length ? Number(glue) : -1;
-  return body.skin.bones.findIndex((b) => b.name === glue);
+  const bones = body.kind.skin.bones;
+  if (/^\d+$/.test(glue)) return Number(glue) < bones.length ? Number(glue) : -1;
+  return bones.findIndex((b) => b.name === glue);
 }
 
 /** An object moved or turned: its copies go with it. */

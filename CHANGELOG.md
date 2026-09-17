@@ -42,6 +42,9 @@ pre-release.
   every reopen), and the object explorer rebuilds once per frame instead of
   once per placed object. `tools/perf-stress.ts` builds a map crammed with
   effects or creatures and reads the frame under it.
+- Every creature of one kind on a floor is one draw call, as the static
+  objects already were: 1200 monsters of 182 kinds went from 2990 calls and
+  18 ms of JavaScript a frame to 790 and 10.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

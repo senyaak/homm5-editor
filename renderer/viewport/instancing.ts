@@ -20,7 +20,7 @@ import type { Floor3D, GeomBatch } from '#core/state.ts';
 import type { Instance } from '#src/scene/payload.ts';
 import { geomScale, worldGeos, worldMats } from '#viewport/geoms.ts';
 import { moveFx, reloadFx } from '#viewport/fx.ts';
-import { addIdle, clearIdle } from '#viewport/idle.ts';
+import { addIdle, clearIdle, moveIdle } from '#viewport/idle.ts';
 import { syncFootprints } from '#viewport/overlays.ts';
 import { bakeLightMap, markLightsDirty } from '#viewport/point-lights.ts';
 import { markShadowRoles } from '#viewport/shadows.ts';
@@ -40,14 +40,8 @@ export function syncInstance(fl: Floor3D, inst: Instance): void {
   // the batch, so a drag has to move that instead — and it may be the only
   // thing to move, since an animated instance is not in the batch at all.
   if (mesh) {
-    const idle = fl.idle.find((a) => a.mesh.userData.inst === inst);
-    if (idle) {
-      mesh.updateMatrixWorld();
-      idle.mesh.position.copy(mesh.position);
-      idle.mesh.rotation.copy(mesh.rotation);
-      idle.mesh.scale.copy(mesh.scale);
-      idle.mesh.updateMatrixWorld();
-    }
+    mesh.updateMatrixWorld();
+    moveIdle(fl, inst, mesh.matrixWorld);
   }
   // The object's effects ride along wherever it goes.
   if (mesh && fl.fx.length) {
@@ -188,7 +182,7 @@ export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
   for (const b of fl.batches.values()) { fl.objGroup.remove(b.im); b.im.dispose(); }
   fl.batches.clear();
   fl.meshes.clear();
-  clearIdle(fl.objGroup, fl.idle);
+  clearIdle(fl.objGroup, fl.idle, fl.idleKinds);
   fl.instances = instances;
   for (const it of instances) {
     const geo = worldGeos[it.g], mat = worldMats[it.g];
@@ -209,7 +203,7 @@ export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
   }
   const still = instances.filter((it, i) => {
     const handle = fl.meshes.get(it);
-    return !(handle && addIdle(fl.objGroup, fl.idle, it, handle));
+    return !(handle && addIdle(fl.objGroup, fl.idle, fl.idleKinds, it, handle));
   });
   const batches = buildBatches(still, fl.meshes, worldGeos, worldMats, fl.objGroup);
   for (const [g, b] of batches) fl.batches.set(g, b);
