@@ -35,7 +35,7 @@ import { geomParts, geomScale, registerGeom, worldGeos, worldMats } from '#viewp
 import { addIdle } from '#viewport/idle.ts';
 import { addToBatch } from '#viewport/instancing.ts';
 import { syncFootprints } from '#viewport/overlays.ts';
-import { projectBatch, upgradeToSplat } from '#viewport/splat.ts';
+import { projectBatch, projectIdle, upgradeToSplat } from '#viewport/splat.ts';
 import { renderer } from '#viewport/stage.ts';
 import type { PlaceableObject } from '#src/map/objects.ts';
 import type { GeomData, Instance, TileInfo } from '#src/scene/payload.ts';
@@ -300,10 +300,14 @@ export function addInstanceToScene(inst: Instance, geom: { index: number; data: 
   fl.meshes.set(inst, mesh);
   // An object placed now animates as readily as one loaded with the map, and
   // only joins the batch when it does not.
-  if (!addIdle(fl.objGroup, fl.idle, inst, mesh, fl.idle.length * 0.37)) addToBatch(fl, inst, mesh);
-  // If this model takes the ground it stands on, give the batch its projection
-  // material now that it exists — the load path does this via upgradeToSplat.
-  if (geomParts.get(inst.g)?.some((p) => p.terrainProjected)) projectBatch(fl, inst.g);
+  const animated = addIdle(fl.objGroup, fl.idle, inst, mesh, fl.idle.length * 0.37);
+  if (!animated) addToBatch(fl, inst, mesh);
+  // If this model takes the ground it stands on, give its drawn body — the
+  // batch, or the animated mesh just added — the projection material now
+  // that it exists; the load path does this via upgradeToSplat.
+  if (geomParts.get(inst.g)?.some((p) => p.terrainProjected)) {
+    if (animated) projectIdle(fl, fl.idle[fl.idle.length - 1]!); else projectBatch(fl, inst.g);
+  }
   fl.instances.push(inst);
   // Its effects light up on the spot — the campfire burns where it lands,
   // not after a save and reopen. Async: the baked keys may need fetching.

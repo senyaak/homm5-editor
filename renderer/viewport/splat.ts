@@ -11,6 +11,8 @@ import * as THREE from 'three';
 
 import { uiPrefs } from '#core/prefs.ts';
 import type { Floor3D } from '#core/state.ts';
+import type { IdleObject } from '#viewport/skinning.ts';
+import type { Instance } from '#src/scene/payload.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { DRAPE_PARS, DRAPE_VERT_PARS, TERRAIN_DEPTH, drapeUniforms } from '#viewport/drape.ts';
 import { geomParts } from '#viewport/geoms.ts';
@@ -297,6 +299,24 @@ export function applyProjectedMaterials(fl: Floor3D): void {
   for (const g of fl.batches.keys()) {
     try { projectBatch(fl, g); } catch (e) { console.error(`projected material failed for geom ${g}`, e); }
   }
+  // The animated bodies are drawn by their own skinned meshes, not by a batch
+  // (idle.ts), and they need the ground just the same: a sawmill's floor and
+  // the Inferno post's crucible pit are ground-projected parts on models with
+  // an idle clip. Left to the registry's materials they drew the pit's skin as
+  // a light grey plate and the floor as a see-through decal — only with the
+  // animation on, which is why the harness, built without it, showed neither
+  // (Senya).
+  for (const idle of fl.idle) {
+    try { projectIdle(fl, idle); } catch (e) { console.error('projected material failed for an animated object', e); }
+  }
+}
+
+/** The animated-body counterpart of projectBatch: the same materials on the skinned mesh. */
+export function projectIdle(fl: Floor3D, idle: IdleObject): void {
+  const g = (idle.mesh.userData.inst as Instance | undefined)?.g;
+  if (g === undefined) return;
+  const list = projectedList(fl, g, idle.mesh.material);
+  if (list) idle.mesh.material = list;
 }
 
 /**
@@ -306,13 +326,23 @@ export function applyProjectedMaterials(fl: Floor3D): void {
  * kept the transparent overlay and its earth hood vanished.
  */
 export function projectBatch(fl: Floor3D, g: number): void {
+  const batch = fl.batches.get(g);
+  if (!batch) return;
+  const list = projectedList(fl, g, batch.im.material);
+  if (list) batch.im.material = list;
+}
+
+/**
+ * Geom `g`'s material list with every ground-projected part given this
+ * floor's ground-sampling material — or null when nothing needed changing.
+ * Shared by the batches and the animated bodies, which hold their lists apart.
+ */
+function projectedList(fl: Floor3D, g: number, mats: THREE.Material | THREE.Material[]): THREE.Material[] | null {
   const s = fl.splat;
   const splatMat = fl.terrainMesh.material as THREE.ShaderMaterial;
-  if (!s || !splatMat?.uniforms?.uGround) return;
+  if (!s || !splatMat?.uniforms?.uGround) return null;
   const parts = geomParts.get(g);
-  const batch = fl.batches.get(g);
-  if (!parts || !batch) return;
-  const mats = batch.im.material;
+  if (!parts) return null;
   // A COPY of the model's material list, never the registry's own array
   // (geoms.ts hands the same array to every floor's batch): written into in
   // place, the surface floor's ground-sampling material ended up on the
@@ -360,7 +390,7 @@ export function projectBatch(fl: Floor3D, g: number): void {
     });
     changed = true;
   });
-  if (changed) batch.im.material = list;
+  return changed ? list : null;
 }
 
 // Swap a floor's flat-colour terrain material for the textured splat one.

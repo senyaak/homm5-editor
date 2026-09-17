@@ -87,6 +87,17 @@ repeats of it. A quarter of the shipped models (721 — the snags, fences,
 sand and lava mountains, the Academy's lightning effects) carry a negative
 coordinate somewhere; every one of them draws its texture as authored now.
 
+**An animated building takes the ground like a still one.** With idle
+animation on, a sawmill's floor was see-through and the Inferno post's pit
+was a light grey plate (Senya) — the ground-projected parts were given their
+ground-sampling material only on the instanced batches, and an object with
+an idle clip is drawn by its own skinned mesh instead, which kept the
+registry's materials: the pit's skin (which has no texture of its own) drawn
+with the untextured stand-in, the floor as a plain decal. The animated bodies
+are now projected with the batches, at load and at placement. The harness
+had shown neither because it built the scene without animation; it takes
+the app's own option now.
+
 **Dev mode.** `npm run start:dev`, `start-editor-dev.bat` or `start-editor.bat
 --dev` (the script now passes its arguments on to Electron) start the editor
 with F12 and Ctrl+Shift+I opening DevTools; outside dev mode they stay

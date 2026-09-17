@@ -849,9 +849,11 @@ const view: ViewApi = {
     // the digits read off the panel find `item_167977763` too.
     const inst = id === undefined ? state.selected?.inst
       : fl?.instances.find((i) => i.id === id) ?? fl?.instances.find((i) => !!i.id && i.id.endsWith(id));
-    const b = inst && fl!.batches.get(inst.g);
-    if (!b) return null;
-    const list = Array.isArray(b.im.material) ? b.im.material : [b.im.material];
+    if (!inst) return null;
+    // An animated object is drawn by its own skinned mesh, not by the batch.
+    const drawn = fl!.idle.find((a) => a.mesh.userData.inst === inst)?.mesh ?? fl!.batches.get(inst.g)?.im;
+    if (!drawn) return null;
+    const list = Array.isArray(drawn.material) ? drawn.material : [drawn.material];
     return list.map((m) => `${m.type} visible=${m.visible} alphaTest=${m.alphaTest} blending=${m.blending}`);
   },
   projectionAudit() {
@@ -860,15 +862,16 @@ const view: ViewApi = {
     const terrain = fl.terrainMesh.material as THREE.Material;
     let projected = 0;
     const unprojected: string[] = [];
-    for (const [g, b] of fl.batches) {
+    const check = (g: number, mat: THREE.Material | THREE.Material[], what: string): void => {
       const parts = geomParts.get(g);
-      if (!parts?.some((p) => p.terrainProjected)) continue;
-      const list = Array.isArray(b.im.material) ? b.im.material : [b.im.material];
+      if (!parts?.some((p) => p.terrainProjected)) return;
+      const list = Array.isArray(mat) ? mat : [mat];
       const bad = parts.map((p, i) => (p.terrainProjected && list[i]?.type !== 'ShaderMaterial' ? `part ${i} ${list[i]?.type}` : null)).filter((s): s is string => !!s);
-      if (bad.length) unprojected.push(`g${g} ${b.at.find((it) => it)?.shared?.split('/').pop() ?? '?'}: ${bad.join(', ')}`);
-      else projected++;
-    }
-    return { terrain: terrain.type, splat: !!fl.splat, batches: fl.batches.size, projected, unprojected };
+      if (bad.length) unprojected.push(`${what}: ${bad.join(', ')}`); else projected++;
+    };
+    for (const [g, b] of fl.batches) check(g, b.im.material, `batch g${g} ${b.at.find((it) => it)?.shared?.split('/').pop() ?? '?'}`);
+    for (const a of fl.idle) { const inst = a.mesh.userData.inst as Instance; check(inst.g, a.mesh.material, `animated ${inst.shared.split('/').pop()}`); }
+    return { terrain: terrain.type, splat: !!fl.splat, batches: fl.batches.size + fl.idle.length, projected, unprojected };
   },
   shadowCasters() {
     const fl = state.world ? activeFloor() : null;
