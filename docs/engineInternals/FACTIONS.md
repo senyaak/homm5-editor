@@ -313,3 +313,13 @@ Read out of three launches on 2026-09-17, each one screen further:
   the same map was fine, which is what pointed at the race.
 - A map's roster (`AvailableHeroes`) is explicit on every shipped map, so the
   probe's map (S1 under its own folder) lists the race's hero too.
+
+**A fifth accessor, found by the hero picker (2026-09-17, launch six):**
+`0xB4E710` — `IsRealTown(t) { return (unsigned)(t - 3) <= 7; }`, seventeen
+callers. The wait screen's hero arrows call it before reading the race's
+list (`0xB8D798`), so a twelfth town showed no heroes at all — the list
+itself was fine (one entry, Brem, in the ninth of the `0x1207BE0` vectors)
+— and the game then started its first turn with player 2. It is detoured
+onto "is in our table" with the other four. The probe's state log
+(`IPlayer::SetState`, `+0x650`) is what showed player 1 never becoming
+active; the player dumps showed him otherwise whole.

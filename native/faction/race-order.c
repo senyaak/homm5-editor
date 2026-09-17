@@ -19,6 +19,9 @@
 //   0xB4E740    IndexOfTown(t)     the table scanned, -1 when absent
 //   0xB4E7D0    a {kind, index} selector: kind 3 reads the table, anything
 //               else is index + TOWN_HEAVEN
+//   0xB4E710    IsRealTown(t)      (unsigned)(t - 3) <= 7 — seventeen callers,
+//               the wait screen's hero picker among them (0xB8D798): a race
+//               that fails it has no heroes to show, and no start.
 //
 // The players-state builder (0xB8DA60) walks `0 … RaceCount()-1`, tests the
 // player's allowed-race bit — set by `IndexOfTown` from the races of the map's
@@ -125,11 +128,15 @@ static const BYTE INDEX_OF_TOWN_HEAD[9] = {
 };
 static const BYTE INDEX_OF_TOWN_SKIP[9] = { 0, 0, 0, 0, 0, 1, 1, 1, 1 };
 
+/** `IsRealTown` — `lea eax,[ecx-3] / cmp eax,7`. */
+#define IS_REAL_TOWN_RVA 0x74e710u
+static const BYTE IS_REAL_TOWN_HEAD[6] = { 0x8D, 0x41, 0xFD, 0x83, 0xF8, 0x07 };
+
 /** The selector — `cmp dword ptr [ecx],3 / mov eax,[ecx+4]`. */
 #define TOWN_SELECTOR_RVA 0x74e7d0u
 static const BYTE TOWN_SELECTOR_HEAD[6] = { 0x83, 0x39, 0x03, 0x8B, 0x41, 0x04 };
 
-// None of the four ever returns into its trampoline: each is the whole
+// None of the five ever returns into its trampoline: each is the whole
 // function, so the displaced heads are copied and then left alone. The
 // short jumps inside two of them would be wrong to run from a trampoline,
 // and nothing runs them.
@@ -148,6 +155,10 @@ static int __fastcall index_of_town_hook(int town) {
     if (g_races[i].town == town) return i;
   }
   return -1;
+}
+
+static int __fastcall is_real_town_hook(int town) {
+  return index_of_town_hook(town) >= 0;
 }
 
 static int __fastcall town_selector_hook(const int *selector) {
@@ -294,6 +305,8 @@ static void install_race_order(void) {
                    sizeof INDEX_OF_TOWN_HEAD, &index_of_town_hook, "index of town");
   detour(TOWN_SELECTOR_RVA, TOWN_SELECTOR_HEAD, sizeof TOWN_SELECTOR_HEAD,
          &town_selector_hook, "town selector");
+  detour(IS_REAL_TOWN_RVA, IS_REAL_TOWN_HEAD, sizeof IS_REAL_TOWN_HEAD,
+         &is_real_town_hook, "is real town");
   log_num("races: the picker is this wide now: ", g_raceCount);
 
   int named = 0;
