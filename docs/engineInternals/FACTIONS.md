@@ -265,14 +265,22 @@ own related-textures widget and put into the same map the same way
 (`operator[]` at `0x8FAE20`, the refcount raised, the byte cleared).
 
 The probe (`_tmp/town12-probe.ts`) now also ships, in `town12-probe.h5u`, a
-`race_test` item in both `Races.(…).xdb` lists with its two texts, and a hero
-of the race — Haven's Alaric copied to `MapObjects/Test/` with one field
-changed — and writes `H5E/Town12 Probe.h5m`: Rules Test with player 1's Alaric
-swapped for the clone. That map is the point: the players-state builder
-makes a player's choices from the races of what he owns (the map's reserve
-heroes, then his towns, then his heroes on the map, and only when he owns
-nothing at all does every race qualify), so a hero of the race on the map is
-what puts the twelfth town in front of the arrows.
+`race_test` item in both `Races.(…).xdb` lists with its two texts, a hero of
+the race — Haven's Alaric copied to `MapObjects/Test/` with one field changed
+— and a **town** of it: Heaven's `AdvMapTownShared` copied to
+`MapObjects/Test.(AdvMapTownShared).xdb` with `Type=TOWN_TEST`, added to
+`MapObjects/_(AdvMapSharedGroup)/Towns/any.xdb`. That group is what a map's
+random town is drawn from — the engine takes the member whose `Type` is the
+player's race — and it is why the probe needs no map of its own: the
+players-state builder makes a player's choices from the races of what he owns
+(reserve heroes, then towns, then heroes on the map; nothing at all means
+every race), and for a town of `TOWN_RANDOM_TYPE` it walks `RaceCount()`
+indices through `TownOfIndex`, skipping the map's banned list. Any shipped
+multiplayer map with random towns puts the twelfth town in front of the
+arrows. (A first cut built a map from Rules Test — no towns, and a player who
+already owns heroes of fixed races gets no choice at all. Wrong map.) The
+town screen's `town_buildings_8` is added to the editor mod's `UIGameRoot`,
+pointing at Haven's grid.
 
 Two things here are read from the code and not yet seen in the game: that the
 hero record's word at `+0x164` is his `TownType` (it is what `IndexOfTown` is
