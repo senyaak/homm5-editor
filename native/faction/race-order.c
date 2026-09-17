@@ -51,12 +51,14 @@
 // list, `race_tooltip_haven` … `race_tooltip_stronghold`; a row's third word
 // goes in beside them.
 
-/** `race <townType> [pickerTexture [tooltipText]]` — one per line, in picker order. */
+/** `race <townType> <name> [pickerTexture [tooltipText]]` — one per line, in picker order. */
 #define MAX_RACES 32
 #define RACE_TEXTURE_LEN 48
 
 typedef struct {
   int town;
+  /** The enum's own name, `TOWN_*`: what the type stringifies as. */
+  char name[RACE_TEXTURE_LEN];
   /** The name in the related-textures list; empty for a race the engine draws itself. */
   char texture[RACE_TEXTURE_LEN];
   /** The name in the related-texts list — what the arrow's tooltip says. */
@@ -101,6 +103,7 @@ static void load_races(void) {
     if (!take_word(&q, stop, "race")) continue;
     RaceRow r;
     if (!read_int(&q, stop, &r.town) || r.town < TOWN_HEAVEN) continue;
+    race_word(&q, stop, r.name, sizeof r.name);
     race_word(&q, stop, r.texture, sizeof r.texture);
     race_word(&q, stop, r.tooltip, sizeof r.tooltip);
     if (g_raceCount < MAX_RACES) g_races[g_raceCount++] = r;
@@ -167,6 +170,52 @@ static int __fastcall town_selector_hook(const int *selector) {
 }
 
 // ---------------------------------------------------------------------------
+// The type's name.
+//
+// `String &NameOfTownType(String &out, TownType t)` (0xA96240) is a compiled
+// switch over the eleven shipped values — `cmp edx,0Ah / ja default /
+// jmp [table+edx*4]` — that constructs `out` from the enum's own spelling,
+// "TOWN_HEAVEN" and the rest. Everything that turns a type into text goes
+// through it: the town window's race line, saves, the siege set-up. A twelfth
+// value is past the compare and answers the default, which is not a name.
+//
+// The first probe grew the table in the executable instead — a twelfth slot
+// over the padding after it, as a raw dword. That works exactly when the
+// image loads at its preferred base: the loader relocates the eleven slots it
+// knows about (they are in .reloc) and leaves ours, and under ASLR ours then
+// points into whatever the padding became — an int3, three sieges in a row
+// (2026-09-17). The name of a type the executable never compiled is ours to
+// answer, from the row that declares it; the shipped eleven stay the engine's.
+
+/** `push esi / mov esi,ecx / cmp edx,0Ah` — six bytes, three instructions. */
+#define TOWN_NAME_RVA 0x696240u
+static const BYTE TOWN_NAME_HEAD[6] = { 0x56, 0x8B, 0xF1, 0x83, 0xFA, 0x0A };
+/** How many values the switch was compiled for: TOWN_NO_TYPE … TOWN_STRONGHOLD. */
+#define SHIPPED_TOWN_TYPES 11
+
+/** The engine's string: begin, end, end of storage. The same three pointers
+ *  rmg/cli.c declares as `EngineString` — that file is spliced in for the map
+ *  editor only, after this one, so the shape is spelt again here. */
+typedef struct { char *begin; char *end; char *cap; } EngineName;
+/** `String::String(const char *)` — thiscall, the text on the stack. */
+typedef void (__fastcall *StringCtorFn)(EngineName *s, void *edx, const char *text);
+
+typedef EngineName *(__fastcall *TownNameFn)(EngineName *out, int type);
+static TownNameFn g_townName = NULL;
+static StringCtorFn g_stringCtor = NULL;
+
+static EngineName *__fastcall town_name_hook(EngineName *out, int type) {
+  if (type >= SHIPPED_TOWN_TYPES) {
+    for (int i = 0; i < g_raceCount; i++) {
+      if (g_races[i].town != type || !g_races[i].name[0]) continue;
+      g_stringCtor(out, NULL, g_races[i].name);
+      return out;
+    }
+  }
+  return g_townName(out, type);
+}
+
+// ---------------------------------------------------------------------------
 // The picker's icons.
 
 /**
@@ -211,14 +260,9 @@ static const BYTE TEXT_MAP_SLOT_HEAD[6] = { 0x83, 0xEC, 0x20, 0x53, 0x8B, 0xD9 }
 #define STRING_ASSIGN_RVA 0x0e8310u
 static const BYTE STRING_ASSIGN_HEAD[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };
 
-/** The engine's string: begin, end, end of storage. The same three pointers
- *  rmg/cli.c declares as `EngineString` — that file is spliced in for the map
- *  editor only, after this one, so the shape is spelt again here. */
-typedef struct { char *begin; char *end; char *cap; } EngineName;
-
 typedef void *(__fastcall *WaitItemCtorFn)(void *self, void *edx, void *a, void *b, void *c);
 typedef BYTE *(__fastcall *TextureMapSlotFn)(void *map, void *edx, const int *key);
-typedef void (__fastcall *StringCtorFn)(EngineName *s, void *edx, const char *text);
+
 typedef void (__cdecl *EngineFreeFn)(void *p);
 typedef void *(__fastcall *TextureByNameFn)(void *widget, void *edx, const EngineName *name);
 typedef void (__fastcall *ObjectReleaseFn)(void *obj);
@@ -228,7 +272,6 @@ typedef void (__fastcall *StringAssignFn)(void *dst, void *edx, const void *src)
 
 static WaitItemCtorFn g_waitItemCtor = NULL;
 static TextureMapSlotFn g_textureMapSlot = NULL;
-static StringCtorFn g_stringCtor = NULL;
 static EngineFreeFn g_engineFree = NULL;
 static ObjectReleaseFn g_objectRelease = NULL;
 static TextMapSlotFn g_textMapSlot = NULL;
@@ -309,19 +352,30 @@ static void install_race_order(void) {
          &is_real_town_hook, "is real town");
   log_num("races: the picker is this wide now: ", g_raceCount);
 
+  g_stringCtor = (StringCtorFn)code_at(STRING_CTOR_RVA, STRING_CTOR_HEAD,
+                                       sizeof STRING_CTOR_HEAD, "string constructor");
+  if (!g_stringCtor) return;
+
+  // The name of a type past the compiled eleven, when a row declares one.
+  int ours = 0;
+  for (int i = 0; i < g_raceCount; i++) ours += g_races[i].town >= SHIPPED_TOWN_TYPES && g_races[i].name[0];
+  if (ours) {
+    g_townName = (TownNameFn)detour(TOWN_NAME_RVA, TOWN_NAME_HEAD, sizeof TOWN_NAME_HEAD,
+                                    &town_name_hook, "name of town type");
+    if (g_townName) log_num("races: names of ours: ", ours);
+  }
+
   int named = 0;
   for (int i = 0; i < g_raceCount; i++) named += g_races[i].texture[0] != 0;
   if (!named) return;
 
   g_textureMapSlot = (TextureMapSlotFn)code_at(TEXTURE_MAP_SLOT_RVA, TEXTURE_MAP_SLOT_HEAD,
                                                sizeof TEXTURE_MAP_SLOT_HEAD, "texture map slot");
-  g_stringCtor = (StringCtorFn)code_at(STRING_CTOR_RVA, STRING_CTOR_HEAD,
-                                       sizeof STRING_CTOR_HEAD, "string constructor");
   g_engineFree = (EngineFreeFn)code_at(ENGINE_FREE_RVA, ENGINE_FREE_HEAD,
                                        sizeof ENGINE_FREE_HEAD, "engine free");
   g_objectRelease = (ObjectReleaseFn)code_at(OBJECT_RELEASE_RVA, OBJECT_RELEASE_HEAD,
                                              sizeof OBJECT_RELEASE_HEAD, "object release");
-  if (!g_textureMapSlot || !g_stringCtor || !g_engineFree || !g_objectRelease) return;
+  if (!g_textureMapSlot || !g_engineFree || !g_objectRelease) return;
   // The tooltip's two are optional: without them the icon still goes in.
   g_textMapSlot = (TextMapSlotFn)code_at(TEXT_MAP_SLOT_RVA, TEXT_MAP_SLOT_HEAD,
                                          sizeof TEXT_MAP_SLOT_HEAD, "text map slot");

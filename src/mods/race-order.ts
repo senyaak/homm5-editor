@@ -7,10 +7,14 @@
 //
 // One line per race, in the order the arrows show them, shipped ones first:
 //
-//   race <townType> [pickerTexture [tooltipText]]   # name
+//   race <townType> <name> [pickerTexture [tooltipText]]
 //
 // The number is the `TownType` ordinal from the game's `types.xml` — the only
-// thing the DLL can compare a player's record against. The texture is the name
+// thing the DLL can compare a player's record against. The name is the enum's
+// own spelling, `TOWN_*`: for a type past the compiled eleven it is what the
+// engine's name-of-type function answers, out of the DLL (the switch in the
+// executable stops at TOWN_STRONGHOLD, and growing its table in place broke
+// under ASLR — see native/faction/race-order.c). The texture is the name
 // of an item in `UI/MPWait/PlayersList/Item/Races.(WindowRelatedTextures).xdb`,
 // given only for a race of ours: the shipped eight are drawn by the engine's
 // own constructor, name by name, and a line that repeats theirs would only
@@ -37,7 +41,7 @@ export const SHIPPED_PICKER_ORDER: readonly string[] = [
 ];
 
 export interface PickerRace {
-  /** `TOWN_*`, for the comment. */
+  /** `TOWN_*` — the enum's spelling, what the type stringifies as. */
   name: string;
   /** Its ordinal in `types.xml`. */
   town: number;
@@ -51,12 +55,13 @@ export interface PickerRace {
 export function racesFileText(races: readonly PickerRace[]): string {
   const lines = [
     '# The race picker, in order. Written by the editor; read by homm5-editor.dll.',
-    '#   race <townType> [pickerTexture [tooltipText]]   # name',
+    '#   race <townType> <name> [pickerTexture [tooltipText]]',
   ];
   for (const r of races) {
+    if (!/^[A-Z][A-Z0-9_]*$/.test(r.name)) throw new Error(`${r.name} is not a TownType name`);
     const texture = r.texture ? ` ${r.texture}` : '';
     const tooltip = r.texture && r.tooltip ? ` ${r.tooltip}` : '';
-    lines.push(`race ${r.town}${texture}${tooltip}   # ${r.name}`);
+    lines.push(`race ${r.town} ${r.name}${texture}${tooltip}`);
   }
   return lines.join('\n') + '\n';
 }
