@@ -608,6 +608,8 @@ interface ViewApi {
     };
     /** Animated bodies on the active floor, and the baked idle tables behind them (one per creature kind). */
     idle: { bodies: number; tables: number; tableBytes: number };
+    /** The renderer's JS heap in use, bytes (Chromium's counter; 0 where absent). */
+    jsHeapBytes: number;
     loaf: LongFrame[];
   };
   /** Forget the frames and long frames seen so far — to measure from here. */

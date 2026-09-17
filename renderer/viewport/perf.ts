@@ -119,6 +119,7 @@ export function perfStats(): {
   sections: Record<string, { p50: number; p95: number; max: number }>;
   fx: ReturnType<typeof fxSummary>;
   idle: { bodies: number; tables: number; tableBytes: number };
+  jsHeapBytes: number;
   loaf: LongFrame[];
 } {
   const it = idleTableStats();
@@ -136,6 +137,9 @@ export function perfStats(): {
     sections: sec,
     fx: fxSummary(),
     idle: { bodies: (state.world ? activeFloor() : null)?.idle.length ?? 0, tables: it.tables, tableBytes: it.bytes },
+    // Chromium's non-standard heap counter — the one number that says whether
+    // a big map's memory is ours (JS) or the GPU's.
+    jsHeapBytes: (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0,
     loaf: [...loaf],
   };
 }

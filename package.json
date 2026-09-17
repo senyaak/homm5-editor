@@ -179,6 +179,7 @@
     "test-map-tag": "node tools/test-map-tag.ts",
     "test-startable": "node tools/test-startable.ts",
     "e2e-live": "node tools/e2e-live.ts",
+    "perf-stress": "node tools/perf-stress.ts",
     "sod-content": "node tools/build-sod-content.ts"
   },
   "dependencies": {

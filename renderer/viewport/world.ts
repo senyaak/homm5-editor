@@ -15,7 +15,7 @@ import { RIVER_DEPTH } from '#features/terrain-brush/sculpt.ts';
 import { TERRAIN_DEPTH, updateHeightTexture, useDrapeFloor } from '#viewport/drape.ts';
 import { loadFx } from '#viewport/fx.ts';
 import { buildGeos, geomScale } from '#viewport/geoms.ts';
-import { addIdle } from '#viewport/idle.ts';
+import { addIdle, clearIdle } from '#viewport/idle.ts';
 import { buildBatches } from '#viewport/instancing.ts';
 import { applyAmbient, refreshLighting } from '#viewport/lighting.ts';
 import { bakeLightMap, makeLightMap } from '#viewport/point-lights.ts';
@@ -38,6 +38,10 @@ export function clearWorld(): void {
     for (const b of fl.batches.values()) b.im.dispose();
     for (const e of fl.fx) e.batch.dispose();
     fl.fx.length = 0;
+    // And the animated bodies, whose shared skeletons are reference-counted:
+    // left in place they kept the old world's bone tables alive through every
+    // reopen (tools/perf-stress.ts counted the tables doubling).
+    clearIdle(fl.objGroup, fl.idle);
     fl.lightMap.dispose();
     fl.heightTex?.dispose();
     fl.group.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });

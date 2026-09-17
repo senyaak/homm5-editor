@@ -67,7 +67,7 @@ function releaseSkeleton(skin: SkinnedGeom): void {
 /** What the tables hold right now — for view.perf(). */
 export function idleTableStats(): { tables: number; bytes: number } {
   let bytes = 0;
-  for (const { skel } of skeletons.values()) bytes += skel.table.offsets.byteLength + skel.table.world.byteLength;
+  for (const { skel } of skeletons.values()) bytes += skel.table.offsets.byteLength + skel.table.bind.byteLength;
   return { tables: skeletons.size, bytes };
 }
 

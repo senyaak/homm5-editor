@@ -176,9 +176,14 @@ export class TableSkeleton extends THREE.Skeleton {
     this.boneMatrices!.set(this.table.offsets.subarray(f * n, (f + 1) * n));
     if (this.boneTexture) this.boneTexture.needsUpdate = true;
   }
-  /** Where bone `b` stands at the current frame, in the body's own (model) space. */
+  /**
+   * Where bone `b` stands at the current frame, in the body's own (model)
+   * space: the row holds `world × boneInverse`, so `row × bind` — a multiply
+   * per ask rather than a second table; only glued effects ask.
+   */
   boneWorld(b: number, out: THREE.Matrix4): THREE.Matrix4 {
-    return out.fromArray(this.table.world, (this.frameAt() * this.table.bones + b) * 16);
+    out.fromArray(this.table.offsets, (this.frameAt() * this.table.bones + b) * 16);
+    return out.multiply(_bind.fromArray(this.table.bind, b * 16));
   }
 }
 
@@ -190,9 +195,10 @@ export interface BoneTable {
   duration: number;
   /** Per frame, per bone: `bone.matrixWorld × boneInverse` (what the skinning shader wants), 16 floats. */
   offsets: Float32Array;
-  /** Per frame, per bone: `bone.matrixWorld` in model space — for hanging things off a bone. */
-  world: Float32Array;
+  /** Per bone: the bind matrix (the inverse of `boneInverse`), 16 floats — what turns a row back into the bone's place. */
+  bind: Float32Array;
 }
+const _bind = new THREE.Matrix4();
 
 /**
  * Bake a skin's idle to a table.
@@ -209,17 +215,17 @@ export function bakeBoneTable(skin: SkinnedGeom, geometry: THREE.BufferGeometry,
   const duration = idle.skin.clip?.duration ?? 0;
   const frames = Math.max(1, Math.round(duration * TABLE_RATE));
   const offsets = new Float32Array(frames * bones * 16);
-  const world = new Float32Array(frames * bones * 16);
   const skeleton = idle.mesh.skeleton;
+  const bind = new Float32Array(bones * 16);
+  skeleton.boneInverses.forEach((inv, i) => _bind.copy(inv).invert().toArray(bind, i * 16));
   for (let f = 0; f < frames; f++) {
     poseIdle(idle, f / TABLE_RATE);
     idle.mesh.updateMatrixWorld(true);
     skeleton.update();
     offsets.set(skeleton.boneMatrices!, f * bones * 16);
-    idle.bones.forEach((b, i) => b.matrixWorld.toArray(world, (f * bones + i) * 16));
   }
   skeleton.dispose();
-  return { bones, frames, duration, offsets, world };
+  return { bones, frames, duration, offsets, bind };
 }
 
 /** A map creature: its body, and the shared table skeleton that poses it. */

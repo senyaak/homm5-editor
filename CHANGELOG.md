@@ -38,6 +38,10 @@ pre-release.
   on A2C1M1 that is 9 ms a frame back — the frame's JavaScript is 4 ms now,
   down from 19 before this series. `Idle stance: visible` now leaves
   off-screen creatures undrawn rather than merely unposed.
+- Closing a map releases its creatures' bone tables (they were kept through
+  every reopen), and the object explorer rebuilds once per frame instead of
+  once per placed object. `tools/perf-stress.ts` builds a map crammed with
+  effects or creatures and reads the frame under it.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive
