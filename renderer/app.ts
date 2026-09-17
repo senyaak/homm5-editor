@@ -519,6 +519,13 @@ interface ViewApi {
    */
   shadowCasters(): { drawn: number; casting: number; missing: string[] };
   /**
+   * What an object's parts are drawn with, as the BATCH holds them — which is
+   * the list that matters, since a batch with a ground-projected part renders
+   * from a copy of the registry's. One line per part: material type, visible,
+   * alphaTest, blending; `null` when the object is not batched.
+   */
+  partMaterials(id: string): string[] | null;
+  /**
    * The frame as it stands, as a PNG data URL.
    *
    * The only way to LOOK at what the app draws. An Electron window screenshot
@@ -828,6 +835,14 @@ const view: ViewApi = {
       }
     }
     return { slots, misplaced };
+  },
+  partMaterials(id) {
+    const fl = state.world ? activeFloor() : null;
+    const inst = fl?.instances.find((i) => i.id === id);
+    const b = inst && fl!.batches.get(inst.g);
+    if (!b) return null;
+    const list = Array.isArray(b.im.material) ? b.im.material : [b.im.material];
+    return list.map((m) => `${m.type} visible=${m.visible} alphaTest=${m.alphaTest} blending=${m.blending}`);
   },
   shadowCasters() {
     const fl = state.world ? activeFloor() : null;
