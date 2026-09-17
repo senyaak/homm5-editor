@@ -30,7 +30,13 @@ shadows fall from where they are drawn. The snow mountains (SnowM_8x8_05,
 _06) and some fifty other models — the sand and lava mountains, the craters,
 the hellpikes — shipped their grey underground shell welded one vertex
 differently from the rock, so it slipped past the duplicate test and was
-drawn opaque over the skirt; it is recognised now. Still to do: clicking
+drawn opaque over the skirt; it is recognised now. And the crag skirt some
+models carry under them (BigStone02's, the mine's pad) — a black square
+under the stone where the game shows snow — is what the engine treats it
+as: the terrain itself. The engine tests a mesh's material against ONE
+document, `CragTerrain.(Material).xdb`, and sends a match down the same
+path as `<ProjectOnTerrain>`; such a mesh is now draped and painted with
+the ground, its own crag texture unused. Still to do: clicking
 selects by the undraped shape, so on a steep slope the pick can be a little
 off the picture.
 

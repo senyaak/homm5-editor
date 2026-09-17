@@ -34,10 +34,31 @@ export interface MaterialInfo {
   /** `<Is2Sided>`: draw the back faces too. False in 11209 of the 11639 shipped
    *  materials, so a culled face is the norm and a two-sided one the exception. */
   twoSided: boolean;
+  /**
+   * THE terrain-skin material: the mesh wearing it is drawn as a piece of the
+   * ground, its own texture unused.
+   *
+   * The engine picks it out by identity. `CTerrainMaterialChecker` (NRender)
+   * loads one document — `/_(Material)/dev/Test/Malkovsky/CragTerrain
+   * .(Material).xdb` — and its one test (`0xa0d140` of H5_Game_H5E.exe) is
+   * `material == that`; the submesh walk that builds a render object
+   * (`0x9fc960` and three more like it) sends a mesh down the terrain path
+   * when `material->ProjectOnTerrain()` OR this test holds. So the crag
+   * skirt under BigStone02, the coincident "underground shell" of every
+   * mountain and the mine's crag pad are not props with a grey rock
+   * texture; they are the terrain, taking whatever ground the map paints
+   * there — snow under the stone in the game, where the editor drew a black
+   * pad.
+   */
+  terrainSkin: boolean;
 }
+
+/** The one document the engine's terrain-material test compares against. */
+const TERRAIN_SKIN_MATERIAL = '_(Material)/dev/Test/Malkovsky/CragTerrain.(Material).xdb';
 
 const NO_MATERIAL: MaterialInfo = {
   tex: null, alphaMode: 'AM_OPAQUE', projectOnTerrain: false, additive: false, selfIllum: false, twoSided: false,
+  terrainSkin: false,
 };
 
 /**
@@ -57,6 +78,7 @@ function materialInfo(itemXml: string, data: Assets, baseDir: string): MaterialI
       additive: /<AddPlaced>\s*true\s*<\/AddPlaced>/.test(xml),
       selfIllum: /<LightingMode>\s*L_SELFILLUM\s*<\/LightingMode>/.test(xml),
       twoSided: /<Is2Sided>\s*true\s*<\/Is2Sided>/.test(xml),
+      terrainSkin: false,
     };
   };
   if (/<Material\b/.test(itemXml)) return read(itemXml, baseDir);
@@ -68,7 +90,11 @@ function materialInfo(itemXml: string, data: Assets, baseDir: string): MaterialI
   try {
     const rel = resolveHref(baseDir, ext[1]);
     const p = data.path(rel);
-    return existsSync(p) ? read(readFileSync(p, 'utf8'), dirOf(rel)) : NO_MATERIAL;
+    if (!existsSync(p)) return NO_MATERIAL;
+    const info = read(readFileSync(p, 'utf8'), dirOf(rel));
+    // By the document's path, as the engine goes by the document's identity.
+    if (rel.replace(/^\/+/, '') === TERRAIN_SKIN_MATERIAL) info.terrainSkin = true;
+    return info;
   } catch { return NO_MATERIAL; }
 }
 

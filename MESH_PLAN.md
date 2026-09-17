@@ -189,6 +189,17 @@ So the flag now has two halves, split by what the material blends like:
   the darkening, and with the rock laid over by its alpha there is no ground
   to see on a cliff face.
 
+- **the terrain skin**, by the engine's own test. `CTerrainMaterialChecker`
+  (NRender) loads one document, `/_(Material)/dev/Test/Malkovsky/CragTerrain
+  .(Material).xdb`, and its test (`0xa0d140`) is `material == that`; the
+  submesh walk that builds a render object (`0x9fc960` and three siblings)
+  takes the terrain path when `material->ProjectOnTerrain()` (CGenericMaterial
+  vt+0x54, the record's +0x9C) OR that test holds. So a mesh wearing
+  CragTerrain is the ground — draped and composited with no texture of its own
+  (`MaterialInfo.terrainSkin`). BigStone02's crag skirt drew as a black pad
+  where the game shows snow; the mountains' coincident shells stay dropped, the
+  composited rock over them already being that ground.
+
 Not draped: the pick handles, which keep the shared geometry — a click on a
 mountain on a steep slope tests the undraped shape.
 

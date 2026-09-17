@@ -159,7 +159,10 @@ function isFlat(m: Mesh): boolean {
 function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[], sheer: (i: number) => boolean, projected: (i: number) => boolean): boolean[] {
   const keep = meshes.map(() => true);
   const tex = (i: number): string => mats[pick[i] ?? 0]?.tex ?? '';
-  const isSub = (i: number): boolean => /SubTerrain/i.test(tex(i));
+  // The terrain skin by the engine's own test (MaterialInfo.terrainSkin), or
+  // by its texture — a model that names the same SubTerrain image through a
+  // material of its own is the same underground shell.
+  const isSub = (i: number): boolean => (mats[pick[i] ?? 0]?.terrainSkin ?? false) || /SubTerrain/i.test(tex(i));
   const coincident = (a: Mesh, b: Mesh): boolean => {
     if (a.positions.length !== b.positions.length || a.indices.length !== b.indices.length) return false;
     for (let k = 0; k < a.indices.length; k++) if (a.indices[k] !== b.indices[k]) return false;
@@ -336,14 +339,19 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
     const t = infoFor(mi);
     const alphaMode: AlphaMode = mats[mi]?.alphaMode ?? 'AM_OPAQUE';
     const flat = isFlat(meshes[i]!);
-    const proj = mats[mi]?.projectOnTerrain ?? false;
+    // The terrain skin (MaterialInfo.terrainSkin): the engine draws this mesh
+    // as ground, so it is draped and composited like a projected overlay,
+    // with NO texture of its own laid over — the crag texture the document
+    // names is never seen on the surface, and underground the ground IS it.
+    const skin = mats[mi]?.terrainSkin ?? false;
+    const proj = skin || (mats[mi]?.projectOnTerrain ?? false);
     // How to blend is the material's own declaration, not a guess from the
     // texels. Reading it off the image said "this has soft edges, alpha-test
     // it", which is the wrong answer for a decal that is meant to be blended.
     // Without UVs a texture cannot be placed, so those parts stay untextured —
     // but the opacity read still stands, since it does not need UVs.
     parts.push({
-      start, count, tex: hasUV && t ? t.uri : null,
+      start, count, tex: hasUV && t && !skin ? t.uri : null,
       alphaMode,
       projectOnTerrain: proj,
       flat,
@@ -353,8 +361,8 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
       // The overlay half of the flag: the ground composited into the part. The
       // same test `projected` above applies to the dedup, on the unfiltered
       // mesh list; this one runs on the kept meshes.
-      terrainProjected: proj && !(mats[mi]?.selfIllum ?? false)
-        && (alphaMode === 'AM_OVERLAY' || alphaMode === 'AM_OVERLAY_ZWRITE'),
+      terrainProjected: skin || (proj && !(mats[mi]?.selfIllum ?? false)
+        && (alphaMode === 'AM_OVERLAY' || alphaMode === 'AM_OVERLAY_ZWRITE')),
       additive: mats[mi]?.additive ?? false,
       selfIllum: mats[mi]?.selfIllum ?? false,
       twoSided: mats[mi]?.twoSided ?? false,
