@@ -42,6 +42,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { parseTerrain, readHeights, readGroundFlags, readPassability } from '../terrain/terrain.ts';
+import { groundUnder } from '../terrain/ground.ts';
 import { toAssets } from '../game/assets.ts';
 import { loadMap } from '../map/map.ts';
 import { followHref, resolveHref, dirOf } from './xdb.ts';
@@ -314,12 +315,11 @@ export function buildScene(
   // and the failure used to surface as a null dereference deep in heightAt.
   if (!ground) throw new Error('GroundTerrain.bin not found next to ' + mapXdbPath);
   if (map.hasUnderground) { const u = loadTerrain('UndergroundTerrain.bin'); if (u) terrains[1] = u; }
+  // The ground at the tile's centre, where the object is drawn — the same
+  // reading the renderer takes when it places or moves one (core/coords.ts).
   const heightAt = (floor: number, x: number, y: number): number => {
     const t = terrains[floor] ?? ground;
-    const V = t.V;
-    const ix = Math.max(0, Math.min(V - 1, Math.round(x)));
-    const iy = Math.max(0, Math.min(V - 1, Math.round(y)));
-    return t.H[iy * V + ix]!;
+    return groundUnder(t.H, t.V, x, y);
   };
 
   // --- geometry/texture resolution (cached per Shared href) ---

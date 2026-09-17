@@ -19,7 +19,7 @@
 
 import { ALL } from '#features/selection.ts';
 import { setShowObjects } from '#features/shell.ts';
-import { heightAt, tileCenter } from '#core/coords.ts';
+import { groundAt, tileCenter } from '#core/coords.ts';
 import { markDirty } from '#core/dirty.ts';
 import { $, $select } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
@@ -289,7 +289,7 @@ export function addInstanceToScene(inst: Instance, geom: { index: number; data: 
   if (!g || !m) { $('hud').textContent = 'placed, but its mesh is missing — reload to see it'; return; }
   // Stand it on the ground: the main process does not have the height plane the
   // renderer is drawing.
-  inst.z = heightAt(inst.x, inst.y);
+  inst.z = groundAt(inst.x, inst.y);
   const mesh = new THREE.Mesh(g, m);
   mesh.position.set(tileCenter(inst.x), tileCenter(inst.y), inst.z);
   mesh.rotation.z = inst.r;

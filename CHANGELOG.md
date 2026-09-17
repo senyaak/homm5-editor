@@ -39,6 +39,17 @@ textures (the material list was shared between floors); it now takes its own.
 The browser harness (`npm run harness`) had fallen behind the bridge and could
 not open its map; it opens again.
 
+**Every object stands on the ground at its own centre.** An object is drawn
+at the centre of its tile but was anchored to the height of the tile's corner
+vertex, half a tile away — level ground hid it, and on a slope a building
+stood off the ground on the downhill side or sank on the uphill one by half
+a tile of that slope (Senya, Heaven_Military_Post). The anchor is now the
+terrain as drawn, read at the tile's centre, in the loader and in the
+renderer's placement alike. A rigid building on a slope still meets the
+ground only at its centre: that is the game's own behaviour — its shipped
+maps are flat under every building class, and its generator flattens a
+footprint to its average before placing on it.
+
 ## 0.11.0-alpha.1 — 2026-09-16
 
 **Still an alpha, for the same reason as before.** The multiplayer half is as

@@ -22,7 +22,7 @@ import { requireFilled } from '#core/form-gate.ts';
 import { uiPrefs, saveUiPrefs } from '#core/prefs.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { state, activeFloor } from '#core/state.ts';
-import { tileCenter, heightOn, heightAt } from '#core/coords.ts';
+import { tileCenter, heightOn, groundAt } from '#core/coords.ts';
 import { renderer, scene, camera, controls, topCamera, cam, keys, isTyping, raycaster, ptr, syncTopCamera, setTopView, keyPan, DEFAULT_BG } from '#viewport/stage.ts';
 import { worldGeos, worldMats, geomParts, geomScale, geomFootprint, geomSkin, geomFx, registerGeom, buildGeos } from '#viewport/geoms.ts';
 import { materialFor, partTexture, shadeProbe } from '#viewport/materials.ts';
@@ -267,7 +267,7 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   const ny = free ? +(hit.y / U).toFixed(3) : Math.floor(hit.y / U);
   if (nx === state.selected.inst.x && ny === state.selected.inst.y) return;
   state.selected.inst.x = nx; state.selected.inst.y = ny;
-  state.selected.mesh.position.set(tileCenter(nx), tileCenter(ny), heightAt(Math.floor(nx), Math.floor(ny)));
+  state.selected.mesh.position.set(tileCenter(nx), tileCenter(ny), groundAt(nx, ny));
   syncInstance(activeFloor(), state.selected.inst);
   syncFootprints();
   state.boxHelper?.setFromObject(state.selected.mesh);

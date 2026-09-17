@@ -7,7 +7,7 @@
 // describe falls back to propRow()'s value-shape inference, so the panel is
 // always usable.
 
-import { heightAt, tileCenter } from '#core/coords.ts';
+import { groundAt, tileCenter } from '#core/coords.ts';
 import { $, $input } from '#core/dom.ts';
 import { api } from '#core/ipc.ts';
 import { mapNames, roster } from '#core/rosters.ts';
@@ -196,7 +196,7 @@ async function moveSelectedTo(x: number, y: number): Promise<void> {
   if (!state.selected || !state.world) return;
   if (!Number.isFinite(x) || !Number.isFinite(y)) return;
   state.selected.inst.x = x; state.selected.inst.y = y;
-  state.selected.mesh.position.set(tileCenter(x), tileCenter(y), heightAt(Math.floor(x), Math.floor(y)));
+  state.selected.mesh.position.set(tileCenter(x), tileCenter(y), groundAt(x, y));
   syncInstance(activeFloor(), state.selected.inst);
   syncFootprints();
   state.boxHelper?.setFromObject(state.selected.mesh);
