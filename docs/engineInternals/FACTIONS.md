@@ -392,3 +392,59 @@ shapes, the table's size), and the executable's ceiling follows through
 Still Haven's inside the copy: the 14 dwelling records' `Creature`, the
 building texts and icons, the magic schools (a spec field), the race's name
 in the town window (the name switch's twelfth slot points at Haven's handler).
+
+## The twelfth slot lied under ASLR (2026-09-17, launches 14–17)
+
+Three sieges of the copied town died at three different addresses, and the
+log stopped without a report each time. The reports were widened (every
+exception is written now, the C++ throws included, with the address space
+left — `native/core/faults.c`), and the fourth siege said `0x80000003`, a
+breakpoint, at the runtime address that maps to `0xDF627D`: int3 padding,
+with `edx = 11`. The town-name switch (`0xA96240`) jumps through a table of
+eleven; the first probe had written a twelfth slot over the padding after
+it, a raw dword pointing at TOWN_HEAVEN's handler. That dword is in no
+`.reloc` entry, so when the loader puts the image anywhere but `0x400000` —
+most launches — the eleven shipped slots move and ours stays, pointing into
+whatever the padding became. The siege was merely the first thing to ask for
+the name at an unlucky base.
+
+The name is the DLL's now: `town_name_hook` (`race-order.c`) answers a type
+past the compiled eleven from the races file, whose second word is the
+enum's spelling — `race 11 TOWN_TEST race_test race_tooltip_test` — and the
+executable's switch is left as shipped. One more table that grows in our
+DLL, not in the executable ([[new-engine-tables-live-in-our-dll]]).
+
+With the name honest, one more registry keyed by it showed itself: the
+initiative bar's tower portraits, `UI/CombatScreen-Heavy/ATBBar/
+AdditionalIcons.(WindowRelatedTextures).xdb`, `TOWN_HEAVEN → Tower_Heaven`
+— a type absent from it queues as a white square. `patchTowerIcons` adds
+ours, with a drawn portrait.
+
+## The town, filled (launches 13–18)
+
+- **Dwellings** hire the faction's own row: `TownSpec.dwellings` by tier,
+  base for `BLD_UPG_1`, upgrade for `BLD_UPG_2`; the second upgrade is the
+  creature's own `Upgrades`. The creature model carries the links now
+  (`stats.base`, `stats.upgrades`, `PairCreature` from them); a preset
+  drops the donor's links, so a copy of the Archer does not upgrade into
+  the game's Marksman.
+- **The siege** is data through and through. `siege: TownType` takes
+  another town's whole `Combat` block; `siege: { arena, walls, gate, towers,
+  moat }` assembles one from five — the buildings stand at the same tiles
+  in all eight towns (walls 11/13, 10/11, 10/5, 11/3; towers 12/15, 12/1,
+  16/8; gate 10/8), each is one self-contained item, and the arena's object
+  list is rewired to the parts' objects by what the arena's own building
+  named (Dungeon's big tower is `s_central_tower`). Launched: Inferno's
+  field with Necropolis walls, Dungeon towers, Academy's gate, Sylvan's moat.
+  `siegeShooter` puts any Character and Shot on the towers — the faction's
+  Skeleton Archer, out of the creature mod's copy.
+- **Icons** are drawn, not borrowed: `src/format/paint.ts` (a small vector
+  painter, supersampled) and `src/mods/faction-icons.ts` (one theme; 36
+  building pictograms by type and level, the town's two, the race tile, the
+  tower portrait). `TownSpec.icons` repoints every building record and the
+  town's own icons to `Factions/<file>/icons/`.
+
+Registries keyed by the type's NAME, for the faction mod to keep in one
+list: the picker's textures and texts, the initiative bar's tower portraits.
+By ORDINAL: `town_buildings_N`, `TownTypesInfo`, `RMGPresetTable`. By
+membership: `Towns/any.xdb`, `Heroes/Any.xdb`, `TownSpecs`.

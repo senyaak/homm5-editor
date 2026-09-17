@@ -28,6 +28,14 @@ pre-release.
   `copyArt` learned where a copy stops (other entities by kind, the engine's
   own terrain material and textures by path). Named towns with a history and
   a bonus of their own go with it.
+- The faction's town filled in: dwellings hiring its own creatures (the
+  creature model gained upgrade links), a siege assembled from any towns'
+  walls, towers, gate and moat with any creature on the towers, and icons
+  drawn by the editor — buildings, town, race tile, tower portrait.
+- The extension reports every exception, not only access violations, with
+  the address space left; a name-of-town-type hook answers for a type past
+  the compiled eleven (the executable's switch is no longer patched — its
+  twelfth slot broke under ASLR).
 
 ## 0.11.0-alpha.1 — 2026-09-16
 

@@ -24,10 +24,12 @@
 // and the arena's obstacle group. Those are other things: the faction's own
 // creatures replace the first two, and the biome stock stays the game's.
 
+import { buildingGlyph, buildingIcon, raceIcon, textureFiles, towerIcon, townIcon } from './faction-icons.ts';
+import type { IconTheme } from './faction-icons.ts';
 import { copyArt, dataPath, resolve } from './mod-art.ts';
 import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
-import { EOL, hrefOf, insertAfterLine, insertBeforeLine, once, retune } from './xml-edit.ts';
+import { EOL, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
 
 export const TOWN_CLASS = 'AdvMapTownShared';
 export const BUILD_CLASS = 'TownBuildDefinition';
@@ -73,7 +75,57 @@ export interface TownSpec {
   name: string;
   /** The two schools its magic guild teaches; the donor's when absent. */
   magicSchools?: readonly [string, string];
+  /**
+   * What the dwellings hire, by tier 1–7: the base creature for the dwelling
+   * and its upgrade for the upgraded one (the expansion's second upgrade is
+   * reached through the creature's own `Upgrades`, not through a building).
+   * A tier left out keeps hiring the donor's.
+   */
+  dwellings?: Partial<Record<number, { base: string; upgrade: string }>>;
+  /**
+   * Whose siege to fight: the `TownType` of a shipped town whose `Combat`
+   * block — arena, walls, towers, gate, moat, their effects and sounds, the
+   * scenery and the ground — replaces the donor's; or a MIX, one town's
+   * arena with another's walls, towers, gate or moat. The donor's own when
+   * absent. The block is one self-contained element of the shared document,
+   * and every building in it is one too, standing where every town's does
+   * (the siege layout is the same eight times over), so the parts combine.
+   */
+  siege?: string | SiegeMix;
+  /**
+   * Who mans the towers: the Character that stands on them and the Shot it
+   * fires, as hrefs. Every tower with a shooter gets this one; the donor's
+   * creature when absent.
+   */
+  siegeShooter?: { character: string; shot: string };
+  /**
+   * Draw the town's icons in this theme instead of keeping the donor's: the
+   * building icons on the build screen, the town's own two, and a tile for
+   * the race picker (`TownBuild.raceIcon`). See faction-icons.ts.
+   */
+  icons?: IconTheme;
 }
+
+/**
+ * A siege assembled from several towns. `arena` gives the field — the scene,
+ * the ground, the obstacles and every building not named below; each other
+ * key names the town whose building of that kind stands on it.
+ */
+export interface SiegeMix {
+  arena: string;
+  walls?: string;
+  gate?: string;
+  towers?: string;
+  moat?: string;
+}
+
+/** Which building types each part of a mix covers. */
+const SIEGE_PARTS: Record<Exclude<keyof SiegeMix, 'arena'>, readonly string[]> = {
+  walls: ['WALL'],
+  gate: ['GATE'],
+  towers: ['LEFT_TOWER', 'RIGHT_TOWER', 'BIG_TOWER'],
+  moat: ['MOAT'],
+};
 
 export interface TownPaths {
   dir: string;
@@ -87,6 +139,8 @@ export interface TownPaths {
   link: string;
   /** The name text. */
   name: string;
+  /** Where drawn icons go. */
+  icons: string;
 }
 
 export function townPaths(spec: Pick<TownSpec, 'file'>): TownPaths {
@@ -98,6 +152,7 @@ export function townPaths(spec: Pick<TownSpec, 'file'>): TownPaths {
     build: `${dir}/${spec.file}.(${BUILD_CLASS}).xdb`,
     link: `${TOWN_LINK_DIR}/${spec.file}.xdb`,
     name: `${dir}/${spec.file}_Name.txt`,
+    icons: `${dir}/icons`,
   };
 }
 
@@ -133,6 +188,25 @@ export interface TownBuild {
   /** What the copy left in the game's data. */
   stopped: string[];
   missing: string[];
+  /** The race picker's tile, when icons were drawn: a Texture document's path. */
+  raceIcon?: string;
+  /** The siege tower on the initiative bar, likewise — for `ATB_TOWER_ICONS`. */
+  towerIcon?: string;
+}
+
+/**
+ * The initiative bar's list of tower portraits by town-type NAME. A type of
+ * ours goes in under the name the DLL answers for it, with its own picture.
+ */
+export const ATB_TOWER_ICONS = 'UI/CombatScreen-Heavy/ATBBar/AdditionalIcons.(WindowRelatedTextures).xdb';
+
+/** The list with one more entry: `type` → the texture at `icon` (a data path). */
+export function patchTowerIcons(list: string, type: string, icon: string): string {
+  if (list.includes(`<TextureName>${type}</TextureName>`)) throw new Error(`${ATB_TOWER_ICONS} already lists ${type}`);
+  return insertBeforeLine(list, once(list, '</textures>', 'tower icons list'), [
+    '<Item>', `	<TextureName>${type}</TextureName>`,
+    `	<Texture href="/${icon}#xpointer(/Texture)"/>`, '</Item>',
+  ]);
 }
 
 /**
@@ -142,7 +216,60 @@ export interface TownBuild {
 export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader): TownBuild {
   const p = townPaths(spec);
   const source = donorTown(spec.donor, read);
-  const copy = copyArt([source], p.art, read, `town:${spec.file}`, { stopAt: TOWN_STOP_AT, leave: TOWN_LEAVE });
+  // Another town's siege is spliced into the donor's document BEFORE the copy
+  // walks it, so what the siege reaches is copied along with everything else.
+  // A mix also rewrites the arena's own object list, so the field lists the
+  // buildings that stand on it; both documents are served to the walk edited.
+  const seeded = new Map<string, string>();
+  const mix: SiegeMix | null = typeof spec.siege === 'string' ? { arena: spec.siege } : spec.siege ?? null;
+  if (mix) {
+    const shared = (type: string): string => (type === spec.donor ? mustRead(read, source) : mustRead(read, donorTown(type, read)));
+    let combat = combatOf(shared(mix.arena), mix.arena);
+    const swapped: { ours: string; theirs: string }[] = [];
+    for (const [part, types] of Object.entries(SIEGE_PARTS) as [keyof typeof SIEGE_PARTS, readonly string[]][]) {
+      const from = mix[part];
+      if (!from || from === mix.arena) continue;
+      const theirs = buildingsOf(combatOf(shared(from), from));
+      for (const type of types) {
+        const ours = buildingsOf(combat).filter((b) => b.type === type);
+        const replacements = theirs.filter((b) => b.type === type);
+        if (ours.length !== replacements.length) throw new Error(`${from}'s siege has ${replacements.length} ${type}, ${mix.arena}'s ${ours.length}`);
+        for (const [i, b] of ours.entries()) {
+          combat = combat.replace(b.text, replacements[i]!.text);
+          swapped.push({ ours: b.text, theirs: replacements[i]!.text });
+        }
+      }
+    }
+    const donor = mustRead(read, source);
+    const [ds, de] = combatSpan(donor, spec.donor);
+    seeded.set(source, donor.slice(0, ds) + combat + donor.slice(de));
+    // The arena's list: the objects the arena's own building named (its model,
+    // its shooter's stand — a wall has no stand) give way to the ones the
+    // swapped-in building names, by absolute path. By what the building
+    // says, not by name: Dungeon's big tower is `s_central_tower`.
+    if (swapped.length) {
+      const arenaHref = hrefOf(combat, 'ArenaDesc');
+      const arenaPath = arenaHref && resolve(source, arenaHref);
+      if (!arenaPath) throw new Error(`${mix.arena}'s siege names no ArenaDesc`);
+      let arena = mustRead(read, arenaPath);
+      for (const { ours, theirs } of swapped) {
+        for (const field of ['Object', 'Locator']) {
+          const was = hrefOf(ours, field), now = hrefOf(theirs, field);
+          if (!was || !now) continue;
+          const base = was.replace(/#.*$/, '').split('/').pop()!;
+          const own = new RegExp(`<Item href="${base.replace(/[.()]/g, '\\$&')}#[^"]*"/>`);
+          if (!own.test(arena)) throw new Error(`${arenaPath} lists no ${base}`);
+          arena = arena.replace(own, `<Item href="${now}"/>`);
+        }
+      }
+      seeded.set(arenaPath, arena);
+    }
+  }
+  const readSeeded: DataReader = (rel) => {
+    const text = seeded.get(rel);
+    return text ? Buffer.from(text, 'latin1') : read(rel);
+  };
+  const copy = copyArt([source], p.art, readSeeded, `town:${spec.file}`, { stopAt: TOWN_STOP_AT, leave: TOWN_LEAVE });
   const copied = copy.at.get(source)!;
   const files = new Map(copy.files);
 
@@ -169,7 +296,55 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       town = town.replace(new RegExp(`<MagicSchool_${i}>[^<]*</MagicSchool_${i}>`), `<MagicSchool_${i}>${school}</MagicSchool_${i}>`);
     }
   }
+  if (spec.siegeShooter) {
+    const { character, shot } = spec.siegeShooter;
+    town = town.replace(
+      /<Shooter href="[^"]+"\/>(\s*)<Shot href="[^"]+"\/>/g,
+      (_, gap: string) => `<Shooter href="${character}"/>${gap}<Shot href="${shot}"/>`,
+    );
+  }
   files.set(p.shared, Buffer.from(town, 'latin1'));
+
+  // The dwellings' creatures: every building record in the copy whose Type is
+  // a dwelling of a tier we were given, by its upgrade level.
+  for (const [path, data] of files) {
+    if (!path.toLowerCase().endsWith('.xdb')) continue;
+    const text = data.toString('latin1');
+    if (!text.includes('<TownBuildingSharedStats')) continue;
+    const tier = /<Type>TB_DWELLING_(\d)<\/Type>/.exec(text);
+    const level = /<Upgrade>BLD_UPG_(\d)<\/Upgrade>/.exec(text);
+    const hires = tier && level && spec.dwellings?.[Number(tier[1])];
+    if (!hires) continue;
+    const creature = level[1] === '1' ? hires.base : hires.upgrade;
+    once(text, '<Creature>', `${path} creature`);
+    files.set(path, Buffer.from(text.replace(/<Creature>[^<]*<\/Creature>/, `<Creature>${creature}</Creature>`), 'latin1'));
+  }
+
+  // The icons, drawn: one per building record, the town's two, the race's.
+  let race: string | undefined, tower: string | undefined;
+  if (spec.icons) {
+    const theme = spec.icons;
+    const put = (name: string, image: ReturnType<typeof townIcon>): string => {
+      const path = `${p.icons}/${name}.xdb`;
+      for (const f of textureFiles(path, image)) files.set(f.path, f.data);
+      return `/${path}#xpointer(/Texture)`;
+    };
+    for (const [path, data] of files) {
+      if (!path.toLowerCase().endsWith('.xdb') || !path.startsWith(p.art)) continue;
+      const text = data.toString('latin1');
+      if (!text.includes('<TownBuildingSharedStats')) continue;
+      const type = /<Type>(TB_\w+)<\/Type>/.exec(text)?.[1];
+      const level = Number(/<Upgrade>BLD_UPG_(\d)<\/Upgrade>/.exec(text)?.[1] ?? 1);
+      if (!type) continue;
+      const href = put(`${type.slice(3).toLowerCase()}_${level}`, buildingIcon(buildingGlyph(type, level), theme));
+      files.set(path, Buffer.from(setHref(text, 'Icon', href, `${path} icon`), 'latin1'));
+    }
+    town = setHref(town, 'Icon55x55', put('town', townIcon(theme, false)), 'town icon');
+    town = setHref(town, 'IconWithFort55x55', put('town_fort', townIcon(theme, true)), 'town icon with fort');
+    files.set(p.shared, Buffer.from(town, 'latin1'));
+    race = put('race', raceIcon(theme)).replace(/#.*$/, '').slice(1);
+    tower = put('tower', towerIcon(theme)).replace(/#.*$/, '').slice(1);
+  }
 
   files.set(p.build, Buffer.from(mustRead(read, donorBuildDefinition(donorOrdinal, read)), 'latin1'));
   files.set(p.name, utf16(spec.name));
@@ -181,7 +356,31 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   return {
     files: [...files].map(([path, data]) => ({ path, data })),
     paths: p, at: copy.at, stopped: copy.stopped, missing: copy.missing,
+    ...(race ? { raceIcon: race } : {}),
+    ...(tower ? { towerIcon: tower } : {}),
   };
+}
+
+/** Where a town document's `Combat` element begins and ends. */
+function combatSpan(text: string, what: string): [number, number] {
+  const start = once(text, '<Combat ', `${what} siege`);
+  const end = once(text, '</Combat>', `${what} siege end`) + '</Combat>'.length;
+  return [start, end];
+}
+
+function combatOf(text: string, what: string): string {
+  const [s, e] = combatSpan(text, what);
+  return text.slice(s, e);
+}
+
+/** The siege's buildings: each inline `ArenaBuilding` item, whole, with its type. */
+function buildingsOf(combat: string): { type: string; text: string }[] {
+  const out: { type: string; text: string }[] = [];
+  for (const m of combat.matchAll(/<Item href="#n:inline\(ArenaBuilding\)"[^>]*>[\s\S]*?<\/ArenaBuilding>\s*<\/Item>/g)) {
+    const type = /<Type>(\w+)<\/Type>/.exec(m[0])?.[1];
+    if (type) out.push({ type, text: m[0] });
+  }
+  return out;
 }
 
 /** The palette entry: a link file pointing at our town. */

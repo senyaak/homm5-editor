@@ -385,8 +385,12 @@ export function creaturePreset(data: Assets, id: string): CreaturePreset | null 
     }
   }
 
+  // A preset is a starting point for a creature of OUR OWN, so the donor's
+  // upgrade links do not come along: a copy of the Archer would otherwise
+  // upgrade into the game's Marksman. A faction's row links its own.
+  const { base: _base, upgrades: _upgrades, ...stats } = readStats(record);
   return {
-    stats: readStats(record),
+    stats,
     name, description, abilitiesText,
     visualSource: refPath(visualHref), monsterSource: refPath(monsterHref),
     art,

@@ -85,6 +85,15 @@ export interface CreatureStats {
   /** How long the hire dialog waits before it will command them. Shipped: 7–10. */
   timeToCommand: number;
   abilities: string[];
+  /**
+   * The upgrade links a faction's row is made of. `base` is what this is an
+   * upgrade of (the game pairs the two by it — `BaseCreature` and, for the
+   * hire and upgrade dialogs, `PairCreature`); `upgrades` is what a base
+   * creature can become — one, or the expansion's two. Absent for a creature
+   * that stands alone, as every one of ours did before the faction row.
+   */
+  base?: string;
+  upgrades?: string[];
 }
 
 /** Sensible zeroes — what an unfilled creature form starts from. */
@@ -128,16 +137,26 @@ export function writeStats(creature: XmlElement, stats: CreatureStats): void {
     }
   }
 
-  const list = find(creature, 'Abilities');
-  if (list) {
-    clearElement(list);
-    if (stats.abilities.length) list.selfClose = false;
-    for (const a of stats.abilities) {
-      list.children.push({
-        type: 'element', name: 'Item', rawAttrs: '', attrs: {},
-        children: [{ type: 'text', text: a }], selfClose: false,
-      });
-    }
+  setList(creature, 'Abilities', stats.abilities);
+
+  // The links: a base creature names its upgrades and pairs with the first;
+  // an upgrade names its base and pairs with it. None.xdb says UNKNOWN.
+  const base = stats.base ?? 'CREATURE_UNKNOWN';
+  set(creature, 'BaseCreature', base);
+  setList(creature, 'Upgrades', stats.upgrades ?? []);
+  set(creature, 'PairCreature', stats.base ?? stats.upgrades?.[0] ?? 'CREATURE_UNKNOWN');
+}
+
+function setList(creature: XmlElement, tag: string, items: readonly string[]): void {
+  const list = find(creature, tag);
+  if (!list) return;
+  clearElement(list);
+  if (items.length) list.selfClose = false;
+  for (const a of items) {
+    list.children.push({
+      type: 'element', name: 'Item', rawAttrs: '', attrs: {},
+      children: [{ type: 'text', text: a }], selfClose: false,
+    });
   }
 }
 
@@ -152,6 +171,9 @@ export function readStats(creature: XmlElement): CreatureStats {
     if (v) resources[r] = v;
   }
   const abilities = find(creature, 'Abilities');
+  const base = childText(creature, 'BaseCreature');
+  const ups = find(creature, 'Upgrades');
+  const upgrades = ups ? children(ups).filter((c) => c.name === 'Item').map((c) => childTextOf(c)).filter(Boolean) : [];
   return {
     attack: n('AttackSkill'), defence: n('DefenceSkill'),
     minDamage: n('MinDamage'), maxDamage: n('MaxDamage'),
@@ -167,6 +189,8 @@ export function readStats(creature: XmlElement): CreatureStats {
     abilities: abilities
       ? children(abilities).filter((c) => c.name === 'Item').map((c) => childTextOf(c)).filter(Boolean)
       : [],
+    ...(base && base !== 'CREATURE_UNKNOWN' ? { base } : {}),
+    ...(upgrades.length ? { upgrades } : {}),
   };
 }
 
