@@ -18,6 +18,14 @@ import { buildScene } from '#src/scene/scene.ts';
 import { initProject } from '#src/map/project.ts';
 import { isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, reportRoots } from '#electron/paths.ts';
 import { closeSetup, runSetup } from '#electron/setup.ts';
+
+/**
+ * Dev mode: `electron . --dev` (`npm run start:dev`) or HOMM5_DEV=1. The one
+ * thing it changes is that the DevTools keys work — the console is otherwise
+ * reachable only from the fatal screen, and "what does the renderer say" is
+ * the first question when something draws wrong.
+ */
+const DEV_MODE = process.argv.includes('--dev') || process.env.HOMM5_DEV === '1';
 import { stopSceneBuilder } from '#electron/scene-jobs.ts';
 import { assetRootFor, state } from '#electron/state.ts';
 import { registerApp } from '#electron/channels/app.ts';
@@ -106,7 +114,10 @@ function createWindow(): void {
   // opens through the app's own door (`app:open-devtools`).
   Menu.setApplicationMenu(null);
   // And the browser's own keys, which no menu owns: the reloads and the
-  // DevTools toggles are swallowed before the page sees them.
+  // DevTools toggles are swallowed before the page sees them — except in dev
+  // mode (`--dev` or HOMM5_DEV=1), where F12 and Ctrl+Shift+I open DevTools
+  // detached, so what the renderer says can be read while the map is up.
+  // Reload stays swallowed even then: it would throw the editor's state away.
   w.webContents.on('before-input-event', (e, input) => {
     if (input.type !== 'keyDown') return;
     const key = input.key.toLowerCase();
@@ -114,7 +125,9 @@ function createWindow(): void {
     const reload = key === 'f5' || (ctrl && key === 'r');
     const devtools = key === 'f12' || (ctrl && key === 'i');
     if (reload || devtools) e.preventDefault();
+    if (devtools && DEV_MODE) w.webContents.toggleDevTools();
   });
+  if (DEV_MODE) console.log('[dev] F12 / Ctrl+Shift+I open DevTools');
   if (NO_FOCUS) w.once('ready-to-show', () => showQuietly(w));
   // Renderer failures, in the terminal that launched the app. Until this was
   // here, a renderer that died on its first line left no trace anywhere the

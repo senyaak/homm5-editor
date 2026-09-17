@@ -87,6 +87,12 @@ repeats of it. A quarter of the shipped models (721 — the snags, fences,
 sand and lava mountains, the Academy's lightning effects) carry a negative
 coordinate somewhere; every one of them draws its texture as authored now.
 
+**Dev mode.** `npm run start:dev`, `start-editor-dev.bat` or `start-editor.bat
+--dev` (the script now passes its arguments on to Electron) start the editor
+with F12 and Ctrl+Shift+I opening DevTools; outside dev mode they stay
+swallowed and the console is reachable only from the fatal screen (Senya:
+"the console is disabled"). Reload stays swallowed either way.
+
 **The ground opens where an object digs it.** The Inferno military post stood
 on flat ground with its crucible pit buried and only the glow showing
 (Senya; the game shows a pit with lava at the bottom). A shared's

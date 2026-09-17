@@ -268,9 +268,13 @@ get a live 3D scene you sculpt, paint, populate, script and pack.
 
 On Windows, `start-editor.bat` does the same by double-click: it checks Node,
 installs dependencies on first run, and keeps its window open if anything fails.
+`start-editor-dev.bat` (or `start-editor.bat --dev`) is dev mode, where F12 and
+Ctrl+Shift+I open DevTools; outside it the console is reachable only from the
+fatal screen.
 
 ```
 npm start            # build the renderer, then launch the editor
+npm run start:dev    # the same in dev mode: F12 / Ctrl+Shift+I open DevTools
 npm run typecheck    # tsc --noEmit across the whole project
 npm test             # every unit test-* in one run (tools/test-all.ts)
 npm run test-e2e     # Playwright: New Map, placement, scripts, the C1M1 rebuild
