@@ -196,8 +196,8 @@ function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[
     }
     return [lo, hi];
   };
-  const coincidentPad = (a: Mesh, b: Mesh): boolean => {
-    if (a.indices.length !== b.indices.length || !isFlat(a) || !isFlat(b)) return false;
+  const sameBox = (a: Mesh, b: Mesh): boolean => {
+    if (a.indices.length !== b.indices.length) return false;
     const [la, ha] = bounds(a), [lb, hb] = bounds(b);
     const diag = Math.hypot(ha[0]! - la[0]!, ha[1]! - la[1]!, ha[2]! - la[2]!) || 1;
     for (let c = 0; c < 3; c++) {
@@ -205,10 +205,20 @@ function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[
     }
     return true;
   };
+  const coincidentPad = (a: Mesh, b: Mesh): boolean => isFlat(a) && isFlat(b) && sameBox(a, b);
+  // The same match again without the flatness, for a SubTerrain twin only. The
+  // snow mountains' grey shell is the rock's 800 triangles over 545 vertices
+  // where the rock has 546, so identical index arrays miss it, it is not flat,
+  // and it drew opaque over the rock's fading skirt: the grey band Senya saw
+  // where the snow should run into the ground (SnowM_8x8_05, _06). One
+  // SubTerrain mesh with the same triangle count and the same box as an
+  // authored one is that mesh's underground skin, whatever its welding.
+  const coincidentTwin = (i: number, j: number): boolean =>
+    isSub(i) !== isSub(j) && sameBox(meshes[i]!, meshes[j]!);
   for (let i = 0; i < meshes.length; i++) {
     if (!keep[i]) continue;
     for (let j = i + 1; j < meshes.length; j++) {
-      if (!keep[j] || !(coincident(meshes[i]!, meshes[j]!) || coincidentPad(meshes[i]!, meshes[j]!))) continue;
+      if (!keep[j] || !(coincident(meshes[i]!, meshes[j]!) || coincidentPad(meshes[i]!, meshes[j]!) || coincidentTwin(i, j))) continue;
       if (isSub(i) !== isSub(j)) {
         // A SubTerrain copy is usually the underground skin of the authored
         // surface — redundant on the surface, so the authored one wins (a

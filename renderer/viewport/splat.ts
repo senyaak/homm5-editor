@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { uiPrefs } from '#core/prefs.ts';
 import type { Floor3D } from '#core/state.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
-import { DRAPE_VERT_PARS, TERRAIN_DEPTH, drapeUniforms } from '#viewport/drape.ts';
+import { DRAPE_PARS, DRAPE_VERT_PARS, TERRAIN_DEPTH, drapeUniforms } from '#viewport/drape.ts';
 import { geomParts } from '#viewport/geoms.ts';
 import { uSunDir, uSunCol, uAmbCol, uShadeCol, uIncidentCol, uLmGain, uWhiten } from '#viewport/lighting.ts';
 import { partTexture } from '#viewport/materials.ts';
@@ -229,6 +229,7 @@ ${shadowVert('world', 'vNrm')}
 const projFrag = (groups: number, layers: number): string => `
 precision highp sampler2DArray;
 ${SHADOW_FRAG_PARS}
+${DRAPE_PARS}
 uniform sampler2DArray uGround;
 uniform sampler2DArray uMask;
 uniform sampler2D uOverlay;
@@ -259,19 +260,28 @@ void main() {
   // near-black ore patch at low alpha darkens the grass, the mountain's rock at
   // full alpha replaces it, and the rock's fading skirt hands over to the
   // ground it stands on.
-  if (uHasOverlay > 0.5) {
-    vec4 o = texture(uOverlay, vUv);
-    col = mix(col, o.rgb, o.a);
-  }
-  // Lit with the terrain's own sun formula: the part IS ground, and a mound
-  // shaded differently from the flat around it reads as a decal, not a hump.
+  vec4 o = uHasOverlay > 0.5 ? texture(uOverlay, vUv) : vec4(0.0);
+  // Lit with the terrain's own sun formula — and, for the ground's share, with
+  // the GROUND's normal, not the mesh's. The mesh's normals belong to the
+  // rock: along a mountain's skirt they lean with the slope of the model, and
+  // ground lit by them came out a shade darker than the same ground a step
+  // away, a visible seam round every mountain (Senya, Mountain10x10). The
+  // ground under the part is lit as the terrain lights it, the texture as the
+  // part does, and the two are mixed by the same alpha as the colours. On a
+  // mound that is mostly ground (the mine's), the hump therefore shades as the
+  // flat around it — which is the game's picture, where the mound is a
+  // near-transparent overlay and what shows is the terrain itself.
   // Here vGrid is exactly grid/tiles (see PROJ_VERT), which is the lightmap's
   // own mapping, so the pools land where the terrain draws them.
-  float ndl = dot(normalize(vNrm), normalize(uSunDir));
   vec3 sunEnd = mix(uIncident, uSunCol, sunlitHere());
   vec3 pl = texture(uLm, vGrid).rgb * uLmGain;
-  outColor = vec4(col * ((uAmb + max(ndl, 0.0) * (sunEnd - uAmb)
-                               + max(-ndl, 0.0) * (uShade - uAmb) + pl) * uWhiten), 1.0);
+  float ndlGround = dot(drapeNormal(vWorld * uDrapeUnits), normalize(uSunDir));
+  float ndlPart = dot(normalize(vNrm), normalize(uSunDir));
+  vec3 litGround = col * ((uAmb + max(ndlGround, 0.0) * (sunEnd - uAmb)
+                                + max(-ndlGround, 0.0) * (uShade - uAmb) + pl) * uWhiten);
+  vec3 litPart = o.rgb * ((uAmb + max(ndlPart, 0.0) * (sunEnd - uAmb)
+                                + max(-ndlPart, 0.0) * (uShade - uAmb) + pl) * uWhiten);
+  outColor = vec4(mix(litGround, litPart, o.a), 1.0);
 }`;
 
 /**

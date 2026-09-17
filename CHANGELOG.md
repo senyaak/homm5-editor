@@ -24,9 +24,15 @@ same, on the GPU, for every such part — mountains, rocks, bushes, craters,
 swamps. The overlays among them (mountains, the Abandoned Mine's mound) are
 also shaded with the ground they stand on, their own texture laid over it by
 its alpha, so a mountain's fading skirt hands over to the map's grass instead
-of to whatever happened to be behind it. Their shadows fall from where they
-are drawn. Still to do: clicking selects by the undraped shape, so on a steep
-slope the pick can be a little off the picture.
+of to whatever happened to be behind it — and that ground is lit as the
+terrain lights it, so the skirt is no darker than the grass a step away. Their
+shadows fall from where they are drawn. The snow mountains (SnowM_8x8_05,
+_06) and some fifty other models — the sand and lava mountains, the craters,
+the hellpikes — shipped their grey underground shell welded one vertex
+differently from the rock, so it slipped past the duplicate test and was
+drawn opaque over the skirt; it is recognised now. Still to do: clicking
+selects by the undraped shape, so on a steep slope the pick can be a little
+off the picture.
 
 A ground-composited part on the underground floor took the SURFACE floor's
 textures (the material list was shared between floors); it now takes its own.

@@ -74,10 +74,10 @@ export const drapeUniforms = (): Record<string, THREE.IUniform> => ({
 });
 
 /**
- * GLSL for the vertex stage: `drapeZ(world)` is the vertex's new world z, given
- * the anchor height the instance was placed at.
+ * GLSL for either stage: the ground under a world XY, read off the height
+ * plane the way the terrain mesh interpolates it, and the ground's normal.
  */
-export const DRAPE_VERT_PARS = `
+export const DRAPE_PARS = `
 uniform sampler2D uHeightTex;
 uniform float uHeightV;
 uniform float uDrapeUnits;
@@ -96,6 +96,23 @@ float drapeGround(vec2 worldXY) {
     ? h00 + t.x * (h10 - h00) + t.y * (h01 - h00)
     : h11 + (1.0 - t.x) * (h01 - h11) + (1.0 - t.y) * (h10 - h11);
 }
+// The ground's normal at a world XY: central differences over the nearest
+// grid vertex, which is close to the smoothed vertex normal the terrain mesh
+// carries (computeVertexNormals averages the faces round a vertex) — and on
+// flat ground exactly it.
+vec3 drapeNormal(vec2 worldXY) {
+  ivec2 i = ivec2(floor(worldXY / uDrapeUnits + 0.5));
+  float dx = drapeVertex(i + ivec2(1, 0)) - drapeVertex(i - ivec2(1, 0));
+  float dy = drapeVertex(i + ivec2(0, 1)) - drapeVertex(i - ivec2(0, 1));
+  return normalize(vec3(-dx, -dy, 2.0 * uDrapeUnits));
+}`;
+
+/**
+ * GLSL for the vertex stage: `drape(world, anchorZ)` is the vertex moved onto
+ * the ground, given the anchor height the instance was placed at.
+ */
+export const DRAPE_VERT_PARS = `
+${DRAPE_PARS}
 // The vertex keeps its height above the object's anchor and takes the ground
 // under itself instead of the ground under the anchor. With no height plane
 // bound (a scene without terrain) it stays where the object put it.
