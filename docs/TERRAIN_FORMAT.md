@@ -184,6 +184,36 @@ vertices against 2.7% elsewhere.
 
 Map 12 separates them: it has sea while its river plane is **entirely empty**.
 
+## Where an object stands — read out of the executable (2026-09-17)
+
+Every placed object's height comes from these two planes, and the rule is
+the game's own, read at the scene-object builder `0xb51f40` of
+`H5_Game_H5E.exe` (`src/terrain/ground.ts` is the port; every `Pos.z` in
+every shipped map is 0, so the engine computes all of it):
+
+1. The object's world XY is `(Pos + 0.5) · 2` — the **centre** of its tile.
+2. If all four corner flags of tile `floor(Pos)` are 0 (sea), z is **1.5**,
+   the sea level (`0x9ec510`, constant at `0xf533e4`) — ships and sea
+   creatures float, whatever the dug bed does. A2S1 has 199 such objects.
+3. Otherwise z is the height plane read **bilinearly** at that centre
+   (`0x5e4400`: floor both coordinates, clamp the four corners into the
+   grid, along y at each x then along x). Not the two triangles a mesh is
+   drawn with — at a tile centre they differ by a quarter of the cell's
+   twist.
+4. On the **underground** (the terrain's flag at `+0x78`), the flags plane
+   is read the same way, truncated to a byte after each step (`0x5e42a0`),
+   and `1.125 · (flag − 16)` is taken off — `9 · 0.0625`, doubled. That is
+   the massif carve undone: an underground height is `18 + 1.125·(flag−16)`
+   (A2S1: flag 32 → 36.0, 26 → 29.3, 21 → 23.6, 19 → 21.4), so every object
+   stands on the cave floor at 18 — 125 of A2S1's 150 underground objects
+   land on 18.0 exactly, the rest within 0.9 — and one placed on a wall
+   tile stands inside the rock.
+
+What this does NOT do: a rigid building on a slope meets the ground only at
+its centre. The game does not flatten under it at load; its maps are flat
+under every building class because the designers (and the generator, which
+flattens a footprint to its average) made them so.
+
 ## The water textures pair up the same way
 
 | file | colour | addressing | role |

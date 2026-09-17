@@ -319,7 +319,7 @@ export function buildScene(
   // reading the renderer takes when it places or moves one (core/coords.ts).
   const heightAt = (floor: number, x: number, y: number): number => {
     const t = terrains[floor] ?? ground;
-    return groundUnder(t.H, t.V, x, y);
+    return groundUnder(t.H, t.flags, t.V, x, y, floor === 1);
   };
 
   // --- geometry/texture resolution (cached per Shared href) ---

@@ -39,16 +39,19 @@ textures (the material list was shared between floors); it now takes its own.
 The browser harness (`npm run harness`) had fallen behind the bridge and could
 not open its map; it opens again.
 
-**Every object stands on the ground at its own centre.** An object is drawn
-at the centre of its tile but was anchored to the height of the tile's corner
+**Every object stands where the game stands it.** An object is drawn at the
+centre of its tile but was anchored to the height of the tile's corner
 vertex, half a tile away — level ground hid it, and on a slope a building
 stood off the ground on the downhill side or sank on the uphill one by half
-a tile of that slope (Senya, Heaven_Military_Post). The anchor is now the
-terrain as drawn, read at the tile's centre, in the loader and in the
-renderer's placement alike. A rigid building on a slope still meets the
-ground only at its centre: that is the game's own behaviour — its shipped
-maps are flat under every building class, and its generator flattens a
-footprint to its average before placing on it.
+a tile of that slope (Senya, Heaven_Military_Post). The rule is now the
+game's own, read out of its executable (docs/TERRAIN_FORMAT.md, "Where an
+object stands"): the height plane read bilinearly at the tile's centre; an
+object on a sea tile at the sea level, 1.5, so ships float instead of lying
+on the dug bed; and on the underground the massif carve taken back off, so
+every object stands on the cave floor at 18 rather than on top of the rock
+walls. A rigid building on a slope still meets the ground only at its
+centre — the game does not flatten under it at load; its maps are flat under
+every building class because their makers, and the generator, made them so.
 
 ## 0.11.0-alpha.1 — 2026-09-16
 

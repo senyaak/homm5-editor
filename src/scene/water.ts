@@ -25,13 +25,10 @@ import type { Terrain } from '../terrain/terrain.ts';
 import type { WaterData } from './payload.ts';
 
 
-// Sea level. `lower` digs the bed to exactly 0 while ordinary ground stays at
-// the 2.0 default, and the editor lays a shore ring at exactly 1.6 between them
-// (90 vertices of it on map 12). That ring is the beach, so the surface has to
-// sit just UNDER it — at 1.6 the ring submerges and the brown rim the original
-// editor shows above the waterline disappears.
-// Not recorded anywhere in the format, so it stays tunable from the toolbar.
-export const SEA_LEVEL = 1.5;
+// Sea level lives in units.ts now, beside the tile size: the anchor rule in
+// src/terrain/ground.ts needs it inside the renderer bundle, which this file
+// (it reads files) never enters.
+export { SEA_LEVEL } from './units.ts';
 
 // The sea's own sheet. Water.dds is CLAMP and near-black by design — the game's
 // sea reads dark, while rivers painted with the _TNL brushes read blue. Loaded

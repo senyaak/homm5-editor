@@ -31,3 +31,16 @@
  * anything converting a grid position multiplies X and Y and leaves Z alone.
  */
 export const UNITS_PER_TILE = 2;
+
+/**
+ * Sea level, world units. The engine's own: an object on a sea tile is put at
+ * this height (the constant at 0xf533e4 of H5_Game_H5E.exe, see
+ * src/terrain/ground.ts), and the sea sheet the editor draws sits here too —
+ * `lower` digs the bed to exactly 0 while ground stays at 2.0, with a shore
+ * ring at 1.6 between them (90 vertices of it on map 12), so the surface has
+ * to lie just UNDER the ring or the brown rim the original editor shows above
+ * the waterline submerges. Here beside the tile size because both sides of
+ * the bundle boundary need it: water.ts reads files and never enters the
+ * renderer.
+ */
+export const SEA_LEVEL = 1.5;

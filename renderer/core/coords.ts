@@ -31,7 +31,7 @@ export function heightOn(fl: Floor3D, x: number, y: number): number {
  * drawn, read at the tile's centre, where the object is (src/terrain/ground.ts).
  */
 export function groundOn(fl: Floor3D, x: number, y: number): number {
-  return groundUnder(fl.heights, fl.V, x, y);
+  return groundUnder(fl.heights, fl.flags, fl.V, x, y, fl.name === 'underground');
 }
 
 /** The same, on the floor currently shown. */
