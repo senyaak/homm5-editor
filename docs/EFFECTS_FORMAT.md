@@ -163,12 +163,18 @@ URIs) and uid (`FxInstancePayload`); the keys go over their own IPC (`map:fx`)
 as typed arrays — as JSON they doubled the scene payload of one map. The
 renderer (renderer/viewport/particles.ts) packs the texture table into atlases
 and draws each DISTINCT ParticleInstance payload as one batch of instanced
-camera-facing quads — one simulation, drawn once per placed copy through a
-per-copy matrix (renderer/viewport/fx.ts keeps which object is which copy). A
-frame update lerps the alive particles' channels at the loop time and rewrites
-the attributes once for all copies. One shared clock and no per-placement
-phase: identical objects flicker in step, being one recording — which is what
-makes the sharing possible. The static stand-in card (`effectGeom` in object-effects.ts)
+camera-facing quads — drawn once per placed copy through a per-copy matrix
+(renderer/viewport/fx.ts keeps which object is which copy). The recording
+itself is sampled ONCE, at its own rate, into a table on the GPU — the alive
+particles of each frame, three half-float texels each, one table per uid
+however many instances play it (24 MB for A2C1M1's 82) — and a frame update
+only decides which copies of the trigger train are playing and at which
+frame each is: at most eight (base, count) segments as uniforms, from which
+the vertex shader finds its particle. Playback steps at the recording's rate
+(30 Hz) rather than lerping between keys per display frame. One shared clock
+and no per-placement phase: identical objects flicker in step, being one
+recording — which is what makes the sharing possible. The static stand-in
+card (`effectGeom` in object-effects.ts)
 stays in the geometry — an effect-only object has nothing else to click —
 but is DRAWN, and PICKED, only with the explorer's "effect markers" checkbox
 on (`GeomPart.card`; `setFxCardsVisible` in geoms.ts swaps the card's slot

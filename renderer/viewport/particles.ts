@@ -2,19 +2,25 @@
 //
 // The data is a recording — per particle a birth/death frame and keys for
 // centre, rotation, size, colour and texture frame — so "simulation" here is
-// only interpolation. Each ParticleInstance becomes one instanced draw of
-// camera-facing quads; a frame update walks the alive particles, lerps their
-// channels at the current loop time and rewrites the instance attributes.
+// only interpolation, and it is done ONCE, when the recording is first
+// needed: every frame of it is sampled at its own rate into a TABLE — the
+// alive particles of frame 0, then of frame 1, … — that lives on the GPU as a
+// half-float texture, three texels an entry, one table per effect uid however
+// many instances and copies play it (SLICE_fx_performance.md §3.3). Playing
+// is then a lookup: the vertex shader reads its particle's entry and builds
+// the camera-facing quad.
 //
 // ONE SIMULATION SERVES EVERY COPY. A map places the same effect over and over
 // (182 campfires on one shipped map), and since every copy is at the same
-// time on the one clock, they are one set of particle attributes drawn once
-// per copy — the instancing.ts idea one level down. The quad instances run
-// particles × copies: the particle attributes advance once every `capacity`
-// instances (their divisor), the copy is `gl_InstanceID % capacity`, and its
-// matrix is fetched from a small float texture with a row per copy. A copy
-// past `uCopies` collapses to nothing, which is how a batch with headroom
-// draws only the copies it has.
+// time on the one clock, a batch — one ParticleInstance payload — draws once
+// for all its copies: the quad instances run particles × copies, the copy is
+// `gl_InstanceID % capacity`, its matrix is fetched from a small float
+// texture with a row per copy, and a copy past `uCopies` collapses to nothing.
+//
+// What is left for the CPU each frame is the TRIGGER TRAIN (below): which
+// copies of the recording are playing and at which frame each is. That is at
+// most eight (frame, first entry, count) segments handed over as uniforms;
+// the shader finds its segment by cumulative count.
 //
 // The recording is a ONE-SHOT, not a loop: in 1911 of 1921 files the
 // population ramps from zero and dies back to zero. What keeps a campfire
@@ -130,38 +136,65 @@ async function buildAtlas(
   return { tex: await make((t) => t.c, !rawColor), alpha: await make((t) => t.a, false), cols, rows };
 }
 
+/** Entries per texture row: the width is `TABLE_ROW × 3` texels, well under any GPU's limit. */
+const TABLE_ROW = 1024;
+const TABLE_W = TABLE_ROW * 3;
+
 // The copy this quad instance belongs to, and its matrix — a row of four
 // texels in uMat. A slot past the copies in use draws nothing: its corner
 // scale is zeroed, so the quad has no area.
+//
+// And the particle: instance / capacity counts through the segments the CPU
+// handed over this frame — segment k is entries uSegBase[k] … of the table,
+// uSegEnd[k] particles in from the start — to an entry, three texels wide.
 const COPY = `
 uniform sampler2D uMat;
 uniform int uCapacity;
 uniform int uCopies;
+uniform sampler2D uTable;
+uniform int uSegs;
+uniform int uSegBase[8];
+uniform int uSegEnd[8];
 int copyIndex() { return gl_InstanceID % uCapacity; }
 mat4 copyMatrix(int c) {
   return mat4(texelFetch(uMat, ivec2(0, c), 0), texelFetch(uMat, ivec2(1, c), 0),
               texelFetch(uMat, ivec2(2, c), 0), texelFetch(uMat, ivec2(3, c), 0));
+}
+int entryIndex() {
+  int pi = gl_InstanceID / uCapacity;
+  int start = 0;
+  for (int k = 0; k < 8; k++) {
+    if (k >= uSegs) break;
+    if (pi < uSegEnd[k]) return uSegBase[k] + (pi - start);
+    start = uSegEnd[k];
+  }
+  return 0;
+}
+struct Particle { vec3 center; vec3 sizeRot; vec4 color; float tex; };
+Particle particle(int e) {
+  ivec2 t = ivec2((e % ${TABLE_ROW}) * 3, e / ${TABLE_ROW});
+  vec4 a = texelFetch(uTable, t, 0);
+  vec4 b = texelFetch(uTable, t + ivec2(1, 0), 0);
+  vec4 c = texelFetch(uTable, t + ivec2(2, 0), 0);
+  return Particle(a.xyz, vec3(b.xy, a.w), c, b.z);
 }`;
 
 const VERT = `
-in vec3 aCenter;
-in vec3 aSizeRot;
-in vec4 aColor;
-in float aTex;
 out vec2 vUv;
 out vec4 vColor;
 out float vTex;
 ${COPY}
 void main() {
   int ci = copyIndex();
-  vec4 c = viewMatrix * modelMatrix * copyMatrix(ci) * vec4(aCenter, 1.0);
-  float cr = cos(aSizeRot.z), sr = sin(aSizeRot.z);
-  vec2 corner = position.xy * aSizeRot.xy * (ci < uCopies ? 1.0 : 0.0);
+  Particle P = particle(entryIndex());
+  vec4 c = viewMatrix * modelMatrix * copyMatrix(ci) * vec4(P.center, 1.0);
+  float cr = cos(P.sizeRot.z), sr = sin(P.sizeRot.z);
+  vec2 corner = position.xy * P.sizeRot.xy * (ci < uCopies ? 1.0 : 0.0);
   c.xy += vec2(corner.x * cr - corner.y * sr, corner.x * sr + corner.y * cr);
   gl_Position = projectionMatrix * c;
   vUv = uv;
-  vColor = aColor;
-  vTex = aTex;
+  vColor = P.color;
+  vTex = P.tex;
 }`;
 
 // A STANDING system (derived from its bake in createFxSystem — every particle
@@ -174,10 +207,6 @@ void main() {
 // turned a field of grass into glowing scribble: seen from a low camera every
 // card tipped toward the lens and the clumps piled into a web.
 const VERT_STATIC = `
-in vec3 aCenter;
-in vec3 aSizeRot;
-in vec4 aColor;
-in float aTex;
 uniform vec2 uPivot;
 out vec2 vUv;
 out vec4 vColor;
@@ -185,19 +214,20 @@ out float vTex;
 ${COPY}
 void main() {
   int ci = copyIndex();
-  vec3 center = (modelMatrix * copyMatrix(ci) * vec4(aCenter, 1.0)).xyz;
+  Particle P = particle(entryIndex());
+  vec3 center = (modelMatrix * copyMatrix(ci) * vec4(P.center, 1.0)).xyz;
   vec3 toCam = cameraPosition - center;
   vec2 h = toCam.xy;
   h = dot(h, h) > 1e-8 ? normalize(h) : vec2(1.0, 0.0);
   vec3 rightW = vec3(-h.y, h.x, 0.0);
-  float cr = cos(aSizeRot.z), sr = sin(aSizeRot.z);
-  vec2 corner = (position.xy - 0.5 * uPivot) * aSizeRot.xy * (ci < uCopies ? 1.0 : 0.0);
+  float cr = cos(P.sizeRot.z), sr = sin(P.sizeRot.z);
+  vec2 corner = (position.xy - 0.5 * uPivot) * P.sizeRot.xy * (ci < uCopies ? 1.0 : 0.0);
   vec2 rc = vec2(corner.x * cr - corner.y * sr, corner.x * sr + corner.y * cr);
   vec3 world = center + rightW * rc.x + vec3(0.0, 0.0, 1.0) * rc.y;
   gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
   vUv = uv;
-  vColor = aColor;
-  vTex = aTex;
+  vColor = P.color;
+  vTex = P.tex;
 }`;
 
 const FRAG = `
@@ -263,6 +293,128 @@ const STRIDE = { pos: 4, rot: 2, size: 3, color: 5, tex: 2 } as const;
 type Chan = keyof typeof STRIDE;
 
 /**
+ * One recording, sampled frame by frame and laid out for the GPU.
+ *
+ * Entry `e` is three RGBA16F texels: `x y z rot`, `w h tex −`, `r g b a`.
+ * Frame `f`'s alive particles are the entries `base[f] .. base[f] + count[f]`;
+ * hidden ones (tex −1) are left out, as the sampler left them out. Shared by
+ * uid across every instance and copy that plays the effect, and reference-
+ * counted so the last batch to go takes the texture with it.
+ */
+export interface FxTable {
+  tex: THREE.DataTexture;
+  base: Int32Array;
+  count: Int32Array;
+  /** Frames the table has: the recording's whole length, 0 … frames-1. */
+  frames: number;
+  entries: number;
+  refs: number;
+}
+const tables = new Map<string, FxTable>();
+
+/** The table for a uid — baked on first use, shared after. Pair with releaseTable. */
+function tableFor(uid: string, baked: FxTransfer): FxTable {
+  const have = tables.get(uid);
+  if (have) { have.refs++; return have; }
+  const t0 = performance.now();
+  const t = bakeTable(baked);
+  tables.set(uid, t);
+  const ms = performance.now() - t0;
+  if (ms > 20) console.log(`[perf] fx table ${uid.slice(0, 8)}: ${t.entries} entries over ${t.frames} frames in ${ms | 0}ms`);
+  return t;
+}
+
+function releaseTable(uid: string): void {
+  const t = tables.get(uid);
+  if (!t || --t.refs > 0) return;
+  t.tex.dispose();
+  tables.delete(uid);
+}
+
+/** What the tables hold right now — for view.perf(). */
+export function fxTableStats(): { tables: number; entries: number; bytes: number } {
+  let entries = 0, bytes = 0;
+  for (const t of tables.values()) { entries += t.entries; bytes += (t.tex.image.data as Uint16Array).byteLength; }
+  return { tables: tables.size, entries, bytes };
+}
+
+/**
+ * Sample every frame of a recording into a table.
+ *
+ * Walks the frames in order with a cursor per particle and channel, exactly
+ * as the per-frame sampler did — the same lerp between the same keys, at the
+ * recording's own integer frames. Two passes: count the entries so the
+ * texture is allocated once, then fill.
+ */
+export function bakeTable(baked: FxTransfer): FxTable {
+  const parts = baked.particles;
+  const frames = Math.max(1, Math.ceil(baked.duration * baked.rate));
+  const base = new Int32Array(frames + 1), count = new Int32Array(frames);
+  // Particles sorted by birth: frame f's candidates are a prefix of this order,
+  // and a particle whose death has passed is skipped, not scanned twice.
+  const order = [...parts.keys()].sort((a, b) => parts[a]!.birth - parts[b]!.birth);
+  let entries = 0, born = 0;
+  for (let f = 0; f < frames; f++) {
+    while (born < order.length && parts[order[born]!]!.birth <= f) born++;
+    let c = 0;
+    for (let i = 0; i < born; i++) {
+      const p = parts[order[i]!]!;
+      if (f > p.death) continue;
+      // Hidden frames are decided by the tex channel alone — it is stepped, so
+      // the value at f is the last key at or before it.
+      if (texAt(p.tex, f) < 0) continue;
+      c++;
+    }
+    base[f] = entries; count[f] = c; entries += c;
+  }
+  base[frames] = entries;
+  const rows = Math.max(1, Math.ceil(entries / TABLE_ROW));
+  const data = new Uint16Array(TABLE_W * rows * 4);
+  const cursors = { pos: new Int32Array(parts.length), rot: new Int32Array(parts.length), size: new Int32Array(parts.length), color: new Int32Array(parts.length), tex: new Int32Array(parts.length) };
+  const v: number[] = [0, 0, 0, 0];
+  const half = THREE.DataUtils.toHalfFloat;
+  let e = 0;
+  born = 0;
+  for (let f = 0; f < frames; f++) {
+    while (born < order.length && parts[order[born]!]!.birth <= f) born++;
+    for (let i = 0; i < born; i++) {
+      const pi = order[i]!, p = parts[pi]!;
+      if (f > p.death) continue;
+      const ch = (name: Chan, arr: Float32Array, lerp: boolean): void => {
+        cursors[name][pi] = sample(arr, STRIDE[name], cursors[name][pi]!, f, v, lerp);
+      };
+      ch('tex', p.tex, false);
+      if (v[0]! < 0) continue;
+      const o = e * 12;
+      data[o + 6] = half(v[0]!);
+      ch('pos', p.pos, true);
+      data[o] = half(v[0]!); data[o + 1] = half(v[1]!); data[o + 2] = half(v[2]!);
+      ch('rot', p.rot, true);
+      data[o + 3] = half(v[0]!);
+      ch('size', p.size, true);
+      data[o + 4] = half(Math.abs(v[0]!)); data[o + 5] = half(Math.abs(v[1]!));
+      ch('color', p.color, true);
+      data[o + 8] = half(v[0]! / 255); data[o + 9] = half(v[1]! / 255);
+      data[o + 10] = half(v[2]! / 255); data[o + 11] = half(v[3]! / 255);
+      e++;
+    }
+  }
+  const tex = new THREE.DataTexture(data, TABLE_W, rows, THREE.RGBAFormat, THREE.HalfFloatType);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return { tex, base, count, frames, entries, refs: 1 };
+}
+
+/** The tex channel's value at frame f: stepped, so the last key at or before f. */
+function texAt(a: Float32Array, f: number): number {
+  let k = 0;
+  while ((k + 1) * 2 < a.length && a[(k + 1) * 2]! <= f) k++;
+  return a[k * 2 + 1]!;
+}
+
+/**
  * Sample a flat channel at frame `f`, linearly interpolated, into `out`
  * starting at `at`. `cur` is this channel's cursor (last key at or before f),
  * advanced in place — frames only move forward between calls until the loop
@@ -314,10 +466,10 @@ export function createFxBatch(
   const recSec = recFrames / baked.rate;
   const period = (fx.endCycle > 0 ? fx.endCycle : recSec) / fx.speed;
   const copies = fx.cycleCount > 0 ? fx.cycleCount : Infinity;
-  // Copies alive at once. The library maxes out at 6 (adventure-reachable);
+  // Copies of the recording alive at once become the shader's segments, of
+  // which there are 8: the library maxes out at 6 (adventure-reachable), and
   // 8 caps a hypothetical pathological file, not anything observed.
-  const overlap = Math.max(1, Math.min(8, Math.ceil(recPlaySec / period - 1e-6), copies === Infinity ? 8 : copies));
-  const n = Math.min(baked.maxAlive * overlap, 4096);
+  const table = tableFor(fx.uid, baked);
   const quad = new THREE.PlaneGeometry(1, 1);
   // A PARTICLE FRAME IS AUTHORED UPSIDE DOWN: the art's "up" is the image's
   // BOTTOM row, so the quad's v runs the other way from three's (which puts
@@ -334,32 +486,14 @@ export function createFxBatch(
   // asymmetric families are the measurement.
   const uv = quad.getAttribute('uv').clone();
   for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
-  // The particle attributes: one set, `n` wide, written by the simulation and
-  // read by every copy — their divisor is the copy capacity, so instance
-  // `i` reads particle `i / capacity`. The divisor is fixed when a buffer is
-  // bound (three caches the binding by attribute identity), so growing the
-  // capacity means a new geometry over the same arrays; the arrays and what
-  // was written into them carry over.
-  const center = new Float32Array(n * 3), sizeRot = new Float32Array(n * 3);
-  const color = new Float32Array(n * 4), tex = new Float32Array(n);
+  // Nothing per instance in the geometry: a quad instance finds its particle
+  // in the table and its copy in the matrix texture from gl_InstanceID alone.
+  const geo = new THREE.InstancedBufferGeometry();
+  geo.index = quad.index;
+  geo.setAttribute('position', quad.getAttribute('position'));
+  geo.setAttribute('uv', uv);
+  geo.instanceCount = 0;
   let capacity = 1 + COPY_HEADROOM;
-  let attrs!: { aCenter: THREE.InstancedBufferAttribute; aSizeRot: THREE.InstancedBufferAttribute; aColor: THREE.InstancedBufferAttribute; aTex: THREE.InstancedBufferAttribute };
-  function makeGeometry(): THREE.InstancedBufferGeometry {
-    const g = new THREE.InstancedBufferGeometry();
-    g.index = quad.index;
-    g.setAttribute('position', quad.getAttribute('position'));
-    g.setAttribute('uv', uv);
-    attrs = {
-      aCenter: new THREE.InstancedBufferAttribute(center, 3, false, capacity),
-      aSizeRot: new THREE.InstancedBufferAttribute(sizeRot, 3, false, capacity),
-      aColor: new THREE.InstancedBufferAttribute(color, 4, false, capacity),
-      aTex: new THREE.InstancedBufferAttribute(tex, 1, false, capacity),
-    };
-    for (const [name, a] of Object.entries(attrs)) { a.setUsage(THREE.DynamicDrawUsage); g.setAttribute(name, a); }
-    g.instanceCount = 0;
-    return g;
-  }
-  let geo = makeGeometry();
   // A row of four texels per copy: its matrix, column by column.
   let matData = new Float32Array(capacity * 16);
   let matTex = makeMatrixTexture(matData, capacity);
@@ -378,6 +512,10 @@ export function createFxBatch(
       uMat: { value: matTex },
       uCapacity: { value: capacity },
       uCopies: { value: 0 },
+      uTable: { value: table.tex },
+      uSegs: { value: 0 },
+      uSegBase: { value: new Array<number>(8).fill(0) },
+      uSegEnd: { value: new Array<number>(8).fill(0) },
       ...(standing ? { uPivot: { value: new THREE.Vector2(fx.pivot?.[0] ?? 0, fx.pivot?.[1] ?? 0) } } : {}),
     },
     transparent: true,
@@ -391,7 +529,7 @@ export function createFxBatch(
   });
 
   const mesh = new THREE.Mesh(geo, mat);
-  // Positions live in the attributes and the copies all over the map: three.js
+  // Positions live in the table and the copies all over the map: three.js
   // cannot know the bounds, and a culled fire that pops in at the screen edge
   // is worse than the cost of always issuing the draw.
   mesh.frustumCulled = false;
@@ -411,24 +549,20 @@ export function createFxBatch(
     (mat.uniforms.uGrid!.value as THREE.Vector2).set(cols, rows);
   });
 
-  const parts = baked.particles;
-  // One playback slot per concurrently-alive copy: which trigger (k) it is
-  // playing, its last frame, and a channel cursor per particle. A slot is
-  // recycled (cursors reset) when its trigger number moves on.
-  const slots = Array.from({ length: overlap }, () => ({
-    k: -1, lastF: -1,
-    cursors: { pos: new Int32Array(parts.length), rot: new Int32Array(parts.length), size: new Int32Array(parts.length), color: new Int32Array(parts.length), tex: new Int32Array(parts.length) },
-  }));
   // A finite train fires its copies once. On a clip-hung effect the engine
   // replays the whole effect every animation cycle — `retrigger` carries the
   // clip length — so the phoenix's one-burst wing whoosh repeats per flap.
   // An object effect's finite train really does play only once (7 instances
   // map-wide): a birth flash the editor shows at map open, then quiet. [~]
   const retrigger = copies !== Infinity && fx.retrigger ? fx.retrigger : 0;
-  const v: number[] = [0, 0, 0, 0];
+  const segBase = mat.uniforms.uSegBase!.value as number[];
+  const segEnd = mat.uniforms.uSegEnd!.value as number[];
 
   const batch: FxBatch = {
     mesh, fx, local, copies: 0, alive: 0,
+    // The trigger train, as the sampler ran it: copies k whose recording is
+    // under way at t, each at its own frame. Every alive copy is a segment of
+    // the table; the shader draws them back to back.
     update(seconds: number) {
       if (!this.copies) return;
       // Every copy of an effect is at the same t. The per-placement phase
@@ -440,47 +574,22 @@ export function createFxBatch(
       if (retrigger > 0) t = ((t % retrigger) + retrigger) % retrigger;
       const kMax = Math.min(Math.floor(t / period), copies - 1);
       const kMin = Math.max(0, Math.ceil((t - recPlaySec) / period));
-      let w = 0;
-      for (let k = kMin; k <= kMax && w < n; k++) {
-        const f = (t - k * period) * fx.speed * baked.rate;
-        const slot = slots[k % overlap]!;
-        if (slot.k !== k || f < slot.lastF) {
-          slot.k = k;
-          for (const c of Object.values(slot.cursors)) c.fill(0);
-        }
-        slot.lastF = f;
-        const cursors = slot.cursors;
-        for (let i = 0; i < parts.length && w < n; i++) {
-          const p = parts[i]!;
-          if (f < p.birth || f > p.death) continue;
-          const ch = (name: Chan, arr: Float32Array, lerp: boolean): void => {
-            cursors[name][i] = sample(arr, STRIDE[name], cursors[name][i]!, f, v, lerp);
-          };
-          ch('tex', p.tex, false);
-          if (v[0]! < 0) continue; // hidden this frame
-          tex[w] = v[0]!;
-          ch('pos', p.pos, true);
-          center[w * 3] = v[0]!; center[w * 3 + 1] = v[1]!; center[w * 3 + 2] = v[2]!;
-          ch('size', p.size, true);
-          sizeRot[w * 3] = Math.abs(v[0]!); sizeRot[w * 3 + 1] = Math.abs(v[1]!);
-          ch('rot', p.rot, true);
-          sizeRot[w * 3 + 2] = v[0]!;
-          ch('color', p.color, true);
-          color[w * 4] = v[0]! / 255; color[w * 4 + 1] = v[1]! / 255;
-          color[w * 4 + 2] = v[2]! / 255; color[w * 4 + 3] = v[3]! / 255;
-          w++;
-        }
+      let segs = 0, total = 0;
+      for (let k = kMin; k <= kMax && segs < 8; k++) {
+        const f = Math.floor((t - k * period) * fx.speed * baked.rate);
+        if (f < 0 || f >= table.frames) continue;
+        const c = table.count[f]!;
+        if (!c) continue;
+        segBase[segs] = table.base[f]!;
+        total += c;
+        segEnd[segs] = total;
+        segs++;
       }
-      this.alive = w;
+      mat.uniforms.uSegs!.value = segs;
+      this.alive = total;
       // Every alive particle, once per slot — the unused slots collapse in the
-      // shader. Only the written prefix of each array goes up.
-      geo.instanceCount = w * capacity;
-      if (!w) return;
-      for (const a of Object.values(attrs)) {
-        a.clearUpdateRanges();
-        a.addUpdateRange(0, w * a.itemSize);
-        a.needsUpdate = true;
-      }
+      // shader.
+      geo.instanceCount = total * capacity;
     },
     addCopy() {
       if (this.copies === capacity) grow();
@@ -517,13 +626,15 @@ export function createFxBatch(
       geo.dispose();
       mat.dispose();
       matTex.dispose();
+      releaseTable(fx.uid);
       (mat.uniforms.uAtlas!.value as THREE.Texture | null)?.dispose();
       (mat.uniforms.uAlpha!.value as THREE.Texture | null)?.dispose();
     },
   };
 
-  /** Twice the slots: a new geometry over the same arrays, a wider matrix texture. */
+  /** Twice the slots: a wider matrix texture, and the instances count over it. */
   function grow(): void {
+    const alive = geo.instanceCount / capacity;
     capacity *= 2;
     const wider = new Float32Array(capacity * 16);
     wider.set(matData);
@@ -532,11 +643,7 @@ export function createFxBatch(
     matTex = makeMatrixTexture(matData, capacity);
     mat.uniforms.uMat!.value = matTex;
     mat.uniforms.uCapacity!.value = capacity;
-    const alive = geo.instanceCount / (capacity / 2);
-    geo.dispose();
-    geo = makeGeometry();
     geo.instanceCount = alive * capacity;
-    mesh.geometry = geo;
   }
 
   return { batch, ready };

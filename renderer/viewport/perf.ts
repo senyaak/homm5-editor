@@ -15,6 +15,7 @@
 import * as THREE from 'three';
 import { state, activeFloor } from '#core/state.ts';
 import { renderer } from '#viewport/stage.ts';
+import { fxTableStats } from '#viewport/particles.ts';
 
 /** Frames kept for the percentiles — ten seconds at 60 Hz. */
 const RING = 600;
@@ -83,17 +84,16 @@ function textureBytes(t: THREE.Texture | null): number {
 }
 
 /** The particle side of the active floor, summed over its batches. */
-function fxSummary(): { batches: number; copies: number; slots: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number } {
+function fxSummary(): { batches: number; copies: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number; tables: number; tableEntries: number; tableBytes: number } {
   const fl = state.world ? activeFloor() : null;
-  const out = { batches: 0, copies: 0, slots: 0, alive: 0, atlases: 0, atlasBytes: 0, distinctAtlases: 0 };
+  const t = fxTableStats();
+  const out = { batches: 0, copies: 0, alive: 0, atlases: 0, atlasBytes: 0, distinctAtlases: 0, tables: t.tables, tableEntries: t.entries, tableBytes: t.bytes };
   if (!fl) return out;
   const seen = new Set<string>();
   for (const { batch } of fl.fx) {
     out.batches++;
     out.copies += batch.copies;
     out.alive += batch.alive;
-    const geo = batch.mesh.geometry as THREE.InstancedBufferGeometry;
-    out.slots += (geo.getAttribute('aTex') as THREE.InstancedBufferAttribute | undefined)?.count ?? 0;
     const u = (batch.mesh.material as THREE.ShaderMaterial).uniforms;
     for (const name of ['uAtlas', 'uAlpha']) {
       const t = u[name]?.value as THREE.Texture | null;

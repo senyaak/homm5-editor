@@ -7,10 +7,14 @@
 > known: the frame is CPU-bound, and the effects are a third of it. The plan
 > (§3) is three steps, each smaller than the one it replaces: stop spreading
 > phases, draw every copy of an effect from one simulation, and put the
-> recording on the GPU so the simulation is a lookup. 3.1 and 3.2 are in
+> recording on the GPU so the simulation is a lookup. **All three are in**
 > (2026-09-17): 313 copies in 112 batches, atlases 311 → 146 MB, calls 861 →
-> 662, frame 19.1 → 15.1 ms (fx 4.3 → 3.7, render 10.6 → 8.0). 3.3 is next.
-> When it ships, fold the surviving facts into
+> 662, `advanceFx` 4.3 → 0.2 ms, the frame 19.1 → 11.6 ms p50 / 20.6 → 13.8
+> p95 — under vsync with every effect playing. 82 baked recordings on the
+> GPU take 24 MB (§3.3, done as recording-per-uid tables rather than the
+> composite-period tables first planned: 23 MB against 148). What remains is
+> §7 — not effects — and 3.6 (atlases as RGBA, halving the 146 MB), which
+> was never in this slice's three steps. Fold the surviving facts into
 > [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) and retire this file.
 
 Reading first: [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) (what the data

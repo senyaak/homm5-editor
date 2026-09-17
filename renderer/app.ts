@@ -601,7 +601,11 @@ interface ViewApi {
     pixelRatio: number; size: number[];
     /** The loop's sections — input, idle, scene, fx, lights, render — as percentiles. */
     sections: Record<string, { p50: number; p95: number; max: number }>;
-    fx: { batches: number; copies: number; slots: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number };
+    fx: {
+      batches: number; copies: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number;
+      /** The baked recordings on the GPU, one per effect uid: how many, entries, bytes. */
+      tables: number; tableEntries: number; tableBytes: number;
+    };
     loaf: LongFrame[];
   };
   /** Forget the frames and long frames seen so far — to measure from here. */

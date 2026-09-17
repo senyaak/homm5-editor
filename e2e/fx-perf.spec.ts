@@ -43,8 +43,9 @@ const line = (tag: string, p: Perf): string =>
   + ` · js ${ms(p.js.p50)}/${ms(p.js.p95)}/${ms(p.js.max)} ms`
   + ` [${Object.entries(p.sections).map(([k, v]) => `${k} ${ms(v.p50)}`).join(', ')}]`
   + ` · ${p.calls} calls · ${p.triangles} tris · ${p.textures} textures`
-  + ` · fx ${p.fx.copies} copies in ${p.fx.batches} batches, ${p.fx.alive}/${p.fx.slots} alive/slots,`
-  + ` ${p.fx.atlases} atlases (${p.fx.distinctAtlases} distinct) = ${mb(p.fx.atlasBytes)}`;
+  + ` · fx ${p.fx.copies} copies in ${p.fx.batches} batches, ${p.fx.alive} alive,`
+  + ` ${p.fx.atlases} atlases (${p.fx.distinctAtlases} distinct) = ${mb(p.fx.atlasBytes)},`
+  + ` ${p.fx.tables} tables = ${mb(p.fx.tableBytes)}`;
 
 /** Watch the frame for WINDOW_MS from a clean slate. */
 async function reading(): Promise<Perf> {
@@ -107,9 +108,20 @@ test('A2C1M1: the frame with effects on and off', { tag: '@data' }, async () => 
     when: new Date().toISOString(), loadMs, fxReadyMs, gpu, on, off, metrics,
   }, null, 2));
 
-  // The readings ARE the test; what is asserted is that they were readings.
+  // The readings ARE the test; what is asserted is that they were readings…
   expect(on.frames).toBeGreaterThan(30);
   expect(off.frames).toBeGreaterThan(30);
   expect(on.fx.copies).toBeGreaterThan(0);
+  // …and the ceilings the slice's three steps earned, so a later change cannot
+  // quietly hand them back. Counts and bytes, not milliseconds: those belong
+  // to the machine. The one time asserted is advanceFx's, which is a few
+  // integer divisions per batch now and would only grow if the sampling loop
+  // came back (SLICE_fx_performance.md §1a: 4.3 ms before, 0.2 after).
+  expect(on.fx.batches, 'one batch per distinct effect payload').toBeLessThan(on.fx.copies);
+  expect(on.fx.distinctAtlases, 'every atlas is its own effect').toBe(on.fx.atlases);
+  expect(on.fx.atlasBytes, 'atlases: 146 MB on A2C1M1').toBeLessThan(170 * 1048576);
+  expect(on.fx.tableBytes, 'baked recordings: 24 MB on A2C1M1').toBeLessThan(40 * 1048576);
+  expect(on.calls - off.calls, 'effects cost one draw per batch').toBeLessThanOrEqual(on.fx.batches);
+  expect(on.sections.fx!.p50, 'advanceFx is a lookup, not a sampler').toBeLessThan(1.5);
   expect(errors).toEqual([]);
 });

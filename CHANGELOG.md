@@ -27,6 +27,11 @@ pre-release.
   draw for all 55 chests' sparkle, with each copy's placement in a small
   matrix texture. On A2C1M1 that is 313 effect draws → 112, 311 MB of
   atlases → 146 MB, and the frame 19 → 15 ms.
+- A recording is sampled once, into a table on the GPU, instead of being
+  interpolated for every alive particle every frame; the frame only decides
+  which copies of the trigger train are playing. Effects now cost about a
+  millisecond a frame on A2C1M1 (was 7), and the whole frame holds 60 fps
+  with every effect on.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive
