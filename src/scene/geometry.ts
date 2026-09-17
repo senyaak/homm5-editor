@@ -628,11 +628,14 @@ function decodeMeshGroup(b: Buffer, start: number, end: number, options: MeshOpt
     const src = b.readUInt16LE(remapA.at + i * 2);
     if (src >= posA.count) return null;
     for (let c = 0; c < 3; c++) positions[i * 3 + c] = b.readFloatLE(posA.at + src * 12 + c * 4);
-    // Texture coordinates are 16-bit fixed point over 2048, not floats:
-    // measured across the shipped models they land in [0, 1] this way, and
-    // values above 2048 are genuine tiling rather than garbage.
-    uvs[i * 2] = b.readUInt16LE(vertA.at + i * stride) / UV_SCALE;
-    uvs[i * 2 + 1] = b.readUInt16LE(vertA.at + i * stride + 2) / UV_SCALE;
+    // Texture coordinates are SIGNED 16-bit fixed point over 2048, not
+    // floats: measured across the shipped models they land in [0, 1] this
+    // way, values past 2048 are genuine tiling, and the 2% that are negative
+    // (a smooth tail from 0 down to −14, with spikes at whole −2048 steps)
+    // are tiling the other way — read unsigned they became 16..32 repeats
+    // and striped the random dwellings' lids. Nothing positive exceeds 16.
+    uvs[i * 2] = b.readInt16LE(vertA.at + i * stride) / UV_SCALE;
+    uvs[i * 2 + 1] = b.readInt16LE(vertA.at + i * stride + 2) / UV_SCALE;
     // Authored normals, packed as unsigned bytes with 128 for zero. Worth
     // taking rather than recomputing: computeVertexNormals averages over the
     // faces meeting at a vertex, which smooths every hard edge a modeller put

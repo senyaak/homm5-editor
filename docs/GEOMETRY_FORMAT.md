@@ -124,7 +124,7 @@ Per render vertex the 20-byte attribute stream (tag3) is:
 
 | bytes | field | decode |
 |---|---|---|
-| 0–3 | **UV** | 2× int16 ÷ 2048 (V spans [0,1], U tiles). Confirmed by UV edge-continuity |
+| 0–3 | **UV** | 2× **signed** int16 ÷ 2048 (V spans [0,1], U tiles; 2% of shipped values are negative — tiling the other way, or an edge a hair below 0). Confirmed by UV edge-continuity |
 | 4–7 | (zero / uv2 slot) | unused here |
 | 8–11 | **normal** | byte ×3 + pad, `(b − 128) / 127`, **stored z, y, x** (a D3DCOLOR: B, G, R) |
 | 12–15 | tangent | same packing |

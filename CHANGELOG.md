@@ -78,6 +78,15 @@ every map is lit differently now — and correctly: the sun side is the sun
 side whichever way the object is turned. Meshes the editor writes itself
 (the Pandora box) pack the same order, so the game lights them right too.
 
+**Textures land where they were painted.** The lid of a Random Dwelling
+showed thirty-odd thin stripes where the game shows "RANDOM DWELLING 2"
+(Senya). The texture coordinates in a geometry file are SIGNED 16-bit
+fixed point, and the decoder read them unsigned, so a coordinate a hair
+below zero — or a texture tiled leftward — became sixteen to thirty-two
+repeats of it. A quarter of the shipped models (721 — the snags, fences,
+sand and lava mountains, the Academy's lightning effects) carry a negative
+coordinate somewhere; every one of them draws its texture as authored now.
+
 ## 0.11.0-alpha.1 — 2026-09-16
 
 **Still an alpha, for the same reason as before.** The multiplayer half is as

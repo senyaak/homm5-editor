@@ -351,8 +351,8 @@ export function boxGroup(
       remap[v] = cornerIndex(signs);
       const at = v * VERTEX_STRIDE;
       // One full copy of the texture per face: the quad's corners are its corners.
-      vertices.writeUInt16LE(Math.round(((su + 1) / 2) * UV_SCALE), at);
-      vertices.writeUInt16LE(Math.round(((1 - sv) / 2) * UV_SCALE), at + 2);
+      vertices.writeInt16LE(Math.round(((su + 1) / 2) * UV_SCALE), at);
+      vertices.writeInt16LE(Math.round(((1 - sv) / 2) * UV_SCALE), at + 2);
       packVector(vertices, at + 8, face.normal);
       packVector(vertices, at + 12, face.u);
       packVector(vertices, at + 16, bin);
