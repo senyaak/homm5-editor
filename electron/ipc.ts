@@ -49,6 +49,17 @@ export interface MapListEntry {
  */
 export interface OpenArchivePayload { path: string; inner?: string; stock?: boolean }
 
+/** One process of the app, from `app:metrics` — see EditorApi.appMetrics. */
+export interface AppMetric {
+  /** Chromium's process type: Browser, GPU, Tab, Utility… */
+  type: string;
+  pid: number;
+  /** Working set, KB. */
+  workingSetKB: number;
+  /** Private (unshared) bytes, KB — the number that grows with our uploads. */
+  privateKB: number;
+}
+
 /** Result of `map:open-archive` — the unpacked project, ready for `map:load`. */
 export interface OpenArchiveResult {
   mapPath: string;
@@ -2203,6 +2214,13 @@ export interface EditorApi {
    * answers.
    */
   gpuReport(): Promise<string>;
+  /**
+   * Memory per process, as Chromium counts it: the renderer, the GPU process
+   * (which is where every uploaded texture lives, so a 644 MB atlas set shows
+   * up as ITS working set, not the window's), and the rest. Working set and
+   * private bytes in KB, as Electron reports them.
+   */
+  appMetrics(): Promise<AppMetric[]>;
   /** Open DevTools on the editor window (the fatal screen's escape hatch). */
   openDevTools(): Promise<void>;
   /**

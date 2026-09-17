@@ -28,7 +28,7 @@ import { worldGeos, worldMats, geomParts, geomScale, geomFootprint, geomSkin, ge
 import { materialFor, partTexture, shadeProbe } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
-import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode } from '#viewport/idle.ts';
+import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode, idleTime } from '#viewport/idle.ts';
 import { actorKinds, advanceScene, closeScene, initDialogScenes, openScene, openSceneFile, playing, sceneFile, setPlaying, shotFxCount, shotModelCount, show } from '#features/dialog-scene.ts';
 import type { SceneInfo, ScenesInFileResult } from '#electron/ipc.ts';
 import { roster, objectsOfClass, canCreateClass, mapNames, forgetClass } from '#core/rosters.ts';
@@ -56,6 +56,8 @@ import { initLocalization } from '#features/localization.ts';
 import type { IdleMode } from '#viewport/idle.ts';
 import { syncInstance, removeFromBatch, addToBatch, buildBatches, replaceInstances } from '#viewport/instancing.ts';
 import { loadFx, advanceFx, spawnFx, removeFx } from '#viewport/fx.ts';
+import { markFrame, perfStats, perfReset, lapStart, lap } from '#viewport/perf.ts';
+import type { LongFrame } from '#viewport/perf.ts';
 import { makeLightMap, bakeLightMap, markLightsDirty } from '#viewport/point-lights.ts';
 import { upgradeToSplat, projectBatch, applyProjectedMaterials, setGroundScale, setCliffAmount, cliffsOn, disposeSplats } from '#viewport/splat.ts';
 import { applyAmbient, refreshLighting, sun, uSunDir, uSunCol, uAmbCol, uShadeCol, uLmGain, uFxTint, uWhiten } from '#viewport/lighting.ts';
@@ -580,6 +582,49 @@ interface ViewApi {
     alive: number; visible: boolean; tint: number[];
   }[];
   /**
+   * Where the frame goes, over the last ten seconds: frame time and our own
+   * JS share of it as percentiles (a mean hides exactly the stutter being
+   * chased), the draw calls and triangles of the last frame, three's texture
+   * and geometry counts, and the particle side summed over the active floor —
+   * batches and the copies in them, particle slots and alive particles
+   * (per batch, summed), atlas textures and their bytes as uploaded, and how
+   * many of those atlases are DISTINCT objects (copies of one effect building
+   * their own was the 311 MB in SLICE_fx_performance.md).
+   * `loaf` is Chromium's own attribution of the long frames, newest last.
+   */
+  perf(): {
+    frames: number;
+    frame: { p50: number; p95: number; max: number };
+    js: { p50: number; p95: number; max: number };
+    calls: number; triangles: number;
+    textures: number; geometries: number;
+    pixelRatio: number; size: number[];
+    /** The loop's sections — input, idle, scene, fx, lights, render — as percentiles. */
+    sections: Record<string, { p50: number; p95: number; max: number }>;
+    fx: {
+      batches: number; copies: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number;
+      /** The baked recordings on the GPU, one per effect uid: how many, entries, bytes. */
+      tables: number; tableEntries: number; tableBytes: number;
+    };
+    /** Animated bodies on the active floor, and the baked idle tables behind them (one per creature kind). */
+    idle: { bodies: number; tables: number; tableBytes: number };
+    /** The renderer's JS heap in use, bytes (Chromium's counter; 0 where absent). */
+    jsHeapBytes: number;
+    /** Shadow-map redraws since start, and how many a change asked for (shadows.ts). */
+    shadow: { redraws: number; dirty: number };
+    loaf: LongFrame[];
+  };
+  /** Forget the frames and long frames seen so far — to measure from here. */
+  perfReset(): void;
+  /**
+   * Draw at this many device pixels per CSS pixel from now on (the default is
+   * the display's, capped at 2). A measuring knob: the frame at half the
+   * pixels against the frame at all of them says whether the GPU's fill rate
+   * is what the CPU is waiting for — `render` in `perf()` is the CPU side of
+   * three's submission, and it grows when the GPU is behind.
+   */
+  pixelRatio(r: number): void;
+  /**
    * Place an object through the renderer's own palette path — the one that
    * grafts the new instance onto the LIVE scene (idle, effects, batch).
    * `api.addObject` alone is only the main-process half; a test
@@ -747,18 +792,16 @@ const view: ViewApi = {
     return {
       mode: idleMode(),
       animated: fl?.idle.length ?? 0,
-      time: fl?.idle.reduce((a, o) => Math.max(a, o.time), 0) ?? 0,
+      time: fl?.idle.length ? idleTime() : 0,
       // Which geoms took an animated body, and which stayed batched despite
       // having a skin on record — the two lists that localize "this creature
       // stands still" to a geom without reaching into the scene.
-      geoms: [...new Set(fl?.idle.map((o) => (o.mesh.userData.inst as Instance).g) ?? [])].sort((a, b) => a - b),
+      geoms: [...new Set(fl?.idle.map((o) => o.inst.g) ?? [])].sort((a, b) => a - b),
       skinned: [...geomSkin.keys()].sort((a, b) => a - b),
       fx: fl?.fx.length ?? 0,
       misplaced: (fl?.idle ?? []).filter((o) => {
-        const inst = o.mesh.userData.inst as Instance;
-        return Math.hypot(o.mesh.position.x - tileCenter(inst.x),
-          o.mesh.position.y - tileCenter(inst.y),
-          o.mesh.position.z - inst.z) > 1e-3;
+        const at = new THREE.Vector3().setFromMatrixPosition(o.matrix);
+        return Math.hypot(at.x - tileCenter(o.inst.x), at.y - tileCenter(o.inst.y), at.z - o.inst.z) > 1e-3;
       }).length,
     };
   },
@@ -786,25 +829,33 @@ const view: ViewApi = {
   fxSystems() {
     const fl = state.world ? activeFloor() : null;
     if (!fl) return [];
-    return fl.fx.map((s) => {
-      const g = (s.mesh as unknown as { geometry: THREE.InstancedBufferGeometry }).geometry;
-      const inst = s.mesh.userData.inst as Instance;
-      const tint = ((s.mesh.material as THREE.ShaderMaterial).uniforms.uTint?.value ?? null) as THREE.Color | null;
-      // Where the system actually SITS this frame, not where its object stands:
-      // a glued instance rides an animated bone, and "did the eye glow follow
-      // the head" is a question only this answers.
-      const p = new THREE.Vector3().setFromMatrixPosition(s.mesh.matrix);
+    // One line per COPY, not per batch: the questions asked here are about a
+    // placed object's effect — its position, whether it is alive — and a batch
+    // is the same answer for every copy except where it stands.
+    const m4 = new THREE.Matrix4(), p = new THREE.Vector3();
+    return fl.fx.flatMap((e) => e.at.map((inst, slot) => {
+      const tint = ((e.batch.mesh.material as THREE.ShaderMaterial).uniforms.uTint?.value ?? null) as THREE.Color | null;
+      // Where the copy actually SITS this frame, not where its object stands:
+      // a glued copy rides an animated bone, and "did the eye glow follow the
+      // head" is a question only this answers.
+      p.setFromMatrixPosition(e.batch.copyMatrix(slot, m4));
       return {
-        uid: String(s.mesh.userData.uid ?? ''),
-        shared: inst?.shared ?? '',
-        at: [inst?.x ?? -1, inst?.y ?? -1],
+        uid: e.batch.fx.uid,
+        shared: inst.shared,
+        at: [inst.x, inst.y],
         pos: [p.x, p.y, p.z],
-        glue: s.glue ?? '',
-        alive: g.instanceCount,
-        visible: s.mesh.visible,
+        glue: e.batch.glue ?? '',
+        alive: e.batch.alive,
+        visible: e.batch.mesh.visible,
         tint: tint ? [tint.r, tint.g, tint.b] : [1, 1, 1],
       };
-    });
+    }));
+  },
+  perf: perfStats,
+  perfReset,
+  pixelRatio(r) {
+    renderer.setPixelRatio(r);
+    renderer.setSize(renderer.domElement.clientWidth, renderer.domElement.clientHeight, false);
   },
   async place(o) {
     if (!state.world) throw new Error('no map open');
@@ -851,7 +902,7 @@ const view: ViewApi = {
       : fl?.instances.find((i) => i.id === id) ?? fl?.instances.find((i) => !!i.id && i.id.endsWith(id));
     if (!inst) return null;
     // An animated object is drawn by its own skinned mesh, not by the batch.
-    const drawn = fl!.idle.find((a) => a.mesh.userData.inst === inst)?.mesh ?? fl!.batches.get(inst.g)?.im;
+    const drawn = fl!.idle.find((a) => a.inst === inst)?.kind.mesh ?? fl!.batches.get(inst.g)?.im;
     if (!drawn) return null;
     const list = Array.isArray(drawn.material) ? drawn.material : [drawn.material];
     return list.map((m) => `${m.type} visible=${m.visible} alphaTest=${m.alphaTest} blending=${m.blending}`);
@@ -870,8 +921,8 @@ const view: ViewApi = {
       if (bad.length) unprojected.push(`${what}: ${bad.join(', ')}`); else projected++;
     };
     for (const [g, b] of fl.batches) check(g, b.im.material, `batch g${g} ${b.at.find((it) => it)?.shared?.split('/').pop() ?? '?'}`);
-    for (const a of fl.idle) { const inst = a.mesh.userData.inst as Instance; check(inst.g, a.mesh.material, `animated ${inst.shared.split('/').pop()}`); }
-    return { terrain: terrain.type, splat: !!fl.splat, batches: fl.batches.size + fl.idle.length, projected, unprojected };
+    for (const k of fl.idleKinds.values()) { const inst = k.bodies[0]!.inst; check(inst.g, k.mesh.material, `animated ${inst.shared.split('/').pop()}`); }
+    return { terrain: terrain.type, splat: !!fl.splat, batches: fl.batches.size + fl.idleKinds.size, projected, unprojected };
   },
   shadowCasters() {
     const fl = state.world ? activeFloor() : null;
@@ -887,7 +938,7 @@ const view: ViewApi = {
       else missing.push(`${what} cast=${m.castShadow} receive=${m.receiveShadow}`);
     };
     for (const [g, b] of fl.batches) count(b.im, `batch g${g}`);
-    for (const a of fl.idle) count(a.mesh, `idle ${(a.mesh.userData.inst as Instance | undefined)?.shared ?? '?'}`);
+    for (const k of fl.idleKinds.values()) count(k.mesh, `idle ${k.bodies[0]?.inst.shared ?? '?'}`);
     return { drawn, casting, missing };
   },
   snapshot() {
@@ -1138,6 +1189,7 @@ function bakePendingLights(now: number): void {
   if (frame > JANK_MS) console.warn(`[perf] jank: main thread blocked ${frame | 0}ms`);
   const dt = Math.min(frame / 1000, 0.1); // clamp so a stall can't teleport
   lastT = now;
+  lapStart();
   keyPan(dt);
   // Resolve at most one deferred hover pick per frame (see hoverEv).
   if (hoverEv) { updateHoverCursor(tileUnderCursor(hoverEv)); hoverEv = null; }
@@ -1148,14 +1200,23 @@ function bakePendingLights(now: number): void {
   // was the map's viewpoint, however carefully the shot had been aimed.
   if (!playing.info) controls.update();
   if (cam.top) syncTopCamera(); // follow pan/zoom + the orbit target each frame
+  lap('input');
   advanceIdle(dt);
+  lap('idle');
   // A scene drives the camera and its actors' clips; does nothing while the
   // window is showing a map.
   advanceScene(dt);
+  lap('scene');
   advanceFx(dt);
+  lap('fx');
   bakePendingLights(now);
   updateShadowCamera(); // after controls.update(): it follows the orbit target
+  lap('lights');
   renderer.render(scene, cam.active);
+  lap('render');
+  // What this frame cost, for view.perf(): rAF to rAF, and the part of it that
+  // was this function (the rest is Chromium's — paint, compositing, waiting).
+  markFrame(frame, performance.now() - now);
 })();
 
 

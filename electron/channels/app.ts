@@ -4,7 +4,7 @@
 
 import { app, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
-import type { LaunchGameResult } from '#electron/ipc.ts';
+import type { AppMetric, LaunchGameResult } from '#electron/ipc.ts';
 import { gameRoot, readSettings, saveSettings } from '#electron/paths.ts';
 import { state } from '#electron/state.ts';
 import { spawn } from 'node:child_process';
@@ -79,6 +79,14 @@ export function registerApp(): void {
   });
 
   ipcMain.handle('app:gpu-report', gpuReport);
+
+  // Memory per process — the GPU process is the one a texture budget shows up
+  // in, and nothing inside the window can see it.
+  ipcMain.handle('app:metrics', (): AppMetric[] => app.getAppMetrics().map((m) => ({
+    type: m.type, pid: m.pid,
+    workingSetKB: m.memory.workingSetSize,
+    privateKB: m.memory.privateBytes ?? 0,
+  })));
 
   ipcMain.handle('app:open-devtools', () => { state.win?.webContents.openDevTools({ mode: 'detach' }); });
 

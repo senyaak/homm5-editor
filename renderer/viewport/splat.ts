@@ -11,7 +11,7 @@ import * as THREE from 'three';
 
 import { uiPrefs } from '#core/prefs.ts';
 import type { Floor3D } from '#core/state.ts';
-import type { IdleObject } from '#viewport/skinning.ts';
+import type { IdleKind } from '#viewport/skinning.ts';
 import type { Instance } from '#src/scene/payload.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { DRAPE_PARS, DRAPE_VERT_PARS, TERRAIN_DEPTH, drapeUniforms } from '#viewport/drape.ts';
@@ -307,17 +307,17 @@ export function applyProjectedMaterials(fl: Floor3D): void {
   // a light grey plate and the floor as a see-through decal — only with the
   // animation on, which is why the harness, built without it, showed neither
   // (Senya).
-  for (const idle of fl.idle) {
-    try { projectIdle(fl, idle); } catch (e) { console.error('projected material failed for an animated object', e); }
+  for (const kind of fl.idleKinds.values()) {
+    try { projectIdle(fl, kind); } catch (e) { console.error('projected material failed for an animated object', e); }
   }
 }
 
-/** The animated-body counterpart of projectBatch: the same materials on the skinned mesh. */
-export function projectIdle(fl: Floor3D, idle: IdleObject): void {
-  const g = (idle.mesh.userData.inst as Instance | undefined)?.g;
+/** The animated-body counterpart of projectBatch: the same materials on a kind's skinned draw. */
+export function projectIdle(fl: Floor3D, kind: IdleKind): void {
+  const g = kind.bodies[0]?.inst.g;
   if (g === undefined) return;
-  const list = projectedList(fl, g, idle.mesh.material);
-  if (list) idle.mesh.material = list;
+  const list = projectedList(fl, g, kind.mesh.material);
+  if (list) kind.mesh.material = list;
 }
 
 /**

@@ -287,9 +287,7 @@ function cueShotFx(shot: ShotView): void {
       for (const fx of fired.fx) {
         const baked = fxBank[fx.uid];
         if (!baked?.particles.length) continue;
-        // No phase spread: eight copies of one spell over a line of soldiers are
-        // meant to go off together, unlike thirty campfires on a map.
-        const { system } = createFxSystem(fx, baked, m4, 0, uFxTint);
+        const { system } = createFxSystem(fx, baked, m4, uFxTint);
         stage.add(system.mesh);
         shotFx.push({ system, at: fired.at });
       }
@@ -485,17 +483,15 @@ export async function openScene(inner: string, file?: string): Promise<SceneInfo
   // …and lit. An actor's idle effect is not a moment in the scene, it is what
   // that creature IS — the fire an inferno soldier stands in burns through
   // every shot, and follows them when they march.
-  playing.players.forEach((p, i) => {
+  for (const p of playing.players) {
     for (const fx of p.actor.idleFx) {
       const baked = fxBank[fx.uid];
       if (!baked?.particles.length) continue;
-      // Spread, unlike a spell: forty demons whose flames flicker in lockstep
-      // read as one animation played forty times, which is what they are.
-      const { system } = createFxSystem(fx, baked, new THREE.Matrix4(), i * 0.37, uFxTint);
+      const { system } = createFxSystem(fx, baked, new THREE.Matrix4(), uFxTint);
       stage.add(system.mesh);
       p.fire.push({ system, local: system.mesh.matrix.clone() });
     }
-  });
+  }
 
   playing.info = info;
   playing.shots = shots;

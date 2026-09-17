@@ -74,6 +74,9 @@ const dir = new THREE.Vector3(0.45, 0.35, 0.82);
  */
 export function initShadows(): void {
   renderer.shadowMap.enabled = true;
+  // Redrawn when something in it changed, not every frame — see
+  // updateShadowCamera, which decides at the end of each loop.
+  renderer.shadowMap.autoUpdate = false;
   // HARD, because the engine's edge is hard. Its pixel shader takes ONE sample
   // of the map and decides with `cnd` — a binary pick between the lit and the
   // shadowed colour, with nothing between them (docs/LIGHTING.md §3b). Soft
@@ -112,7 +115,29 @@ function applyShadowAmbient(a: AmbientData | null): void {
   // No preset means the flat editing light, which has no direction to cast
   // from: shadows off rather than shadows from a made-up sun.
   caster.castShadow = enabled && !!a;
+  markShadowsDirty();
 }
+
+/**
+ * The shadow map is a picture from the sun of every caster, and it only
+ * changes when a caster moves, comes or goes, the sun does, or the view
+ * carries the map's window somewhere else. Everything that does one of those
+ * says so here; the frame then redraws the map once and draws from it until
+ * the next time. The pass is a second submission of every caster — on
+ * A2C1M1 it was 1.3 ms of a 4.3 ms frame, on a map of 1200 creatures 2 of
+ * 7.5 — and a map editor's scene stands still nearly always.
+ *
+ * What is NOT a change: the creatures breathing. Their idle moves a shadow by
+ * less than a texel of the map, and a map that redrew for them would redraw
+ * every frame. The safety net for anything that moves without saying so is
+ * the periodic redraw in updateShadowCamera — a stale shadow lasts half a
+ * second at most.
+ */
+export function markShadowsDirty(): void { shadowsDirty = true; }
+let shadowsDirty = true;
+/** Frames between the safety-net redraws. */
+const REFRESH_EVERY = 30;
+let frame = 0;
 
 /**
  * Follow the view, in whole texels.
@@ -127,6 +152,7 @@ const right = new THREE.Vector3();
 const up = new THREE.Vector3();
 export function updateShadowCamera(): void {
   if (!caster.castShadow) return;
+  const wasX = caster.position.x, wasY = caster.position.y, wasZ = caster.position.z, wasExtent = extent;
   target.copy(controls.target);
   // How much ground the view covers: the plan camera says so outright, and the
   // perspective one is measured from how far it is standing back. Both name
@@ -158,7 +184,17 @@ export function updateShadowCamera(): void {
   caster.position.copy(target).addScaledVector(dir, DISTANCE);
   caster.updateMatrixWorld();
   caster.shadow.camera.updateProjectionMatrix();
+  // The map's window moved (a snapped texel or more), or something in it said
+  // it changed, or it has been a while: draw the map again this frame.
+  const moved = caster.position.x !== wasX || caster.position.y !== wasY || caster.position.z !== wasZ || extent !== wasExtent;
+  frame++;
+  renderer.shadowMap.needsUpdate = shadowsDirty || moved || frame % REFRESH_EVERY === 0;
+  if (renderer.shadowMap.needsUpdate) { redraws++; if (shadowsDirty) dirtyRedraws++; }
+  shadowsDirty = false;
 }
+/** How many frames redrew the shadow map, and how many of those because something said it changed — for view.perf(). */
+let redraws = 0, dirtyRedraws = 0;
+export function shadowRedraws(): { redraws: number; dirty: number } { return { redraws, dirty: dirtyRedraws }; }
 
 /**
  * Who casts and who receives.
@@ -240,6 +276,7 @@ float sunlitHere() {
 export function setShadows(on: boolean): void {
   enabled = on;
   caster.castShadow = on && !!state.world?.floors[state.world.active]?.ambient;
+  markShadowsDirty();
 }
 
 /** What the specs read: is a shadow being drawn, and from where. */

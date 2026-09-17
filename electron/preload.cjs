@@ -161,6 +161,7 @@ const api = {
   // when the renderer module died, so these two are all it can still call —
   // preload has its own context and survives.
   gpuReport: () => invoke('app:gpu-report'),
+  appMetrics: () => invoke('app:metrics'),
   openDevTools: () => invoke('app:open-devtools'),
   launchGame: () => invoke('app:launch-game'),
   pandoraGet: (id) => invoke('pandora:get', { id }),

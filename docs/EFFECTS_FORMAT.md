@@ -22,8 +22,11 @@ recording is complete and nothing unread could be a simulation input. It does
 NOT follow that the engine plays the recording untouched — it has knobs that
 reach into effects at run time (`gfx_particles`, `gfx_effect_alpha_treshold`, a
 fixed-function fallback path), and some of what this editor does around the
-recording is our own invention rather than something read (the per-placement
-phase spread, our alpha discard thresholds). Wind is the one such question
+recording is our own invention rather than something read (our alpha discard
+thresholds; the per-placement phase spread was one until 2026-09-17, and was
+taken out — every copy of an effect now plays the same frame, which is what
+lets copies share a simulation, SLICE_fx_performance.md §3). Wind is the one
+such question
 already closed: the format carries `<WindAffected>` on every effect and it is
 `false` on all 1814. The rest is SLICE_effects_probe.md §7.
 
@@ -158,11 +161,20 @@ its particle's `[birth, death]`.
 The scene payload carries only each instance's placement, texture table (data
 URIs) and uid (`FxInstancePayload`); the keys go over their own IPC (`map:fx`)
 as typed arrays — as JSON they doubled the scene payload of one map. The
-renderer (renderer/particles.ts) packs the texture table into atlases and
-draws each instance as instanced camera-facing quads; a frame update lerps the
-alive particles' channels at the loop time and rewrites the attributes. One
-shared clock, phases spread per placement so identical objects don't flicker
-in lockstep. The static stand-in card (`effectGeom` in object-effects.ts)
+renderer (renderer/viewport/particles.ts) packs the texture table into atlases
+and draws each DISTINCT ParticleInstance payload as one batch of instanced
+camera-facing quads — drawn once per placed copy through a per-copy matrix
+(renderer/viewport/fx.ts keeps which object is which copy). The recording
+itself is sampled ONCE, at its own rate, into a table on the GPU — the alive
+particles of each frame, three half-float texels each, one table per uid
+however many instances play it (24 MB for A2C1M1's 82) — and a frame update
+only decides which copies of the trigger train are playing and at which
+frame each is: at most eight (base, count) segments as uniforms, from which
+the vertex shader finds its particle. Playback steps at the recording's rate
+(30 Hz) rather than lerping between keys per display frame. One shared clock
+and no per-placement phase: identical objects flicker in step, being one
+recording — which is what makes the sharing possible. The static stand-in
+card (`effectGeom` in object-effects.ts)
 stays in the geometry — an effect-only object has nothing else to click —
 but is DRAWN, and PICKED, only with the explorer's "effect markers" checkbox
 on (`GeomPart.card`; `setFxCardsVisible` in geoms.ts swaps the card's slot

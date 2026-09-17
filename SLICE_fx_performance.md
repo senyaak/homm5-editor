@@ -1,21 +1,30 @@
 # SLICE — What the particle effects cost, and what to do about it
 
-> **Status:** measured, nothing built yet. Playing an object's baked effect
-> works and looks right ([docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md)); what
-> it costs was never counted. It was counted on 2026-07-28, on a shipped map,
-> and the effects turn out to be heavier than the entire rest of the scene on
-> every axis at once — draw calls, per-frame CPU, buffer traffic and texture
-> memory. This slice says where the cost is, what it would take to remove it,
-> in what order (§6, costed), and — importantly — what to confirm with a live
-> profile before touching anything (§5). The plan is agreed and waiting for a
-> go-ahead; nothing here is started. When it ships, fold the surviving facts into
+> **Status:** measured twice — statically on 2026-07-28 (§1) and live on
+> 2026-09-17 (§1a, `e2e/fx-perf.spec.ts`) — and the plan REWRITTEN on the live
+> numbers. Playing an object's baked effect works and looks right
+> ([docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md)); what it costs is now
+> known: the frame is CPU-bound, and the effects are a third of it. The plan
+> (§3) is three steps, each smaller than the one it replaces: stop spreading
+> phases, draw every copy of an effect from one simulation, and put the
+> recording on the GPU so the simulation is a lookup. **All three are in**
+> (2026-09-17): 313 copies in 112 batches, atlases 311 → 146 MB, calls 861 →
+> 662, `advanceFx` 4.3 → 0.2 ms, the frame 19.1 → 11.6 ms p50 / 20.6 → 13.8
+> p95 — under vsync with every effect playing. 82 baked recordings on the
+> GPU take 24 MB (§3.3, done as recording-per-uid tables rather than the
+> composite-period tables first planned: 23 MB against 148). What remains is
+> §7 — not effects — and 3.6 (atlases as RGBA, halving the 146 MB), which
+> was never in this slice's three steps. Fold the surviving facts into
 > [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) and retire this file.
 
 Reading first: [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) (what the data
 is and why playback is interpolation, not simulation),
 [renderer/viewport/particles.ts](renderer/viewport/particles.ts) (one playing system),
-[renderer/viewport/fx.ts](renderer/viewport/fx.ts) (`loadFx`, `advanceFx`) and
-[renderer/app.ts](renderer/app.ts) (the render loop).
+[renderer/viewport/fx.ts](renderer/viewport/fx.ts) (`loadFx`, `advanceFx`),
+[renderer/viewport/instancing.ts](renderer/viewport/instancing.ts) (how the
+static objects already draw every copy of a model in one call) and
+[renderer/viewport/perf.ts](renderer/viewport/perf.ts) (`view.perf()`, the
+instrument).
 
 ---
 
@@ -49,6 +58,42 @@ Reproducing it needs no repo change: build the scene, walk
 `floors[].instances`, look up `geoms[inst.g].fx`, and for each payload redo the
 sizing maths at the top of `createFxSystem` (`overlap`, `n = maxAlive *
 overlap`) plus `bytesFor(textures.length)` from `buildAtlas`'s grid.
+
+## 1a. The live measurement (2026-09-17)
+
+`npm run test-e2e-fast -- e2e/fx-perf.spec.ts` — A2C1M1 opened in the real app,
+five seconds watched with effects on and five with them off, on an RTX 3080 at
+2434×1379 and pixel ratio 1.75. Readings land in `_tmp/perf/A2C1M1.json`.
+
+| | effects on | effects off |
+| --- | --- | --- |
+| frame p50 / p95 / max | **19.1** / 20.6 / 30.2 ms | 11.9 / 13.5 / 16.7 ms |
+| our JS of that (p50) | **18.7 ms** | 11.6 ms |
+| … `advanceIdle` | 3.8 | 3.7 |
+| … `advanceFx` | **4.3** | 0 |
+| … `renderer.render` (three's CPU side) | **10.6** | 7.8 |
+| draw calls | 861 | 557 |
+| triangles | 647 k | 624 k |
+| systems on the active floor | 313 | |
+| instance slots / alive | 30 600 / ~11 900 | |
+| atlases | **626, all distinct, 311 MB** | |
+| memory (working set) | renderer 503 MB · GPU process 412 MB | |
+| `map:load` | 11.6 s; effects ready 0.1 s later | |
+
+What it settles:
+
+* **The frame is CPU-bound.** JS is the whole frame; the GPU is waiting on us.
+  Not fill rate, not SwiftShader (the adapter is checked and asserted).
+* **Effects cost ~7 ms of 19: 4.3 in `advanceFx` and ~2.8 in `render`** for the
+  ~300 extra draws (three's per-call CPU work). Both halves matter; neither is
+  all of it.
+* **The other 11.6 ms are not effects** — `advanceIdle` 3.7 and `render` 7.8 for
+  557 calls (~14 µs a call, shadow pass included). Out of scope here, noted in
+  §7 so it is not lost.
+* **No long frames.** Nothing over 50 ms, so LoAF attributes nothing; the
+  sections timer is the attribution.
+* §2.1 confirmed: 626 atlases and not one shared. 311 MB rather than the 644 MB
+  estimated statically (the estimate sized every system's full frame table).
 
 ## 2. Where the cost actually is
 
@@ -97,164 +142,203 @@ attribute buffers they produce are otherwise identical.
 2.7. **60 Hz work on 30 Hz data.** `rate` is 30 in 98% of the library; frames
 between the keys are interpolation of the same two keys either way.
 
-## 3. Model — the order that pays
+## 3. Model — three steps, in the order they pay
 
-Each step stands alone; none of them needs the next to exist.
+The old plan (in git before 2026-09-17: dedupe the atlases, cull per system,
+bound the upload, step at 30 Hz, an alive index, and only then one draw per
+effect) optimised a per-system loop. The loop is the problem. The static
+objects already answer it — `instancing.ts` draws 2258 objects as 229 calls
+by giving every copy of a model a slot in one `InstancedMesh` — and the
+effects can be drawn the same way, once one obstacle of our own making is
+removed.
 
-3.1. **Dedupe the atlases** — a `WeakMap<FxInstancePayload, Promise<Atlas>>` in
-[renderer/viewport/particles.ts](renderer/viewport/particles.ts). 644 MB → 76 MB, 3338 decodes →
-~380. Smallest change here, largest number.
+3.1. **Stop spreading phases.** `loadFx` gives every copy of an effect a phase
+`(at * 0.37) % 3` so identical objects don't flicker in lockstep. That is our
+invention, not the game's (EFFECTS_FORMAT.md names it among "some of what this
+editor does around the recording is our own invention"); nothing in the
+recording has it, and it is the one thing that makes two campfires compute
+different frames. Remove it: every copy of an effect is at the same `t`. A
+map editor does not need its campfires out of step. Smallest change, and the
+precondition for everything after.
 
-3.2. **Give a system bounds and let it be culled** — radius per uid from the
-bake (§2.2), `frustumCulled` back on, and `advanceFx` skipping what the frustum
-rejects (§2.3). 607 draws and 183k iterations become whatever is on screen.
+3.2. **One batch per effect payload.** `geomFx.get(inst.g)` hands every copy
+of a geom the *same* `FxInstancePayload` object, so the batch key is that
+object — no hashing. One simulation per payload per frame writes one set of
+particle attributes; the copies ride as a per-copy matrix, exactly as
+`GeomBatch` does it. 313 systems → one per distinct payload (~80–130 on
+A2C1M1). Falls out for free: **one atlas per effect** (the 311 MB become the
+distinct set, ~40 MB), one `dispose()` owner, and `advanceFx` walks batches,
+not placements.
 
-3.3. **Bound the upload** — `addUpdateRange` (§2.4), and no `needsUpdate` at
-all when the system wrote nothing this frame and wrote nothing last frame.
+*Glued effects are the same batch.* A glued system's matrix is
+`bone.matrixWorld × glueLocal`, recomputed each frame (`followBone`) — the
+particles are in the effect's own frame either way. In a batch that copy's
+slot is rewritten each frame (`setMatrixAt` + `needsUpdate`, as `syncInstance`
+does on a drag) instead of once at load. No second path.
 
-3.4. **Step effects at the bake rate** — a 30 Hz accumulator in `advanceFx`.
-Half the CPU, no visible change by construction (§2.7).
+*The shader takes a second level of instancing.* Today the instances ARE the
+particles and the object matrix is one uniform. With copies there are
+particles × copies: expand to `n × copies` instances with a copy index in an
+attribute and the copy matrices in a small float texture — `gl_InstanceID / n`
+picks the matrix. The attribute buffers stay `n` wide; only the index runs
+over copies.
 
-3.5. **Alive-index per frame** (§2.5), and then **one draw per effect, not per
-placement**: copies sharing a uid and a quantised phase bucket produce one set
-of attributes; the per-copy object matrix rides as a second instanced attribute.
-182 campfires → 1 draw and 8 simulations, and the whole map → ~128 draws. This
-is a rewrite of `createFxSystem`'s shape, so it comes last and only if the
-profile still asks for it.
+3.3. **The recording on the GPU, sampled by time.** After 3.1 the frame at
+time `t` is a pure function of the bake — no wind, no phase, no randomness.
+`advanceFx` today walks cursors and lerps five channels for every alive
+particle every frame (the 4.3 ms). Precompute instead: the recording is 30 Hz
+(98% of the library) and an endless effect is a trigger train with a period
+(EFFECTS_FORMAT.md), so after warm-up the composite is periodic with `period
+× rate` frames — a campfire is 90 frames, and a one-shot is its length. Bake
+those frames once per payload into a `DataTexture` of `frames × slots` texels
+(position, size/rotation, colour, tile — packed to ~24 bytes a slot); per
+frame, `uFrame` changes and the vertex shader reads its slot at that row, dead
+slots collapse to a zero quad. `advanceFx` becomes "compute the frame number
+per batch" and the per-frame upload is gone.
 
-3.6. **Retire the canvas/data-URI path** — the main process already decodes the
-DDS; shipping RGBA as typed arrays into a `DataTexture` over the existing `map:fx`
-channel removes the PNG round trip, the sequential image decodes, *and* the
-two-texture split, which exists only because a browser canvas premultiplies
-(see the `buildAtlas` comment). Halves particle texture memory again.
+Memory is the number to check first: `Σ over payloads of periodFrames × slots
+× 24 B`. A campfire with 300 slots is ~650 KB; the map-wide sum is expected in
+the tens of MB against the 311 MB of atlases it sits beside. Any long,
+many-particle effect that breaks the budget is a static count over the bank
+before a line is written.
+
+What the old list becomes: atlas dedupe — falls out of 3.2. Culling — a batch
+is the whole effect, so per-copy culling is gone; per-batch bounds (from the
+keys) are possible later, but with 3.3 a culled batch saves one draw of
+trivial quads and nothing else. `addUpdateRange` and the 30 Hz step — no
+upload and no per-frame sampling to bound. Alive index — the bake is the
+index.
 
 ## 4. Touchpoints
 
 | File | Change |
 | ---- | ------ |
-| [renderer/viewport/particles.ts](renderer/viewport/particles.ts) | Atlas cache by payload identity (3.1); bounding sphere from the bake instead of `frustumCulled = false` (3.2); `addUpdateRange` (3.3). |
-| [renderer/viewport/fx.ts](renderer/viewport/fx.ts) | `advanceFx`: frustum skip mirroring `advanceIdle`'s `visible` mode, 30 Hz accumulator (3.2, 3.4). |
-| [src/scene/effects.ts](src/scene/effects.ts) | `transferEffect`: emit the bounding radius and the per-frame alive index alongside `maxAlive` — both are one pass over data already walked (3.2, 3.5). |
-| [electron/main.ts](electron/main.ts) | Only for 3.6: ship frame textures as RGBA typed arrays over `map:fx` rather than data-URIs in the scene payload. |
-| [src/scene/scene.ts](src/scene/scene.ts) | Only for 3.6: `particleTextureUris` stops encoding PNG. |
-| [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) | Fold in whatever survives; the "one instanced draw per ParticleInstance of each placed object" sentence in §1 stops being true at 3.5. |
+| [renderer/viewport/fx.ts](renderer/viewport/fx.ts) | 3.1: drop the phase argument. 3.2: `loadFx`/`spawnFx`/`removeFx` group by payload; `advanceFx` walks batches and rewrites glued slots. |
+| [renderer/viewport/particles.ts](renderer/viewport/particles.ts) | 3.2: `createFxSystem` → `createFxBatch(payload, baked, copies[])`, copy matrices in a float texture, `gl_InstanceID / n` in the shaders. 3.3: the frame table bake and the `uFrame` lookup replacing `update()`'s loop. |
+| [renderer/core/state.ts](renderer/core/state.ts) | `Floor3D.fx` holds batches; the `Instance → slot` map beside it. |
+| [src/scene/effects.ts](src/scene/effects.ts) | 3.3 only, if the bake moves off the renderer thread: emit the period frames from `transferEffect`. |
+| [renderer/app.ts](renderer/app.ts) | `fxSystems()` reports per copy from its batch (the e2e hook keeps its shape). |
+| [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) | The "one instanced draw per ParticleInstance of each placed object" sentence stops being true at 3.2; the phase-spread sentence at 3.1. |
 
-## 5. Confirm before coding
+## 5. Confirmed before coding
 
-The numbers above are static — they say how much of everything is created, not
-where the frame goes. Reading a renderer instead of measuring it has produced a
-plausible and wrong diagnosis three times in this project already, so:
+Done, 2026-09-17 — §1a. Of the five questions this section asked: the split
+of calls (5.1) is 861/557; where the frame goes (5.2) is the sections timer,
+since no frame is long enough for LoAF; effects on vs off (5.3) is 7 ms of 19,
+so the frame is worth the work but is not only effects; the machine is on its
+GPU (5.5, asserted by the spec). 5.4 — does culling change what the user
+sees — no longer applies: nothing is culled per system.
 
-5.1. **`renderer.info.render.calls` / `.triangles` in the HUD.** Should read
-~1400 calls on A2S1's surface and confirm the 607/831 split.
-
-5.2. **Where the frame actually goes**, through the **Long Animation Frames
-API** rather than a hand-rolled timer — it is the grown-up version of the
-`JANK_MS` warning already in the render loop, and it names the culprit instead
-of the symptom:
-
-```js
-new PerformanceObserver((list) => {
-  for (const e of list.getEntries())
-    console.warn(`LoAF ${e.duration|0}ms · blocking ${e.blockingDuration|0}ms`,
-      `render ${(e.styleAndLayoutStart - e.renderStart)|0}ms`,
-      e.scripts.map((s) => `${s.name} ${s.duration|0}ms @${s.sourceURL}:${s.sourceCharPosition}`));
-}).observe({ type: 'long-animation-frame', buffered: true });
-```
-
-`scripts[]` attributes to a function and a source position, and
-`renderStart`/`styleAndLayoutStart` split our code from the paint. If `advanceFx`
-does not show up here, 3.4 and 3.5 are not worth their risk and the whole slice
-is 3.1 + 3.2.
-
-5.3. **The `showFx` toggle is already the experiment.** FPS with effects on
-versus off is the upper bound on everything here. If the difference is small
-but the editor is still heavy, the cost is not in the frame at all — it is the
-644 MB (3.1 alone) or fill rate, and then the first thing to try is
-`setPixelRatio(1)` on a hidpi screen, which is a settings knob rather than a
-rewrite.
-
-5.4. **Open: does culling change what the user sees?** The comment defending
-`frustumCulled = false` is about a fire appearing at the screen edge. With a
-real bounding sphere that specific pop cannot happen, but a system whose
-particles travel far from its origin (smoke drifting, a tall phoenix flame)
-needs the radius to come from the *keys*, not from the placement — which is what
-§2.2 says, and what the implementation has to be checked against visually, on a
-map with drifting smoke, before the culling is trusted.
-
-5.5. **The instruments, and why not Web Vitals.** LCP, CLS and the rest measure
-a document: here the canvas appears instantly and empty, nothing reflows, and
-only INP (does a click on the palette answer) means anything. What corresponds
-to them for this editor is a different set, and every piece of it is already
-reachable without a dependency:
-
-| Question | Instrument |
-| --- | --- |
-| Is the frame slow, and because of what? | `long-animation-frame` (§5.2) |
-| How many draws, how many triangles? | `renderer.info.render` — mind `info.autoReset`, read it after `render()` |
-| How much GPU memory? | DevTools → Rendering → **Frame Rendering Stats** (an overlay, nothing to write) |
-| Which process is heavy? | `app.getAppMetrics()` from main — the gpu process is listed separately, so 644 MB shows up as its RSS |
-| **Are we even on the GPU?** | `app.getGPUInfo('complete')` / `getGPUFeatureStatus()`. Already called with `'basic'` in `electron/main.ts`, and there is already a SwiftShader switch — so "we are silently on software rendering" costs nothing to rule out and **invalidates every other measurement**. Check it first. |
-| What does the GPU process actually do? | `contentTracing` → Perfetto: texture uploads, shader compiles, swap waits. Electron-only; a web page cannot see this. |
-| How much JS memory? | `performance.measureUserAgentSpecificMemory()` (needs cross-origin isolation) |
-| Per-draw GPU time | `EXT_disjoint_timer_query_webgl2` by hand — three's `resolveTimestampAsync` landed well after r160. Availability is one line: `renderer.getContext().getExtension('EXT_disjoint_timer_query_webgl2')` |
-
-The four worth keeping permanently, once measured: **p95 frame time** (a mean
-FPS hides exactly the stutter being chased), `render.calls`, gpu-process RSS,
-and `map:load` wall time — that last one is 13.5 s on A2S1 and is a worse
-number than anything in a frame.
+What the spec keeps asserting after each step: not SwiftShader, and that the
+readings happened. The ceilings — frame p95, `render.calls`, atlas bytes,
+GPU-process working set — are set from `_tmp/perf/A2C1M1.json` once a step
+has moved them, so that a later change cannot quietly give them back.
 
 ## 6. Cost, order, and what could go wrong
 
-Estimates are for the way this repo is actually worked: written here, held by
-the e2e suite, argued about on screenshots where the suite cannot judge.
-
-**The suite already covers this ground**, which is what makes the cheap steps
-cheap: `e2e/object-effects.spec.ts` (placing, gluing and timing — the three
-specs this page first named separately are one file), `e2e/shipped-map-scene.spec.ts`
-and `e2e/undo.spec.ts`, plus the `fxSystems()` debug hook, which reports `alive`,
-`visible` and the world position of every system on the active floor. It is
-exposed from `renderer/app.ts` (declared at :541, implemented at :753) and reads
-the `uid` that `renderer/viewport/fx.ts:52` stamps on each mesh. "The campfire
-went out", "the wrong thing got culled" and "the glued eye stopped following the
-head" are assertions, not screenshot reviews.
+Held by the suite as before: `e2e/object-effects.spec.ts` (placing, gluing,
+retrigger timing), `e2e/shipped-map-scene.spec.ts` (systems arrive),
+`e2e/undo.spec.ts`, the `fxSystems()` hook (`alive`, `visible`, world position
+per copy — a glued eye that stops following the head is an assertion), and
+now `e2e/fx-perf.spec.ts` for the numbers.
 
 | Step | Size | Risk | Held by |
 | --- | --- | --- | --- |
-| §5 measurements | 30–40 min | none | is itself the result |
-| 3.1 atlas dedupe | ~1 h | medium | `fxSystems().alive` + deleting a placed object |
-| 3.3 `addUpdateRange` | 15 min | none | nothing visible may change |
-| 3.4 30 Hz step | 20 min | low | the timing half of `object-effects.spec.ts` |
-| 3.2 bounds + culling | 2–3 h | medium | `test-effects` + `visible` from the hook + eyes on smoke |
-| 3.5 alive index | ~1.5 h | low | `test-effects` |
-| 3.5 one draw per effect | half a day – a day | high | all of the above |
-| 3.6 RGBA instead of PNG | half a day | medium | eyes on fire |
-
-**Two sittings.** The first is ~2 hours — measurements, then 3.1 + 3.3 + 3.4:
-that is where the 644 MB and the whole upload traffic live, and only 3.1 risks
-anything. The second is half a day for 3.2. Then stop and re-profile: after
-those two the picture changes enough that planning 3.5/3.6 now would be
-guessing. A day of work covers ~90% of the problem **if** §5 confirms the
-diagnosis.
+| 3.1 no phases | 15 min | none visible | `object-effects.spec.ts`; eyes: campfires in step |
+| 3.2 one batch per payload | half a day | medium | `fxSystems()` per copy, glue, place/delete/undo; `fx-perf`: atlases = distinct, calls down ~200 |
+| 3.3 frame table on the GPU | half a day – a day | medium | `object-effects` timing half; `fx-perf`: `advanceFx` → ~0, upload gone |
 
 Three places where the estimate can slip:
 
-6.1. **`dispose()` against a shared atlas** (3.1). Every system currently
-disposes its own textures; share them and the first deleted campfire blanks the
-other 181. Needs a refcount, or ownership moved to the cache and cleared when
-the map closes. That is the whole substance of the step — the rest is fifteen
-lines.
+6.1. **Deleting one copy of a batch** (3.2). Today a system is disposed with
+its object. In a batch a deleted copy is a slot to compact — as
+`removeInstance` does for `GeomBatch` — and the LAST copy disposes the batch
+and its atlas. `undo.spec.ts` is the guard.
 
-6.2. **Which space the radius lives in** (3.2). three computes the bounding
-sphere in geometry space and pushes it through `matrixWorld`, which here is set
-by hand (`matrixAutoUpdate = false`). And the radius must come from the keys,
-not the placement, or drifting smoke gets culled while still visible — §5.4.
+6.2. **Where the copy matrices live** (3.2). Copies per payload on A2C1M1 peak
+at 182; a `mat4[182]` is 728 vec4 uniforms, over the WebGL2 minimum of 256
+for a vertex shader — so the matrices go in a small float texture (4 texels a
+copy) and the vertex shader fetches. Decide this before writing the shader,
+not after.
 
-6.3. **Premultiplication** (3.6). The two-texture split exists solely because a
-canvas premultiplies; walking back in without watching the fire is how the
-flames come out blue a second time.
+6.3. **Which frame a copy is on** (3.3). `fx.offset`, `speed`, `endCycle`,
+`cycleCount` and `retrigger` are all per payload, so one frame number serves
+the batch — but the retrigger path (`t % retrigger`) and a finite train that
+has finished are two clocks the lookup has to reproduce exactly. The timing
+half of `object-effects.spec.ts` measured them once; it is the oracle.
 
-Minor, but it bites exactly at 3.3: `package.json` pins `three@^0.160.0` against
-`@types/three@^0.185.1`, so the types describe an API newer than the runtime.
-`addUpdateRange` does exist in r160 (checked in `node_modules`), but the next
-call taken on the types' word may typecheck and fail at runtime.
+## 7. Noted, not in scope
+
+Measured after 3.3 by switching things off one at a time (A2C1M1, default
+view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
+
+| | frame | `advanceIdle` | `render` | calls |
+| --- | --- | --- | --- | --- |
+| as it stands | 14.6 | 4.3 | 9.9 | 662 |
+| shadows off | 10.2 | 3.8 | 6.2 | 661 |
+| idle stance off (69 bodies → 0) | **5.2** | 0 | **4.9** | 607 |
+| idle `visible` instead of `all` | 14.6 | 4.2 | 10.0 | 663 |
+
+* ~~**The idle animation is the frame now: ~9.4 ms of 14.6.**~~ **Done**
+  (132c2e6): the clip is baked once per creature kind to a table of skinning
+  matrices and one boneless skeleton per kind poses every body — the recipe
+  of this slice one level up. After it, the same probe: JS **4.6 ms** (idle
+  0, render 4.3), shadows off 3.3, idle off 3.7 — the 69 bodies cost ~0.9 ms
+  now, all of it their draws. `visible` mode now hides off-screen bodies
+  instead of merely not posing them; on the default view all 69 are in.
+* **Since then (2026-09-18):** every creature of a kind on a floor is one
+  draw (`SkinnedInstances`, c06e3c8) — the creature stress map 2990 → 790
+  calls, JS 18 → ~8 ms; and the shadow map is redrawn only when something
+  in it changed (d3aabf4) — A2C1M1 JS 4.5 → **3.2 ms**. What is left, in
+  order: the effect batches' state changes and their canvas atlases (3.6),
+  the static batches' 229 calls (BatchedMesh), load-time bakes off the main
+  thread, and the per-edit map serialisation (§7a).
+* **The shadow pass was ~1.3 ms** of `render` (3.7 with the bodies) — a second submission of every
+  caster. Fewer casters (animated bodies at rest pose, or none of them), or a
+  shadow map that is only redrawn when something moved, since nothing but
+  the idle bodies does.
+* With both off, `render` is ~3 ms for 608 calls, ~5 µs a call: three's
+  per-call CPU. Fewer calls (merging materials across geoms, `BatchedMesh`)
+  is the remaining lever there — and the largest one left in the frame.
+* `map:load` is 11.6 s. The worst number on the page, and not in a frame.
+
+### 7a. Under a map no designer would make (`tools/perf-stress.ts`, 2026-09-17)
+
+Three maps built through the palette path on a 176×176 board, the frame read
+from three views, then saved and reopened. Idle `all`, effects on.
+
+| map | objects | calls | frame p50 (JS) | of which `render` | fx | bodies | atlases | tables | JS heap / Tab RSS | reopen |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| effects (chests, fires, wisps, haze, crystals) | 1500 | 757 | 16.7 (4.4) | 4.3 | 1295 copies / 56 batches | 122 | 53 MB | 6 + 1.6 MB | — / 621 MB | 1.6 s |
+| creatures (182 kinds) | 1200 | 2990 | 18.8 (18.3) | 17.0 | 1938 / 315 | 1134 | 200 MB | 28 + 104 MB | 670 MB / 2.5 GB | 15.6 s |
+| mix (fires, monsters, trees) | 2400 | 3100 | 27.8 (27.4) | 26.2 | 2254 / 528 | 715 | 478 MB | 28 + 104 MB | 803 MB / 3.3 GB | 24 s |
+
+What it says, in the order it matters:
+
+* **Draw calls are the frame, and only they.** 3100 calls cost 26 ms, ~8.5 µs
+  each; halving the pixels (`view.pixelRatio(0.5)`) changes nothing, so it is
+  not fill rate — it is three's CPU per call, and the state changes between
+  them (528 effect batches each with its own material and two textures, 419
+  kinds of tree). The 1134 bodies of 182 kinds are 1134 draws where 182
+  would do: the effects' recipe again — one draw per kind with the copies as
+  instances — is the next step, and it is the largest one left.
+* **Effects are done.** 1300 copies in 56 batches are 4 ms of JS in total,
+  0.0 of it in `advanceFx`.
+* **Memory scales badly, and outside the JS heap.** 3.3 GB of renderer RSS
+  against an 800 MB heap: the rest is typed arrays and canvases — 478 MB of
+  effect atlases held as canvases (3.6 would halve them and let the CPU side
+  go after upload), decoded texture data three keeps referenced after upload,
+  the bone tables (216 → 104 MB after dropping the world rows; half-float
+  would halve again).
+* **Load is seconds per thousand objects** — 24 s for the mix — and it janks
+  for up to 3 s at a time: the idle tables bake at ~21 ms a kind on the main
+  thread (4 s for 182 kinds), the effect tables up to 280 ms each. A worker,
+  or a bake that yields.
+* **Placing an object costs what the map weighs.** Every edit is recorded
+  for undo by serialising the whole map document before and after and
+  diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,
+  the first a few. Not a frame problem, but the drop-from-palette lag on a
+  big map is this.
+* 3.6 — atlases as RGBA typed arrays instead of PNG data-URIs — would halve
+  the 146 MB and the 3338 image decodes on load; never in this slice's three
+  steps, still worth its half day.

@@ -1028,10 +1028,11 @@ map. See `docs/LOCALIZATION.md`.
 - [ ] ⬜ Auto-detect the install (Steam/Uplay/registry) — setup asks for now,
       and unpacks into a folder of the user's choosing (`src/game/unpack.ts`)
 - [ ] ⬜ Performance (workers for parsing/packing, asset streaming). The frame
-      side is measured and planned in
-      [SLICE_fx_performance.md](SLICE_fx_performance.md): the particle effects
-      cost more than the whole rest of the scene — 607 uncullable draw calls and
-      644 MB of duplicated atlases on one shipped map
+      side is measured live (`view.perf()`, `e2e/fx-perf.spec.ts`) and planned
+      in [SLICE_fx_performance.md](SLICE_fx_performance.md): 19 ms a frame on
+      A2C1M1, all of it our JS; the effects are 7 ms of it (313 systems, 626
+      atlases all distinct = 311 MB), `advanceIdle` and three's per-call CPU
+      work the rest
 - [ ] ⬜ Round-trip tests across the shipped map set (saving must not break them)
 - [ ] ⬜ User documentation and examples
 

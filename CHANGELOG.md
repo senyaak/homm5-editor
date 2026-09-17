@@ -14,6 +14,40 @@ pre-release.
 
 ## Unreleased
 
+- The frame can be measured: `view.perf()` reports frame-time percentiles,
+  the loop's sections, draw calls and the particle side (systems, atlases,
+  bytes), plus Chromium's long-frame attribution and memory per process, and
+  `e2e/fx-perf.spec.ts` reads it all off a shipped map. Nothing is faster yet;
+  this is the baseline the effects work is held against.
+- Copies of one particle effect play in step. The per-placement phase that
+  kept thirty campfires from flickering together was the editor's own
+  invention, not the game's, and is gone — it is what lets copies share one
+  simulation next.
+- Every copy of an effect on a floor is one batch: one simulation and one
+  draw for all 55 chests' sparkle, with each copy's placement in a small
+  matrix texture. On A2C1M1 that is 313 effect draws → 112, 311 MB of
+  atlases → 146 MB, and the frame 19 → 15 ms.
+- A recording is sampled once, into a table on the GPU, instead of being
+  interpolated for every alive particle every frame; the frame only decides
+  which copies of the trigger train are playing. Effects now cost about a
+  millisecond a frame on A2C1M1 (was 7), and the whole frame holds 60 fps
+  with every effect on.
+- Creatures' idle animation is posed once per creature kind, from a table the
+  clip is baked to, instead of once per creature per frame with a skeleton
+  each. The bodies breathe in step (the spread was ours, like the effects');
+  on A2C1M1 that is 9 ms a frame back — the frame's JavaScript is 4 ms now,
+  down from 19 before this series. `Idle stance: visible` now leaves
+  off-screen creatures undrawn rather than merely unposed.
+- Closing a map releases its creatures' bone tables (they were kept through
+  every reopen), and the object explorer rebuilds once per frame instead of
+  once per placed object. `tools/perf-stress.ts` builds a map crammed with
+  effects or creatures and reads the frame under it.
+- Every creature of one kind on a floor is one draw call, as the static
+  objects already were: 1200 monsters of 182 kinds went from 2990 calls and
+  18 ms of JavaScript a frame to 790 and 10.
+- The shadow map is redrawn when something in it changed — an object placed,
+  moved or removed, the sun, the view — or every half second, not every
+  frame. A creature's breathing does not count; its shadow stands.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

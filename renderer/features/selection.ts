@@ -97,7 +97,20 @@ export function objCategory(it: Instance): string {
 let exCat = ALL;
 const exInstances = () => (state.world ? activeFloor().instances : []);
 
-export function renderExplorer(): void { renderExCats(); renderExList(); }
+/**
+ * Rebuild the explorer — on the next animation frame, once, however many
+ * times it is asked before then. The rebuild sorts every instance and makes
+ * a row for each (up to 2000), ~50 ms on a map of 1500 objects, and the
+ * callers ask per placed object: a tool placing a few hundred in a burst was
+ * paying that for every one of them (tools/perf-stress.ts: the 1500th
+ * placement took four times the first).
+ */
+export function renderExplorer(): void {
+  if (explorerDue) return;
+  explorerDue = true;
+  requestAnimationFrame(() => { explorerDue = false; renderExCats(); renderExList(); });
+}
+let explorerDue = false;
 
 function renderExCats(): void {
   const insts = exInstances();
