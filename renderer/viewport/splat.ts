@@ -291,7 +291,12 @@ void main() {
  * materials through the same uScale it writes on the terrain.
  */
 export function applyProjectedMaterials(fl: Floor3D): void {
-  for (const g of fl.batches.keys()) projectBatch(fl, g);
+  // One batch's failure must not leave every batch after it unprojected — a
+  // skin drawn with the untextured stand-in is a light grey plate on the
+  // ground, and an overlay drawn as a plain decal is a see-through floor.
+  for (const g of fl.batches.keys()) {
+    try { projectBatch(fl, g); } catch (e) { console.error(`projected material failed for geom ${g}`, e); }
+  }
 }
 
 /**
