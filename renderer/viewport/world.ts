@@ -24,7 +24,7 @@ import type { IdleObject } from '#viewport/skinning.ts';
 import { clearSky } from '#viewport/sky.ts';
 import { disposeSplats, upgradeToSplat } from '#viewport/splat.ts';
 import { cam, camera, controls, scene, syncTopCamera } from '#viewport/stage.ts';
-import { asTileSpace, makeWaterMesh, terrainGeometry } from '#viewport/terrain-mesh.ts';
+import { asTileSpace, holesMask, makeWaterMesh, terrainGeometry } from '#viewport/terrain-mesh.ts';
 import type { Floor, Instance, Scene } from '#src/scene/payload.ts';
 import * as THREE from 'three';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
@@ -56,7 +56,8 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
   const group = new THREE.Group();
   const V = floor.V, heights = floor.heights;
 
-  const tg = terrainGeometry(V, heights, floor.flags, floor.colors);
+  const holes = holesMask(V, floor.instances);
+  const tg = terrainGeometry(V, heights, floor.flags, floor.colors, holes);
   // Start on the flat MinimapColor blend; the textured splat material replaces
   // it as soon as its textures finish decoding (see upgradeToSplat). Same depth
   // offset as the splat, so a draped overlay wins over the stand-in too.
@@ -106,7 +107,7 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
   });
   const batches = buildBatches(still, meshes, geos, mats, objGroup);
   const fl: Floor3D = {
-    name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
+    name: floor.name, V, heights, flags: floor.flags, colors: floor.colors, holes,
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
     passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [], footMeshes: [],

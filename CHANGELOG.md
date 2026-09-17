@@ -87,6 +87,15 @@ repeats of it. A quarter of the shipped models (721 — the snags, fences,
 sand and lava mountains, the Academy's lightning effects) carry a negative
 coordinate somewhere; every one of them draws its texture as authored now.
 
+**The ground opens where an object digs it.** The Inferno military post stood
+on flat ground with its crucible pit buried and only the glow showing
+(Senya; the game shows a pit with lava at the bottom). A shared's
+`<holeTiles>` — the cells the terrain is not drawn on under the object — was
+parsed and never used. The terrain mesh now leaves those cells out, turned
+with the object, and rebuilds when an object with holes is placed, moved,
+turned or deleted; the post's pit, a crater's bowl, a lake's bed and a mine's
+shaft show through (docs/TERRAIN_FORMAT.md, "Holes").
+
 **Resource piles are solid again, and the bats are a swarm.** A gold pile was
 see-through (Senya): its material says `<AddPlaced>true`, which the editor
 had taken for additive blending since the day a portal's vortex was first

@@ -57,6 +57,11 @@ export interface Floor3D {
   footMeshes: THREE.Mesh[];
   /** Ground colours for the fallback material, kept for remeshing. */
   colors: number[] | null;
+  /**
+   * Which cells the terrain is NOT drawn on — the `<holeTiles>` of the
+   * objects standing here (terrain-mesh.ts, holesMask). (V-1)² bytes, 1 = hole.
+   */
+  holes: Uint8Array;
   group: THREE.Group;
   objGroup: THREE.Group;
   /**

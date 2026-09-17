@@ -214,6 +214,22 @@ its centre. The game does not flatten under it at load; its maps are flat
 under every building class because the designers (and the generator, which
 flattens a footprint to its average) made them so.
 
+## Holes: where the ground is not drawn at all
+
+A shared's `<holeTiles>` (beside `blockedTiles`/`activeTiles`/`passableTiles`,
+parsed into `Footprint.hole`) names the cells the terrain leaves OUT under
+the object — each offset turned with the object's rotation about its own
+cell centre, like the footprint squares, and taken to the cell the turned
+centre lands in. It is how the game shows what lies below the ground: the
+Inferno military post's crucible pit, a crater's bowl, a lake's bed, a
+mine's shaft — the object's own mesh carries the depression (draped, it keeps
+its depth under the ground it stands in), and the ground is simply not there
+over it. Towns declare a hundred-odd, mountains and stones their solid
+middles, most buildings their plate. The renderer builds the terrain mesh
+without those cells — neither surface nor cliff wall — and rebuilds it when
+an object with holes is placed, moved, turned or deleted
+(`holesMask`/`refreshHoles` in renderer/viewport/terrain-mesh.ts).
+
 ## The water textures pair up the same way
 
 | file | colour | addressing | role |
