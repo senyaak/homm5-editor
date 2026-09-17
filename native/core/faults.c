@@ -21,11 +21,10 @@
 //
 // IT CHANGES NOTHING. `EXCEPTION_CONTINUE_SEARCH` hands the fault straight on:
 // the game crashes exactly as it would have, and we have written a page about
-// it first. Only access violations are reported, and only the first few: this
-// engine throws C++ exceptions in normal play, and a handler that logged those
-// would fill the file with noise on every map.
+// it first. Every exception is reported, the engine's own C++ throws included
+// — see on_fault for why the filter that used to be here went.
 
-#define FAULTS_REPORTED 3
+#define FAULTS_REPORTED 500
 static int g_faultsLeft = FAULTS_REPORTED;
 
 /** Ourselves, so an address in the log can be turned back into an offset. */
@@ -105,16 +104,30 @@ static void log_stack_raw(const BYTE *esp) {
   }
 }
 
-static LONG CALLBACK on_fault(EXCEPTION_POINTERS *info) {
-  if (!info || !info->ExceptionRecord || !info->ContextRecord) return EXCEPTION_CONTINUE_SEARCH;
-  if (info->ExceptionRecord->ExceptionCode != EXCEPTION_ACCESS_VIOLATION) {
-    return EXCEPTION_CONTINUE_SEARCH;
-  }
-  if (g_faultsLeft <= 0) return EXCEPTION_CONTINUE_SEARCH;
-  g_faultsLeft--;
+/**
+ * HOW MUCH ROOM WAS LEFT. A 32-bit game that is not large-address-aware has
+ * two gigabytes of address space, and an allocation that finds none left
+ * returns NULL into code that never checks — which then faults somewhere
+ * downstream and looks like a bug in whatever it was doing. The siege of a
+ * copied town (2026-09-17) faulted twice in two different places, both of
+ * them right after a malloc: the question was never "what is wrong with the
+ * grid" but "was there memory for it". So a fault reports the address space
+ * and the physical memory still free, in megabytes.
+ */
+static void log_memory_left(void) {
+  MEMORYSTATUSEX m;
+  m.dwLength = sizeof m;
+  if (!GlobalMemoryStatusEx(&m)) return;
+  log_num("       address space free, MB   ", (long)(m.ullAvailVirtual >> 20));
+  log_num("       address space total, MB  ", (long)(m.ullTotalVirtual >> 20));
+  log_num("       physical memory free, MB ", (long)(m.ullAvailPhys >> 20));
+  log_num("       memory in use, %         ", (long)m.dwMemoryLoad);
+}
 
+static void report(EXCEPTION_POINTERS *info, const char *what) {
   CONTEXT *c = info->ContextRecord;
-  log_line("crash: an access violation");
+  log_line(what);
+  log_hex("       exception code        ", info->ExceptionRecord->ExceptionCode);
   log_hex("       at code address       ", (DWORD)(INT_PTR)info->ExceptionRecord->ExceptionAddress);
   log_module_of((DWORD)(INT_PTR)info->ExceptionRecord->ExceptionAddress);
   log_hex("       eip ", c->Eip);
@@ -126,12 +139,58 @@ static LONG CALLBACK on_fault(EXCEPTION_POINTERS *info) {
   log_hex("       esi ", c->Esi);
   log_hex("       edi ", c->Edi);
   log_where_modules_are();
+  log_memory_left();
   log_stack_words((const BYTE *)(INT_PTR)c->Esp);
   log_stack_raw((const BYTE *)(INT_PTR)c->Esp);
+}
+
+static LONG CALLBACK on_fault(EXCEPTION_POINTERS *info) {
+  if (!info || !info->ExceptionRecord || !info->ContextRecord) return EXCEPTION_CONTINUE_SEARCH;
+  DWORD code = info->ExceptionRecord->ExceptionCode;
+  // EVERY exception, whatever its kind — the C++ throws the engine makes in
+  // normal play included. Three sieges of a copied town (2026-09-17) ended
+  // with a log that simply stopped, because only access violations were
+  // reported and whatever killed the process was not one; a stack overflow
+  // reaches no unhandled filter at all (there is no stack left to run it on).
+  // A launch is the expensive thing, a page of text is not: everything is
+  // written, and the reading is done in the file. The one cap is against a
+  // runaway — a throw in a loop would otherwise fill the disk.
+  // OutputDebugString arrives as an exception too (DBG_PRINTEXCEPTION_C and
+  // its wide twin): the engine prints a few at start-up, and a full page for
+  // each ate the three reports a run used to have before the map even loaded.
+  // One line, and not counted.
+  if (code == 0x40010006 || code == 0x4001000A) {
+    log_hex("debug print from ", (DWORD)(INT_PTR)info->ExceptionRecord->ExceptionAddress);
+    return EXCEPTION_CONTINUE_SEARCH;
+  }
+  if (g_faultsLeft <= 0) return EXCEPTION_CONTINUE_SEARCH;
+  g_faultsLeft--;
+  if (g_faultsLeft == 0) log_line("crash: that was the last exception reported this run");
+  report(info, code == EXCEPTION_ACCESS_VIOLATION ? "crash: an access violation"
+    : code == EXCEPTION_STACK_OVERFLOW ? "crash: a stack overflow"
+    : code == 0xE06D7363 ? "exception: a C++ throw"
+    : code == EXCEPTION_BREAKPOINT ? "exception: a breakpoint" : "exception: another kind");
   return EXCEPTION_CONTINUE_SEARCH;
+}
+
+/**
+ * THE DEATH THAT IS NOT A FAULT. Two launches of a siege (2026-09-17) ended
+ * with a log that simply stopped: no access violation, so the handler above
+ * had nothing to say, and the process was gone. A C++ exception nobody
+ * catches — `bad_alloc` out of a full address space is the one to expect —
+ * reaches the UNHANDLED filter and nothing else, and is not noise there:
+ * whatever gets this far is the end of the process. The same page, with the
+ * code that says which kind (0xE06D7363 is a C++ throw).
+ */
+static LPTOP_LEVEL_EXCEPTION_FILTER g_previousUnhandled = NULL;
+
+static LONG WINAPI on_unhandled(EXCEPTION_POINTERS *info) {
+  if (info && info->ExceptionRecord && info->ContextRecord) report(info, "crash: an unhandled exception");
+  return g_previousUnhandled ? g_previousUnhandled(info) : EXCEPTION_CONTINUE_SEARCH;
 }
 
 static void install_fault_report(HINSTANCE self) {
   g_ourModule = self;
   AddVectoredExceptionHandler(1, &on_fault);
+  g_previousUnhandled = SetUnhandledExceptionFilter(&on_unhandled);
 }
