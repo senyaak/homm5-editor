@@ -269,11 +269,33 @@ half of `object-effects.spec.ts` measured them once; it is the oracle.
 
 ## 7. Noted, not in scope
 
-* `advanceIdle` is 3.7 ms a frame on A2C1M1 with nothing moving on screen —
-  as much as all the effects' sampling. Its `visible` mode already skips
-  off-screen bodies; what it spends on the rest is unmeasured.
-* `renderer.render` is 7.8 ms for 557 calls without effects, ~14 µs a call —
-  three's CPU submission plus the shadow pass. Fewer calls (merging materials
-  across geoms, or a `BatchedMesh`) is the lever; it is the same instancing
-  question one level up.
+Measured after 3.3 by switching things off one at a time (A2C1M1, default
+view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
+
+| | frame | `advanceIdle` | `render` | calls |
+| --- | --- | --- | --- | --- |
+| as it stands | 14.6 | 4.3 | 9.9 | 662 |
+| shadows off | 10.2 | 3.8 | 6.2 | 661 |
+| idle stance off (69 bodies → 0) | **5.2** | 0 | **4.9** | 607 |
+| idle `visible` instead of `all` | 14.6 | 4.2 | 10.0 | 663 |
+
+* **The idle animation is the frame now: ~9.4 ms of 14.6.** 69 animated
+  bodies (51 distinct skinned geoms) cost 4.3 ms to pose and another ~5 ms
+  inside `render` — each is its own SkinnedMesh with its own skeleton update
+  and bone-texture upload, drawn twice (shadow pass). The `visible` mode
+  changes nothing here, which is itself a finding: either everything is in
+  view or the mode only skips the posing and not the draw. The recipe of this
+  slice applies one level up — copies of one creature at one phase share a
+  skeleton and a draw; or the clip is baked to a vertex-animation texture and
+  the bodies go back into instanced batches, no CPU at all.
+* **The shadow pass is ~3.7 ms** of `render` — a second submission of every
+  caster. Fewer casters (animated bodies at rest pose, or none of them), or a
+  shadow map that is only redrawn when something moved, since nothing but
+  the idle bodies does.
+* With both off, `render` is 4.9 ms for 607 calls, ~8 µs a call: three's
+  per-call CPU. Fewer calls (merging materials across geoms, `BatchedMesh`)
+  is the remaining lever there.
 * `map:load` is 11.6 s. The worst number on the page, and not in a frame.
+* 3.6 — atlases as RGBA typed arrays instead of PNG data-URIs — would halve
+  the 146 MB and the 3338 image decodes on load; never in this slice's three
+  steps, still worth its half day.
