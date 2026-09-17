@@ -340,7 +340,11 @@ export function holesMask(V: number, instances: Instance[]): Uint8Array {
  * per move, and most moves change nothing.
  */
 export function refreshHoles(fl: Floor3D): boolean {
-  const next = holesMask(fl.V, fl.instances);
+  // Until the floor's ground textures are up, nothing under a hole is drawn
+  // as ground (splat.ts), so the ground stays whole; upgradeToSplat calls
+  // back here when it is done.
+  const ready = !!(fl.terrainMesh.material as THREE.ShaderMaterial).uniforms?.uGround;
+  const next = ready ? holesMask(fl.V, fl.instances) : new Uint8Array((fl.V - 1) * (fl.V - 1));
   let same = next.length === fl.holes.length;
   for (let i = 0; same && i < next.length; i++) same = next[i] === fl.holes[i];
   if (same) return false;

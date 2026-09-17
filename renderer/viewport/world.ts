@@ -24,7 +24,7 @@ import type { IdleObject } from '#viewport/skinning.ts';
 import { clearSky } from '#viewport/sky.ts';
 import { disposeSplats, upgradeToSplat } from '#viewport/splat.ts';
 import { cam, camera, controls, scene, syncTopCamera } from '#viewport/stage.ts';
-import { asTileSpace, holesMask, makeWaterMesh, terrainGeometry } from '#viewport/terrain-mesh.ts';
+import { asTileSpace, makeWaterMesh, terrainGeometry } from '#viewport/terrain-mesh.ts';
 import type { Floor, Instance, Scene } from '#src/scene/payload.ts';
 import * as THREE from 'three';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
@@ -56,7 +56,12 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
   const group = new THREE.Group();
   const V = floor.V, heights = floor.heights;
 
-  const holes = holesMask(V, floor.instances);
+  // No holes yet: what fills a hole is the object's own ground-projected
+  // part, and that is drawn as ground only once the floor's textures are up
+  // (upgradeToSplat, which cuts the holes when it is done). Cut at build, the
+  // map opened with a hole under every mine and pit for as long as the
+  // textures took to decode (Senya).
+  const holes = new Uint8Array((V - 1) * (V - 1));
   const tg = terrainGeometry(V, heights, floor.flags, floor.colors, holes);
   // Start on the flat MinimapColor blend; the textured splat material replaces
   // it as soon as its textures finish decoding (see upgradeToSplat). Same depth

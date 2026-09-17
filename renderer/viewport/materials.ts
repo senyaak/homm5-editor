@@ -188,7 +188,11 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
   // A sky-dome part with no texture must vanish, not grey out: the dome rides
   // the camera with depth ignored, so a grey stand-in here is not a grey prop
   // in the distance but a wall across the whole frame.
-  if (!part.tex) return sky ? skyHole : greyMat;
+  // A ground-projected part with no texture of its own (the crag skin under a
+  // stone, a pit's bowl) is drawn as the ground once the floor's textures are
+  // up (splat.ts); until then it is nothing rather than a grey plate over
+  // the ground it is about to become.
+  if (!part.tex) return sky || part.terrainProjected ? skyHole : greyMat;
   // Cached per texture AND mode: the same image is used both ways in places.
   // Draping and flatness are in the key because they change the material: the
   // same texture in the same blend mode is a depth-writing body on one mesh

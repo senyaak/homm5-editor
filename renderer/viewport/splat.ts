@@ -20,6 +20,7 @@ import { uSunDir, uSunCol, uAmbCol, uShadeCol, uIncidentCol, uLmGain, uWhiten } 
 import { partTexture } from '#viewport/materials.ts';
 import { SHADOW_FRAG_PARS, SHADOW_VERT_PARS, shadowUniforms, shadowVert } from '#viewport/shadows.ts';
 import { renderer } from '#viewport/stage.ts';
+import { refreshHoles } from '#viewport/terrain-mesh.ts';
 
 const SPLAT_VERT = `
 ${SHADOW_VERT_PARS}
@@ -463,7 +464,10 @@ export async function upgradeToSplat(fl: Floor3D): Promise<void> {
   splatMats.push(mat);
   // Parts that take their colour from the ground can only be built now: they
   // borrow this material's textures.
+  const tProj = performance.now();
   applyProjectedMaterials(fl);
-  console.log(`[perf] splat ${fl.name} ${(performance.now() - tSplat) | 0}ms · ${s.layerCount} layers @ ${s.size}px`);
+  // Now that what lies under a hole is drawn as ground, the ground can open.
+  refreshHoles(fl);
+  console.log(`[perf] splat ${fl.name} ${(performance.now() - tSplat) | 0}ms · ${s.layerCount} layers @ ${s.size}px · projection ${(performance.now() - tProj) | 0}ms`);
 }
 

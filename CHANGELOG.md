@@ -111,7 +111,12 @@ on flat ground with its crucible pit buried and only the glow showing
 parsed and never used. The terrain mesh now leaves those cells out, turned
 with the object, and rebuilds when an object with holes is placed, moved,
 turned or deleted; the post's pit, a crater's bowl, a lake's bed and a mine's
-shaft show through (docs/TERRAIN_FORMAT.md, "Holes").
+shaft show through (docs/TERRAIN_FORMAT.md, "Holes"). The holes are cut only
+once the floor's ground textures are up and what lies under them is drawn as
+ground — cut at build, a map opened with a hole under every mine for as long
+as the textures took (Senya) — and an untextured ground-projected part draws
+nothing at all until then, rather than a grey plate over the ground it is
+about to become.
 
 **Resource piles are solid again, and the bats are a swarm.** A gold pile was
 see-through (Senya): its material says `<AddPlaced>true`, which the editor
