@@ -45,7 +45,8 @@ const line = (tag: string, p: Perf): string =>
   + ` · ${p.calls} calls · ${p.triangles} tris · ${p.textures} textures`
   + ` · fx ${p.fx.copies} copies in ${p.fx.batches} batches, ${p.fx.alive} alive,`
   + ` ${p.fx.atlases} atlases (${p.fx.distinctAtlases} distinct) = ${mb(p.fx.atlasBytes)},`
-  + ` ${p.fx.tables} tables = ${mb(p.fx.tableBytes)}`;
+  + ` ${p.fx.tables} tables = ${mb(p.fx.tableBytes)}`
+  + ` · idle ${p.idle.bodies} bodies over ${p.idle.tables} tables = ${mb(p.idle.tableBytes)}`;
 
 /** Watch the frame for WINDOW_MS from a clean slate. */
 async function reading(): Promise<Perf> {

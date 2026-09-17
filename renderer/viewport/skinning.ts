@@ -117,3 +117,139 @@ export function poseIdle(idle: IdleObject, time: number, loop = true): void {
     }
   });
 }
+
+// --- the map's bodies: a clip baked to a table, no bones at run time ---------
+//
+// Everything above builds bones and poses them — the scene player needs that,
+// its actors play clips of their own on their own clocks. A map's creatures do
+// not: every copy of a creature plays the one idle loop at the one time (the
+// phase spread was ours and is gone), and the loop never changes. So the clip
+// is posed ONCE, at 30 Hz, and what three's Skeleton.update() would compute
+// each frame — bone.matrixWorld × boneInverse, per bone — is kept per frame in
+// a table. At run time a body is a SkinnedMesh over a skeleton that has no
+// bones at all: its boneMatrices are the table's current row, copied in when
+// the frame changes, and the bone texture goes up as it always did. One such
+// skeleton per skinned geom, shared by every body of it, so the copy and the
+// upload happen once per creature kind per frame, and nothing per body.
+// (SLICE_fx_performance.md §7: 69 bodies were 9.4 ms of a 14.6 ms frame.)
+
+/** Frames a second the table is baked at — the effects' rate; the clip's own samples are 15/s. */
+export const TABLE_RATE = 30;
+
+/**
+ * A skeleton whose pose comes out of a baked table, not out of bones.
+ *
+ * Three calls `update()` once per frame per skeleton it draws; this one copies
+ * the frame's row of offset matrices in when the frame moved and lets the bone
+ * texture upload as usual. `time` is the loop's playback head, shared by every
+ * body on it.
+ */
+export class TableSkeleton extends THREE.Skeleton {
+  /** Seconds into the loop, wrapped by `advanceIdle`. */
+  time = 0;
+  /** The row `boneMatrices` currently holds; -1 before the first update. */
+  private row = -1;
+  readonly table: BoneTable;
+  constructor(table: BoneTable) {
+    super([], []);
+    this.table = table;
+    // Three's own layout (Skeleton.computeBoneTexture): a matrix is four RGBA
+    // texels, in a square texture sized for the bone count — which it would
+    // read off `bones`, and this skeleton has none.
+    let size = Math.sqrt(table.bones * 4);
+    size = Math.max(4, Math.ceil(size / 4) * 4);
+    this.boneMatrices = new Float32Array(size * size * 4);
+    this.boneTexture = new THREE.DataTexture(this.boneMatrices, size, size, THREE.RGBAFormat, THREE.FloatType);
+    this.boneTexture.needsUpdate = true;
+  }
+  /** The frame `time` falls on — the table is a loop, so it wraps. */
+  frameAt(): number {
+    const span = this.table.duration || 1;
+    const at = ((this.time % span) + span) % span;
+    return Math.min(this.table.frames - 1, Math.floor(at * TABLE_RATE));
+  }
+  override update(): void {
+    const f = this.frameAt();
+    if (f === this.row) return;
+    this.row = f;
+    const n = this.table.bones * 16;
+    this.boneMatrices!.set(this.table.offsets.subarray(f * n, (f + 1) * n));
+    if (this.boneTexture) this.boneTexture.needsUpdate = true;
+  }
+  /** Where bone `b` stands at the current frame, in the body's own (model) space. */
+  boneWorld(b: number, out: THREE.Matrix4): THREE.Matrix4 {
+    return out.fromArray(this.table.world, (this.frameAt() * this.table.bones + b) * 16);
+  }
+}
+
+/** One creature kind's idle, posed frame by frame. */
+export interface BoneTable {
+  bones: number;
+  frames: number;
+  /** The clip's length, seconds — the loop. */
+  duration: number;
+  /** Per frame, per bone: `bone.matrixWorld × boneInverse` (what the skinning shader wants), 16 floats. */
+  offsets: Float32Array;
+  /** Per frame, per bone: `bone.matrixWorld` in model space — for hanging things off a bone. */
+  world: Float32Array;
+}
+
+/**
+ * Bake a skin's idle to a table.
+ *
+ * Done the honest way: a real skeleton is built and posed at each frame with
+ * `poseIdle` — the same lerp and slerp the scene player runs — and three's own
+ * `Skeleton.update()` produces the row. The table is therefore what the
+ * per-frame path drew, sampled at TABLE_RATE.
+ */
+export function bakeBoneTable(skin: SkinnedGeom, geometry: THREE.BufferGeometry, material: THREE.Material[]): BoneTable | null {
+  const idle = makeIdle(skin, geometry, material);
+  if (!idle) return null;
+  const bones = idle.bones.length;
+  const duration = idle.skin.clip?.duration ?? 0;
+  const frames = Math.max(1, Math.round(duration * TABLE_RATE));
+  const offsets = new Float32Array(frames * bones * 16);
+  const world = new Float32Array(frames * bones * 16);
+  const skeleton = idle.mesh.skeleton;
+  for (let f = 0; f < frames; f++) {
+    poseIdle(idle, f / TABLE_RATE);
+    idle.mesh.updateMatrixWorld(true);
+    skeleton.update();
+    offsets.set(skeleton.boneMatrices!, f * bones * 16);
+    idle.bones.forEach((b, i) => b.matrixWorld.toArray(world, (f * bones + i) * 16));
+  }
+  skeleton.dispose();
+  return { bones, frames, duration, offsets, world };
+}
+
+/** A map creature: its body, and the shared table skeleton that poses it. */
+export interface IdleBody {
+  mesh: THREE.SkinnedMesh;
+  skin: SkinnedGeom;
+  skel: TableSkeleton;
+}
+
+/**
+ * A body over a table skeleton. The geometry and materials are the shared
+ * ones; the skeleton is shared too, by every body of the same geom — the
+ * clock is one, and so is the pose.
+ *
+ * Detached bind mode with an identity bind: the table's matrices are in model
+ * space (the skeleton that baked them stood at the origin), and the body's
+ * placement is applied by its own model matrix afterwards — the same reason
+ * `makeIdle` binds with the identity, arrived at from the other side.
+ */
+export function makeBody(skel: TableSkeleton, skin: SkinnedGeom, geometry: THREE.BufferGeometry, material: THREE.Material[]): IdleBody {
+  const mesh = new THREE.SkinnedMesh(geometry, material);
+  mesh.bindMode = THREE.DetachedBindMode;
+  mesh.bind(skel, new THREE.Matrix4());
+  // As in makeIdle: the bones carry vertices outside the geometry's own bounds.
+  mesh.frustumCulled = false;
+  // Three sorts transparent draws by a bounding sphere, and a SkinnedMesh
+  // computes its own by running every vertex through `skeleton.bones` — which
+  // this skeleton has none of. The unposed geometry's sphere is near enough
+  // for a sort key, and is what a plain Mesh would have used.
+  if (!geometry.boundingSphere) geometry.computeBoundingSphere();
+  mesh.boundingSphere = geometry.boundingSphere!.clone();
+  return { mesh, skin, skel };
+}

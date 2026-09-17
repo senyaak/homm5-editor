@@ -32,6 +32,12 @@ pre-release.
   which copies of the trigger train are playing. Effects now cost about a
   millisecond a frame on A2C1M1 (was 7), and the whole frame holds 60 fps
   with every effect on.
+- Creatures' idle animation is posed once per creature kind, from a table the
+  clip is baked to, instead of once per creature per frame with a skeleton
+  each. The bodies breathe in step (the spread was ours, like the effects');
+  on A2C1M1 that is 9 ms a frame back — the frame's JavaScript is 4 ms now,
+  down from 19 before this series. `Idle stance: visible` now leaves
+  off-screen creatures undrawn rather than merely unposed.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

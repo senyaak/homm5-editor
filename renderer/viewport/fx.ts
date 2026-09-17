@@ -16,7 +16,7 @@ import { tileCenter } from '#core/coords.ts';
 import { geomFx } from '#viewport/geoms.ts';
 import { createFxBatch } from '#viewport/particles.ts';
 import type { FxBatch } from '#viewport/particles.ts';
-import type { IdleObject } from '#viewport/skinning.ts';
+import type { IdleBody } from '#viewport/skinning.ts';
 import { uFxTint } from '#viewport/lighting.ts';
 
 /**
@@ -127,7 +127,7 @@ export function advanceFx(dt: number): void {
   const fl = state.world.floors[state.world.active];
   if (!fl?.fx.length || !fl.objGroup.visible) return;
   /** Animated bodies by instance, built only when something is glued to one. */
-  let bodies: Map<unknown, IdleObject> | null = null;
+  let bodies: Map<unknown, IdleBody> | null = null;
   for (const e of fl.fx) {
     e.batch.update(fxClock);
     if (!e.batch.glue || !e.batch.glueLocal) continue;
@@ -144,29 +144,29 @@ export function advanceFx(dt: number): void {
  * right until the idle clip moves the skeleton — then the head turns and the
  * eyes stay behind, hanging in the air where the head used to be.
  *
- * The bone's world matrix already carries the object's placement and the
- * creature's display scale (the bones are children of the skinned mesh), so the
- * object matrix must NOT be multiplied in again — only the bone-local transform.
- * And it has to be refreshed by hand: three.js updates world matrices during
- * render, which is after this, so reading it raw would follow the animation one
- * frame late.
+ * The bone's matrix comes out of the body's baked table in MODEL space, so the
+ * body's own world matrix — its placement and the creature's display scale —
+ * goes in front of it, and the bone-local transform behind. The body's world
+ * matrix is current: it is written when the object is placed or moved, not by
+ * the render.
  */
-export function followBone(e: PlacedFx, slot: number, body: IdleObject | undefined): void {
-  const bone = body ? boneOf(body, e.batch.glue!) : null;
-  if (!bone) {
+export function followBone(e: PlacedFx, slot: number, body: IdleBody | undefined): void {
+  const bone = body ? boneOf(body, e.batch.glue!) : -1;
+  if (bone < 0) {
     // No animated body (idle stance off, or this object has no skeleton): the
     // bind-pose placement is the right one.
     e.batch.setCopyMatrix(slot, e.rest[slot]!);
     return;
   }
-  bone.updateWorldMatrix(true, false);
-  e.batch.setCopyMatrix(slot, _m4.multiplyMatrices(bone.matrixWorld, e.batch.glueLocal!));
+  _m4.multiplyMatrices(body!.mesh.matrixWorld, body!.skel.boneWorld(bone, _bone));
+  e.batch.setCopyMatrix(slot, _m4.multiply(e.batch.glueLocal!));
 }
+const _bone = new THREE.Matrix4();
 
-/** The bone an effect names: `<GlueToNamedBone>` by name, `<GlueToBone>` by index. */
-export function boneOf(body: IdleObject, glue: string): THREE.Bone | null {
-  const byIndex = /^\d+$/.test(glue) ? body.bones[Number(glue)] : undefined;
-  return byIndex ?? body.bones.find((b) => b.name === glue) ?? null;
+/** The bone an effect names: `<GlueToNamedBone>` by name, `<GlueToBone>` by index; -1 when the body has no such bone. */
+export function boneOf(body: IdleBody, glue: string): number {
+  if (/^\d+$/.test(glue)) return Number(glue) < body.skin.bones.length ? Number(glue) : -1;
+  return body.skin.bones.findIndex((b) => b.name === glue);
 }
 
 /** An object moved or turned: its copies go with it. */

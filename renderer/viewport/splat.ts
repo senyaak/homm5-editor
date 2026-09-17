@@ -11,7 +11,7 @@ import * as THREE from 'three';
 
 import { uiPrefs } from '#core/prefs.ts';
 import type { Floor3D } from '#core/state.ts';
-import type { IdleObject } from '#viewport/skinning.ts';
+import type { IdleBody } from '#viewport/skinning.ts';
 import type { Instance } from '#src/scene/payload.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { DRAPE_PARS, DRAPE_VERT_PARS, TERRAIN_DEPTH, drapeUniforms } from '#viewport/drape.ts';
@@ -313,7 +313,7 @@ export function applyProjectedMaterials(fl: Floor3D): void {
 }
 
 /** The animated-body counterpart of projectBatch: the same materials on the skinned mesh. */
-export function projectIdle(fl: Floor3D, idle: IdleObject): void {
+export function projectIdle(fl: Floor3D, idle: IdleBody): void {
   const g = (idle.mesh.userData.inst as Instance | undefined)?.g;
   if (g === undefined) return;
   const list = projectedList(fl, g, idle.mesh.material);

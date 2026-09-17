@@ -18,7 +18,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import * as THREE from 'three';
 import { createGeomResolver } from '../src/scene/scene.ts';
-import { makeIdle, poseIdle } from '#viewport/skinning.ts';
+import { makeIdle, poseIdle, bakeBoneTable, TableSkeleton, TABLE_RATE } from '#viewport/skinning.ts';
 import { dataDir } from './game-dir.ts';
 
 let failures = 0;
@@ -151,6 +151,37 @@ for (const shared of [
 console.log('\ndisplay scale');
 check('a creature\'s clip leaves its root at unit scale', scaledRoots.length === 0,
   scaledRoots.join('; ') || 'the root scale is on the mesh alone');
+
+// The map's bodies are posed from a table the clip was baked to, not from
+// bones (skinning.ts, bakeBoneTable). The table is only right if a body over
+// it draws what the bone path drew: at any time t, its skinning matrices must
+// equal a real skeleton's posed at the table's frame for t.
+console.log('\nbaked table');
+const table = bakeBoneTable(geom.skin, geometry, [new THREE.MeshBasicMaterial()]);
+if (!table) { console.log('FAIL: bakeBoneTable returned nothing'); process.exit(1); }
+check('one row per frame at the table rate', table.frames === Math.max(1, Math.round(table.duration * TABLE_RATE)) && table.offsets.length === table.frames * table.bones * 16,
+  `${table.frames} frames × ${table.bones} bones over ${table.duration.toFixed(2)}s`);
+const skel = new TableSkeleton(table);
+// The table is in model space — a body's placement is its own matrix, applied
+// after — so the bones it is held against stand at the origin.
+idle.mesh.position.set(0, 0, 0);
+idle.mesh.rotation.set(0, 0, 0);
+let tableWorst = 0;
+for (const t of [0, 0.37, table.duration * 0.5, table.duration - 0.01, table.duration + 0.2]) {
+  skel.time = t;
+  skel.update();
+  const f = skel.frameAt();
+  poseIdle(idle, f / TABLE_RATE);
+  idle.mesh.updateMatrixWorld(true);
+  idle.mesh.skeleton.update();
+  const real = idle.mesh.skeleton.boneMatrices!, mine = skel.boneMatrices!;
+  for (let i = 0; i < real.length; i++) tableWorst = Math.max(tableWorst, Math.abs(real[i]! - mine[i]!));
+  // And the bone's own place, which the glued effects hang off.
+  const w = new THREE.Matrix4();
+  skel.boneWorld(0, w);
+  for (let i = 0; i < 16; i++) tableWorst = Math.max(tableWorst, Math.abs(w.elements[i]! - idle.bones[0]!.matrixWorld.elements[i]!));
+}
+check('a table skeleton poses as the bones do at the frame', tableWorst < 1e-5, `largest difference ${tableWorst.toExponential(2)}`);
 
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);

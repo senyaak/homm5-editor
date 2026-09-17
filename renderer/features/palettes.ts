@@ -300,7 +300,7 @@ export function addInstanceToScene(inst: Instance, geom: { index: number; data: 
   fl.meshes.set(inst, mesh);
   // An object placed now animates as readily as one loaded with the map, and
   // only joins the batch when it does not.
-  const animated = addIdle(fl.objGroup, fl.idle, inst, mesh, fl.idle.length * 0.37);
+  const animated = addIdle(fl.objGroup, fl.idle, inst, mesh);
   if (!animated) addToBatch(fl, inst, mesh);
   // If this model takes the ground it stands on, give its drawn body — the
   // batch, or the animated mesh just added — the projection material now

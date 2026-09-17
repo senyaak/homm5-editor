@@ -28,7 +28,7 @@ import { worldGeos, worldMats, geomParts, geomScale, geomFootprint, geomSkin, ge
 import { materialFor, partTexture, shadeProbe } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
-import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode } from '#viewport/idle.ts';
+import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode, idleTime } from '#viewport/idle.ts';
 import { actorKinds, advanceScene, closeScene, initDialogScenes, openScene, openSceneFile, playing, sceneFile, setPlaying, shotFxCount, shotModelCount, show } from '#features/dialog-scene.ts';
 import type { SceneInfo, ScenesInFileResult } from '#electron/ipc.ts';
 import { roster, objectsOfClass, canCreateClass, mapNames, forgetClass } from '#core/rosters.ts';
@@ -606,6 +606,8 @@ interface ViewApi {
       /** The baked recordings on the GPU, one per effect uid: how many, entries, bytes. */
       tables: number; tableEntries: number; tableBytes: number;
     };
+    /** Animated bodies on the active floor, and the baked idle tables behind them (one per creature kind). */
+    idle: { bodies: number; tables: number; tableBytes: number };
     loaf: LongFrame[];
   };
   /** Forget the frames and long frames seen so far — to measure from here. */
@@ -778,7 +780,7 @@ const view: ViewApi = {
     return {
       mode: idleMode(),
       animated: fl?.idle.length ?? 0,
-      time: fl?.idle.reduce((a, o) => Math.max(a, o.time), 0) ?? 0,
+      time: fl?.idle.length ? idleTime() : 0,
       // Which geoms took an animated body, and which stayed batched despite
       // having a skin on record — the two lists that localize "this creature
       // stands still" to a geom without reaching into the scene.

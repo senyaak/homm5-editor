@@ -209,7 +209,7 @@ export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
   }
   const still = instances.filter((it, i) => {
     const handle = fl.meshes.get(it);
-    return !(handle && addIdle(fl.objGroup, fl.idle, it, handle, i * 0.37));
+    return !(handle && addIdle(fl.objGroup, fl.idle, it, handle));
   });
   const batches = buildBatches(still, fl.meshes, worldGeos, worldMats, fl.objGroup);
   for (const [g, b] of batches) fl.batches.set(g, b);

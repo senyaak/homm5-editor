@@ -14,7 +14,7 @@ import * as THREE from 'three';
 
 import type { Instance, SplatData, AmbientData } from '#src/scene/payload.ts';
 import type { PlacedFx } from '#viewport/fx.ts';
-import type { IdleObject } from '#viewport/skinning.ts';
+import type { IdleBody } from '#viewport/skinning.ts';
 import { uiPrefs } from '#core/prefs.ts';
 
 /** Every copy of one model on one floor, drawn in a single call. */
@@ -84,7 +84,7 @@ export interface Floor3D {
    * the idle-stance setting is on — and an object in here is NOT in `batches`,
    * or it would be drawn twice, once moving and once frozen.
    */
-  idle: IdleObject[];
+  idle: IdleBody[];
   /**
    * Playing particle effects, one batch per distinct effect payload with a
    * copy per placed object that carries it. Built asynchronously after the

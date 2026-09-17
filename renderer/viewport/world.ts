@@ -20,7 +20,7 @@ import { buildBatches } from '#viewport/instancing.ts';
 import { applyAmbient, refreshLighting } from '#viewport/lighting.ts';
 import { bakeLightMap, makeLightMap } from '#viewport/point-lights.ts';
 import { markShadowRoles } from '#viewport/shadows.ts';
-import type { IdleObject } from '#viewport/skinning.ts';
+import type { IdleBody } from '#viewport/skinning.ts';
 import { clearSky } from '#viewport/sky.ts';
 import { disposeSplats, upgradeToSplat } from '#viewport/splat.ts';
 import { cam, camera, controls, scene, syncTopCamera } from '#viewport/stage.ts';
@@ -105,10 +105,10 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
   // Whatever takes an animated body drops out of the batched list: the two draw
   // the same model, and left in both an object would show its idle and its bind
   // pose at once, in the same place.
-  const idle: IdleObject[] = [];
+  const idle: IdleBody[] = [];
   const still = floor.instances.filter((it, i) => {
     const handle = meshes.get(it);
-    return !(handle && addIdle(objGroup, idle, it, handle, i * 0.37));
+    return !(handle && addIdle(objGroup, idle, it, handle));
   });
   const batches = buildBatches(still, meshes, geos, mats, objGroup);
   const fl: Floor3D = {

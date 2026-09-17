@@ -16,6 +16,7 @@ import * as THREE from 'three';
 import { state, activeFloor } from '#core/state.ts';
 import { renderer } from '#viewport/stage.ts';
 import { fxTableStats } from '#viewport/particles.ts';
+import { idleTableStats } from '#viewport/idle.ts';
 
 /** Frames kept for the percentiles — ten seconds at 60 Hz. */
 const RING = 600;
@@ -117,8 +118,10 @@ export function perfStats(): {
   pixelRatio: number; size: number[];
   sections: Record<string, { p50: number; p95: number; max: number }>;
   fx: ReturnType<typeof fxSummary>;
+  idle: { bodies: number; tables: number; tableBytes: number };
   loaf: LongFrame[];
 } {
+  const it = idleTableStats();
   const sec: Record<string, { p50: number; p95: number; max: number }> = {};
   for (const [name, ring] of sections) sec[name] = percentiles(ring);
   return {
@@ -132,6 +135,7 @@ export function perfStats(): {
     size: [renderer.domElement.width, renderer.domElement.height],
     sections: sec,
     fx: fxSummary(),
+    idle: { bodies: (state.world ? activeFloor() : null)?.idle.length ?? 0, tables: it.tables, tableBytes: it.bytes },
     loaf: [...loaf],
   };
 }
