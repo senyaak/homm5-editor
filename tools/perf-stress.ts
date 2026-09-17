@@ -90,12 +90,19 @@ try {
   const n = Math.min(picks.length, spots.length);
   console.log(`placing ${n} objects on a ${size}×${size} map…`);
   const t0 = Date.now();
+  let skipped = 0;
   for (let i = 0; i < n; i++) {
     const [x, y] = spots[i]!;
-    await page.evaluate((o) => window.view.place(o), { ...picks[i]!, x, y });
+    // A kind whose model the editor cannot decode is refused; the spot is skipped.
+    try {
+      await page.evaluate((o) => window.view.place(o), { ...picks[i]!, x, y });
+    } catch (e) {
+      skipped++;
+      if (skipped < 5) console.warn(`  skipped ${picks[i]!.shared}: ${e instanceof Error ? e.message.split(/\r?\n/)[0] : e}`);
+    }
     if (i % 250 === 249) console.log(`  ${i + 1} placed, ${((Date.now() - t0) / 1000) | 0}s`);
   }
-  console.log(`placed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  console.log(`placed in ${((Date.now() - t0) / 1000).toFixed(1)}s${skipped ? `, ${skipped} skipped` : ''}`);
   await page.waitForFunction(() => window.view.pending() === 0, null, { timeout: 120_000 });
   // Effects arrive asynchronously; give the last placements their systems.
   await page.waitForTimeout(3000);
@@ -117,6 +124,11 @@ try {
   const close = await read('plan/zoom');
   await page.evaluate(() => window.view.plan(false));
   const orbit = await read('orbit');
+  // Half the pixels: if the frame follows, the GPU's fill rate is the wall
+  // and `render` above was the CPU waiting on it, not three's own work.
+  await page.evaluate(() => window.view.pixelRatio(0.5));
+  const half = await read('orbit ½px');
+  await page.evaluate(() => window.view.pixelRatio(Math.min(devicePixelRatio, 2)));
   const metrics = await page.evaluate(() => window.editor.appMetrics());
   console.log(`[perf] memory: ${metrics.map((m) => `${m.type} ${(m.workingSetKB / 1024) | 0} MB`).join(' · ')}`);
   mkdirSync(OUT, { recursive: true });
@@ -140,7 +152,7 @@ try {
   if (jank.length) console.log(`\n${jank.length} jank warning(s), worst: ${jank.map((l) => Number(/(\d+)ms/.exec(l)?.[1])).sort((a, b) => b - a).slice(0, 5).join(' ')} ms`);
 
   writeFileSync(join(OUT, `stress-${KIND}.json`), JSON.stringify({
-    when: new Date().toISOString(), kind: KIND, count: n, size, plan, close, orbit, reopened, loadMs, readyMs, metrics, appLog,
+    when: new Date().toISOString(), kind: KIND, count: n, size, plan, close, orbit, half, reopened, loadMs, readyMs, metrics, appLog,
   }, null, 2));
   console.log('errors', ed.errors);
 } finally {

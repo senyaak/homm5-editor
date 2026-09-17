@@ -615,6 +615,14 @@ interface ViewApi {
   /** Forget the frames and long frames seen so far — to measure from here. */
   perfReset(): void;
   /**
+   * Draw at this many device pixels per CSS pixel from now on (the default is
+   * the display's, capped at 2). A measuring knob: the frame at half the
+   * pixels against the frame at all of them says whether the GPU's fill rate
+   * is what the CPU is waiting for — `render` in `perf()` is the CPU side of
+   * three's submission, and it grows when the GPU is behind.
+   */
+  pixelRatio(r: number): void;
+  /**
    * Place an object through the renderer's own palette path — the one that
    * grafts the new instance onto the LIVE scene (idle, effects, batch).
    * `api.addObject` alone is only the main-process half; a test
@@ -845,6 +853,10 @@ const view: ViewApi = {
   },
   perf: perfStats,
   perfReset,
+  pixelRatio(r) {
+    renderer.setPixelRatio(r);
+    renderer.setSize(renderer.domElement.clientWidth, renderer.domElement.clientHeight, false);
+  },
   async place(o) {
     if (!state.world) throw new Error('no map open');
     const res = await api.addObject({

@@ -294,6 +294,44 @@ view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
   per-call CPU. Fewer calls (merging materials across geoms, `BatchedMesh`)
   is the remaining lever there — and the largest one left in the frame.
 * `map:load` is 11.6 s. The worst number on the page, and not in a frame.
+
+### 7a. Under a map no designer would make (`tools/perf-stress.ts`, 2026-09-17)
+
+Three maps built through the palette path on a 176×176 board, the frame read
+from three views, then saved and reopened. Idle `all`, effects on.
+
+| map | objects | calls | frame p50 (JS) | of which `render` | fx | bodies | atlases | tables | JS heap / Tab RSS | reopen |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| effects (chests, fires, wisps, haze, crystals) | 1500 | 757 | 16.7 (4.4) | 4.3 | 1295 copies / 56 batches | 122 | 53 MB | 6 + 1.6 MB | — / 621 MB | 1.6 s |
+| creatures (182 kinds) | 1200 | 2990 | 18.8 (18.3) | 17.0 | 1938 / 315 | 1134 | 200 MB | 28 + 104 MB | 670 MB / 2.5 GB | 15.6 s |
+| mix (fires, monsters, trees) | 2400 | 3100 | 27.8 (27.4) | 26.2 | 2254 / 528 | 715 | 478 MB | 28 + 104 MB | 803 MB / 3.3 GB | 24 s |
+
+What it says, in the order it matters:
+
+* **Draw calls are the frame, and only they.** 3100 calls cost 26 ms, ~8.5 µs
+  each; halving the pixels (`view.pixelRatio(0.5)`) changes nothing, so it is
+  not fill rate — it is three's CPU per call, and the state changes between
+  them (528 effect batches each with its own material and two textures, 419
+  kinds of tree). The 1134 bodies of 182 kinds are 1134 draws where 182
+  would do: the effects' recipe again — one draw per kind with the copies as
+  instances — is the next step, and it is the largest one left.
+* **Effects are done.** 1300 copies in 56 batches are 4 ms of JS in total,
+  0.0 of it in `advanceFx`.
+* **Memory scales badly, and outside the JS heap.** 3.3 GB of renderer RSS
+  against an 800 MB heap: the rest is typed arrays and canvases — 478 MB of
+  effect atlases held as canvases (3.6 would halve them and let the CPU side
+  go after upload), decoded texture data three keeps referenced after upload,
+  the bone tables (216 → 104 MB after dropping the world rows; half-float
+  would halve again).
+* **Load is seconds per thousand objects** — 24 s for the mix — and it janks
+  for up to 3 s at a time: the idle tables bake at ~21 ms a kind on the main
+  thread (4 s for 182 kinds), the effect tables up to 280 ms each. A worker,
+  or a bake that yields.
+* **Placing an object costs what the map weighs.** Every edit is recorded
+  for undo by serialising the whole map document before and after and
+  diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,
+  the first a few. Not a frame problem, but the drop-from-palette lag on a
+  big map is this.
 * 3.6 — atlases as RGBA typed arrays instead of PNG data-URIs — would halve
   the 146 MB and the 3338 image decodes on load; never in this slice's three
   steps, still worth its half day.
