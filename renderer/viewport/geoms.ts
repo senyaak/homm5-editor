@@ -42,9 +42,19 @@ export const geomFx = new Map<number, FxInstancePayload[]>();
  * model placed with idles on stood frozen while its loaded twins moved, because
  * only one of them remembered the skin.
  */
+/**
+ * The material of a part that is not drawn: the effect stand-in card of an
+ * object whose particles play. It stays in the geometry — the pick handle is
+ * built from the same buffers, so the card is still what a click on an
+ * effect-only object hits — and three skips an invisible group in both the
+ * colour and the shadow pass, which is what takes the card's shadow off the
+ * ground with it.
+ */
+const UNDRAWN = new THREE.MeshBasicMaterial({ visible: false });
+
 export function registerGeom(index: number, g: GeomData): void {
   worldGeos[index] = geometryFor(g);
-  worldMats[index] = g.parts.map((p) => materialFor(p));
+  worldMats[index] = g.parts.map((p) => (p.card && g.fx?.length ? UNDRAWN : materialFor(p)));
   geomParts.set(index, g.parts);
   geomFootprint.set(index, g.footprint ?? null);
   // Only a model with a clip is worth remembering: the binding alone poses

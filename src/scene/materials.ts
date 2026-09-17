@@ -29,6 +29,23 @@ export interface MaterialInfo {
   tex: string | null;
   alphaMode: AlphaMode;
   projectOnTerrain: boolean;
+  /**
+   * Draw additive (rgb adds to what is behind) — `<AddPlaced>`, and ONLY
+   * when the material blends at all.
+   *
+   * Read out of H5_Game_H5E.exe rather than guessed from the vortex it was
+   * first seen on. The material's pass builder (`CGenericMaterial` vt+0x38,
+   * `0x52e1f0`) forms the pass flags from AddPlaced (`+0x96`, record byte
+   * `+0xB5`): `0x80` when set, `0x140` when not, and with fog on `0x400`
+   * against `0x200` — the fog-to-black flavour an additive surface needs
+   * so the fog colour is not added to it. But those flags are handed over
+   * only on the BLENDED branches — OVERLAY, OVERLAY_ZWRITE, TRANSPARENT,
+   * DECAL (blend class `+0x64` 1..4). The OPAQUE branch (class 0, which is
+   * also where ALPHA_TEST goes, its test a separate flag `+0x7C`) pushes a
+   * different slot holding only the fog bit. So a gold pile — AM_OPAQUE,
+   * L_SELFILLUM, AddPlaced true — is a solid heap in the game, and was a
+   * see-through one in the editor for as long as the flag alone decided.
+   */
   additive: boolean;
   selfIllum: boolean;
   /** `<Is2Sided>`: draw the back faces too. False in 11209 of the 11639 shipped
@@ -53,6 +70,9 @@ export interface MaterialInfo {
   terrainSkin: boolean;
 }
 
+/** The alpha modes the engine blends — the only ones on which AddPlaced acts (see MaterialInfo.additive). */
+const BLENDED: ReadonlySet<AlphaMode> = new Set<AlphaMode>(['AM_OVERLAY', 'AM_OVERLAY_ZWRITE', 'AM_TRANSPARENT', 'AM_DECAL']);
+
 /** The one document the engine's terrain-material test compares against. */
 const TERRAIN_SKIN_MATERIAL = '_(Material)/dev/Test/Malkovsky/CragTerrain.(Material).xdb';
 
@@ -69,13 +89,14 @@ const NO_MATERIAL: MaterialInfo = {
 function materialInfo(itemXml: string, data: Assets, baseDir: string): MaterialInfo {
   const read = (xml: string, from: string): MaterialInfo => {
     const tex = xml.match(/<Texture href="([^"]*)"/)?.[1];
+    const alphaMode = (xml.match(/<AlphaMode>([^<]*)<\/AlphaMode>/)?.[1] ?? 'AM_OPAQUE') as AlphaMode;
     return {
       // A texture href is relative to the MATERIAL, which is not always beside
       // the model that named it.
       tex: tex ? '/' + resolveHref(from, tex) : null,
-      alphaMode: (xml.match(/<AlphaMode>([^<]*)<\/AlphaMode>/)?.[1] ?? 'AM_OPAQUE') as AlphaMode,
+      alphaMode,
       projectOnTerrain: /<ProjectOnTerrain>\s*true\s*<\/ProjectOnTerrain>/.test(xml),
-      additive: /<AddPlaced>\s*true\s*<\/AddPlaced>/.test(xml),
+      additive: BLENDED.has(alphaMode) && /<AddPlaced>\s*true\s*<\/AddPlaced>/.test(xml),
       selfIllum: /<LightingMode>\s*L_SELFILLUM\s*<\/LightingMode>/.test(xml),
       twoSided: /<Is2Sided>\s*true\s*<\/Is2Sided>/.test(xml),
       terrainSkin: false,

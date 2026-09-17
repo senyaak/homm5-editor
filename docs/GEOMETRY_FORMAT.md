@@ -171,6 +171,30 @@ C1M1's dialogue cameras pull back into the ridge of mountains that lines the
 arena — shot 22 has the eye five units inside `Mountain12x12` — and drawn
 two-sided those shots are the inside of a rock rather than the scene.
 
+**How a part blends: `<AlphaMode>`, and `<AddPlaced>` only on top of it.**
+Read out of `H5_Game_H5E.exe`. The material record's serializer (`0x9c3be5`)
+lays the flags out as ProjectOnTerrain `+0x9C`, LightingMode `+0xA0`,
+DynamicMode `+0xA4`, Is2Sided `+0xA8`, Effect `+0xAC`, AlphaMode `+0xB0`,
+AffectedByFog `+0xB4`, AddPlaced `+0xB5`, IgnoreZBuffer `+0xB6`,
+BackFaceCastShadow `+0xB7`; the enum orders are AM_OPAQUE 0, AM_OVERLAY 1,
+AM_OVERLAY_ZWRITE 2, AM_TRANSPARENT 3, AM_ALPHA_TEST 4, AM_DECAL 5 and
+M_GENERIC 0, M_WATER 1, M_TRACKS 2, M_TERRAIN 3, M_CLOUDS_H5 4, M_ANIM_WATER
+5, M_SURF 6, M_SIMPLE_SKY 7, M_REFLECT_WATER 8, M_VIRTUAL_SKY 9. A record is
+copied into a descriptor (`0x55fe90`) and then into `CGenericMaterial`
+(`0x52cb20`), where AlphaMode becomes a blend class at `+0x64`: OPAQUE 0
+(ALPHA_TEST also 0, its test a separate flag `+0x7C`), OVERLAY 1, DECAL 2,
+OVERLAY_ZWRITE and TRANSPARENT 3 (4 with specular), and AddPlaced lands at
+`+0x96`. The material's pass builder (vt+0x38, `0x52e1f0`) forms its pass
+flags from AddPlaced — `0x80` set, `0x140` clear, and with fog `0x400`
+against `0x200`, the fog-to-black flavour an additive surface needs — but
+hands them over only on the blended classes 1..4; the class-0 branch pushes
+a different slot holding just the fog bit. So AddPlaced on an OPAQUE or
+ALPHA_TEST material changes nothing (the gold pile: AM_OPAQUE, L_SELFILLUM,
+AddPlaced true, and a solid heap in the game), and on a blended one it is the
+additive blend the name says. Which exact D3D blend the `0x80` bit selects was
+not chased down; the fog pairing and the vortex it was first seen on say
+additive. `src/scene/materials.ts` applies it exactly so.
+
 The culled side is the counter-clockwise-out one three.js keeps by default:
 every closed body on that stage has a **positive signed volume** (Mountain12x12
 1089, Mountain10x10 391, the Sanctuary 54), and the negative ones are the sheets

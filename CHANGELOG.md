@@ -87,6 +87,19 @@ repeats of it. A quarter of the shipped models (721 — the snags, fences,
 sand and lava mountains, the Academy's lightning effects) carry a negative
 coordinate somewhere; every one of them draws its texture as authored now.
 
+**Resource piles are solid again, and the bats are a swarm.** A gold pile was
+see-through (Senya): its material says `<AddPlaced>true`, which the editor
+had taken for additive blending since the day a portal's vortex was first
+seen carrying it. The engine's own rule, read out of its pass builder, is
+that AddPlaced acts only on a material that blends at all — OVERLAY,
+TRANSPARENT, DECAL — and is never consulted on the opaque branch, which is
+where the gold's AM_OPAQUE goes (docs/GEOMETRY_FORMAT.md, "How a part
+blends"). And bats01 was one big transparent bat with a shadow, hanging
+over its own swarm: the stand-in card an effect-only object gets so it can
+be clicked was drawn under the playing particles. It is now only the click
+target; the swarm is what is drawn, as in the game. Same for every fire,
+glow and sparkle that is nothing but an effect.
+
 ## 0.11.0-alpha.1 — 2026-09-16
 
 **Still an alpha, for the same reason as before.** The multiplayer half is as

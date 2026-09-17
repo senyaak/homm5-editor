@@ -104,12 +104,25 @@ export interface GeomPart {
    */
   terrainProjected: boolean;
   /**
-   * Additive blending: the material sets `<AddPlaced>true`. Energy and glow
-   * effects — a portal's Spiral, spell auras — are drawn this way, their texels
-   * ADDED to the background so they read as light rather than paint. Blended
-   * with ordinary alpha they come out as dark muddy discs instead of glowing.
+   * Additive blending: the material sets `<AddPlaced>true` AND blends at
+   * all (OVERLAY, OVERLAY_ZWRITE, TRANSPARENT, DECAL). Energy and glow effects
+   * — a portal's Spiral, spell auras — are drawn this way, their texels ADDED
+   * to the background so they read as light rather than paint. Blended with
+   * ordinary alpha they come out as dark muddy discs instead of glowing. An
+   * OPAQUE material with the flag (the gold pile) is drawn opaque: the
+   * engine's pass builder never consults the flag on that branch
+   * (src/scene/materials.ts, MaterialInfo.additive).
    */
   additive: boolean;
+  /**
+   * A stand-in for a particle effect, not something the game draws: the
+   * vertical card that gives an effect-only object (307 of them — the bats,
+   * the fires, the glows) a shape to click and box. It is drawn only when the
+   * object's particles are NOT playing — the game shows the particles and
+   * nothing else, and a ten-unit bat hanging over a swarm of small ones was
+   * what the card looked like once they did (Senya, bats01).
+   */
+  card?: true;
   /**
    * Self-illuminated: the material's `<LightingMode>` is `L_SELFILLUM`, so the
    * part emits its own colour and scene lighting must not darken it. Effect
