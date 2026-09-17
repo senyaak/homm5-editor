@@ -524,7 +524,14 @@ interface ViewApi {
    * from a copy of the registry's. One line per part: material type, visible,
    * alphaTest, blending; `null` when the object is not batched.
    */
-  partMaterials(id: string): string[] | null;
+  partMaterials(id?: string): string[] | null;
+  /**
+   * Are the ground-projected parts of this floor drawn with the ground? One
+   * line per batch whose parts want the projection but hold something else,
+   * beside what the terrain itself is drawn with — the question behind a
+   * light grey plate under a building.
+   */
+  projectionAudit(): { terrain: string; splat: boolean; batches: number; projected: number; unprojected: string[] };
   /**
    * The frame as it stands, as a PNG data URL.
    *
@@ -838,11 +845,30 @@ const view: ViewApi = {
   },
   partMaterials(id) {
     const fl = state.world ? activeFloor() : null;
-    const inst = fl?.instances.find((i) => i.id === id);
+    // No id: the selected object. An id is matched whole or by its tail, so
+    // the digits read off the panel find `item_167977763` too.
+    const inst = id === undefined ? state.selected?.inst
+      : fl?.instances.find((i) => i.id === id) ?? fl?.instances.find((i) => !!i.id && i.id.endsWith(id));
     const b = inst && fl!.batches.get(inst.g);
     if (!b) return null;
     const list = Array.isArray(b.im.material) ? b.im.material : [b.im.material];
     return list.map((m) => `${m.type} visible=${m.visible} alphaTest=${m.alphaTest} blending=${m.blending}`);
+  },
+  projectionAudit() {
+    const fl = state.world ? activeFloor() : null;
+    if (!fl) return { terrain: 'no map', splat: false, batches: 0, projected: 0, unprojected: [] };
+    const terrain = fl.terrainMesh.material as THREE.Material;
+    let projected = 0;
+    const unprojected: string[] = [];
+    for (const [g, b] of fl.batches) {
+      const parts = geomParts.get(g);
+      if (!parts?.some((p) => p.terrainProjected)) continue;
+      const list = Array.isArray(b.im.material) ? b.im.material : [b.im.material];
+      const bad = parts.map((p, i) => (p.terrainProjected && list[i]?.type !== 'ShaderMaterial' ? `part ${i} ${list[i]?.type}` : null)).filter((s): s is string => !!s);
+      if (bad.length) unprojected.push(`g${g} ${b.at.find((it) => it)?.shared?.split('/').pop() ?? '?'}: ${bad.join(', ')}`);
+      else projected++;
+    }
+    return { terrain: terrain.type, splat: !!fl.splat, batches: fl.batches.size, projected, unprojected };
   },
   shadowCasters() {
     const fl = state.world ? activeFloor() : null;
