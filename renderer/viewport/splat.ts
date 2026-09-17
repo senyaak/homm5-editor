@@ -214,7 +214,7 @@ void main() {
   #else
     mat4 model = modelMatrix;
   #endif
-  vec4 world = drape(model * vec4(position, 1.0), model[3].z);
+  vec4 world = drape(model * vec4(position, 1.0), model[3].z, 1.0);
   vNrm = normalize(mat3(model) * normal);
   // Objects live in world units; the splat composites in grid coords, so convert
   // once here and the ground lines up with the terrain seamlessly.

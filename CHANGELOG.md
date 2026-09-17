@@ -59,6 +59,14 @@ walls. A rigid building on a slope still meets the ground only at its
 centre — the game does not flatten under it at load; its maps are flat under
 every building class because their makers, and the generator, made them so.
 
+**A tree no longer stands in its own shadow.** Bigtree's trunk went dark at
+some turns of the tree and not others (Senya): the trunk is one of the parts
+its model drapes over the ground, and the shadow pass drew the tree undraped,
+so wherever the ground under the trunk was lower than its anchor the drawn
+trunk sat below its own shadow-caster. The shadow pass now drapes exactly the
+vertices the colour pass drapes — every model, every part — so a mountain's
+shadow falls from its draped foot too.
+
 ## 0.11.0-alpha.1 — 2026-09-16
 
 **Still an alpha, for the same reason as before.** The multiplayer half is as

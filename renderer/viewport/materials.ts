@@ -334,6 +334,22 @@ export function geometryFor(g: GeomData): THREE.BufferGeometry {
   // A group per submesh, indexed into the material array. Drawn as one group
   // instead, every mesh of a building took whichever texture came first.
   g.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
+  // Which vertices drape over the ground, as a per-vertex flag (drape.ts). The
+  // colour pass knows it per part, from the part's own material; the SHADOW
+  // pass draws the whole model with one depth material and has no part to ask,
+  // so it reads the flag off the vertex. Without it, Bigtree's trunk — four of
+  // its six parts draped — was drawn draped and shadow-tested against its own
+  // undraped self, and on a slope, wherever the drape had moved it down, it
+  // stood in its own shadow: the trunk going dark at some turns of the tree
+  // and not others, as the vertices that moved down changed with the rotation.
+  if (g.parts.some((p) => p.projectOnTerrain)) {
+    const flag = new Float32Array(g.pos.length / 3);
+    for (const p of g.parts) {
+      if (!p.projectOnTerrain) continue;
+      for (let k = p.start; k < p.start + p.count; k++) flag[g.idx[k]!] = 1;
+    }
+    b.setAttribute('aDrape', new THREE.BufferAttribute(flag, 1));
+  }
   // Prefer the authored normals; computing them averages across every face at a
   // vertex and softens the hard edges that give a model its shape.
   if (g.nrm) b.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(g.nrm), 3));

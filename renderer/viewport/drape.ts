@@ -115,9 +115,12 @@ export const DRAPE_VERT_PARS = `
 ${DRAPE_PARS}
 // The vertex keeps its height above the object's anchor and takes the ground
 // under itself instead of the ground under the anchor. With no height plane
-// bound (a scene without terrain) it stays where the object put it.
-vec4 drape(vec4 world, float anchorZ) {
-  if (uHeightV > 1.0) world.z += drapeGround(world.xy) - anchorZ;
+// bound (a scene without terrain) it stays where the object put it. 'how' is
+// the vertex's own share of the drape — 1 on a draped part, 0 on a rigid one
+// (the aDrape attribute, materials.ts geometryFor) — so one material can draw
+// a model of both kinds, which the shadow pass has to.
+vec4 drape(vec4 world, float anchorZ, float how) {
+  if (uHeightV > 1.0) world.z += how * (drapeGround(world.xy) - anchorZ);
   return world;
 }`;
 
@@ -134,13 +137,13 @@ vec4 drape(vec4 world, float anchorZ) {
 export function drapeThreeShader(shader: { vertexShader: string; uniforms: Record<string, THREE.IUniform> }): void {
   Object.assign(shader.uniforms, drapeUniforms());
   shader.vertexShader = shader.vertexShader
-    .replace('#include <common>', `#include <common>\n${DRAPE_VERT_PARS}`)
+    .replace('#include <common>', `#include <common>\n${DRAPE_VERT_PARS}\nattribute float aDrape;`)
     .replace('#include <project_vertex>', `
   mat4 drapeModel = modelMatrix;
   #ifdef USE_INSTANCING
     drapeModel = modelMatrix * instanceMatrix;
   #endif
-  vec4 drapedWorld = drape(drapeModel * vec4(transformed, 1.0), drapeModel[3].z);
+  vec4 drapedWorld = drape(drapeModel * vec4(transformed, 1.0), drapeModel[3].z, aDrape);
   vec4 mvPosition = viewMatrix * drapedWorld;
   gl_Position = projectionMatrix * mvPosition;`)
     .replace('#include <worldpos_vertex>', `
@@ -150,18 +153,23 @@ export function drapeThreeShader(shader: { vertexShader: string; uniforms: Recor
 }
 
 /**
- * The depth material the shadow pass draws a draped object with.
+ * The shadow pass drapes too — through three's OWN depth material.
  *
- * Three casts shadows with a depth material of its own that knows nothing of
- * the displacement, so a draped mountain would shade the ground from where it
- * was authored rather than where it is drawn. A custom depth material is per
- * OBJECT, not per part, so it is only given to a mesh whose parts are all
- * draped (instancing.ts); a model with a draped skirt under a rigid house
- * casts from the rigid position, which is off by the ground's slope under it.
+ * Three casts shadows with a MeshDepthMaterial of its own that knows nothing
+ * of the displacement, so a draped mountain shaded the ground from where it
+ * was authored, and worse, a model drawn draped and shadow-tested against its
+ * undraped self stood in its own shadow wherever the drape had moved it down
+ * (Bigtree's trunk going dark at some turns of the tree and not others).
+ *
+ * Not a `customDepthMaterial`: that is one material per OBJECT, and three
+ * writes each part's map and alphaTest into it in turn and only re-uploads
+ * a material's uniforms when the material CHANGES — so consecutive parts of
+ * one model drew with the first part's texture, and every leaf card cast a
+ * full quad. Three's own path keeps one depth variant per source material
+ * for exactly this reason, so that is the path kept: its depth material is
+ * given the draping at the prototype, every variant it clones inherits it,
+ * and which vertices move is the geometry's own aDrape flag (materials.ts) —
+ * absent on a geometry, the attribute reads 0 and nothing moves. The cache
+ * key follows: three keys a program on `onBeforeCompile.toString()`.
  */
-export function drapedDepthMaterial(): THREE.MeshDepthMaterial {
-  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
-  m.onBeforeCompile = (shader) => drapeThreeShader(shader);
-  m.customProgramCacheKey = () => 'draped-depth';
-  return m;
-}
+THREE.MeshDepthMaterial.prototype.onBeforeCompile = function drapedDepth(shader) { drapeThreeShader(shader); };
