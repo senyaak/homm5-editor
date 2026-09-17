@@ -14,6 +14,7 @@
   },
   "scripts": {
     "start": "npm run build:renderer && electron .",
+    "start:dev": "npm run build:renderer && electron . --dev",
     "inspect": "node tools/inspect-terrain.js",
     "test-terrain": "node tools/test-terrain.js",
     "test-terrain-write": "node tools/test-terrain-write.ts",

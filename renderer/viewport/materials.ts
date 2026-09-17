@@ -8,6 +8,7 @@
 
 import * as THREE from 'three';
 
+import { drapeThreeShader } from '#viewport/drape.ts';
 import { uSunDir, uSunCol, uAmbCol, uShadeCol, uIncidentCol, uWhiten } from '#viewport/lighting.ts';
 import { renderer } from '#viewport/stage.ts';
 import type { GeomData, GeomPart } from '#src/scene/payload.ts';
@@ -59,8 +60,11 @@ const DIFFUSE_SPACE = THREE.NoColorSpace;
  * floor, and `<colorspace_fragment>` (the linear→sRGB encode) goes with it,
  * because the value we write is already the gamma value the game would write.
  */
-function gameLit(m: THREE.Material, lit: boolean): void {
+function gameLit(m: THREE.Material, lit: boolean, drape = false): void {
   m.onBeforeCompile = (shader) => {
+    // A draped part takes the ground under each vertex (drape.ts); the
+    // fragment side below is the same either way.
+    if (drape) drapeThreeShader(shader);
     shader.uniforms.uSunDir = uSunDir;
     shader.uniforms.uSunCol = uSunCol;
     shader.uniforms.uAmbCol = uAmbCol;
@@ -134,7 +138,7 @@ void main() {`)
   };
   // Two materials that compile to different programs must not share a cache
   // entry, and three keys that cache on the program's own source plus this.
-  m.customProgramCacheKey = () => (lit ? 'game-lit' : 'game-unlit');
+  m.customProgramCacheKey = () => `${lit ? 'game-lit' : 'game-unlit'}${drape ? '-draped' : ''}`;
 }
 
 // The stand-in for a sky-dome part whose texture did not resolve: draw nothing
@@ -184,12 +188,17 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
   // A sky-dome part with no texture must vanish, not grey out: the dome rides
   // the camera with depth ignored, so a grey stand-in here is not a grey prop
   // in the distance but a wall across the whole frame.
-  if (!part.tex) return sky ? skyHole : greyMat;
+  // A ground-projected part with no texture of its own (the crag skin under a
+  // stone, a pit's bowl) is drawn as the ground once the floor's textures are
+  // up (splat.ts); until then it is nothing rather than a grey plate over
+  // the ground it is about to become.
+  if (!part.tex) return sky || part.terrainProjected ? skyHole : greyMat;
   // Cached per texture AND mode: the same image is used both ways in places.
-  // Flatness is in the key because it changes the material: the same texture in
-  // the same blend mode is a depth-writing body on one mesh and a decal on
-  // another.
-  const key = `${sky ? 'sky|' : ''}${part.alphaMode}|${part.projectOnTerrain ? 'proj' : 'own'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}${part.twoSided ? '2s' : ''}|${part.tex}`;
+  // Draping and flatness are in the key because they change the material: the
+  // same texture in the same blend mode is a depth-writing body on one mesh
+  // and a decal on another.
+  const decal = part.projectOnTerrain && part.flat;
+  const key = `${sky ? 'sky|' : ''}${part.alphaMode}|${part.projectOnTerrain ? 'draped' : 'rigid'}|${decal ? 'decal' : 'body'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}${part.twoSided ? '2s' : ''}${part.card ? 'card' : ''}|${part.tex}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   const tx = partTexture(part.tex);
@@ -211,7 +220,11 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
     : new THREE.MeshLambertMaterial({ map: tx, side });
   // Lambert for the lit parts only because its fragment shader is the one that
   // brings a normal along; the lighting it computes with it is thrown away.
-  gameLit(m, !part.selfIllum);
+  // A <ProjectOnTerrain> part is draped over the ground under it (drape.ts),
+  // whatever it blends like: the opaque rocks, the alpha-tested bushes and the
+  // marker overlays all hug the slope. (The ground-composited overlays never
+  // reach here — splat.ts builds theirs, draped the same way.)
+  gameLit(m, !part.selfIllum, part.projectOnTerrain);
   switch (part.alphaMode) {
     case 'AM_ALPHA_TEST':
       // Cutout (foliage): discard transparent texels so leaves aren't opaque
@@ -239,10 +252,9 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
     default: // AM_OPAQUE
       break;
   }
-  // A part that declares ProjectOnTerrain lies ON the ground rather than above
-  // it, so it is coplanar with the terrain and z-fights with it. Push it toward
-  // the camera in depth only — the geometry does not move.
-  if (part.projectOnTerrain) {
+  // A flat draped part lies ON the ground, coplanar with the terrain, and
+  // z-fights with it. Push it toward the camera in depth only.
+  if (decal) {
     m.polygonOffset = true;
     m.polygonOffsetFactor = -1;
     m.polygonOffsetUnits = -1;
@@ -263,6 +275,22 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
   if (sky) {
     m.depthTest = false;
     m.depthWrite = false;
+  }
+  // An effect's stand-in card is a marker, drawn on request (the explorer's
+  // "effect markers"), and a marker casts no shadow — a ten-unit square under
+  // every gold pile was the card's. Three has no per-group castShadow; what it
+  // has is a depth variant per source material whenever that material carries
+  // a map and an alphaTest, and the variant copies the alphaTest. So the card
+  // asks for an alpha test no texel can pass, which empties its shadow, and
+  // its own colour pass has the test taken back out.
+  if (part.card) {
+    m.alphaTest = 2;
+    const shade = m.onBeforeCompile, cacheKey = m.customProgramCacheKey;
+    m.onBeforeCompile = (shader, r) => {
+      shade.call(m, shader, r);
+      shader.fragmentShader = shader.fragmentShader.replace('#include <alphatest_fragment>', '');
+    };
+    m.customProgramCacheKey = () => cacheKey.call(m) + '-card';
   }
   texCache.set(key, m);
   return m;
@@ -326,6 +354,22 @@ export function geometryFor(g: GeomData): THREE.BufferGeometry {
   // A group per submesh, indexed into the material array. Drawn as one group
   // instead, every mesh of a building took whichever texture came first.
   g.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
+  // Which vertices drape over the ground, as a per-vertex flag (drape.ts). The
+  // colour pass knows it per part, from the part's own material; the SHADOW
+  // pass draws the whole model with one depth material and has no part to ask,
+  // so it reads the flag off the vertex. Without it, Bigtree's trunk — four of
+  // its six parts draped — was drawn draped and shadow-tested against its own
+  // undraped self, and on a slope, wherever the drape had moved it down, it
+  // stood in its own shadow: the trunk going dark at some turns of the tree
+  // and not others, as the vertices that moved down changed with the rotation.
+  if (g.parts.some((p) => p.projectOnTerrain)) {
+    const flag = new Float32Array(g.pos.length / 3);
+    for (const p of g.parts) {
+      if (!p.projectOnTerrain) continue;
+      for (let k = p.start; k < p.start + p.count; k++) flag[g.idx[k]!] = 1;
+    }
+    b.setAttribute('aDrape', new THREE.BufferAttribute(flag, 1));
+  }
   // Prefer the authored normals; computing them averages across every face at a
   // vertex and softens the hard edges that give a model its shape.
   if (g.nrm) b.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(g.nrm), 3));

@@ -11,12 +11,16 @@ import * as THREE from 'three';
 
 import { uiPrefs } from '#core/prefs.ts';
 import type { Floor3D } from '#core/state.ts';
+import type { IdleObject } from '#viewport/skinning.ts';
+import type { Instance } from '#src/scene/payload.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
+import { DRAPE_PARS, DRAPE_VERT_PARS, TERRAIN_DEPTH, drapeUniforms } from '#viewport/drape.ts';
 import { geomParts } from '#viewport/geoms.ts';
 import { uSunDir, uSunCol, uAmbCol, uShadeCol, uIncidentCol, uLmGain, uWhiten } from '#viewport/lighting.ts';
 import { partTexture } from '#viewport/materials.ts';
 import { SHADOW_FRAG_PARS, SHADOW_VERT_PARS, shadowUniforms, shadowVert } from '#viewport/shadows.ts';
 import { renderer } from '#viewport/stage.ts';
+import { refreshHoles } from '#viewport/terrain-mesh.ts';
 
 const SPLAT_VERT = `
 ${SHADOW_VERT_PARS}
@@ -174,25 +178,34 @@ export function disposeSplats(): void {
 
 // --- terrain-projected parts ------------------------------------------------
 //
-// A part flagged `terrainProjected` (in scene.ts: <ProjectOnTerrain> AND a sheer
-// texture) takes the ground it stands on as its surface. The Abandoned Mine's
-// mound is the case: on grass the engine draws a grassy hump, the model
-// supplying only the dark ore patch, so the green has to come from the terrain
-// underneath — which is what Senya saw in the original editor, the map's texture
-// climbing the hill.
+// A part flagged `terrainProjected` (model-geom.ts: <ProjectOnTerrain> on an
+// AM_OVERLAY material) takes the ground it stands on as its surface. The
+// Abandoned Mine's mound is the clearest case: on grass the engine draws a
+// grassy hump, the model supplying only the dark ore patch, so the green has
+// to come from the terrain underneath — which is what Senya saw in the
+// original editor, the map's texture climbing the hill. A mountain is the same
+// rule at the other end of the alpha: its rock is 96% opaque and its skirt
+// fades out, and where it fades the ground runs up into it.
 //
 // So these parts are shaded with the SAME splat the ground uses, sampled at
-// their own world position, with their own texture laid on top as a darkening.
-// The sheer gate is load-bearing: this was tried once on EVERY <ProjectOnTerrain>
-// part and smeared a column of ground texels up Mountain10x10's cliffs, because
-// that mountain is a 96%-opaque proj body, not a decal. Opacity is what tells
-// the mound (11%) from the mountain (96%).
+// their own world position, with their own texture laid over it by its alpha.
+// The mix, not a darkening: the old shader multiplied the texture in, which
+// suits a near-black ore patch and turns a mountain into ground with dark rock
+// smeared over it. And they are draped like every other <ProjectOnTerrain>
+// part (drape.ts), so the skirt they blend out along lies on the ground it
+// blends into.
+//
+// Once this ran on every <ProjectOnTerrain> part with the darkening mix and
+// smeared a column of ground texels up Mountain10x10's cliffs; the fix then
+// was to gate it on a sheer texture. The smear was the darkening — with the
+// rock laid over by its alpha there is no ground to see on a cliff face.
 
 const PROJ_VERT = `
 ${SHADOW_VERT_PARS}
+${DRAPE_VERT_PARS}
 out vec2 vGrid;   // 0..1 across the map -> mask lookup
 out vec2 vWorld;  // tile coords -> tiled ground lookup
-out vec2 vUv;     // the part's own uv, for its darkening texture
+out vec2 vUv;     // the part's own uv, for its own texture
 out vec3 vNrm;
 uniform float uMapSide;   // V - 1
 uniform float uUnits;     // world units per tile
@@ -200,12 +213,12 @@ void main() {
   // The mesh is batched, so the position has to come through the instance
   // matrix exactly as the instanced draw sees it.
   #ifdef USE_INSTANCING
-    vec4 world = modelMatrix * instanceMatrix * vec4(position, 1.0);
-    vNrm = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
+    mat4 model = modelMatrix * instanceMatrix;
   #else
-    vec4 world = modelMatrix * vec4(position, 1.0);
-    vNrm = normalize(mat3(modelMatrix) * normal);
+    mat4 model = modelMatrix;
   #endif
+  vec4 world = drape(model * vec4(position, 1.0), model[3].z, 1.0);
+  vNrm = normalize(mat3(model) * normal);
   // Objects live in world units; the splat composites in grid coords, so convert
   // once here and the ground lines up with the terrain seamlessly.
   vec2 grid = world.xy / uUnits;
@@ -219,6 +232,7 @@ ${shadowVert('world', 'vNrm')}
 const projFrag = (groups: number, layers: number): string => `
 precision highp sampler2DArray;
 ${SHADOW_FRAG_PARS}
+${DRAPE_PARS}
 uniform sampler2DArray uGround;
 uniform sampler2DArray uMask;
 uniform sampler2D uOverlay;
@@ -245,21 +259,32 @@ void main() {
       col = mix(col, texture(uGround, vec3(vWorld * uScale, float(li))).rgb, w);
     }
   }
-  // The model's own texture darkens the ground rather than replacing it: for the
-  // mound it is a near-black ore patch at low alpha, which is all it contributes.
-  if (uHasOverlay > 0.5) {
-    vec4 o = texture(uOverlay, vUv);
-    col *= mix(vec3(1.0), o.rgb, o.a);
-  }
-  // Lit with the terrain's own sun formula: the part IS ground, and a mound
-  // shaded differently from the flat around it reads as a decal, not a hump.
+  // The model's own texture lies over the ground by its alpha: the mound's
+  // near-black ore patch at low alpha darkens the grass, the mountain's rock at
+  // full alpha replaces it, and the rock's fading skirt hands over to the
+  // ground it stands on.
+  vec4 o = uHasOverlay > 0.5 ? texture(uOverlay, vUv) : vec4(0.0);
+  // Lit with the terrain's own sun formula — and, for the ground's share, with
+  // the GROUND's normal, not the mesh's. The mesh's normals belong to the
+  // rock: along a mountain's skirt they lean with the slope of the model, and
+  // ground lit by them came out a shade darker than the same ground a step
+  // away, a visible seam round every mountain (Senya, Mountain10x10). The
+  // ground under the part is lit as the terrain lights it, the texture as the
+  // part does, and the two are mixed by the same alpha as the colours. On a
+  // mound that is mostly ground (the mine's), the hump therefore shades as the
+  // flat around it — which is the game's picture, where the mound is a
+  // near-transparent overlay and what shows is the terrain itself.
   // Here vGrid is exactly grid/tiles (see PROJ_VERT), which is the lightmap's
   // own mapping, so the pools land where the terrain draws them.
-  float ndl = dot(normalize(vNrm), normalize(uSunDir));
   vec3 sunEnd = mix(uIncident, uSunCol, sunlitHere());
   vec3 pl = texture(uLm, vGrid).rgb * uLmGain;
-  outColor = vec4(col * ((uAmb + max(ndl, 0.0) * (sunEnd - uAmb)
-                               + max(-ndl, 0.0) * (uShade - uAmb) + pl) * uWhiten), 1.0);
+  float ndlGround = dot(drapeNormal(vWorld * uDrapeUnits), normalize(uSunDir));
+  float ndlPart = dot(normalize(vNrm), normalize(uSunDir));
+  vec3 litGround = col * ((uAmb + max(ndlGround, 0.0) * (sunEnd - uAmb)
+                                + max(-ndlGround, 0.0) * (uShade - uAmb) + pl) * uWhiten);
+  vec3 litPart = o.rgb * ((uAmb + max(ndlPart, 0.0) * (sunEnd - uAmb)
+                                + max(-ndlPart, 0.0) * (uShade - uAmb) + pl) * uWhiten);
+  outColor = vec4(mix(litGround, litPart, o.a), 1.0);
 }`;
 
 /**
@@ -269,7 +294,30 @@ void main() {
  * materials through the same uScale it writes on the terrain.
  */
 export function applyProjectedMaterials(fl: Floor3D): void {
-  for (const g of fl.batches.keys()) projectBatch(fl, g);
+  // One batch's failure must not leave every batch after it unprojected — a
+  // skin drawn with the untextured stand-in is a light grey plate on the
+  // ground, and an overlay drawn as a plain decal is a see-through floor.
+  for (const g of fl.batches.keys()) {
+    try { projectBatch(fl, g); } catch (e) { console.error(`projected material failed for geom ${g}`, e); }
+  }
+  // The animated bodies are drawn by their own skinned meshes, not by a batch
+  // (idle.ts), and they need the ground just the same: a sawmill's floor and
+  // the Inferno post's crucible pit are ground-projected parts on models with
+  // an idle clip. Left to the registry's materials they drew the pit's skin as
+  // a light grey plate and the floor as a see-through decal — only with the
+  // animation on, which is why the harness, built without it, showed neither
+  // (Senya).
+  for (const idle of fl.idle) {
+    try { projectIdle(fl, idle); } catch (e) { console.error('projected material failed for an animated object', e); }
+  }
+}
+
+/** The animated-body counterpart of projectBatch: the same materials on the skinned mesh. */
+export function projectIdle(fl: Floor3D, idle: IdleObject): void {
+  const g = (idle.mesh.userData.inst as Instance | undefined)?.g;
+  if (g === undefined) return;
+  const list = projectedList(fl, g, idle.mesh.material);
+  if (list) idle.mesh.material = list;
 }
 
 /**
@@ -279,19 +327,35 @@ export function applyProjectedMaterials(fl: Floor3D): void {
  * kept the transparent overlay and its earth hood vanished.
  */
 export function projectBatch(fl: Floor3D, g: number): void {
+  const batch = fl.batches.get(g);
+  if (!batch) return;
+  const list = projectedList(fl, g, batch.im.material);
+  if (list) batch.im.material = list;
+}
+
+/**
+ * Geom `g`'s material list with every ground-projected part given this
+ * floor's ground-sampling material — or null when nothing needed changing.
+ * Shared by the batches and the animated bodies, which hold their lists apart.
+ */
+function projectedList(fl: Floor3D, g: number, mats: THREE.Material | THREE.Material[]): THREE.Material[] | null {
   const s = fl.splat;
   const splatMat = fl.terrainMesh.material as THREE.ShaderMaterial;
-  if (!s || !splatMat?.uniforms?.uGround) return;
+  if (!s || !splatMat?.uniforms?.uGround) return null;
   const parts = geomParts.get(g);
-  const batch = fl.batches.get(g);
-  if (!parts || !batch) return;
-  const mats = batch.im.material;
-  const list = Array.isArray(mats) ? mats : [mats];
+  if (!parts) return null;
+  // A COPY of the model's material list, never the registry's own array
+  // (geoms.ts hands the same array to every floor's batch): written into in
+  // place, the surface floor's ground-sampling material ended up on the
+  // underground batch too, with the surface's grass on a mound in the caves.
+  const list = (Array.isArray(mats) ? mats : [mats]).slice();
   let changed = false;
   parts.forEach((p, i) => {
     if (!p.terrainProjected) return;
-    // Already projected (re-run on add, or an add-layer rebuild): leave it.
-    if ((list[i] as THREE.ShaderMaterial)?.uniforms?.uUnits) return;
+    // Already projected against THIS floor's splat (a re-run on add): leave it.
+    // Against another one — an add-layer rebuild replaced the ground textures —
+    // it has to be built again.
+    if ((list[i] as THREE.ShaderMaterial)?.uniforms?.uGround === splatMat.uniforms.uGround) return;
     const overlay = p.tex ? partTexture(p.tex) : null;
     list[i] = new THREE.ShaderMaterial({
       glslVersion: THREE.GLSL3,
@@ -299,6 +363,7 @@ export function projectBatch(fl: Floor3D, g: number): void {
       fragmentShader: projFrag(s.maskGroups.length, s.layerCount),
       uniforms: {
         ...shadowUniforms(),
+        ...drapeUniforms(),
         uGround: splatMat.uniforms.uGround!,
         uMask: splatMat.uniforms.uMask!,
         uScale: splatMat.uniforms.uScale!,
@@ -310,18 +375,23 @@ export function projectBatch(fl: Floor3D, g: number): void {
         uSunDir, uSunCol, uAmb: uAmbCol, uShade: uShadeCol, uIncident: uIncidentCol, uWhiten,
       },
       lights: true, // what makes three define the shadow chunks and fill them
-      side: THREE.DoubleSide,
+      // Culled like any other part (materials.ts on why): a mountain drawn
+      // two-sided fills the frame with its inside when a dialogue camera pulls
+      // back into the ridge.
+      side: p.twoSided ? THREE.DoubleSide : THREE.FrontSide,
       // The mound IS the ground, and the building's entrance and floor sit ON
       // it: where they are coplanar the two flickered green/dark as the camera
       // moved. Push the ground surface back in depth so the solid parts on top
-      // of it always win — same trick the flat ProjectOnTerrain decals use.
+      // of it always win — but less far than the terrain itself is pushed
+      // (upgradeToSplat), since a draped swamp or crater is coplanar with THAT
+      // and has to win there.
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
     });
     changed = true;
   });
-  if (changed) batch.im.material = list;
+  return changed ? list : null;
 }
 
 // Swap a floor's flat-colour terrain material for the textured splat one.
@@ -373,6 +443,12 @@ export async function upgradeToSplat(fl: Floor3D): Promise<void> {
     },
     lights: true,
     side: THREE.DoubleSide,
+    // Pushed back in depth behind everything laid ON it: a draped overlay (a
+    // swamp, a crater, a mountain's skirt) is coplanar with the ground and
+    // sits at offset 1, a flat decal is pulled forward — and the ground has to
+    // lose to both, or a swamp flickers in and out of the grass it lies on.
+    // The flat-colour stand-in (world.ts) carries the same offset.
+    ...TERRAIN_DEPTH,
   });
   fl.maskTex = masks; // the brush writes into this and flips needsUpdate
   const old = fl.terrainMesh.material;
@@ -388,7 +464,10 @@ export async function upgradeToSplat(fl: Floor3D): Promise<void> {
   splatMats.push(mat);
   // Parts that take their colour from the ground can only be built now: they
   // borrow this material's textures.
+  const tProj = performance.now();
   applyProjectedMaterials(fl);
-  console.log(`[perf] splat ${fl.name} ${(performance.now() - tSplat) | 0}ms · ${s.layerCount} layers @ ${s.size}px`);
+  // Now that what lies under a hole is drawn as ground, the ground can open.
+  refreshHoles(fl);
+  console.log(`[perf] splat ${fl.name} ${(performance.now() - tSplat) | 0}ms · ${s.layerCount} layers @ ${s.size}px · projection ${(performance.now() - tProj) | 0}ms`);
 }
 

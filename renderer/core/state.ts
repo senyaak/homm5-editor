@@ -57,6 +57,11 @@ export interface Floor3D {
   footMeshes: THREE.Mesh[];
   /** Ground colours for the fallback material, kept for remeshing. */
   colors: number[] | null;
+  /**
+   * Which cells the terrain is NOT drawn on — the `<holeTiles>` of the
+   * objects standing here (terrain-mesh.ts, holesMask). (V-1)² bytes, 1 = hole.
+   */
+  holes: Uint8Array;
   group: THREE.Group;
   objGroup: THREE.Group;
   /**
@@ -94,6 +99,11 @@ export interface Floor3D {
   /** A light-carrying object moved or died; the render loop rebakes soon. */
   lightsDirty: boolean;
   terrainMesh: THREE.Mesh;
+  /**
+   * The height plane on the GPU, for the parts that drape over the ground
+   * (viewport/drape.ts). Refilled whenever the heights change.
+   */
+  heightTex: THREE.DataTexture | null;
   waterMesh: THREE.Mesh | null;
   /** The sea texture, kept so sculpting can raise a sheet on a map that began dry. */
   waterTex: string | null;
@@ -129,6 +139,7 @@ export const state = {
   showObjects: uiPrefs.showObjects,
   showFx: uiPrefs.showFx,
   mapLight: uiPrefs.mapLight,
+  showFxCards: uiPrefs.showFxCards,
 };
 
 /** Only called while a map is loaded; every caller is gated on `state.world`. */

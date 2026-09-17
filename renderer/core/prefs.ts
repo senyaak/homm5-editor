@@ -25,12 +25,18 @@ export interface UiPrefs {
   /** Particle effects playing, and the map's own light vs flat editing light. */
   showFx: boolean;
   mapLight: boolean;
+  /**
+   * Draw the stand-in card of every effect-only object (bats, fires, glows)
+   * under its playing particles, so the object can be found and clicked. Off
+   * by default: the game shows the particles and nothing else.
+   */
+  showFxCards: boolean;
 }
 
 const UI_PREFS_DEFAULT: UiPrefs = {
   showObjects: true, explorerOpen: true, cliffs: true, grid: false, showHidden: false, texScale: 0.5,
   topView: false, brushForce: 0.35, brushTension: 1, terrainPanel: true,
-  showFx: true, mapLight: true, fillDensity: 1,
+  showFx: true, mapLight: true, fillDensity: 1, showFxCards: false,
 };
 const UI_PREFS_KEY = 'homm5-editor.ui';
 

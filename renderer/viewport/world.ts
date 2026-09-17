@@ -12,6 +12,7 @@ import type { Floor3D } from '#core/state.ts';
 import { drawRegionOverlay, renderRegionList } from '#features/regions.ts';
 import { deselect, renderExplorer, updatePanel } from '#features/selection.ts';
 import { RIVER_DEPTH } from '#features/terrain-brush/sculpt.ts';
+import { TERRAIN_DEPTH, updateHeightTexture, useDrapeFloor } from '#viewport/drape.ts';
 import { loadFx } from '#viewport/fx.ts';
 import { buildGeos, geomScale } from '#viewport/geoms.ts';
 import { addIdle } from '#viewport/idle.ts';
@@ -38,11 +39,13 @@ export function clearWorld(): void {
     for (const s of fl.fx) s.dispose();
     fl.fx.length = 0;
     fl.lightMap.dispose();
+    fl.heightTex?.dispose();
     fl.group.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
   }
   if (state.boxHelper) { scene.remove(state.boxHelper); state.boxHelper = null; }
   state.world = null; state.selected = null; updatePanel();
   applyAmbient(null);
+  useDrapeFloor(null);
 }
 
 
@@ -53,10 +56,17 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
   const group = new THREE.Group();
   const V = floor.V, heights = floor.heights;
 
-  const tg = terrainGeometry(V, heights, floor.flags, floor.colors);
+  // No holes yet: what fills a hole is the object's own ground-projected
+  // part, and that is drawn as ground only once the floor's textures are up
+  // (upgradeToSplat, which cuts the holes when it is done). Cut at build, the
+  // map opened with a hole under every mine and pit for as long as the
+  // textures took to decode (Senya).
+  const holes = new Uint8Array((V - 1) * (V - 1));
+  const tg = terrainGeometry(V, heights, floor.flags, floor.colors, holes);
   // Start on the flat MinimapColor blend; the textured splat material replaces
-  // it as soon as its textures finish decoding (see upgradeToSplat).
-  const terrainMesh = asTileSpace(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+  // it as soon as its textures finish decoding (see upgradeToSplat). Same depth
+  // offset as the splat, so a draped overlay wins over the stand-in too.
+  const terrainMesh = asTileSpace(new THREE.Mesh(tg, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide, ...TERRAIN_DEPTH })));
   group.add(terrainMesh);
   let waterMesh = null;
 
@@ -102,14 +112,15 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
   });
   const batches = buildBatches(still, meshes, geos, mats, objGroup);
   const fl: Floor3D = {
-    name: floor.name, V, heights, flags: floor.flags, colors: floor.colors,
+    name: floor.name, V, heights, flags: floor.flags, colors: floor.colors, holes,
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
     passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [], footMeshes: [],
-    group, objGroup, meshes, batches, idle, fx: [], terrainMesh, waterMesh, waterTex: floor.water?.tex ?? null,
+    group, objGroup, meshes, batches, idle, fx: [], terrainMesh, heightTex: null, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, ambient: floor.ambient, instances: floor.instances,
     lightMap: makeLightMap(V), lightsDirty: false,
   };
+  updateHeightTexture(fl); // the ground the draped parts will read
   bakeLightMap(fl); // cheap when nothing on the floor carries lights
   // After the batches and the animated bodies exist, so both are covered — the
   // drawing is done by the instanced meshes, not by the pick handles, and only
@@ -146,6 +157,8 @@ export function setActiveFloor(i: number): void {
   // Each floor lights like its own preset says — surface day, underground dark
   // (unless the Light toggle asks for the flat editing look).
   refreshLighting();
+  // And the draped parts read this floor's ground, not the other one's.
+  useDrapeFloor(activeFloor());
   deselect();
   const { V, heights } = activeFloor();
   // Frame the camera on this floor (its terrain sits at its own height range).

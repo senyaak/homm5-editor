@@ -162,8 +162,18 @@ renderer (renderer/particles.ts) packs the texture table into atlases and
 draws each instance as instanced camera-facing quads; a frame update lerps the
 alive particles' channels at the loop time and rewrites the attributes. One
 shared clock, phases spread per placement so identical objects don't flicker
-in lockstep. The static glow card (§2 of the scene resolver) stays underneath
-as the pick target and the fallback for anything that fails to decode.
+in lockstep. The static stand-in card (`effectGeom` in object-effects.ts)
+stays in the geometry — an effect-only object has nothing else to click —
+but is DRAWN, and PICKED, only with the explorer's "effect markers" checkbox
+on (`GeomPart.card`; `setFxCardsVisible` in geoms.ts swaps the card's slot
+of the material list between its material and an invisible one, and
+`pickObject` skips a hit on an undrawn group). The game shows the particles
+and nothing else; drawn under them the card was a ten-unit bat with a shadow
+hanging over bats01's swarm of small ones, and picked while invisible it took
+every click near the swarm. A card casts no shadow even when drawn — its
+material carries an alpha test no texel passes, which three copies into the
+shadow variant, and the colour pass has the test taken out (materials.ts).
+An effect whose file fails to decode keeps its card regardless.
 
 **Blending is NOT guessed — the art has one convention.** Every instance
 draws `ONE / ONE_MINUS_SRC_ALPHA` with STRAIGHT colour: a texel's rgb is what

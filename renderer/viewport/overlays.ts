@@ -15,7 +15,7 @@ import type { Footprint } from '#src/scene/payload.ts';
 import { classifyTiles, PASS_BLOCKED, PASS_NAVIGABLE } from '#src/terrain/passability.ts';
 import type { FloorPassability } from '#src/terrain/passability.ts';
 import { geomFootprint } from '#viewport/geoms.ts';
-import { asTileSpace, WATER_ORDER } from '#viewport/terrain-mesh.ts';
+import { asTileSpace, refreshHoles, WATER_ORDER } from '#viewport/terrain-mesh.ts';
 
 //
 // The original editor's Masks tab paints impassable ground and shows it as a
@@ -264,6 +264,8 @@ export function refreshFootprints(fl: Floor3D): void {
 
 /** Refresh a floor's footprints if the grid is showing; a no-op otherwise. */
 export function syncFootprints(fl: Floor3D = activeFloor()): void {
+  // The holes an object cuts in the ground move with it, like its footprint.
+  refreshHoles(fl);
   if (showBlocked) refreshFootprints(fl);
 }
 

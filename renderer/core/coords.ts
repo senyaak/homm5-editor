@@ -6,6 +6,7 @@
 
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { activeFloor } from '#core/state.ts';
+import { groundUnder } from '#src/terrain/ground.ts';
 import type { Floor3D } from '#core/state.ts';
 
 /**
@@ -17,7 +18,7 @@ import type { Floor3D } from '#core/state.ts';
  */
 export const tileCenter = (t: number): number => (t + 0.5) * U;
 
-/** Ground height at a tile of a given floor. */
+/** Height of a grid VERTEX of a floor — the height plane itself, for things laid on the grid. */
 export function heightOn(fl: Floor3D, x: number, y: number): number {
   const { V, heights } = fl;
   const ix = Math.max(0, Math.min(V - 1, Math.round(x)));
@@ -25,7 +26,15 @@ export function heightOn(fl: Floor3D, x: number, y: number): number {
   return heights[iy * V + ix]!;
 }
 
+/**
+ * The ground an object on tile (x, y) of a floor stands on: the terrain as
+ * drawn, read at the tile's centre, where the object is (src/terrain/ground.ts).
+ */
+export function groundOn(fl: Floor3D, x: number, y: number): number {
+  return groundUnder(fl.heights, fl.flags, fl.V, x, y, fl.name === 'underground');
+}
+
 /** The same, on the floor currently shown. */
-export function heightAt(x: number, y: number): number {
-  return heightOn(activeFloor(), x, y);
+export function groundAt(x: number, y: number): number {
+  return groundOn(activeFloor(), x, y);
 }

@@ -37,6 +37,128 @@ pre-release.
   the compiled eleven (the executable's switch is no longer patched — its
   twelfth slot broke under ASLR).
 
+**Mountains stand on the ground again — and grow out of it.** A mountain on a
+hillside floated on one side and was buried on the other, and its edges were
+cut off from the grass around it. The game drapes any part whose material says
+`<ProjectOnTerrain>` over the ground under each of its own vertices (the
+shipped maps depend on it: on A2S2 the ground under a mountain spans 3.75
+units at the median, against a mountain 5.4 tall), and the editor now does the
+same, on the GPU, for every such part — mountains, rocks, bushes, craters,
+swamps. The overlays among them (mountains, the Abandoned Mine's mound) are
+also shaded with the ground they stand on, their own texture laid over it by
+its alpha, so a mountain's fading skirt hands over to the map's grass instead
+of to whatever happened to be behind it — and that ground is lit as the
+terrain lights it, so the skirt is no darker than the grass a step away. Their
+shadows fall from where they are drawn. The snow mountains (SnowM_8x8_05,
+_06) and some fifty other models — the sand and lava mountains, the craters,
+the hellpikes — shipped their grey underground shell welded one vertex
+differently from the rock, so it slipped past the duplicate test and was
+drawn opaque over the skirt; it is recognised now. And the crag skirt some
+models carry under them (BigStone02's, the mine's pad) — a black square
+under the stone where the game shows snow — is what the engine treats it
+as: the terrain itself. The engine tests a mesh's material against ONE
+document, `CragTerrain.(Material).xdb`, and sends a match down the same
+path as `<ProjectOnTerrain>`; such a mesh is now draped and painted with
+the ground, its own crag texture unused. Still to do: clicking
+selects by the undraped shape, so on a steep slope the pick can be a little
+off the picture.
+
+A ground-composited part on the underground floor took the SURFACE floor's
+textures (the material list was shared between floors); it now takes its own.
+The browser harness (`npm run harness`) had fallen behind the bridge and could
+not open its map; it opens again.
+
+**Every object stands where the game stands it.** An object is drawn at the
+centre of its tile but was anchored to the height of the tile's corner
+vertex, half a tile away — level ground hid it, and on a slope a building
+stood off the ground on the downhill side or sank on the uphill one by half
+a tile of that slope (Senya, Heaven_Military_Post). The rule is now the
+game's own, read out of its executable (docs/TERRAIN_FORMAT.md, "Where an
+object stands"): the height plane read bilinearly at the tile's centre; an
+object on a sea tile at the sea level, 1.5, so ships float instead of lying
+on the dug bed; and on the underground the massif carve taken back off, so
+every object stands on the cave floor at 18 rather than on top of the rock
+walls. A rigid building on a slope still meets the ground only at its
+centre — the game does not flatten under it at load; its maps are flat under
+every building class because their makers, and the generator, made them so.
+
+**A tree no longer stands in its own shadow.** Bigtree's trunk went dark at
+some turns of the tree and not others (Senya): the trunk is one of the parts
+its model drapes over the ground, and the shadow pass drew the tree undraped,
+so wherever the ground under the trunk was lower than its anchor the drawn
+trunk sat below its own shadow-caster. The shadow pass now drapes exactly the
+vertices the colour pass drapes — every model, every part — so a mountain's
+shadow falls from its draped foot too.
+
+**Models are lit by the sun, not by their own x axis.** Turn any tree and its
+trunk went light and dark as a whole, the lit side riding round with the model
+(Senya, Bigtree on a flat new map). The authored normals were being read with
+x and z swapped: the geometry file stores the packed normal as a D3DCOLOR —
+z, y, x — which is what the engine's own vertex declaration calls the slot.
+Read the right way round, the normals agree with the faces at 0.88–0.94
+across 3500 shipped meshes where they sat at 0.27 before. Every model on
+every map is lit differently now — and correctly: the sun side is the sun
+side whichever way the object is turned. Meshes the editor writes itself
+(the Pandora box) pack the same order, so the game lights them right too.
+
+**Textures land where they were painted.** The lid of a Random Dwelling
+showed thirty-odd thin stripes where the game shows "RANDOM DWELLING 2"
+(Senya). The texture coordinates in a geometry file are SIGNED 16-bit
+fixed point, and the decoder read them unsigned, so a coordinate a hair
+below zero — or a texture tiled leftward — became sixteen to thirty-two
+repeats of it. A quarter of the shipped models (721 — the snags, fences,
+sand and lava mountains, the Academy's lightning effects) carry a negative
+coordinate somewhere; every one of them draws its texture as authored now.
+
+**An animated building takes the ground like a still one.** With idle
+animation on, a sawmill's floor was see-through and the Inferno post's pit
+was a light grey plate (Senya) — the ground-projected parts were given their
+ground-sampling material only on the instanced batches, and an object with
+an idle clip is drawn by its own skinned mesh instead, which kept the
+registry's materials: the pit's skin (which has no texture of its own) drawn
+with the untextured stand-in, the floor as a plain decal. The animated bodies
+are now projected with the batches, at load and at placement. The harness
+had shown neither because it built the scene without animation; it takes
+the app's own option now.
+
+**Dev mode.** `npm run start:dev`, `start-editor-dev.bat` or `start-editor.bat
+--dev` (the script now passes its arguments on to Electron) start the editor
+with F12 and Ctrl+Shift+I opening DevTools; outside dev mode they stay
+swallowed and the console is reachable only from the fatal screen (Senya:
+"the console is disabled"). Reload stays swallowed either way.
+
+**The ground opens where an object digs it.** The Inferno military post stood
+on flat ground with its crucible pit buried and only the glow showing
+(Senya; the game shows a pit with lava at the bottom). A shared's
+`<holeTiles>` — the cells the terrain is not drawn on under the object — was
+parsed and never used. The terrain mesh now leaves those cells out, turned
+with the object, and rebuilds when an object with holes is placed, moved,
+turned or deleted; the post's pit, a crater's bowl, a lake's bed and a mine's
+shaft show through (docs/TERRAIN_FORMAT.md, "Holes"). The holes are cut only
+once the floor's ground textures are up and what lies under them is drawn as
+ground — cut at build, a map opened with a hole under every mine for as long
+as the textures took (Senya) — and an untextured ground-projected part draws
+nothing at all until then, rather than a grey plate over the ground it is
+about to become.
+
+**Resource piles are solid again, and the bats are a swarm.** A gold pile was
+see-through (Senya): its material says `<AddPlaced>true`, which the editor
+had taken for additive blending since the day a portal's vortex was first
+seen carrying it. The engine's own rule, read out of its pass builder, is
+that AddPlaced acts only on a material that blends at all — OVERLAY,
+TRANSPARENT, DECAL — and is never consulted on the opaque branch, which is
+where the gold's AM_OPAQUE goes (docs/GEOMETRY_FORMAT.md, "How a part
+blends"). And bats01 was one big transparent bat with a shadow, hanging
+over its own swarm: the stand-in card an effect-only object gets so it can
+be clicked was drawn under the playing particles. It is now only the click
+target; the swarm is what is drawn, as in the game. Same for every fire,
+glow and sparkle that is nothing but an effect. Since a swarm is nothing to
+click on, the object list has an **effect markers** checkbox (Senya): on, the
+stand-in cards are drawn and clickable; off — the default — they are neither,
+so a press near a swarm of bats or a fire orbits the camera instead of
+selecting the effect and dragging it on the next stroke. The cards no longer
+cast shadows either way; the dark square under every gold pile was theirs.
+
 ## 0.11.0-alpha.1 — 2026-09-16
 
 **Still an alpha, for the same reason as before.** The multiplayer half is as

@@ -10,9 +10,11 @@ import * as THREE from 'three';
 import { uiPrefs } from '#core/prefs.ts';
 import { tierOf, RAMP_BIT, TIER_STEP } from '#src/terrain/terrain.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
-import type { TileInfo } from '#src/scene/payload.ts';
+import type { Instance, TileInfo } from '#src/scene/payload.ts';
 import { $ } from '#core/dom.ts';
 import type { Floor3D } from '#core/state.ts';
+import { updateHeightTexture } from '#viewport/drape.ts';
+import { geomFootprint } from '#viewport/geoms.ts';
 import { refreshBlocked } from '#viewport/overlays.ts';
 
 /**
@@ -133,7 +135,7 @@ export function makeWaterMesh(V: number, cells: number[], level: number, tex: st
  * enough to do once per brush tick.
  */
 export function terrainGeometry(
-  V: number, heights: number[], flags: number[] | null, colors: number[] | null,
+  V: number, heights: number[], flags: number[] | null, colors: number[] | null, holes: Uint8Array | null = null,
 ): THREE.BufferGeometry {
   const tg = new THREE.BufferGeometry();
   const tp = new Float32Array(V * V * 3);
@@ -207,6 +209,9 @@ export function terrainGeometry(
 
   for (let y = 0; y < V - 1; y++) for (let x = 0; x < V - 1; x++) {
     cell = y * (V - 1) + x;
+    // A hole cell has no ground at all — neither its surface nor a cliff wall
+    // along its edge: the object standing there brings its own (holesMask).
+    if (holes?.[cell]) continue;
     // corner indices, counter-clockwise from (x,y)
     const ci = [y * V + x, y * V + x + 1, (y + 1) * V + x + 1, (y + 1) * V + x];
     const h = ci.map((i) => heights[i]);
@@ -300,11 +305,66 @@ export function terrainGeometry(
   return tg;
 }
 
+/**
+ * The cells the terrain leaves out: every `<holeTiles>` entry of every object
+ * on the floor, turned with the object the way its footprint squares are
+ * (overlays.ts, footprintQuads) and taken to the cell the turned centre lands
+ * in.
+ *
+ * A hole is how the game shows what lies BELOW the ground: the Inferno
+ * military post's crucible pit, a crater's bowl, a lake's bed, the mine's
+ * shaft. The object's own mesh carries the pit — draped, it keeps its depth
+ * under the ground it stands in — and the terrain simply is not drawn over
+ * it. Without the hole the post sat on flat ground with its pit buried
+ * (Senya). Mountains declare holes too, under their solid middle, where the
+ * ground would only be overdraw.
+ */
+export function holesMask(V: number, instances: Instance[]): Uint8Array {
+  const holes = new Uint8Array((V - 1) * (V - 1));
+  for (const inst of instances) {
+    const tiles = geomFootprint.get(inst.g)?.hole;
+    if (!tiles?.length) continue;
+    const cos = Math.cos(inst.r), sin = Math.sin(inst.r);
+    const ax = inst.x + 0.5, ay = inst.y + 0.5;
+    for (const t of tiles) {
+      const cx = Math.floor(ax + t.x * cos - t.y * sin), cy = Math.floor(ay + t.x * sin + t.y * cos);
+      if (cx >= 0 && cy >= 0 && cx < V - 1 && cy < V - 1) holes[cy * (V - 1) + cx] = 1;
+    }
+  }
+  return holes;
+}
+
+/**
+ * Recompute the floor's holes for the objects standing on it now, and remesh
+ * the terrain when they changed. Returns whether it did — a drag calls this
+ * per move, and most moves change nothing.
+ */
+export function refreshHoles(fl: Floor3D): boolean {
+  // Until the floor's ground textures are up, nothing under a hole is drawn
+  // as ground (splat.ts), so the ground stays whole; upgradeToSplat calls
+  // back here when it is done.
+  const ready = !!(fl.terrainMesh.material as THREE.ShaderMaterial).uniforms?.uGround;
+  const next = ready ? holesMask(fl.V, fl.instances) : new Uint8Array((fl.V - 1) * (fl.V - 1));
+  let same = next.length === fl.holes.length;
+  for (let i = 0; same && i < next.length; i++) same = next[i] === fl.holes[i];
+  if (same) return false;
+  fl.holes = next;
+  const old = fl.terrainMesh.geometry;
+  fl.terrainMesh.geometry = terrainGeometry(fl.V, fl.heights, fl.flags, fl.colors, fl.holes);
+  old.dispose();
+  // The passability overlay is built from the terrain's triangles.
+  refreshBlocked(fl);
+  return true;
+}
+
 /** Rebuild the meshes a sculpt stroke invalidated. */
 export function remeshFloor(fl: Floor3D): void {
   const old = fl.terrainMesh.geometry;
-  fl.terrainMesh.geometry = terrainGeometry(fl.V, fl.heights, fl.flags, fl.colors);
+  fl.terrainMesh.geometry = terrainGeometry(fl.V, fl.heights, fl.flags, fl.colors, fl.holes);
   old.dispose();
+  // The parts draped over the ground read the same plane off the GPU, so the
+  // mountain follows the brush as the ground under it moves.
+  updateHeightTexture(fl);
   // Flooding or draining changes which cells the sheet covers. On a map that
   // began dry there is no sheet yet, so digging the first basin creates one —
   // otherwise the new sea would not appear until a reload.

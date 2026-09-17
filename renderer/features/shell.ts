@@ -24,7 +24,7 @@ import { fillTool, setFillDraw } from '#features/fill.ts';
 import { regionDraw, setRegionDraw } from '#features/regions.ts';
 import { deselect, renderExList } from '#features/selection.ts';
 import { forgetScriptContext } from '#features/text-editor/context.ts';
-import { geomSkin, worldGeos } from '#viewport/geoms.ts';
+import { geomSkin, setFxCardsVisible, worldGeos } from '#viewport/geoms.ts';
 import { idleMode, setIdleMode } from '#viewport/idle.ts';
 import type { IdleMode } from '#viewport/idle.ts';
 import { replaceInstances } from '#viewport/instancing.ts';
@@ -126,6 +126,21 @@ export function setShowFx(on: boolean): void {
   saveUiPrefs({ showFx: on });
 }
 setShowFx(state.showFx); // reflect the persisted choice in the label
+
+/**
+ * The explorer's "effect markers": draw the stand-in card of every
+ * effect-only object under its particles, and let it be picked. Off is the
+ * game's picture — particles and nothing else — and with nothing drawn there
+ * is nothing to click, so a press near a swarm of bats orbits the camera
+ * instead of selecting the swarm and dragging it on the next stroke.
+ */
+export function setShowFxCards(on: boolean): void {
+  state.showFxCards = on;
+  setFxCardsVisible(on);
+  $input('ex-fxcards').checked = on;
+  saveUiPrefs({ showFxCards: on });
+}
+setShowFxCards(state.showFxCards);
 
 export function setMapLight(on: boolean): void {
   state.mapLight = on;
@@ -381,6 +396,7 @@ export function initShell(): void {
     $('hud').textContent = `idle stance: ${next}`;
   };
   $('fxbtn').onclick = () => setShowFx(!state.showFx);
+  $input('ex-fxcards').onchange = () => setShowFxCards($input('ex-fxcards').checked);
   $('lightbtn').onclick = () => setMapLight(!state.mapLight);
   setMapLight(state.mapLight);
   renderer.domElement.addEventListener('pointerdown', (ev) => {

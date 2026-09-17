@@ -15,7 +15,7 @@
 
 import * as THREE from 'three';
 
-import { heightOn, tileCenter } from '#core/coords.ts';
+import { groundOn, tileCenter } from '#core/coords.ts';
 import type { Floor3D, GeomBatch } from '#core/state.ts';
 import type { Instance } from '#src/scene/payload.ts';
 import { geomScale, worldGeos, worldMats } from '#viewport/geoms.ts';
@@ -195,7 +195,7 @@ export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
     if (!geo || !mat) continue;
     // The map stores no height, so an object lands on whatever ground is under
     // it — the same rule object:add follows.
-    it.z = heightOn(fl, it.x, it.y);
+    it.z = groundOn(fl, it.x, it.y);
     const m = new THREE.Mesh(geo, mat);
     m.position.set(tileCenter(it.x), tileCenter(it.y), it.z);
     m.rotation.z = it.r;

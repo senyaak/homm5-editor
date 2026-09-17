@@ -22,7 +22,7 @@ import { requireFilled } from '#core/form-gate.ts';
 import { uiPrefs, saveUiPrefs } from '#core/prefs.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { state, activeFloor } from '#core/state.ts';
-import { tileCenter, heightOn, heightAt } from '#core/coords.ts';
+import { tileCenter, heightOn, groundAt } from '#core/coords.ts';
 import { renderer, scene, camera, controls, topCamera, cam, keys, isTyping, raycaster, ptr, syncTopCamera, setTopView, keyPan, DEFAULT_BG } from '#viewport/stage.ts';
 import { worldGeos, worldMats, geomParts, geomScale, geomFootprint, geomSkin, geomFx, registerGeom, buildGeos } from '#viewport/geoms.ts';
 import { materialFor, partTexture, shadeProbe } from '#viewport/materials.ts';
@@ -139,13 +139,30 @@ let fillPainting = false;
 // loop, right before drawing. Many moves between frames now cost one raycast.
 let hoverEv: PointerEvent | null = null;
 
+/**
+ * Is this hit on a face that is actually drawn? Three's raycast walks every
+ * group of a multi-material mesh whatever its material's `visible`, so the
+ * stand-in card of an effect-only object — kept in the geometry as its click
+ * target, drawn only with the explorer's "effect markers" on — would still
+ * catch clicks while invisible: a ten-unit bat card nobody can see grabbing
+ * every click near the swarm, and the next drag moving the bats instead of
+ * the camera. Not drawn, not picked.
+ */
+function hitDrawn(hit: THREE.Intersection<THREE.Mesh>): boolean {
+  const m = hit.object.material;
+  if (!Array.isArray(m) || hit.faceIndex === undefined || hit.faceIndex === null) return true;
+  const at = hit.faceIndex * 3;
+  const g = hit.object.geometry.groups.find((gr) => at >= gr.start && at < gr.start + gr.count);
+  return !g || m[g.materialIndex ?? 0]?.visible !== false;
+}
+
 function pickObject(ev: PointerEvent): THREE.Mesh | null {
   if (!state.showObjects) return null; // hidden objects must not swallow clicks
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(ptr, cam.active);
   const hits = raycaster.intersectObjects<THREE.Mesh>([...activeFloor().meshes.values()], false);
-  return hits.length ? hits[0]!.object : null;
+  return hits.find(hitDrawn)?.object ?? null;
 }
 
 renderer.domElement.addEventListener('pointerleave', () => { updateBrushCursor(null); updateHoverCursor(null); hoverEv = null; });
@@ -267,7 +284,7 @@ renderer.domElement.addEventListener('pointermove', (ev) => {
   const ny = free ? +(hit.y / U).toFixed(3) : Math.floor(hit.y / U);
   if (nx === state.selected.inst.x && ny === state.selected.inst.y) return;
   state.selected.inst.x = nx; state.selected.inst.y = ny;
-  state.selected.mesh.position.set(tileCenter(nx), tileCenter(ny), heightAt(Math.floor(nx), Math.floor(ny)));
+  state.selected.mesh.position.set(tileCenter(nx), tileCenter(ny), groundAt(nx, ny));
   syncInstance(activeFloor(), state.selected.inst);
   syncFootprints();
   state.boxHelper?.setFromObject(state.selected.mesh);
@@ -501,6 +518,20 @@ interface ViewApi {
    * frame would say so and no other number would.
    */
   shadowCasters(): { drawn: number; casting: number; missing: string[] };
+  /**
+   * What an object's parts are drawn with, as the BATCH holds them — which is
+   * the list that matters, since a batch with a ground-projected part renders
+   * from a copy of the registry's. One line per part: material type, visible,
+   * alphaTest, blending; `null` when the object is not batched.
+   */
+  partMaterials(id?: string): string[] | null;
+  /**
+   * Are the ground-projected parts of this floor drawn with the ground? One
+   * line per batch whose parts want the projection but hold something else,
+   * beside what the terrain itself is drawn with — the question behind a
+   * light grey plate under a building.
+   */
+  projectionAudit(): { terrain: string; splat: boolean; batches: number; projected: number; unprojected: string[] };
   /**
    * The frame as it stands, as a PNG data URL.
    *
@@ -811,6 +842,36 @@ const view: ViewApi = {
       }
     }
     return { slots, misplaced };
+  },
+  partMaterials(id) {
+    const fl = state.world ? activeFloor() : null;
+    // No id: the selected object. An id is matched whole or by its tail, so
+    // the digits read off the panel find `item_167977763` too.
+    const inst = id === undefined ? state.selected?.inst
+      : fl?.instances.find((i) => i.id === id) ?? fl?.instances.find((i) => !!i.id && i.id.endsWith(id));
+    if (!inst) return null;
+    // An animated object is drawn by its own skinned mesh, not by the batch.
+    const drawn = fl!.idle.find((a) => a.mesh.userData.inst === inst)?.mesh ?? fl!.batches.get(inst.g)?.im;
+    if (!drawn) return null;
+    const list = Array.isArray(drawn.material) ? drawn.material : [drawn.material];
+    return list.map((m) => `${m.type} visible=${m.visible} alphaTest=${m.alphaTest} blending=${m.blending}`);
+  },
+  projectionAudit() {
+    const fl = state.world ? activeFloor() : null;
+    if (!fl) return { terrain: 'no map', splat: false, batches: 0, projected: 0, unprojected: [] };
+    const terrain = fl.terrainMesh.material as THREE.Material;
+    let projected = 0;
+    const unprojected: string[] = [];
+    const check = (g: number, mat: THREE.Material | THREE.Material[], what: string): void => {
+      const parts = geomParts.get(g);
+      if (!parts?.some((p) => p.terrainProjected)) return;
+      const list = Array.isArray(mat) ? mat : [mat];
+      const bad = parts.map((p, i) => (p.terrainProjected && list[i]?.type !== 'ShaderMaterial' ? `part ${i} ${list[i]?.type}` : null)).filter((s): s is string => !!s);
+      if (bad.length) unprojected.push(`${what}: ${bad.join(', ')}`); else projected++;
+    };
+    for (const [g, b] of fl.batches) check(g, b.im.material, `batch g${g} ${b.at.find((it) => it)?.shared?.split('/').pop() ?? '?'}`);
+    for (const a of fl.idle) { const inst = a.mesh.userData.inst as Instance; check(inst.g, a.mesh.material, `animated ${inst.shared.split('/').pop()}`); }
+    return { terrain: terrain.type, splat: !!fl.splat, batches: fl.batches.size + fl.idle.length, projected, unprojected };
   },
   shadowCasters() {
     const fl = state.world ? activeFloor() : null;

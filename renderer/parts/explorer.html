@@ -5,5 +5,12 @@
     </div>
     <div id="ex-cats"></div>
     <div id="ex-list"></div>
-    <div class="ex-foot"><span id="ex-count">0 / 0</span> objects</div>
+    <div class="ex-foot"><span id="ex-count">0 / 0</span> objects
+      <!-- An effect-only object (bats, a fire, a glow) is drawn as its particles
+           and nothing else, as in the game — which leaves nothing to click.
+           This draws its stand-in card too, and makes it clickable. -->
+      <label class="ex-fxcards" title="draw a marker card under every effect-only object (bats, fires, glows) so it can be found and clicked; off, effects are not picked at all">
+        <input id="ex-fxcards" type="checkbox"> effect markers
+      </label>
+    </div>
   </div>

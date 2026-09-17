@@ -124,9 +124,9 @@ Per render vertex the 20-byte attribute stream (tag3) is:
 
 | bytes | field | decode |
 |---|---|---|
-| 0–3 | **UV** | 2× int16 ÷ 2048 (V spans [0,1], U tiles). Confirmed by UV edge-continuity |
+| 0–3 | **UV** | 2× **signed** int16 ÷ 2048 (V spans [0,1], U tiles; 2% of shipped values are negative — tiling the other way, or an edge a hair below 0). Confirmed by UV edge-continuity |
 | 4–7 | (zero / uv2 slot) | unused here |
-| 8–11 | **normal** | byte ×3 + pad, `(b − 128) / 127` |
+| 8–11 | **normal** | byte ×3 + pad, `(b − 128) / 127`, **stored z, y, x** (a D3DCOLOR: B, G, R) |
 | 12–15 | tangent | same packing |
 | 16–19 | binormal | same packing |
 
@@ -140,10 +140,20 @@ are. Inside one vertex all three decode to unit length for 100% of vertices and
 are mutually orthogonal (mean |dot| 0.002 between any pair): that is what says
 the trailing twelve bytes are a basis rather than three unrelated fields.
 
-Why the average is 0.294 rather than ~0.9: the shipped triangle lists do not
-keep a consistent winding, so a signed comparison against the face normal
-cancels on roughly a quarter of the faces. The ratio between the three
-candidates is the discriminator, not the absolute number.
+**And the three bytes lie z, y, x (2026-09-17).** The 0.294 was not the
+winding: it was the axes. The engine's own vertex declaration types the slot
+it copies this into as a `D3DCOLOR` (LIGHTING.md, `normal0` at +12), and a
+D3DCOLOR sits in memory as B, G, R, A — so byte 8 is z, byte 9 y, byte 10 x.
+Read that way the triple agrees with the face normal at a mean dot of
+**0.882** over 2243 terrain-object meshes, **0.944** over 624 building meshes
+and **0.825** over 667 creature meshes, and wins the comparison on 3506 of
+those 3534 (`_tmp/normcensus2.ts`); read x, y, z it sits at 0.27 in all
+three. The shipped winding is consistent after all — the signed and the
+absolute means coincide. What the wrong axes looked like: a normal field
+leaning along the model's own x, so a tree's whole trunk went light and dark
+as it was turned, the lit side riding round with the model, on flat ground
+under any sun. Our own writer (`geometry-write.ts`) packs the same order,
+so a mesh of ours is lit by the engine along the right axis.
 
 The decoder prefers these authored normals and recomputes only the ones that
 arrive zero-length (`repairZeroNormals`) — averaging every normal over the faces
@@ -160,6 +170,30 @@ its near faces are behind the eye and its far ones are turned away. Four of
 C1M1's dialogue cameras pull back into the ridge of mountains that lines the
 arena — shot 22 has the eye five units inside `Mountain12x12` — and drawn
 two-sided those shots are the inside of a rock rather than the scene.
+
+**How a part blends: `<AlphaMode>`, and `<AddPlaced>` only on top of it.**
+Read out of `H5_Game_H5E.exe`. The material record's serializer (`0x9c3be5`)
+lays the flags out as ProjectOnTerrain `+0x9C`, LightingMode `+0xA0`,
+DynamicMode `+0xA4`, Is2Sided `+0xA8`, Effect `+0xAC`, AlphaMode `+0xB0`,
+AffectedByFog `+0xB4`, AddPlaced `+0xB5`, IgnoreZBuffer `+0xB6`,
+BackFaceCastShadow `+0xB7`; the enum orders are AM_OPAQUE 0, AM_OVERLAY 1,
+AM_OVERLAY_ZWRITE 2, AM_TRANSPARENT 3, AM_ALPHA_TEST 4, AM_DECAL 5 and
+M_GENERIC 0, M_WATER 1, M_TRACKS 2, M_TERRAIN 3, M_CLOUDS_H5 4, M_ANIM_WATER
+5, M_SURF 6, M_SIMPLE_SKY 7, M_REFLECT_WATER 8, M_VIRTUAL_SKY 9. A record is
+copied into a descriptor (`0x55fe90`) and then into `CGenericMaterial`
+(`0x52cb20`), where AlphaMode becomes a blend class at `+0x64`: OPAQUE 0
+(ALPHA_TEST also 0, its test a separate flag `+0x7C`), OVERLAY 1, DECAL 2,
+OVERLAY_ZWRITE and TRANSPARENT 3 (4 with specular), and AddPlaced lands at
+`+0x96`. The material's pass builder (vt+0x38, `0x52e1f0`) forms its pass
+flags from AddPlaced — `0x80` set, `0x140` clear, and with fog `0x400`
+against `0x200`, the fog-to-black flavour an additive surface needs — but
+hands them over only on the blended classes 1..4; the class-0 branch pushes
+a different slot holding just the fog bit. So AddPlaced on an OPAQUE or
+ALPHA_TEST material changes nothing (the gold pile: AM_OPAQUE, L_SELFILLUM,
+AddPlaced true, and a solid heap in the game), and on a blended one it is the
+additive blend the name says. Which exact D3D blend the `0x80` bit selects was
+not chased down; the fog pairing and the vortex it was first seen on say
+additive. `src/scene/materials.ts` applies it exactly so.
 
 The culled side is the counter-clockwise-out one three.js keeps by default:
 every closed body on that stage has a **positive signed volume** (Mountain12x12

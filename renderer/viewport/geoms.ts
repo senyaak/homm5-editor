@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 
 import type { Scene, GeomData, GeomPart, Footprint, SkinnedGeom, FxInstancePayload } from '#src/scene/payload.ts';
+import { state } from '#core/state.ts';
 import { geometryFor, materialFor } from '#viewport/materials.ts';
 
 export const worldGeos: THREE.BufferGeometry[] = [];
@@ -42,9 +43,54 @@ export const geomFx = new Map<number, FxInstancePayload[]>();
  * model placed with idles on stood frozen while its loaded twins moved, because
  * only one of them remembered the skin.
  */
+/**
+ * The material of a part that is not drawn: the effect stand-in card of an
+ * object whose particles play. It stays in the geometry — the pick handle is
+ * built from the same buffers, so the card is still what a click on an
+ * effect-only object hits — and three skips an invisible group in both the
+ * colour and the shadow pass, which is what takes the card's shadow off the
+ * ground with it.
+ */
+const UNDRAWN = new THREE.MeshBasicMaterial({ visible: false });
+
+/**
+ * The cards that can be switched between drawn and not: the geom, the card's
+ * slot in its material list, and the material it is drawn with.
+ */
+const fxCards: { g: number; i: number; drawn: THREE.Material }[] = [];
+
+/**
+ * Show or hide the stand-in cards under playing particles (the explorer's
+ * "effect markers" checkbox). The game never draws them; the editor does on
+ * request, because a swarm of bats is nothing to click on.
+ */
+export function setFxCardsVisible(on: boolean): void {
+  for (const c of fxCards) {
+    const m = on ? c.drawn : UNDRAWN;
+    worldMats[c.g]![c.i] = m;
+    // The batches render from that same array — EXCEPT a batch with a
+    // ground-projected part, whose list projectBatch copies (splat.ts, so the
+    // floors do not share one). Written through the registry alone, the
+    // switch never reached those: the Inferno post kept its smoke card up
+    // (Senya) while the bats lost theirs.
+    for (const fl of state.world?.floors ?? []) {
+      const list = fl.batches.get(c.g)?.im.material;
+      if (Array.isArray(list)) list[c.i] = m;
+    }
+  }
+}
+
 export function registerGeom(index: number, g: GeomData): void {
   worldGeos[index] = geometryFor(g);
-  worldMats[index] = g.parts.map((p) => materialFor(p));
+  const mats = g.parts.map((p) => materialFor(p));
+  if (g.fx?.length) {
+    g.parts.forEach((p, i) => {
+      if (!p.card) return;
+      fxCards.push({ g: index, i, drawn: mats[i]! });
+      if (!state.showFxCards) mats[i] = UNDRAWN;
+    });
+  }
+  worldMats[index] = mats;
   geomParts.set(index, g.parts);
   geomFootprint.set(index, g.footprint ?? null);
   // Only a model with a clip is worth remembering: the binding alone poses
@@ -61,6 +107,7 @@ export function buildGeos(S: Scene): { geos: THREE.BufferGeometry[]; mats: THREE
   geomSkin.clear();
   geomFx.clear();
   geomScale.clear();
+  fxCards.length = 0;
   worldGeos.length = 0;
   worldMats.length = 0;
   S.geoms.forEach((g, i) => registerGeom(i, g));

@@ -159,7 +159,10 @@ function isFlat(m: Mesh): boolean {
 function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[], sheer: (i: number) => boolean, projected: (i: number) => boolean): boolean[] {
   const keep = meshes.map(() => true);
   const tex = (i: number): string => mats[pick[i] ?? 0]?.tex ?? '';
-  const isSub = (i: number): boolean => /SubTerrain/i.test(tex(i));
+  // The terrain skin by the engine's own test (MaterialInfo.terrainSkin), or
+  // by its texture — a model that names the same SubTerrain image through a
+  // material of its own is the same underground shell.
+  const isSub = (i: number): boolean => (mats[pick[i] ?? 0]?.terrainSkin ?? false) || /SubTerrain/i.test(tex(i));
   const coincident = (a: Mesh, b: Mesh): boolean => {
     if (a.positions.length !== b.positions.length || a.indices.length !== b.indices.length) return false;
     for (let k = 0; k < a.indices.length; k++) if (a.indices[k] !== b.indices[k]) return false;
@@ -196,8 +199,8 @@ function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[
     }
     return [lo, hi];
   };
-  const coincidentPad = (a: Mesh, b: Mesh): boolean => {
-    if (a.indices.length !== b.indices.length || !isFlat(a) || !isFlat(b)) return false;
+  const sameBox = (a: Mesh, b: Mesh): boolean => {
+    if (a.indices.length !== b.indices.length) return false;
     const [la, ha] = bounds(a), [lb, hb] = bounds(b);
     const diag = Math.hypot(ha[0]! - la[0]!, ha[1]! - la[1]!, ha[2]! - la[2]!) || 1;
     for (let c = 0; c < 3; c++) {
@@ -205,10 +208,20 @@ function dropDuplicateMeshes(meshes: Mesh[], pick: number[], mats: MaterialInfo[
     }
     return true;
   };
+  const coincidentPad = (a: Mesh, b: Mesh): boolean => isFlat(a) && isFlat(b) && sameBox(a, b);
+  // The same match again without the flatness, for a SubTerrain twin only. The
+  // snow mountains' grey shell is the rock's 800 triangles over 545 vertices
+  // where the rock has 546, so identical index arrays miss it, it is not flat,
+  // and it drew opaque over the rock's fading skirt: the grey band Senya saw
+  // where the snow should run into the ground (SnowM_8x8_05, _06). One
+  // SubTerrain mesh with the same triangle count and the same box as an
+  // authored one is that mesh's underground skin, whatever its welding.
+  const coincidentTwin = (i: number, j: number): boolean =>
+    isSub(i) !== isSub(j) && sameBox(meshes[i]!, meshes[j]!);
   for (let i = 0; i < meshes.length; i++) {
     if (!keep[i]) continue;
     for (let j = i + 1; j < meshes.length; j++) {
-      if (!keep[j] || !(coincident(meshes[i]!, meshes[j]!) || coincidentPad(meshes[i]!, meshes[j]!))) continue;
+      if (!keep[j] || !(coincident(meshes[i]!, meshes[j]!) || coincidentPad(meshes[i]!, meshes[j]!) || coincidentTwin(i, j))) continue;
       if (isSub(i) !== isSub(j)) {
         // A SubTerrain copy is usually the underground skin of the authored
         // surface — redundant on the surface, so the authored one wins (a
@@ -267,10 +280,14 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
     return blended && !!info && !info.opaque;
   };
   // A part takes the terrain as its surface when its material declares
-  // <ProjectOnTerrain> AND its texture is a sheer overlay. The projected shading
-  // is opaque and IS the body, so its coincident SubTerrain twin is redundant.
-  const projected = (meshIdx: number): boolean =>
-    (allMats[allPick[meshIdx] ?? 0]?.projectOnTerrain ?? false) && sheer(meshIdx);
+  // <ProjectOnTerrain> AND blends as an overlay laid over the ground (see
+  // GeomPart.terrainProjected). The projected shading is opaque and IS the
+  // body, so its coincident SubTerrain twin is redundant.
+  const projected = (meshIdx: number): boolean => {
+    const m = allMats[allPick[meshIdx] ?? 0];
+    return !!m && m.projectOnTerrain && !m.selfIllum
+      && (m.alphaMode === 'AM_OVERLAY' || m.alphaMode === 'AM_OVERLAY_ZWRITE');
+  };
   const keep = dropDuplicateMeshes(meshes, allPick, allMats, sheer, projected);
   // A world mesh textured with a minimap UI icon is a placeholder, not scene
   // geometry: the One-Way Exit's own model is one such quad, the real portal
@@ -322,22 +339,30 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
     const t = infoFor(mi);
     const alphaMode: AlphaMode = mats[mi]?.alphaMode ?? 'AM_OPAQUE';
     const flat = isFlat(meshes[i]!);
-    const blended = alphaMode === 'AM_OVERLAY' || alphaMode === 'AM_TRANSPARENT' || alphaMode === 'AM_DECAL';
-    const isSheer = blended && !!t && !t.opaque;
+    // The terrain skin (MaterialInfo.terrainSkin): the engine draws this mesh
+    // as ground, so it is draped and composited like a projected overlay,
+    // with NO texture of its own laid over — the crag texture the document
+    // names is never seen on the surface, and underground the ground IS it.
+    const skin = mats[mi]?.terrainSkin ?? false;
+    const proj = skin || (mats[mi]?.projectOnTerrain ?? false);
     // How to blend is the material's own declaration, not a guess from the
     // texels. Reading it off the image said "this has soft edges, alpha-test
     // it", which is the wrong answer for a decal that is meant to be blended.
     // Without UVs a texture cannot be placed, so those parts stay untextured —
     // but the opacity read still stands, since it does not need UVs.
     parts.push({
-      start, count, tex: hasUV && t ? t.uri : null,
+      start, count, tex: hasUV && t && !skin ? t.uri : null,
       alphaMode,
-      projectOnTerrain: (mats[mi]?.projectOnTerrain ?? false) && flat,
+      projectOnTerrain: proj,
       flat,
       // No texture means nothing to read alpha from — an untextured body is
       // solid, so it occludes.
       opaque: t ? t.opaque : true,
-      terrainProjected: (mats[mi]?.projectOnTerrain ?? false) && isSheer,
+      // The overlay half of the flag: the ground composited into the part. The
+      // same test `projected` above applies to the dedup, on the unfiltered
+      // mesh list; this one runs on the kept meshes.
+      terrainProjected: skin || (proj && !(mats[mi]?.selfIllum ?? false)
+        && (alphaMode === 'AM_OVERLAY' || alphaMode === 'AM_OVERLAY_ZWRITE')),
       additive: mats[mi]?.additive ?? false,
       selfIllum: mats[mi]?.selfIllum ?? false,
       twoSided: mats[mi]?.twoSided ?? false,

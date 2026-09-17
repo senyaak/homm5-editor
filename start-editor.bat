@@ -47,7 +47,10 @@ rem environment, or from `.env` beside this file -- and from nothing else. If no
 rem of those says, the setup window asks and writes the `.env`.
 
 rem npm is a .cmd shim, so without `call` this batch would end right here.
-call npm start
+rem Anything given to this script goes on to electron: `start-editor.bat --dev`
+rem is dev mode (F12 / Ctrl+Shift+I open DevTools); start-editor-dev.bat is the
+rem same by double-click.
+call npm start -- %*
 if errorlevel 1 goto :fail
 
 exit /b 0
