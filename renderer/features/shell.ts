@@ -120,7 +120,7 @@ export async function loadIdleSkins(): Promise<void> {
 
 export function setShowFx(on: boolean): void {
   state.showFx = on;
-  if (state.world) for (const fl of state.world.floors) for (const s of fl.fx) s.mesh.visible = on;
+  if (state.world) for (const fl of state.world.floors) for (const e of fl.fx) e.batch.mesh.visible = on;
   $('fxbtn').textContent = on ? 'Effects: on' : 'Effects: off';
   $('fxbtn').classList.toggle('on', on);
   saveUiPrefs({ showFx: on });

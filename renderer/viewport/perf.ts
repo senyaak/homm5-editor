@@ -82,18 +82,19 @@ function textureBytes(t: THREE.Texture | null): number {
   return img?.width && img.height ? img.width * img.height * 4 : 0;
 }
 
-/** The particle side of the active floor, summed over its systems. */
-function fxSummary(): { systems: number; slots: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number } {
+/** The particle side of the active floor, summed over its batches. */
+function fxSummary(): { batches: number; copies: number; slots: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number } {
   const fl = state.world ? activeFloor() : null;
-  const out = { systems: 0, slots: 0, alive: 0, atlases: 0, atlasBytes: 0, distinctAtlases: 0 };
+  const out = { batches: 0, copies: 0, slots: 0, alive: 0, atlases: 0, atlasBytes: 0, distinctAtlases: 0 };
   if (!fl) return out;
   const seen = new Set<string>();
-  for (const s of fl.fx) {
-    out.systems++;
-    const geo = s.mesh.geometry as THREE.InstancedBufferGeometry;
-    out.alive += geo.instanceCount;
+  for (const { batch } of fl.fx) {
+    out.batches++;
+    out.copies += batch.copies;
+    out.alive += batch.alive;
+    const geo = batch.mesh.geometry as THREE.InstancedBufferGeometry;
     out.slots += (geo.getAttribute('aTex') as THREE.InstancedBufferAttribute | undefined)?.count ?? 0;
-    const u = (s.mesh.material as THREE.ShaderMaterial).uniforms;
+    const u = (batch.mesh.material as THREE.ShaderMaterial).uniforms;
     for (const name of ['uAtlas', 'uAlpha']) {
       const t = u[name]?.value as THREE.Texture | null;
       if (!t) continue;

@@ -586,9 +586,10 @@ interface ViewApi {
    * JS share of it as percentiles (a mean hides exactly the stutter being
    * chased), the draw calls and triangles of the last frame, three's texture
    * and geometry counts, and the particle side summed over the active floor —
-   * systems, instance slots, alive particles, atlas textures and their bytes
-   * as uploaded, and how many of those atlases are DISTINCT objects (copies of
-   * one effect building their own is the 644 MB in SLICE_fx_performance.md).
+   * batches and the copies in them, particle slots and alive particles
+   * (per batch, summed), atlas textures and their bytes as uploaded, and how
+   * many of those atlases are DISTINCT objects (copies of one effect building
+   * their own was the 311 MB in SLICE_fx_performance.md).
    * `loaf` is Chromium's own attribution of the long frames, newest last.
    */
   perf(): {
@@ -600,7 +601,7 @@ interface ViewApi {
     pixelRatio: number; size: number[];
     /** The loop's sections — input, idle, scene, fx, lights, render — as percentiles. */
     sections: Record<string, { p50: number; p95: number; max: number }>;
-    fx: { systems: number; slots: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number };
+    fx: { batches: number; copies: number; slots: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number };
     loaf: LongFrame[];
   };
   /** Forget the frames and long frames seen so far — to measure from here. */
@@ -812,25 +813,27 @@ const view: ViewApi = {
   fxSystems() {
     const fl = state.world ? activeFloor() : null;
     if (!fl) return [];
-    return fl.fx.map((s) => {
-      const g = (s.mesh as unknown as { geometry: THREE.InstancedBufferGeometry }).geometry;
-      const inst = s.mesh.userData.inst as Instance;
-      const tint = ((s.mesh.material as THREE.ShaderMaterial).uniforms.uTint?.value ?? null) as THREE.Color | null;
-      // Where the system actually SITS this frame, not where its object stands:
-      // a glued instance rides an animated bone, and "did the eye glow follow
-      // the head" is a question only this answers.
-      const p = new THREE.Vector3().setFromMatrixPosition(s.mesh.matrix);
+    // One line per COPY, not per batch: the questions asked here are about a
+    // placed object's effect — its position, whether it is alive — and a batch
+    // is the same answer for every copy except where it stands.
+    const m4 = new THREE.Matrix4(), p = new THREE.Vector3();
+    return fl.fx.flatMap((e) => e.at.map((inst, slot) => {
+      const tint = ((e.batch.mesh.material as THREE.ShaderMaterial).uniforms.uTint?.value ?? null) as THREE.Color | null;
+      // Where the copy actually SITS this frame, not where its object stands:
+      // a glued copy rides an animated bone, and "did the eye glow follow the
+      // head" is a question only this answers.
+      p.setFromMatrixPosition(e.batch.copyMatrix(slot, m4));
       return {
-        uid: String(s.mesh.userData.uid ?? ''),
-        shared: inst?.shared ?? '',
-        at: [inst?.x ?? -1, inst?.y ?? -1],
+        uid: e.batch.fx.uid,
+        shared: inst.shared,
+        at: [inst.x, inst.y],
         pos: [p.x, p.y, p.z],
-        glue: s.glue ?? '',
-        alive: g.instanceCount,
-        visible: s.mesh.visible,
+        glue: e.batch.glue ?? '',
+        alive: e.batch.alive,
+        visible: e.batch.mesh.visible,
         tint: tint ? [tint.r, tint.g, tint.b] : [1, 1, 1],
       };
-    });
+    }));
   },
   perf: perfStats,
   perfReset,

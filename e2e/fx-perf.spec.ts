@@ -43,7 +43,7 @@ const line = (tag: string, p: Perf): string =>
   + ` · js ${ms(p.js.p50)}/${ms(p.js.p95)}/${ms(p.js.max)} ms`
   + ` [${Object.entries(p.sections).map(([k, v]) => `${k} ${ms(v.p50)}`).join(', ')}]`
   + ` · ${p.calls} calls · ${p.triangles} tris · ${p.textures} textures`
-  + ` · fx ${p.fx.systems} systems, ${p.fx.alive}/${p.fx.slots} alive/slots,`
+  + ` · fx ${p.fx.copies} copies in ${p.fx.batches} batches, ${p.fx.alive}/${p.fx.slots} alive/slots,`
   + ` ${p.fx.atlases} atlases (${p.fx.distinctAtlases} distinct) = ${mb(p.fx.atlasBytes)}`;
 
 /** Watch the frame for WINDOW_MS from a clean slate. */
@@ -76,7 +76,7 @@ test('A2C1M1: the frame with effects on and off', { tag: '@data' }, async () => 
   await page.waitForFunction(() => window.view.idle().fx > 0, null, { timeout: 60_000 });
   await page.waitForFunction(() => {
     const p = window.view.perf();
-    return p.fx.systems > 0 && p.fx.atlases === p.fx.systems * 2;
+    return p.fx.batches > 0 && p.fx.atlases === p.fx.batches * 2;
   }, null, { timeout: 120_000 });
   const fxReadyMs = Date.now() - t0;
   // Effects on, whatever the profile remembers.
@@ -110,6 +110,6 @@ test('A2C1M1: the frame with effects on and off', { tag: '@data' }, async () => 
   // The readings ARE the test; what is asserted is that they were readings.
   expect(on.frames).toBeGreaterThan(30);
   expect(off.frames).toBeGreaterThan(30);
-  expect(on.fx.systems).toBeGreaterThan(0);
+  expect(on.fx.copies).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });

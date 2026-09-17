@@ -23,6 +23,10 @@ pre-release.
   kept thirty campfires from flickering together was the editor's own
   invention, not the game's, and is gone — it is what lets copies share one
   simulation next.
+- Every copy of an effect on a floor is one batch: one simulation and one
+  draw for all 55 chests' sparkle, with each copy's placement in a small
+  matrix texture. On A2C1M1 that is 313 effect draws → 112, 311 MB of
+  atlases → 146 MB, and the frame 19 → 15 ms.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

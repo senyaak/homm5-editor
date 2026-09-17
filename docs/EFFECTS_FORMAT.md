@@ -161,11 +161,14 @@ its particle's `[birth, death]`.
 The scene payload carries only each instance's placement, texture table (data
 URIs) and uid (`FxInstancePayload`); the keys go over their own IPC (`map:fx`)
 as typed arrays — as JSON they doubled the scene payload of one map. The
-renderer (renderer/particles.ts) packs the texture table into atlases and
-draws each instance as instanced camera-facing quads; a frame update lerps the
-alive particles' channels at the loop time and rewrites the attributes. One
-shared clock and no per-placement phase: identical objects flicker in step,
-being one recording. The static stand-in card (`effectGeom` in object-effects.ts)
+renderer (renderer/viewport/particles.ts) packs the texture table into atlases
+and draws each DISTINCT ParticleInstance payload as one batch of instanced
+camera-facing quads — one simulation, drawn once per placed copy through a
+per-copy matrix (renderer/viewport/fx.ts keeps which object is which copy). A
+frame update lerps the alive particles' channels at the loop time and rewrites
+the attributes once for all copies. One shared clock and no per-placement
+phase: identical objects flicker in step, being one recording — which is what
+makes the sharing possible. The static stand-in card (`effectGeom` in object-effects.ts)
 stays in the geometry — an effect-only object has nothing else to click —
 but is DRAWN, and PICKED, only with the explorer's "effect markers" checkbox
 on (`GeomPart.card`; `setFxCardsVisible` in geoms.ts swaps the card's slot

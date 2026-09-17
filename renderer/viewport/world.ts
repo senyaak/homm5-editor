@@ -36,7 +36,7 @@ export function clearWorld(): void {
     // An InstancedMesh owns a GPU buffer of its own beyond the shared geometry;
     // without this it survives every map load.
     for (const b of fl.batches.values()) b.im.dispose();
-    for (const s of fl.fx) s.dispose();
+    for (const e of fl.fx) e.batch.dispose();
     fl.fx.length = 0;
     fl.lightMap.dispose();
     fl.heightTex?.dispose();

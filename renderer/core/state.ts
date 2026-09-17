@@ -13,7 +13,7 @@
 import * as THREE from 'three';
 
 import type { Instance, SplatData, AmbientData } from '#src/scene/payload.ts';
-import type { FxSystem } from '#viewport/particles.ts';
+import type { PlacedFx } from '#viewport/fx.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
 import { uiPrefs } from '#core/prefs.ts';
 
@@ -86,11 +86,12 @@ export interface Floor3D {
    */
   idle: IdleObject[];
   /**
-   * Playing particle effects, one system per (placed object x its effect's
-   * ParticleInstance). Built asynchronously after the floor (the baked keys
-   * arrive over their own IPC); empty until then and on maps without effects.
+   * Playing particle effects, one batch per distinct effect payload with a
+   * copy per placed object that carries it. Built asynchronously after the
+   * floor (the baked keys arrive over their own IPC); empty until then and on
+   * maps without effects.
    */
-  fx: FxSystem[];
+  fx: PlacedFx[];
   /**
    * The floor's designer point lights (map.xdb <pointLights>), baked into one
    * texture the terrain shaders add to the preset's light. See bakeLightMap.

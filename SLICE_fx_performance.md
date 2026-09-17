@@ -7,7 +7,9 @@
 > known: the frame is CPU-bound, and the effects are a third of it. The plan
 > (§3) is three steps, each smaller than the one it replaces: stop spreading
 > phases, draw every copy of an effect from one simulation, and put the
-> recording on the GPU so the simulation is a lookup. Nothing is built yet.
+> recording on the GPU so the simulation is a lookup. 3.1 and 3.2 are in
+> (2026-09-17): 313 copies in 112 batches, atlases 311 → 146 MB, calls 861 →
+> 662, frame 19.1 → 15.1 ms (fx 4.3 → 3.7, render 10.6 → 8.0). 3.3 is next.
 > When it ships, fold the surviving facts into
 > [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) and retire this file.
 

@@ -19,7 +19,7 @@ import { groundOn, tileCenter } from '#core/coords.ts';
 import type { Floor3D, GeomBatch } from '#core/state.ts';
 import type { Instance } from '#src/scene/payload.ts';
 import { geomScale, worldGeos, worldMats } from '#viewport/geoms.ts';
-import { reloadFx } from '#viewport/fx.ts';
+import { moveFx, reloadFx } from '#viewport/fx.ts';
 import { addIdle, clearIdle } from '#viewport/idle.ts';
 import { syncFootprints } from '#viewport/overlays.ts';
 import { bakeLightMap, markLightsDirty } from '#viewport/point-lights.ts';
@@ -52,7 +52,7 @@ export function syncInstance(fl: Floor3D, inst: Instance): void {
   // The object's effects ride along wherever it goes.
   if (mesh && fl.fx.length) {
     mesh.updateMatrixWorld();
-    for (const s of fl.fx) if (s.mesh.userData.inst === inst) s.setObjectMatrix(mesh.matrixWorld);
+    moveFx(fl, inst, mesh.matrixWorld);
   }
   if (!batch || !mesh) return;
   const slot = batch.slot.get(inst);

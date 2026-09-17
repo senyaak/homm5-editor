@@ -2,10 +2,19 @@
 //
 // The data is a recording — per particle a birth/death frame and keys for
 // centre, rotation, size, colour and texture frame — so "simulation" here is
-// only interpolation. Each ParticleInstance of each placed object becomes one
-// instanced draw of camera-facing quads; a frame update walks the alive
-// particles, lerps their channels at the current loop time and rewrites the
-// instance attributes.
+// only interpolation. Each ParticleInstance becomes one instanced draw of
+// camera-facing quads; a frame update walks the alive particles, lerps their
+// channels at the current loop time and rewrites the instance attributes.
+//
+// ONE SIMULATION SERVES EVERY COPY. A map places the same effect over and over
+// (182 campfires on one shipped map), and since every copy is at the same
+// time on the one clock, they are one set of particle attributes drawn once
+// per copy — the instancing.ts idea one level down. The quad instances run
+// particles × copies: the particle attributes advance once every `capacity`
+// instances (their divisor), the copy is `gl_InstanceID % capacity`, and its
+// matrix is fetched from a small float texture with a row per copy. A copy
+// past `uCopies` collapses to nothing, which is how a batch with headroom
+// draws only the copies it has.
 //
 // The recording is a ONE-SHOT, not a loop: in 1911 of 1921 files the
 // population ramps from zero and dies back to zero. What keeps a campfire
@@ -25,25 +34,61 @@ import * as THREE from 'three';
 import type { FxInstancePayload } from '#src/scene/payload.ts';
 import type { FxTransfer } from '#src/scene/effects.ts';
 
-/** One playing effect instance, attached to one placed object. */
+/**
+ * One effect, simulated once and drawn for every copy of it on a floor.
+ *
+ * Copies are slots: `addCopy` hands one out, `setCopyMatrix` places it (the
+ * object's matrix times the instance's own offset — or a bone's, every frame,
+ * for a glued one), `removeCopy` gives it back. The batch draws nothing until
+ * it has a copy, and is disposed by whoever removes the last.
+ */
+export interface FxBatch {
+  mesh: THREE.Mesh;
+  /** The payload every copy shares — the key a floor finds the batch by. */
+  fx: FxInstancePayload;
+  /** Copies placed, i.e. slots in use. */
+  copies: number;
+  /** Alive particles this frame — the same for every copy, being one simulation. */
+  alive: number;
+  /**
+   * The bone the effect is glued to, when it is — the ghost dragon's eyes on
+   * its head. The renderer re-hangs every copy off its own object's bone each
+   * frame; `glueLocal` is the transform inside the bone's frame.
+   */
+  glue?: string;
+  glueLocal?: THREE.Matrix4;
+  /** The instance's own offset from its object — what a copy's matrix is `object × this`. */
+  local: THREE.Matrix4;
+  /** Advance the one simulation to `seconds` on the shared clock. */
+  update(seconds: number): void;
+  /** Take a slot; it draws at the identity until placed. */
+  addCopy(): number;
+  /** Place a copy: its full matrix, world from the effect's own frame. */
+  setCopyMatrix(slot: number, m: THREE.Matrix4): void;
+  /** The matrix a copy was last placed with. */
+  copyMatrix(slot: number, out: THREE.Matrix4): THREE.Matrix4;
+  /**
+   * Give a slot back. The LAST slot moves into the hole so the used ones stay
+   * contiguous; returns which slot moved there (the caller re-keys it), or -1.
+   */
+  removeCopy(slot: number): number;
+  dispose(): void;
+}
+
+/**
+ * One playing copy of an effect, driven by hand: the scene player places its
+ * actors' fires and a shot's spells by writing `mesh.matrix` itself. A batch of
+ * one copy at the identity, so the mesh matrix IS the copy's placement.
+ */
 export interface FxSystem {
   mesh: THREE.Mesh;
   /** Advance to `seconds` on the shared clock. */
   update(seconds: number): void;
-  /** Re-place after the owning object moved or turned. */
-  setObjectMatrix(m: THREE.Matrix4): void;
-  /**
-   * The bone this system is glued to, when it is — the ghost dragon's eyes on
-   * its head. The renderer re-hangs the system off that bone every frame; the
-   * matrix built at construction is the bind-pose fallback for a still object.
-   */
-  glue?: string;
-  /** Its transform INSIDE the bone's frame, for that per-frame re-hang. */
-  glueLocal?: THREE.Matrix4;
-  /** Where it sits with no animation — restored when the skeleton goes away. */
-  restMatrix?: THREE.Matrix4;
   dispose(): void;
 }
+
+/** Spare slots a new batch is born with, so placing a few copies does not rebuild it. */
+const COPY_HEADROOM = 8;
 
 const loadImg = (src: string): Promise<HTMLImageElement | null> =>
   new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
@@ -85,6 +130,19 @@ async function buildAtlas(
   return { tex: await make((t) => t.c, !rawColor), alpha: await make((t) => t.a, false), cols, rows };
 }
 
+// The copy this quad instance belongs to, and its matrix — a row of four
+// texels in uMat. A slot past the copies in use draws nothing: its corner
+// scale is zeroed, so the quad has no area.
+const COPY = `
+uniform sampler2D uMat;
+uniform int uCapacity;
+uniform int uCopies;
+int copyIndex() { return gl_InstanceID % uCapacity; }
+mat4 copyMatrix(int c) {
+  return mat4(texelFetch(uMat, ivec2(0, c), 0), texelFetch(uMat, ivec2(1, c), 0),
+              texelFetch(uMat, ivec2(2, c), 0), texelFetch(uMat, ivec2(3, c), 0));
+}`;
+
 const VERT = `
 in vec3 aCenter;
 in vec3 aSizeRot;
@@ -93,10 +151,12 @@ in float aTex;
 out vec2 vUv;
 out vec4 vColor;
 out float vTex;
+${COPY}
 void main() {
-  vec4 c = modelViewMatrix * vec4(aCenter, 1.0);
+  int ci = copyIndex();
+  vec4 c = viewMatrix * modelMatrix * copyMatrix(ci) * vec4(aCenter, 1.0);
   float cr = cos(aSizeRot.z), sr = sin(aSizeRot.z);
-  vec2 corner = position.xy * aSizeRot.xy;
+  vec2 corner = position.xy * aSizeRot.xy * (ci < uCopies ? 1.0 : 0.0);
   c.xy += vec2(corner.x * cr - corner.y * sr, corner.x * sr + corner.y * cr);
   gl_Position = projectionMatrix * c;
   vUv = uv;
@@ -122,14 +182,16 @@ uniform vec2 uPivot;
 out vec2 vUv;
 out vec4 vColor;
 out float vTex;
+${COPY}
 void main() {
-  vec3 center = (modelMatrix * vec4(aCenter, 1.0)).xyz;
+  int ci = copyIndex();
+  vec3 center = (modelMatrix * copyMatrix(ci) * vec4(aCenter, 1.0)).xyz;
   vec3 toCam = cameraPosition - center;
   vec2 h = toCam.xy;
   h = dot(h, h) > 1e-8 ? normalize(h) : vec2(1.0, 0.0);
   vec3 rightW = vec3(-h.y, h.x, 0.0);
   float cr = cos(aSizeRot.z), sr = sin(aSizeRot.z);
-  vec2 corner = (position.xy - 0.5 * uPivot) * aSizeRot.xy;
+  vec2 corner = (position.xy - 0.5 * uPivot) * aSizeRot.xy * (ci < uCopies ? 1.0 : 0.0);
   vec2 rc = vec2(corner.x * cr - corner.y * sr, corner.x * sr + corner.y * cr);
   vec3 world = center + rightW * rc.x + vec3(0.0, 0.0, 1.0) * rc.y;
   gl_Position = projectionMatrix * viewMatrix * vec4(world, 1.0);
@@ -219,10 +281,9 @@ function sample(a: Float32Array, stride: number, cur: number, f: number, out: nu
 /** The unlit instances' fixed tint — one shared object, never mutated. */
 const WHITE_TINT = { value: new THREE.Color(1, 1, 1) };
 
-export function createFxSystem(
-  fx: FxInstancePayload, baked: FxTransfer, objectMatrix: THREE.Matrix4,
-  litTint: { value: THREE.Color } = WHITE_TINT,
-): { system: FxSystem; ready: Promise<void> } {
+export function createFxBatch(
+  fx: FxInstancePayload, baked: FxTransfer, litTint: { value: THREE.Color } = WHITE_TINT,
+): { batch: FxBatch; ready: Promise<void> } {
   // STANDING SCENERY, derived from the bake rather than from any XML flag
   // (the instances' <Static> says P_STATIC on all 2709 shipped and separates
   // nothing): a system whose every particle exists for the whole loop and
@@ -257,10 +318,7 @@ export function createFxSystem(
   // 8 caps a hypothetical pathological file, not anything observed.
   const overlap = Math.max(1, Math.min(8, Math.ceil(recPlaySec / period - 1e-6), copies === Infinity ? 8 : copies));
   const n = Math.min(baked.maxAlive * overlap, 4096);
-  const geo = new THREE.InstancedBufferGeometry();
   const quad = new THREE.PlaneGeometry(1, 1);
-  geo.index = quad.index;
-  geo.setAttribute('position', quad.getAttribute('position'));
   // A PARTICLE FRAME IS AUTHORED UPSIDE DOWN: the art's "up" is the image's
   // BOTTOM row, so the quad's v runs the other way from three's (which puts
   // v = 1 at the top corner). Measured on the two families whose up is
@@ -276,17 +334,35 @@ export function createFxSystem(
   // asymmetric families are the measurement.
   const uv = quad.getAttribute('uv').clone();
   for (let i = 0; i < uv.count; i++) uv.setY(i, 1 - uv.getY(i));
-  geo.setAttribute('uv', uv);
-  const aCenter = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
-  const aSizeRot = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
-  const aColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 4), 4);
-  const aTex = new THREE.InstancedBufferAttribute(new Float32Array(n), 1);
-  for (const a of [aCenter, aSizeRot, aColor, aTex]) a.setUsage(THREE.DynamicDrawUsage);
-  geo.setAttribute('aCenter', aCenter);
-  geo.setAttribute('aSizeRot', aSizeRot);
-  geo.setAttribute('aColor', aColor);
-  geo.setAttribute('aTex', aTex);
-  geo.instanceCount = 0;
+  // The particle attributes: one set, `n` wide, written by the simulation and
+  // read by every copy — their divisor is the copy capacity, so instance
+  // `i` reads particle `i / capacity`. The divisor is fixed when a buffer is
+  // bound (three caches the binding by attribute identity), so growing the
+  // capacity means a new geometry over the same arrays; the arrays and what
+  // was written into them carry over.
+  const center = new Float32Array(n * 3), sizeRot = new Float32Array(n * 3);
+  const color = new Float32Array(n * 4), tex = new Float32Array(n);
+  let capacity = 1 + COPY_HEADROOM;
+  let attrs!: { aCenter: THREE.InstancedBufferAttribute; aSizeRot: THREE.InstancedBufferAttribute; aColor: THREE.InstancedBufferAttribute; aTex: THREE.InstancedBufferAttribute };
+  function makeGeometry(): THREE.InstancedBufferGeometry {
+    const g = new THREE.InstancedBufferGeometry();
+    g.index = quad.index;
+    g.setAttribute('position', quad.getAttribute('position'));
+    g.setAttribute('uv', uv);
+    attrs = {
+      aCenter: new THREE.InstancedBufferAttribute(center, 3, false, capacity),
+      aSizeRot: new THREE.InstancedBufferAttribute(sizeRot, 3, false, capacity),
+      aColor: new THREE.InstancedBufferAttribute(color, 4, false, capacity),
+      aTex: new THREE.InstancedBufferAttribute(tex, 1, false, capacity),
+    };
+    for (const [name, a] of Object.entries(attrs)) { a.setUsage(THREE.DynamicDrawUsage); g.setAttribute(name, a); }
+    g.instanceCount = 0;
+    return g;
+  }
+  let geo = makeGeometry();
+  // A row of four texels per copy: its matrix, column by column.
+  let matData = new Float32Array(capacity * 16);
+  let matTex = makeMatrixTexture(matData, capacity);
 
   const mat = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
@@ -299,6 +375,9 @@ export function createFxSystem(
       // Shared by reference: the app mutates the lit tint in place when the
       // preset (or the Light toggle) changes, like the terrain uniforms.
       uTint: fx.lit ? litTint : WHITE_TINT,
+      uMat: { value: matTex },
+      uCapacity: { value: capacity },
+      uCopies: { value: 0 },
       ...(standing ? { uPivot: { value: new THREE.Vector2(fx.pivot?.[0] ?? 0, fx.pivot?.[1] ?? 0) } } : {}),
     },
     transparent: true,
@@ -312,17 +391,18 @@ export function createFxSystem(
   });
 
   const mesh = new THREE.Mesh(geo, mat);
-  // Positions live in the attributes, not the geometry: three.js cannot know
-  // the bounds, and a culled fire that pops in at the screen edge is worse
-  // than the cost of always issuing the draw.
+  // Positions live in the attributes and the copies all over the map: three.js
+  // cannot know the bounds, and a culled fire that pops in at the screen edge
+  // is worse than the cost of always issuing the draw.
   mesh.frustumCulled = false;
+  // Identity: a copy's matrix carries its whole placement. The scene player
+  // is the one caller that writes this matrix instead (createFxSystem).
   mesh.matrixAutoUpdate = false;
   const local = new THREE.Matrix4().compose(
     new THREE.Vector3(...(fx.pos as [number, number, number])),
     new THREE.Quaternion(fx.quat[0], fx.quat[1], fx.quat[2], fx.quat[3]),
     new THREE.Vector3(fx.scale, fx.scale, fx.scale),
   );
-  mesh.matrix.multiplyMatrices(objectMatrix, local);
   mesh.renderOrder = 3; // over the water sheet and the ground overlay
 
   const ready = buildAtlas(fx.textures, 128, standing).then(({ tex, alpha, cols, rows }) => {
@@ -347,9 +427,10 @@ export function createFxSystem(
   const retrigger = copies !== Infinity && fx.retrigger ? fx.retrigger : 0;
   const v: number[] = [0, 0, 0, 0];
 
-  const system: FxSystem = {
-    mesh,
+  const batch: FxBatch = {
+    mesh, fx, local, copies: 0, alive: 0,
     update(seconds: number) {
+      if (!this.copies) return;
       // Every copy of an effect is at the same t. The per-placement phase
       // that used to be added here (so thirty campfires would not flicker in
       // step) was the editor's own invention, not the game's, and it was the
@@ -377,25 +458,52 @@ export function createFxSystem(
           };
           ch('tex', p.tex, false);
           if (v[0]! < 0) continue; // hidden this frame
-          aTex.array[w] = v[0]!;
+          tex[w] = v[0]!;
           ch('pos', p.pos, true);
-          aCenter.array[w * 3] = v[0]!; aCenter.array[w * 3 + 1] = v[1]!; aCenter.array[w * 3 + 2] = v[2]!;
+          center[w * 3] = v[0]!; center[w * 3 + 1] = v[1]!; center[w * 3 + 2] = v[2]!;
           ch('size', p.size, true);
-          aSizeRot.array[w * 3] = Math.abs(v[0]!); aSizeRot.array[w * 3 + 1] = Math.abs(v[1]!);
+          sizeRot[w * 3] = Math.abs(v[0]!); sizeRot[w * 3 + 1] = Math.abs(v[1]!);
           ch('rot', p.rot, true);
-          aSizeRot.array[w * 3 + 2] = v[0]!;
+          sizeRot[w * 3 + 2] = v[0]!;
           ch('color', p.color, true);
-          aColor.array[w * 4] = v[0]! / 255; aColor.array[w * 4 + 1] = v[1]! / 255;
-          aColor.array[w * 4 + 2] = v[2]! / 255; aColor.array[w * 4 + 3] = v[3]! / 255;
+          color[w * 4] = v[0]! / 255; color[w * 4 + 1] = v[1]! / 255;
+          color[w * 4 + 2] = v[2]! / 255; color[w * 4 + 3] = v[3]! / 255;
           w++;
         }
       }
-      geo.instanceCount = w;
-      for (const a of [aCenter, aSizeRot, aColor, aTex]) a.needsUpdate = true;
+      this.alive = w;
+      // Every alive particle, once per slot — the unused slots collapse in the
+      // shader. Only the written prefix of each array goes up.
+      geo.instanceCount = w * capacity;
+      if (!w) return;
+      for (const a of Object.values(attrs)) {
+        a.clearUpdateRanges();
+        a.addUpdateRange(0, w * a.itemSize);
+        a.needsUpdate = true;
+      }
     },
-    setObjectMatrix(m: THREE.Matrix4) {
-      mesh.matrix.multiplyMatrices(m, local);
-      this.restMatrix?.copy(mesh.matrix);
+    addCopy() {
+      if (this.copies === capacity) grow();
+      const slot = this.copies++;
+      matData.set(IDENTITY, slot * 16);
+      matTex.needsUpdate = true;
+      mat.uniforms.uCopies!.value = this.copies;
+      return slot;
+    },
+    setCopyMatrix(slot, m) {
+      matData.set(m.elements, slot * 16);
+      matTex.needsUpdate = true;
+    },
+    copyMatrix(slot, out) {
+      return out.fromArray(matData, slot * 16);
+    },
+    removeCopy(slot) {
+      const last = --this.copies;
+      mat.uniforms.uCopies!.value = this.copies;
+      if (slot === last) return -1;
+      matData.copyWithin(slot * 16, last * 16, last * 16 + 16);
+      matTex.needsUpdate = true;
+      return last;
     },
     ...(fx.glue ? {
       glue: fx.glue.bone,
@@ -404,14 +512,59 @@ export function createFxSystem(
         new THREE.Quaternion(fx.glue.quat[0], fx.glue.quat[1], fx.glue.quat[2], fx.glue.quat[3]),
         new THREE.Vector3(fx.glue.scale, fx.glue.scale, fx.glue.scale),
       ),
-      restMatrix: mesh.matrix.clone(),
     } : {}),
     dispose() {
       geo.dispose();
       mat.dispose();
+      matTex.dispose();
       (mat.uniforms.uAtlas!.value as THREE.Texture | null)?.dispose();
       (mat.uniforms.uAlpha!.value as THREE.Texture | null)?.dispose();
     },
   };
-  return { system, ready };
+
+  /** Twice the slots: a new geometry over the same arrays, a wider matrix texture. */
+  function grow(): void {
+    capacity *= 2;
+    const wider = new Float32Array(capacity * 16);
+    wider.set(matData);
+    matData = wider;
+    matTex.dispose();
+    matTex = makeMatrixTexture(matData, capacity);
+    mat.uniforms.uMat!.value = matTex;
+    mat.uniforms.uCapacity!.value = capacity;
+    const alive = geo.instanceCount / (capacity / 2);
+    geo.dispose();
+    geo = makeGeometry();
+    geo.instanceCount = alive * capacity;
+    mesh.geometry = geo;
+  }
+
+  return { batch, ready };
+}
+
+const IDENTITY = new THREE.Matrix4().elements;
+
+/** `rows` copies' matrices as a 4×rows float texture, read with texelFetch. */
+function makeMatrixTexture(data: Float32Array, rows: number): THREE.DataTexture {
+  const t = new THREE.DataTexture(data, 4, rows, THREE.RGBAFormat, THREE.FloatType);
+  t.magFilter = THREE.NearestFilter;
+  t.minFilter = THREE.NearestFilter;
+  t.generateMipmaps = false;
+  t.needsUpdate = true;
+  return t;
+}
+
+/**
+ * One copy of an effect whose placement is the mesh matrix — the scene
+ * player's way of holding a system: it composes `mesh.matrix` itself each
+ * frame from the actor's frame and the instance's own offset (`local`).
+ */
+export function createFxSystem(
+  fx: FxInstancePayload, baked: FxTransfer, objectMatrix: THREE.Matrix4,
+  litTint: { value: THREE.Color } = WHITE_TINT,
+): { system: FxSystem; ready: Promise<void> } {
+  const { batch, ready } = createFxBatch(fx, baked, litTint);
+  batch.addCopy();
+  batch.mesh.matrix.multiplyMatrices(objectMatrix, batch.local);
+  return { system: batch, ready };
 }
