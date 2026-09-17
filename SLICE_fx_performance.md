@@ -279,22 +279,20 @@ view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
 | idle stance off (69 bodies → 0) | **5.2** | 0 | **4.9** | 607 |
 | idle `visible` instead of `all` | 14.6 | 4.2 | 10.0 | 663 |
 
-* **The idle animation is the frame now: ~9.4 ms of 14.6.** 69 animated
-  bodies (51 distinct skinned geoms) cost 4.3 ms to pose and another ~5 ms
-  inside `render` — each is its own SkinnedMesh with its own skeleton update
-  and bone-texture upload, drawn twice (shadow pass). The `visible` mode
-  changes nothing here, which is itself a finding: either everything is in
-  view or the mode only skips the posing and not the draw. The recipe of this
-  slice applies one level up — copies of one creature at one phase share a
-  skeleton and a draw; or the clip is baked to a vertex-animation texture and
-  the bodies go back into instanced batches, no CPU at all.
-* **The shadow pass is ~3.7 ms** of `render` — a second submission of every
+* ~~**The idle animation is the frame now: ~9.4 ms of 14.6.**~~ **Done**
+  (132c2e6): the clip is baked once per creature kind to a table of skinning
+  matrices and one boneless skeleton per kind poses every body — the recipe
+  of this slice one level up. After it, the same probe: JS **4.6 ms** (idle
+  0, render 4.3), shadows off 3.3, idle off 3.7 — the 69 bodies cost ~0.9 ms
+  now, all of it their draws. `visible` mode now hides off-screen bodies
+  instead of merely not posing them; on the default view all 69 are in.
+* **The shadow pass is ~1.3 ms** of `render` now (was 3.7 with the bodies) — a second submission of every
   caster. Fewer casters (animated bodies at rest pose, or none of them), or a
   shadow map that is only redrawn when something moved, since nothing but
   the idle bodies does.
-* With both off, `render` is 4.9 ms for 607 calls, ~8 µs a call: three's
+* With both off, `render` is ~3 ms for 608 calls, ~5 µs a call: three's
   per-call CPU. Fewer calls (merging materials across geoms, `BatchedMesh`)
-  is the remaining lever there.
+  is the remaining lever there — and the largest one left in the frame.
 * `map:load` is 11.6 s. The worst number on the page, and not in a frame.
 * 3.6 — atlases as RGBA typed arrays instead of PNG data-URIs — would halve
   the 146 MB and the 3338 image decodes on load; never in this slice's three
