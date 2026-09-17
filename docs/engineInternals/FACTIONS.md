@@ -250,3 +250,33 @@ Where this leaves the ledger: `TownType` (11 → 12, done), the picker (8 → 9,
 above), and then whatever the next screen meets — the hero picker for the
 chosen race, the starting bonus, the town screen (`town_buildings_%d`, no
 patch), and the `__RACE_COUNT`-sized arrays the RMG and the AI weights own.
+
+## The picker is ours now: the second step of the probe
+
+Built 2026-09-17, same day, and not as an in-place widening. The table
+**moved out of the executable**: `native/faction/race-order.c` reads
+`bin/homm5-editor-races.txt` (one `race <townType> [pickerTexture]` line per
+entry, in picker order — `src/mods/race-order.ts` writes it) and detours the
+four accessors onto readers of that table. None of the four ever returns into
+the engine's code: each is the whole function, so the compiled eight stay
+where they are, unread. The icon is the constructor detoured — the engine's
+runs first, then every row naming a texture is looked up through the item's
+own related-textures widget and put into the same map the same way
+(`operator[]` at `0x8FAE20`, the refcount raised, the byte cleared).
+
+The probe (`_tmp/town12-probe.ts`) now also ships, in `town12-probe.h5u`, a
+`race_test` item in both `Races.(…).xdb` lists with its two texts, and a hero
+of the race — Haven's Alaric copied to `MapObjects/Test/` with one field
+changed — and writes `H5E/Town12 Probe.h5m`: Rules Test with player 1's Alaric
+swapped for the clone. That map is the point: the players-state builder
+makes a player's choices from the races of what he owns (the map's reserve
+heroes, then his towns, then his heroes on the map, and only when he owns
+nothing at all does every race qualify), so a hero of the race on the map is
+what puts the twelfth town in front of the arrows.
+
+Two things here are read from the code and not yet seen in the game: that the
+hero record's word at `+0x164` is his `TownType` (it is what `IndexOfTown` is
+handed for each owned hero, and `TownType` is the only race-shaped field the
+hero's reader writes), and what happens after "Test" is chosen — the starting
+hero of a race with one hero, the bonus, the first town screen. The launch
+says.

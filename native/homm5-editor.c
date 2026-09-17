@@ -105,6 +105,7 @@
 #include "qol/run-in-background.c"
 #include "qol/pandora-box.c"
 #include "qol/pandora-notify.c"
+#include "faction/race-order.c"
 #include "net/ubi-log.c"
 #include "net/ubi-module-probe.c"
 #include "net/ubi-friends-probe.c"
@@ -323,6 +324,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   if (g_qol[QOL_BOOK_OF_POWER_FIX]) install_book_of_power_fix();
   if (g_qol[QOL_MASTER_OF_FIRE_FIX]) install_master_of_fire_fix();
   if (g_qol[QOL_IMBUE_BALLISTA_FIX]) install_imbue_ballista_fix();
+  // The race picker's ledger, ours when the editor wrote one: the four
+  // accessors read our table instead of the compiled eight, and the item that
+  // draws the icons learns the ones the constructor never heard of.
+  load_races();
+  if (g_raceCount) install_race_order();
   // The multiplayer agent. An import table entry, so it has to be in before the
   // game makes its socket — which is long after this, WinMain not having run —
   // and it is gated on the flag like everything else here: with it clear the

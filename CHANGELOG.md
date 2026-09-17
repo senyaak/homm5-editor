@@ -18,6 +18,11 @@ pre-release.
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive
   probe and its findings live in `docs/engineInternals/FACTIONS.md`.
+- The scenario setup's race picker reads its order from the extension rather
+  than from the eight compiled into the game: `bin/homm5-editor-races.txt`,
+  written by the editor, and `native/faction/race-order.c` behind it. With
+  no file the game is as it was; a ninth line is a ninth race the arrows
+  reach, with an icon of its own.
 
 ## 0.11.0-alpha.1 — 2026-09-16
 
