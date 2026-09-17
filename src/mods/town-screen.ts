@@ -19,7 +19,8 @@
 // hull is a container of its own that the geometry tools do not rewrite, so
 // such a model has none; whether the screen still picks it is a launch.
 
-import { placeGeometry, positionsBox } from '../scene/geometry.ts';
+import { placeGeometry, positionsBox, wideBase } from '../scene/geometry.ts';
+import type { BBox } from '../scene/geometry.ts';
 import { groundLevel, retuneBox } from './model-box.ts';
 import { copyArt, resolve } from './mod-art.ts';
 import { mustRead } from './mod-files.ts';
@@ -92,8 +93,7 @@ export function placeBuildingModel(o: {
     const theirs = geometryOf(modelPath, files, name);
     const box = positionsBox(theirs.bin);
     if (!box) throw new Error(`${name}: cannot read the positions of ${object}'s model`);
-    const floor = groundLevel(theirs.doc, theirs.bin) ?? box.cz - box.sz / 2;
-    target = { x: box.cx, y: box.cy, z: floor };
+    target = { x: box.cx, y: box.cy, z: groundOf(theirs.doc, theirs.bin, box) };
     cameraFrom = object;
     const ai = hrefOf(theirs.doc, 'AIGeometry');
     hull = ai ? `/${resolve(theirs.docPath, ai)}#xpointer(/AIGeometry)` : null;
@@ -113,7 +113,7 @@ export function placeBuildingModel(o: {
   const ours = geometryOf(copiedModel, copy.files, name);
   const whole = positionsBox(ours.bin);
   if (!whole) throw new Error(`${name}: cannot read the positions of ${model.source}`);
-  const floor = groundLevel(ours.doc, ours.bin) ?? whole.cz - whole.sz / 2;
+  const floor = groundOf(ours.doc, ours.bin, whole);
   const seen = positionsBox(ours.bin, floor) ?? whole;
   const across = Math.max(seen.sx, seen.sy);
   const scale = model.across && across > 0 ? model.across / across : 1;
@@ -166,7 +166,8 @@ export function placeBuildingModel(o: {
     const donorModel = levelOneModel(sceneObject(scene, sceneDir, cameraFrom, files));
     const donorBox = donorModel ? positionsBox(geometryOf(donorModel, files, name).bin) : null;
     if (!donorBox) throw new Error(`${name}: ${cameraFrom}'s model cannot be measured to move its camera`);
-    const delta = [target.x - donorBox.cx, target.y - donorBox.cy, target.z - (donorBox.cz - donorBox.sz / 2)];
+    const donorGeom = geometryOf(donorModel!, files, name);
+    const delta = [target.x - donorBox.cx, target.y - donorBox.cy, target.z - groundOf(donorGeom.doc, donorGeom.bin, donorBox)];
     camera = camera.replace(/(<Pos>\s*<x>)([^<]*)(<\/x>\s*<y>)([^<]*)(<\/y>\s*<z>)([^<]*)(<\/z>)/, (_, a, x, b, y, c, z, d) =>
       `${a}${(Number(x) + delta[0]!).toFixed(3)}${b}${(Number(y) + delta[1]!).toFixed(3)}${c}${(Number(z) + delta[2]!).toFixed(3)}${d}`);
   }
@@ -178,6 +179,18 @@ export function placeBuildingModel(o: {
   desc = insertBeforeLine(desc, once(desc, '</staticCameras>', `${name} scene cameras`), [`<Item href="${name}_cam.(Camera).xdb#xpointer(/Camera)"/>`]);
   out.set(interior, Buffer.from(desc, 'latin1'));
   return { name, files: out };
+}
+
+/**
+ * Where a town model's ground is, in its own coordinates. A town building
+ * carries a hidden part below its terrace — the Necropolis graves reach 7.5
+ * units down into rock under 4 units of graves — so the lowest vertex is not
+ * the ground: the named pedestal is (`groundLevel`), or failing that the
+ * level the model is widest at (`wideBase`); the bottom only when neither
+ * says. Placed by the lowest vertex, the graves floated 6 units up (launch 21).
+ */
+function groundOf(doc: string, bin: Buffer, box: BBox): number {
+  return groundLevel(doc, bin) ?? wideBase(bin) ?? box.cz - box.sz / 2;
 }
 
 /** An object's level-1 model (level 0 is `<Model/>`, so the first href is it), as a mod path. */

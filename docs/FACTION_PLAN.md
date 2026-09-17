@@ -181,7 +181,7 @@ fully, in the probe, one launch per question.
     (a form; the Hall's routine is what it would call), and a class of
     ours the DLL answers "barbarian-like" for at those sixteen places —
     a `class → warcries` column of the classes file. Not started.
-- **1d. The screen's own models — DONE (code), one launch owed.**
+- **1d. The screen's own models — DONE, launched (21: the graves stand on the shipyard's spot, lit, the camera flies to them; they floated at first — placed by the lowest vertex, which for a town model is the bottom of a hidden pedestal, so the ground is the widest level now; the hover is the shipyard's hull, so the ground beside them lights up too — a hull of our own is the remaining debt).**
   `BuildingEdit.model` (`src/mods/town-screen.ts`): a `Model` document from
   anywhere (another town's screen, an adventure-map object) is copied under
   `Factions/<file>/buildings/<name>/`, its positions moved — the one array a
