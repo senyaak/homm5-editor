@@ -139,13 +139,30 @@ let fillPainting = false;
 // loop, right before drawing. Many moves between frames now cost one raycast.
 let hoverEv: PointerEvent | null = null;
 
+/**
+ * Is this hit on a face that is actually drawn? Three's raycast walks every
+ * group of a multi-material mesh whatever its material's `visible`, so the
+ * stand-in card of an effect-only object — kept in the geometry as its click
+ * target, drawn only with the explorer's "effect markers" on — would still
+ * catch clicks while invisible: a ten-unit bat card nobody can see grabbing
+ * every click near the swarm, and the next drag moving the bats instead of
+ * the camera. Not drawn, not picked.
+ */
+function hitDrawn(hit: THREE.Intersection<THREE.Mesh>): boolean {
+  const m = hit.object.material;
+  if (!Array.isArray(m) || hit.faceIndex === undefined || hit.faceIndex === null) return true;
+  const at = hit.faceIndex * 3;
+  const g = hit.object.geometry.groups.find((gr) => at >= gr.start && at < gr.start + gr.count);
+  return !g || m[g.materialIndex ?? 0]?.visible !== false;
+}
+
 function pickObject(ev: PointerEvent): THREE.Mesh | null {
   if (!state.showObjects) return null; // hidden objects must not swallow clicks
   ptr.x = (ev.clientX / innerWidth) * 2 - 1;
   ptr.y = -(ev.clientY / innerHeight) * 2 + 1;
   raycaster.setFromCamera(ptr, cam.active);
   const hits = raycaster.intersectObjects<THREE.Mesh>([...activeFloor().meshes.values()], false);
-  return hits.length ? hits[0]!.object : null;
+  return hits.find(hitDrawn)?.object ?? null;
 }
 
 renderer.domElement.addEventListener('pointerleave', () => { updateBrushCursor(null); updateHoverCursor(null); hoverEv = null; });

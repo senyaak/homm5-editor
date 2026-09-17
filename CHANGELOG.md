@@ -98,7 +98,12 @@ blends"). And bats01 was one big transparent bat with a shadow, hanging
 over its own swarm: the stand-in card an effect-only object gets so it can
 be clicked was drawn under the playing particles. It is now only the click
 target; the swarm is what is drawn, as in the game. Same for every fire,
-glow and sparkle that is nothing but an effect.
+glow and sparkle that is nothing but an effect. Since a swarm is nothing to
+click on, the object list has an **effect markers** checkbox (Senya): on, the
+stand-in cards are drawn and clickable; off — the default — they are neither,
+so a press near a swarm of bats or a fire orbits the camera instead of
+selecting the effect and dragging it on the next stroke. The cards no longer
+cast shadows either way; the dark square under every gold pile was theirs.
 
 ## 0.11.0-alpha.1 — 2026-09-16
 

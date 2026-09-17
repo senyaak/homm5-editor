@@ -134,6 +134,7 @@ export const state = {
   showObjects: uiPrefs.showObjects,
   showFx: uiPrefs.showFx,
   mapLight: uiPrefs.mapLight,
+  showFxCards: uiPrefs.showFxCards,
 };
 
 /** Only called while a map is loaded; every caller is gated on `state.world`. */

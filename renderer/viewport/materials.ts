@@ -194,7 +194,7 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
   // same texture in the same blend mode is a depth-writing body on one mesh
   // and a decal on another.
   const decal = part.projectOnTerrain && part.flat;
-  const key = `${sky ? 'sky|' : ''}${part.alphaMode}|${part.projectOnTerrain ? 'draped' : 'rigid'}|${decal ? 'decal' : 'body'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}${part.twoSided ? '2s' : ''}|${part.tex}`;
+  const key = `${sky ? 'sky|' : ''}${part.alphaMode}|${part.projectOnTerrain ? 'draped' : 'rigid'}|${decal ? 'decal' : 'body'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}${part.twoSided ? '2s' : ''}${part.card ? 'card' : ''}|${part.tex}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   const tx = partTexture(part.tex);
@@ -271,6 +271,22 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
   if (sky) {
     m.depthTest = false;
     m.depthWrite = false;
+  }
+  // An effect's stand-in card is a marker, drawn on request (the explorer's
+  // "effect markers"), and a marker casts no shadow — a ten-unit square under
+  // every gold pile was the card's. Three has no per-group castShadow; what it
+  // has is a depth variant per source material whenever that material carries
+  // a map and an alphaTest, and the variant copies the alphaTest. So the card
+  // asks for an alpha test no texel can pass, which empties its shadow, and
+  // its own colour pass has the test taken back out.
+  if (part.card) {
+    m.alphaTest = 2;
+    const shade = m.onBeforeCompile, cacheKey = m.customProgramCacheKey;
+    m.onBeforeCompile = (shader, r) => {
+      shade.call(m, shader, r);
+      shader.fragmentShader = shader.fragmentShader.replace('#include <alphatest_fragment>', '');
+    };
+    m.customProgramCacheKey = () => cacheKey.call(m) + '-card';
   }
   texCache.set(key, m);
   return m;

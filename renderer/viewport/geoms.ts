@@ -8,6 +8,7 @@
 import * as THREE from 'three';
 
 import type { Scene, GeomData, GeomPart, Footprint, SkinnedGeom, FxInstancePayload } from '#src/scene/payload.ts';
+import { state } from '#core/state.ts';
 import { geometryFor, materialFor } from '#viewport/materials.ts';
 
 export const worldGeos: THREE.BufferGeometry[] = [];
@@ -52,9 +53,34 @@ export const geomFx = new Map<number, FxInstancePayload[]>();
  */
 const UNDRAWN = new THREE.MeshBasicMaterial({ visible: false });
 
+/**
+ * The cards that can be switched between drawn and not: each one's slot in
+ * its geom's material list, and the material it is drawn with. The lists are
+ * the very arrays the batches render from, so writing a slot changes the
+ * next frame — no rebuild.
+ */
+const fxCards: { mats: THREE.Material[]; i: number; drawn: THREE.Material }[] = [];
+
+/**
+ * Show or hide the stand-in cards under playing particles (the explorer's
+ * "effect markers" checkbox). The game never draws them; the editor does on
+ * request, because a swarm of bats is nothing to click on.
+ */
+export function setFxCardsVisible(on: boolean): void {
+  for (const c of fxCards) c.mats[c.i] = on ? c.drawn : UNDRAWN;
+}
+
 export function registerGeom(index: number, g: GeomData): void {
   worldGeos[index] = geometryFor(g);
-  worldMats[index] = g.parts.map((p) => (p.card && g.fx?.length ? UNDRAWN : materialFor(p)));
+  const mats = g.parts.map((p) => materialFor(p));
+  if (g.fx?.length) {
+    g.parts.forEach((p, i) => {
+      if (!p.card) return;
+      fxCards.push({ mats, i, drawn: mats[i]! });
+      if (!state.showFxCards) mats[i] = UNDRAWN;
+    });
+  }
+  worldMats[index] = mats;
   geomParts.set(index, g.parts);
   geomFootprint.set(index, g.footprint ?? null);
   // Only a model with a clip is worth remembering: the binding alone poses
@@ -71,6 +97,7 @@ export function buildGeos(S: Scene): { geos: THREE.BufferGeometry[]; mats: THREE
   geomSkin.clear();
   geomFx.clear();
   geomScale.clear();
+  fxCards.length = 0;
   worldGeos.length = 0;
   worldMats.length = 0;
   S.geoms.forEach((g, i) => registerGeom(i, g));

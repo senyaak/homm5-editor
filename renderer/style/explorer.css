@@ -20,4 +20,6 @@
 #ex-list .exrow .nm { color: #e6edf3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #ex-list .exrow .co { color: #6e7681; font-variant-numeric: tabular-nums; flex-shrink: 0; }
 #ex-list .empty { padding: 12px; color: #6e7681; text-align: center; }
-#explorer .ex-foot { padding: 6px 10px; border-top: 1px solid #21262d; color: #6e7681; font-size: 11px; }
+#explorer .ex-foot { padding: 6px 10px; border-top: 1px solid #21262d; color: #6e7681; font-size: 11px;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#explorer .ex-fxcards { color: #8b949e; display: flex; align-items: center; gap: 4px; white-space: nowrap; cursor: pointer; }
