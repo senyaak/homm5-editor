@@ -8,9 +8,9 @@ structures are sized by**. Nothing found here says a ninth faction is
 impossible — but every step past the data is an executable patch, and this
 page is the map of where those patches would go.
 
-Nothing on this page is implemented. The editor has no faction support and
-this document proposes none; it records what was measured so that a decision
-can be made from facts.
+Nothing on this page is implemented in the editor. The probe at the end has
+run (2026-09-17) and its verdict is recorded there; the rest records what was
+measured so that a decision can be made from facts.
 
 ## One warning about the wrapped executable
 
@@ -170,4 +170,62 @@ twelfth record that is a byte-for-byte clone of Heaven's, patch
 `TownTypesInfo` 11→12 with its accessor, `RMGPresetTable` 12→13, the clamp
 at `0xB4E730` and the jump table — and just load a map. That answers whether
 11 is an allocation or a bound, for a day's work, without authoring a single
-asset. It has not been run.
+asset.
+
+## The probe ran: 11 is a bound, and the race picker has its own ledger
+
+Run 2026-09-17 (`_tmp/town12-probe.ts`, installed 2026-08-26). **The game
+starts and loads a map with `TownType` at 12** — the table registration,
+its accessor, the clamp and the jump table were the whole cost of *existing*.
+Nothing sized by `__RACE_COUNT` fell over at startup.
+
+What did not happen: the twelfth town does not appear in the scenario
+setup's race picker. That picker is not driven by `TownType` at all but by
+a second, smaller ledger — the **eight-race UI order** — and every part of
+it is compiled:
+
+- **`0x1090E0C`** (`.data`) — `int[8] = {3, 8, 7, 4, 6, 5, 9, 10}`: the
+  picker's order, Haven → Inferno → Necropolis → Sylvan → Dungeon → Academy
+  → Fortress → Stronghold. Three code references, all below.
+- **`0xB4E700`** — `RaceCount() { return 8; }`. Sixteen callers: the wait
+  screen's logic (`0x8f22ca`, `0x8f22ee`), the players-state builder
+  (`0xb8db88`), the console (`0xb53dcd`, `0xb554cc`), the engine's RMG
+  (`0xc3b6f2`…`0xc3b89b`, `0xc80864`…`0xc80a46`) and two more at
+  `0xd0fa47`/`0xd0fae6`.
+- **`0xB4E760`** — `TownOfIndex(i)`: `cmp ecx,8; jae → TOWN_NO_TYPE`, else
+  the table. Seven callers, six of them the players-state builder.
+- **`0xB4E740`** — `IndexOfTown(t)`: linear scan of the table, bound 8,
+  −1 when absent. Three callers, all the players-state builder.
+- **`0xB4E7D0`** — a `{kind, index}` selector: kind 3 reads the table,
+  anything else is `index + 3`. Four callers.
+
+How the picker uses it (`0xB8DA60`, the builder of the per-player state the
+wait screen edits): for every player it walks `i = 0 … RaceCount()−1`, tests
+bit `i` of that player's **allowed-race bitmask** (built a few lines earlier
+from the map's player records, through `IndexOfTown`), and `push_back`s
+`TownOfIndex(i)` into the player's `vector<TownType>` at `+0x50`. The arrows
+(`CMPWaitItem` → action 3 → `CMPWaitChangeRequest` →
+`CMPUbiComWaitHostLogic::+0x14`, race branch at `0x8f351d`) step an index
+through *that vector*; index −1 is "random" (`TOWN_RANDOM_TYPE = 1`), and
+`CanChangeRace` is simply `vector.size() > 1`. The item's own textures are a
+compiled `map<TownType, texture>` built in its constructor (`0x8f8480`…)
+from the names `race_haven` … `race_stronghold` in
+`UI/MPWait/PlayersList/Item/Races.(WindowRelatedTextures).xdb` — note the
+literals `rece_necropolis` and `rece_fortress`, typos the data file repeats.
+
+So a twelfth `TownType` exists to the engine but is invisible to the player
+until this ledger is nine wide: a nine-entry table somewhere with room (the
+words after `0x1090E0C` belong to neighbouring statics — `0.5, −1, −1, 25.0`
+repeats before it too — so the table is relocated, not extended in place),
+the three displacements re-pointed, `RaceCount` → 9, the two `cmp …,8`
+bounds → 9, a `race_test` item in both `Races.(…).xdb` files and a tenth
+literal for the constructor's map. That last one is the only part that is
+not a number: the constructor's texture map is compiled name by name, so the
+twelfth town's picker icon needs either a new literal in code or a hook that
+adds the entry after construction — `homm5-native` territory, and the first
+thing on this page that is.
+
+Where this leaves the ledger: `TownType` (11 → 12, done), the picker (8 → 9,
+above), and then whatever the next screen meets — the hero picker for the
+chosen race, the starting bonus, the town screen (`town_buildings_%d`, no
+patch), and the `__RACE_COUNT`-sized arrays the RMG and the AI weights own.
