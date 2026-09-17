@@ -28,7 +28,7 @@ import type { FxTransfer } from '#src/scene/effects.ts';
 /** One playing effect instance, attached to one placed object. */
 export interface FxSystem {
   mesh: THREE.Mesh;
-  /** Advance to `seconds` on the shared clock (phase is baked into the system). */
+  /** Advance to `seconds` on the shared clock. */
   update(seconds: number): void;
   /** Re-place after the owning object moved or turned. */
   setObjectMatrix(m: THREE.Matrix4): void;
@@ -220,7 +220,7 @@ function sample(a: Float32Array, stride: number, cur: number, f: number, out: nu
 const WHITE_TINT = { value: new THREE.Color(1, 1, 1) };
 
 export function createFxSystem(
-  fx: FxInstancePayload, baked: FxTransfer, objectMatrix: THREE.Matrix4, phase: number,
+  fx: FxInstancePayload, baked: FxTransfer, objectMatrix: THREE.Matrix4,
   litTint: { value: THREE.Color } = WHITE_TINT,
 ): { system: FxSystem; ready: Promise<void> } {
   // STANDING SCENERY, derived from the bake rather than from any XML flag
@@ -350,7 +350,12 @@ export function createFxSystem(
   const system: FxSystem = {
     mesh,
     update(seconds: number) {
-      let t = seconds + phase - fx.offset;
+      // Every copy of an effect is at the same t. The per-placement phase
+      // that used to be added here (so thirty campfires would not flicker in
+      // step) was the editor's own invention, not the game's, and it was the
+      // one thing that kept two copies of one effect from sharing a frame —
+      // which is what lets them share a simulation (SLICE_fx_performance §3).
+      let t = seconds - fx.offset;
       if (retrigger > 0) t = ((t % retrigger) + retrigger) % retrigger;
       const kMax = Math.min(Math.floor(t / period), copies - 1);
       const kMin = Math.max(0, Math.ceil((t - recPlaySec) / period));

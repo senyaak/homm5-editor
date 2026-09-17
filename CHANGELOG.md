@@ -19,6 +19,10 @@ pre-release.
   bytes), plus Chromium's long-frame attribution and memory per process, and
   `e2e/fx-perf.spec.ts` reads it all off a shipped map. Nothing is faster yet;
   this is the baseline the effects work is held against.
+- Copies of one particle effect play in step. The per-placement phase that
+  kept thirty campfires from flickering together was the editor's own
+  invention, not the game's, and is gone — it is what lets copies share one
+  simulation next.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

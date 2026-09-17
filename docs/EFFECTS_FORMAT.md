@@ -22,8 +22,11 @@ recording is complete and nothing unread could be a simulation input. It does
 NOT follow that the engine plays the recording untouched — it has knobs that
 reach into effects at run time (`gfx_particles`, `gfx_effect_alpha_treshold`, a
 fixed-function fallback path), and some of what this editor does around the
-recording is our own invention rather than something read (the per-placement
-phase spread, our alpha discard thresholds). Wind is the one such question
+recording is our own invention rather than something read (our alpha discard
+thresholds; the per-placement phase spread was one until 2026-09-17, and was
+taken out — every copy of an effect now plays the same frame, which is what
+lets copies share a simulation, SLICE_fx_performance.md §3). Wind is the one
+such question
 already closed: the format carries `<WindAffected>` on every effect and it is
 `false` on all 1814. The rest is SLICE_effects_probe.md §7.
 
@@ -161,8 +164,8 @@ as typed arrays — as JSON they doubled the scene payload of one map. The
 renderer (renderer/particles.ts) packs the texture table into atlases and
 draws each instance as instanced camera-facing quads; a frame update lerps the
 alive particles' channels at the loop time and rewrites the attributes. One
-shared clock, phases spread per placement so identical objects don't flicker
-in lockstep. The static stand-in card (`effectGeom` in object-effects.ts)
+shared clock and no per-placement phase: identical objects flicker in step,
+being one recording. The static stand-in card (`effectGeom` in object-effects.ts)
 stays in the geometry — an effect-only object has nothing else to click —
 but is DRAWN, and PICKED, only with the explorer's "effect markers" checkbox
 on (`GeomPart.card`; `setFxCardsVisible` in geoms.ts swaps the card's slot

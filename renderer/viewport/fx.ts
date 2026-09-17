@@ -23,8 +23,8 @@ import { uFxTint } from '#viewport/lighting.ts';
  *
  * The scene payload carries only each effect's placement, textures and uid;
  * the baked keys come from `map:fx` here, once per unique uid, as typed
- * arrays. One system per (placement x ParticleInstance); phases are spread by
- * placement so thirty campfires don't flicker in lockstep.
+ * arrays. One system per (placement x ParticleInstance), all on one clock —
+ * thirty campfires flicker in step, and may: they are one recording.
  */
 export async function loadFx(floors: Floor3D[]): Promise<void> {
   if (!geomFx.size) return;
@@ -38,16 +38,15 @@ export async function loadFx(floors: Floor3D[]): Promise<void> {
 /** Spawn the systems for the objects standing on one floor, from a fetched bank. */
 function buildFx(fl: Floor3D, bank: Record<string, FxTransfer>): number {
   const m4 = new THREE.Matrix4();
-  let at = 0, built = 0;
+  let built = 0;
   for (const inst of fl.instances) {
     const list = geomFx.get(inst.g);
     if (!list) continue;
-    at++;
     for (const f of list) {
       const baked = bank[f.uid];
       if (!baked?.particles.length) continue;
       m4.makeRotationZ(inst.r).setPosition(tileCenter(inst.x), tileCenter(inst.y), inst.z);
-      const { system } = createFxSystem(f, baked, m4, (at * 0.37) % 3, uFxTint);
+      const { system } = createFxSystem(f, baked, m4, uFxTint);
       system.mesh.userData.inst = inst;
       system.mesh.userData.uid = f.uid; // for fxSystems() debugging
       system.mesh.visible = state.showFx; // effects arrive async; respect the toggle they land under
@@ -83,7 +82,7 @@ export async function reloadFx(fl: Floor3D): Promise<void> {
   buildFx(fl, await api.fx(uids));
 }
 
-/** The one clock every effect follows (phase offsets are per system). */
+/** The one clock every effect follows. */
 let fxClock = 0;
 export function advanceFx(dt: number): void {
   if (!state.world || !state.showFx) return;
@@ -147,7 +146,7 @@ export async function spawnFx(fl: Floor3D, inst: Instance): Promise<void> {
     const baked = bank[f.uid];
     if (!baked?.particles.length) continue;
     m4.makeRotationZ(inst.r).setPosition(tileCenter(inst.x), tileCenter(inst.y), inst.z);
-    const { system } = createFxSystem(f, baked, m4, (fl.fx.length * 0.37) % 3, uFxTint);
+    const { system } = createFxSystem(f, baked, m4, uFxTint);
     system.mesh.userData.inst = inst;
     system.mesh.userData.uid = f.uid;
     system.mesh.visible = state.showFx;
