@@ -23,6 +23,11 @@ pre-release.
   written by the editor, and `native/faction/race-order.c` behind it. With
   no file the game is as it was; a ninth line is a ninth race the arrows
   reach, with an icon of its own.
+- A faction's town as a copy: `src/mods/town-files.ts` copies a shipped town
+  whole under `Factions/<name>/` — screen, siege, buildings, texts — and
+  `copyArt` learned where a copy stops (other entities by kind, the engine's
+  own terrain material and textures by path). Named towns with a history and
+  a bonus of their own go with it.
 
 ## 0.11.0-alpha.1 — 2026-09-16
 

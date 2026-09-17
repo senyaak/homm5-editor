@@ -92,6 +92,32 @@ export interface ArtCopy {
   /** Source data path → its path inside the mod. */
   at: Map<string, string>;
   missing: string[];
+  /** Reached, and left where it is: a document of a kind the copy stops at. */
+  stopped: string[];
+}
+
+export interface CopyOptions {
+  /**
+   * Root element names the walk does not cross. A document of one of these
+   * kinds is left in the game's data and referenced from the copy by absolute
+   * path; nothing behind it is walked.
+   *
+   * A creature's art needs none — its closure is its own. A TOWN's is not: its
+   * shared document names the default camera set, which names every combat
+   * camera in the game, which names every hero and creature that has one; and
+   * its siege names the creature that mans the towers. Those are other things,
+   * copied with their own owners or not at all.
+   */
+  stopAt?: ReadonlySet<string>;
+  /**
+   * Paths the walk does not cross, by where they lie — for what the engine
+   * knows by identity. The terrain's textures are the case: a model's ground
+   * pad textured with `Textures/Terrain/SubTerrain/…` is the underground skin
+   * the engine hides on the surface, and a copy of that texture under another
+   * path is just a texture — the pad is drawn, a slab of rock under a town on
+   * grass.
+   */
+  leave?: (rel: string) => boolean;
 }
 
 /**
@@ -108,20 +134,28 @@ export interface ArtCopy {
  * first time somebody edited the mesh and found they had edited the shipped
  * creature's too.
  */
-export function copyArt(seeds: string[], dest: string, read: DataReader, salt: string): ArtCopy {
+export function copyArt(
+  seeds: string[], dest: string, read: DataReader, salt: string, options: CopyOptions = {},
+): ArtCopy {
   const found = new Map<string, Buffer>();
   const missing: string[] = [];
-  const queue = seeds.map(normalize);
+  const stopped = new Set<string>();
+  const roots = new Set(seeds.map(normalize));
+  const queue = [...roots];
 
   // Pass one: what is reachable.
   while (queue.length) {
     const rel = queue.shift()!;
-    if (found.has(rel) || missing.includes(rel)) continue;
+    if (found.has(rel) || stopped.has(rel) || missing.includes(rel)) continue;
+    // A seed is what was asked for, whatever and wherever it is.
+    if (!roots.has(rel) && options.leave?.(rel)) { stopped.add(rel); continue; }
     const data = read(rel);
     if (!data) { missing.push(rel); continue; }
+    if (!rel.toLowerCase().endsWith('.xdb')) { found.set(rel, data); continue; }
+    const text = data.toString('latin1');
+    if (!roots.has(rel) && options.stopAt?.has(rootName(text) ?? '')) { stopped.add(rel); continue; }
     found.set(rel, data);
-    if (!rel.toLowerCase().endsWith('.xdb')) continue;
-    for (const href of hrefs(data.toString('latin1'))) {
+    for (const href of hrefs(text)) {
       const to = resolve(rel, href);
       if (to) queue.push(to);
     }
@@ -153,17 +187,22 @@ export function copyArt(seeds: string[], dest: string, read: DataReader, salt: s
       text = text.replace(`<uid>${owner.uid}</uid>`, `<uid>${fresh}</uid>`);
     }
 
-    // Absolute hrefs into the copied set. Relative ones already resolve.
+    // Absolute hrefs into the copied set. Relative ones already resolve — except
+    // a relative one to a document the walk stopped at: that stays in the
+    // game's data, and from inside the copy only an absolute path reaches it.
     text = text.replace(/href="([^"]*)"/g, (whole, href: string) => {
-      if (!isAbsolute(href)) return whole;
       const [path, fragment] = split(href);
+      if (!isAbsolute(href)) {
+        const target = resolve(rel, href);
+        return target && stopped.has(target) ? `href="/${target}${fragment}"` : whole;
+      }
       const to = at.get(normalize(path));
       return to ? `href="/${to}${fragment}"` : whole;
     });
 
     files.set(at.get(rel)!, Buffer.from(text, 'latin1'));
   }
-  return { files, at, missing };
+  return { files, at, missing, stopped: [...stopped] };
 }
 
 /** Every href in a document, as written. */

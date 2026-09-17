@@ -352,3 +352,43 @@ dependencies, `Creature` for a dwelling, `ModObjectName` in the interior,
 grid + `town_buildings_N`, the `TownTypesInfo` record, `TownSpecs`, and
 7 tiers × 3 creatures behind the dwellings. Compiled by name and left for
 later: the specials' and grail's effects, the racial screens.
+
+## The town is a copy (2026-09-17, launches ten to twelve)
+
+`src/mods/town-files.ts`: the shipped town named by `donor` (found by its
+`Type` in `Towns/any.xdb`) is copied whole by `copyArt` under
+`Factions/<file>/town/`, structure preserved, and the top document moves out
+to `Factions/<file>/<file>.(AdvMapTownShared).xdb` with absolute hrefs into
+the tree; the build grid (`UIGameRoot`'s `town_buildings_<ordinal-3>`) is
+copied beside it, and a palette link written. Haven: 1517 files, 79 MB,
+fresh uids for every geometry, skeleton, animation and sound.
+
+The copy has two boundaries, both learned by launching:
+
+- **`stopAt` by document kind** — `CamerasSet`, `Character`, `CreatureVisual`,
+  `Shot`, `AdvMapDesc`, `ArenaObstaclesGroup`. The default camera set names
+  every combat camera in the game, hence every hero and creature that has one
+  (9479 files, 380 MB without the stop); the siege towers' shooter is a
+  creature; the siege scenery and obstacles are the biome's. Left in place and
+  referenced by absolute path.
+- **`leave` by path** — `Textures/Terrain/**` and the one
+  `_(Material)/dev/Test/Malkovsky/CragTerrain.(Material).xdb`. Every exterior
+  model carries a ground pad in the underground floor's texture, the skin the
+  object shows on the rock floor; on the surface the engine hides it, and it
+  knows the pad by that MATERIAL (one document, 458 models). Copied, it was a
+  slab of rock under the town on grass; leaving the texture alone changed
+  nothing (launch eleven); leaving the material did (twelve).
+
+The town screen, the build screen and the siege all open out of the copy.
+
+**Named towns.** A random town of the race is drawn a `TownSpecialization`
+(name, history, one compiled `TOWN_BONUS_*`) from `TownSpecs`, the least-used
+first; Haven ships twenty for random towns. `buildNamedTowns` writes one
+document and two texts each under `Factions/<file>/towns/`,
+`patchTownSpecTable` / `patchTownSpecTypes` list them (`ETownSpec` in both
+shapes, the table's size), and the executable's ceiling follows through
+`TOWN_SPEC_TABLE`. The probe reads them from `_tmp/test-towns.json`.
+
+Still Haven's inside the copy: the 14 dwelling records' `Creature`, the
+building texts and icons, the magic schools (a spec field), the race's name
+in the town window (the name switch's twelfth slot points at Haven's handler).
