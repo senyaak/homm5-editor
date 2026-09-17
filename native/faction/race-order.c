@@ -34,16 +34,21 @@
 // executable is extended in place: a compiled width is not a thing to grow,
 // and a table that lives here has no width at all.
 //
-// THE ICON is the one part of the ledger that is not a number. `CMPWaitItem`'s
+// THE ICON AND ITS TOOLTIP are the parts of the ledger that are not numbers. `CMPWaitItem`'s
 // constructor builds `map<TownType, texture>` name by name — `race_haven` …
 // `race_stronghold`, and the misspelt `rece_necropolis`/`rece_fortress` that
 // `UI/MPWait/PlayersList/Item/Races.(WindowRelatedTextures).xdb` faithfully
 // repeats. A race the constructor never heard of draws nothing, so the
 // constructor is detoured too: the engine's runs first, then every row that
 // names a texture is looked up through the item's own related-textures widget
-// and put into the same map the same way the constructor does it.
+// and put into the same map the same way the constructor does it. The tooltip
+// is the same again one map over: the constructor's helper (0x8F6B00, and the
+// constructor is its only caller) fills `map<TownType, String>` at the item's
+// shared tooltip object (+0x108, the map at +0x30) from the related-TEXTS
+// list, `race_tooltip_haven` … `race_tooltip_stronghold`; a row's third word
+// goes in beside them.
 
-/** `race <townType> [pickerTexture]` — one per line, in picker order. */
+/** `race <townType> [pickerTexture [tooltipText]]` — one per line, in picker order. */
 #define MAX_RACES 32
 #define RACE_TEXTURE_LEN 48
 
@@ -51,7 +56,22 @@ typedef struct {
   int town;
   /** The name in the related-textures list; empty for a race the engine draws itself. */
   char texture[RACE_TEXTURE_LEN];
+  /** The name in the related-texts list — what the arrow's tooltip says. */
+  char tooltip[RACE_TEXTURE_LEN];
 } RaceRow;
+
+/** One word: up to a space, the line's end or a comment. */
+static int race_word(const char **p, const char *stop, char *out, int room) {
+  const char *q = *p;
+  while (q < stop && (*q == ' ' || *q == '\t')) q++;
+  int n = 0;
+  while (q < stop && *q != ' ' && *q != '\t' && *q != '\r' && *q != '#' && n < room - 1) {
+    out[n++] = *q++;
+  }
+  out[n] = 0;
+  *p = q;
+  return n;
+}
 
 static RaceRow g_races[MAX_RACES];
 static int g_raceCount = 0;
@@ -78,13 +98,8 @@ static void load_races(void) {
     if (!take_word(&q, stop, "race")) continue;
     RaceRow r;
     if (!read_int(&q, stop, &r.town) || r.town < TOWN_HEAVEN) continue;
-    while (q < stop && (*q == ' ' || *q == '\t')) q++;
-    int n = 0;
-    while (q < stop && *q != ' ' && *q != '\t' && *q != '\r' && *q != '#'
-           && n < RACE_TEXTURE_LEN - 1) {
-      r.texture[n++] = *q++;
-    }
-    r.texture[n] = 0;
+    race_word(&q, stop, r.texture, sizeof r.texture);
+    race_word(&q, stop, r.tooltip, sizeof r.tooltip);
     if (g_raceCount < MAX_RACES) g_races[g_raceCount++] = r;
   }
   VirtualFree(buf, 0, MEM_RELEASE);
@@ -170,8 +185,20 @@ static const BYTE OBJECT_RELEASE_HEAD[5] = { 0x51, 0x83, 0x79, 0x08, 0x00 };
 /** The item's map of icons by town, and the widget the names are looked up in. */
 #define ITEM_TEXTURE_MAP 0x50u
 #define ITEM_TEXTURE_WIDGET 0xA0u
-/** The widget's slot that answers a name with a texture. */
+/** The widget's slot that answers a name with a texture, and the one that
+ *  answers with a text. */
 #define VT_TEXTURE_BY_NAME 0x110u
+#define VT_TEXT_BY_NAME 0x10Cu
+/** The item's shared tooltip object, and its map of race tooltips by town. */
+#define ITEM_TOOLTIPS 0x108u
+#define TOOLTIPS_RACE_MAP 0x30u
+/** `map<TownType, String>::operator[]` — `sub esp,20h / push ebx / mov ebx,ecx`. */
+#define TEXT_MAP_SLOT_RVA 0x4faed0u
+static const BYTE TEXT_MAP_SLOT_HEAD[6] = { 0x83, 0xEC, 0x20, 0x53, 0x8B, 0xD9 };
+/** `String::operator=(const String &)`, what the helper does with the text it
+ *  looked up — `push esi / mov esi,[esp+8]`. */
+#define STRING_ASSIGN_RVA 0x0e8310u
+static const BYTE STRING_ASSIGN_HEAD[5] = { 0x56, 0x8B, 0x74, 0x24, 0x08 };
 
 /** The engine's string: begin, end, end of storage. The same three pointers
  *  rmg/cli.c declares as `EngineString` — that file is spliced in for the map
@@ -184,12 +211,38 @@ typedef void (__fastcall *StringCtorFn)(EngineName *s, void *edx, const char *te
 typedef void (__cdecl *EngineFreeFn)(void *p);
 typedef void *(__fastcall *TextureByNameFn)(void *widget, void *edx, const EngineName *name);
 typedef void (__fastcall *ObjectReleaseFn)(void *obj);
+typedef void *(__fastcall *TextByNameFn)(void *widget, void *edx, const EngineName *name);
+typedef void *(__fastcall *TextMapSlotFn)(void *map, void *edx, const int *key);
+typedef void (__fastcall *StringAssignFn)(void *dst, void *edx, const void *src);
 
 static WaitItemCtorFn g_waitItemCtor = NULL;
 static TextureMapSlotFn g_textureMapSlot = NULL;
 static StringCtorFn g_stringCtor = NULL;
 static EngineFreeFn g_engineFree = NULL;
 static ObjectReleaseFn g_objectRelease = NULL;
+static TextMapSlotFn g_textMapSlot = NULL;
+static StringAssignFn g_stringAssign = NULL;
+
+/** The tooltip beside the icon, the way the constructor's helper puts its own in. */
+static void put_picker_tooltip(void *item, const RaceRow *row) {
+  void *widget = *(void **)((BYTE *)item + ITEM_TEXTURE_WIDGET);
+  void *tooltips = *(void **)((BYTE *)item + ITEM_TOOLTIPS);
+  if (!widget || !tooltips) return;
+  TextByNameFn byName = (TextByNameFn)vtable_entry(widget, VT_TEXT_BY_NAME);
+  if (!byName) return;
+
+  EngineName name;
+  g_stringCtor(&name, NULL, row->tooltip);
+  void *text = byName(widget, NULL, &name);
+  g_engineFree(name.begin);
+  if (!text) {
+    log_text("races: no picker text named ", row->tooltip);
+    return;
+  }
+  void *slot = g_textMapSlot((BYTE *)tooltips + TOOLTIPS_RACE_MAP, NULL, &row->town);
+  g_stringAssign(slot, NULL, text);
+  log_text("races: picker tooltip ", row->tooltip);
+}
 
 /**
  * One entry into the item's map, the way the constructor puts its own in:
@@ -225,6 +278,7 @@ static void *__fastcall wait_item_ctor_hook(void *self, void *edx, void *a, void
   if (!item) return item;
   for (int i = 0; i < g_raceCount; i++) {
     if (g_races[i].texture[0]) put_picker_texture(item, &g_races[i]);
+    if (g_races[i].tooltip[0] && g_textMapSlot) put_picker_tooltip(item, &g_races[i]);
   }
   return item;
 }
@@ -255,6 +309,12 @@ static void install_race_order(void) {
   g_objectRelease = (ObjectReleaseFn)code_at(OBJECT_RELEASE_RVA, OBJECT_RELEASE_HEAD,
                                              sizeof OBJECT_RELEASE_HEAD, "object release");
   if (!g_textureMapSlot || !g_stringCtor || !g_engineFree || !g_objectRelease) return;
+  // The tooltip's two are optional: without them the icon still goes in.
+  g_textMapSlot = (TextMapSlotFn)code_at(TEXT_MAP_SLOT_RVA, TEXT_MAP_SLOT_HEAD,
+                                         sizeof TEXT_MAP_SLOT_HEAD, "text map slot");
+  g_stringAssign = (StringAssignFn)code_at(STRING_ASSIGN_RVA, STRING_ASSIGN_HEAD,
+                                           sizeof STRING_ASSIGN_HEAD, "string assign");
+  if (!g_textMapSlot || !g_stringAssign) g_textMapSlot = NULL;
   g_waitItemCtor = (WaitItemCtorFn)detour(WAIT_ITEM_CTOR_RVA, WAIT_ITEM_CTOR_HEAD,
                                           sizeof WAIT_ITEM_CTOR_HEAD, &wait_item_ctor_hook,
                                           "wait item constructor");
