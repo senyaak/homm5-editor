@@ -44,7 +44,7 @@ const WORK = 512;
 // Every glyph is drawn in the unit square with the frame already there, and
 // keeps to the inner disc (radius 0.40 about the centre).
 
-type Glyph = (p: Painter, t: IconTheme) => void;
+export type Glyph = (p: Painter, t: IconTheme) => void;
 
 /** Roman numeral strokes for 1..7, centred on (cx, cy), `h` tall. */
 function numeral(p: Painter, n: number, cx: number, cy: number, h: number, c: Color): void {
@@ -289,4 +289,46 @@ export function textureFiles(path: string, image: Image): ModFile[] {
     { path, data: Buffer.from(textureDoc({ dds: dds.split('/').pop()!, width: image.width, height: image.height }), 'latin1') },
     { path: dds, data: writeDDS(image) },
   ];
+}
+
+// --- the town screen's centre button ----------------------------------------
+
+/** A colour dimmed towards black by `k`, alpha kept. */
+const dim = (c: Color, k: number): Color => [c[0] * k, c[1] * k, c[2] * k, c[3]];
+/** A colour drained to grey: the disabled state. */
+const grey = (c: Color): Color => {
+  const l = c[0] * 0.3 + c[1] * 0.59 + c[2] * 0.11;
+  return [l * 0.7, l * 0.7, l * 0.7, c[3]];
+};
+
+/**
+ * The three skins of the jog-dial's big button for a building of ours — the
+ * shipped `HavenSpecialNormal/Pushed/Disabled`, 82×82, cut out: the building's
+ * glyph on a ringed disc; pushed sinks and darkens, disabled is grey.
+ */
+export function specialButtonSkins(glyph: Glyph, theme: IconTheme, size = 82): { normal: Image; pushed: Image; disabled: Image } {
+  const draw = (t: IconTheme, sink: number): Image => {
+    const p = new Painter(WORK);
+    p.disc(0.50, 0.50 + sink, 0.48, t.field);
+    p.ring(0.50, 0.50 + sink, 0.48, 0.045, t.rim);
+    // The glyph keeps to the inner disc; sunk with the field when pushed.
+    const q = new Painter(WORK);
+    glyph(q, t);
+    for (let y = 0; y < WORK; y++) {
+      const sy = y - Math.round(sink * WORK);
+      if (sy < 0 || sy >= WORK) continue;
+      for (let x = 0; x < WORK; x++) {
+        const i = (y * WORK + x) * 4, j = (sy * WORK + x) * 4;
+        const a = q.rgba[j + 3]!;
+        if (!a) continue;
+        const sa = a / 255, da = p.rgba[i + 3]! / 255, oa = sa + da * (1 - sa);
+        for (let k = 0; k < 3; k++) p.rgba[i + k] = oa ? (q.rgba[j + k]! * sa + p.rgba[i + k]! * da * (1 - sa)) / oa + 0.5 : 0;
+        p.rgba[i + 3] = oa * 255 + 0.5;
+      }
+    }
+    return p.image(size);
+  };
+  const pushed: IconTheme = { field: dim(theme.field, 0.7), rim: dim(theme.rim, 0.8), ink: dim(theme.ink, 0.85), accent: dim(theme.accent, 0.85) };
+  const disabled: IconTheme = { field: grey(theme.field), rim: grey(theme.rim), ink: grey(theme.ink), accent: grey(theme.accent) };
+  return { normal: draw(theme, 0), pushed: draw(pushed, 0.02), disabled: draw(disabled, 0) };
 }

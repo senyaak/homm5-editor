@@ -510,3 +510,85 @@ membership: `Towns/any.xdb`, `Heroes/Any.xdb`, `TownSpecs`.
   `CCreateSpellBook` (`UIGameRoot` `OrcsSpellBook` / `SpellBook`).
 
 
+
+## The centre button (2026-09-17, read; launch 22 pending)
+
+The left jog-dial (`UI/TownScreen/JogDialLeft.(WindowSimpleShared).xdb`) is
+seven fixed buttons; the big one in the middle is `Special.(WindowMSButton)`,
+`Name=EnterSpecial`, 82×82. It has EIGHT `ButtonStates` — one per town, and
+each state carries its OWN click commands (all eight run
+`Special.(UISDirectRunReaction)` → `ARSendGameMessage enter_special`) — over
+eight `VisualStates` in the shared document (`HavenSpecialNormal/Pushed/
+Disabled` … `H5A2/StrongholdSpecial*`). Its tooltip `Special.txt` is
+`<value=special> <hotkey=input_enter_special> <color_negative><value=deny>`.
+
+**How a click becomes a handler.** Nothing is dispatched by a compiled switch
+on the message: `CTownScreen`'s init (`0x84B300`, from the screen's
+`0x852490`) calls `0x854570`, which for each name — `enter_hall`,
+`enter_fort`, `enter_magic_guild`, `enter_market`, `enter_tavern`,
+`enter_shipyard`, `enter_blacksmith`, `enter_special` (→ `0x84D690`),
+`buy_artifacts` (→ `0x84D870`), `close_town`, `next_town`, `prev_town`,
+`input_upgrade_creatures`, `upgrade_creatures`, `click_pointer`,
+`dblclick_pointer`, `input_swap_heroes`, `build_all`, `avengers_guild`,
+`create_mini_artifact`… — builds an engine string and calls
+**`0x859960(this, String* name, memfn{fn, adj, vindex})`** (`__thiscall`,
+`ret 10h`). That wraps the member function in a 0x20-byte functor (vtable
+`0xF73A4C`; slot 7 is `Invoke(msg, screen)`, `ret 8`: `dynamic_cast` the
+screen to `CTownScreen` (`0x10ABE34`), adjust `this` by the memfn's
+`vbtable[vindex] + adj`, call `fn(msg)`) and appends `{interned name id
+(0x5B58C0), functor}` to a vector at `this+4` through the screen's vtable
+slot 0 (`0x5BAE50`). So **any name registers**, and a handler is `bool
+__thiscall (CTownScreen*, msg*)`, `ret 4`, with `this` the same object the
+engine's own handlers read (`+0x2F0`/`+0x344` the town holder by the byte at
+`+0x370`, `+0xA0` the root widget, `+0x220` the player).
+
+**`enter_special` (`0x84D690`)**: the town is `holder->slot 1`, alive when
+`[[town+4]+4]+8 ≥ 0` in it; `town->+0xD4` is the type; `type - 3` indexes an
+eight-way table of compiled screens (`0x858220`, `0x850380`, `0x84FF00`,
+`0x84FFC0`, `0x850140`, the Hall of Trial branch, `0x850550`, `0x8583A0`);
+past it: `return 1`, nothing.
+
+**The button (`0x8541B0`, from `UpdateButtons 0x853B70` on every town
+change)**: the same switch picks the BUILDING the button stands for (Haven
+`TB_SPECIAL_1`=17, 16, 18, 19, 18, 21, the eighth via `town->+0x4C(0x20)`)
+and a tooltip text index; past the eight `ebx` stays `0x1A`=`TB_COUNT` and
+the function returns. For a known town: `root->IWindow->+0x94(name, 1)`
+finds the widget (IWindow base = `root + 4 + [[root+4]+8]`), the
+`__RTDynamicCast(widget, 0, IWindow 0x10AAF54, IButton 0x10AB610, 0)`
+(`0x94AB92`, an import thunk), the record's name into `<value=special>`
+(`town->+0x5C`, `+0x30`, `0x4EB510`, `0xAC0760`, `widget->+0x80(key,
+text)` — NOT copied), then **`0x854030(this, String* name, building)`**
+(`ret 8`) = `SetEnabled(0x856500(building))` with `<value=deny>` =
+`building_not_present` when off. **`0x856500(this, building)`** (`ret 4`):
+`town->+0xBC == player->+0x2C` (mine) and `town->+0x34(building) > 0` (its
+level). `0x745C40(widget, on)` is `if (+0x40() != on) +0x3C(on)` — the
+enabled getter and setter on the IWindow base. Before all this `0x8534B0`
+(from `0x8523D0`) turns EVERY dial button off, which is why a ninth type's
+button was "neither drawn nor enabled" — it is drawn, in its Disabled skin.
+
+**The skin** is set once, in the init (`0x84CC0E`): `IButton->+0xC(clamp(type
+- 3, ≤ 7, else 3))` — `SetState` (`0xE41550`, `ret 4`), which stores `state
+% (number of ButtonStates)` at `shared+0x114`. IButton is the subobject at
+`+0xF8` of `CWindowMSButton` (vtable `0xFEC678`); the class's other vtables'
+`+0xC` are a name getter (`0xE40800`) and a serializer, which is what a
+wrong offset reads as. A ninth type gets state 3, Dungeon's skin, until
+something sets it again.
+
+**The town's script name** is the town's vtable slot `+0x90`
+(`0xACC390` — returns `this+0x28`, an engine string), the slot
+`GetObjectNamesByType` (`0x5F5B8C`) reads for every map object; `+0x8C`
+beside it is the shared.
+
+**Ours** (`native/faction/town-button.c`, `src/mods/town-button.ts`): the
+data appends a ninth `ButtonStates` item whose click runs
+`Own.(UISDirectRunReaction)` → `enter_own`, and a ninth `VisualStates` item
+with skins drawn from the theme; a row `button <type> <building> <state>
+<lua>` in `bin/homm5-editor-buildings.txt`; a detour after `0x854570`
+registers `enter_own` through `0x859960` with `{fn, 0, 0}`; a detour after
+`0x8541B0` sets the row's state and calls `0x854030` for the row's building;
+the handler says `<lua>("<town name>")` to the map through `world+0x40`
+slot 0 (lua/adv-cast.c). **The map has to introduce itself**: the click has
+no Lua context, and the map is reached from one (`0xA455E0` reads
+`[[ctx]]`), so `H5ETownButtons()` at the map's start is what fetches it.
+Open until launch 22: whether the map's scheduler runs the thread WHILE the
+town screen is up.

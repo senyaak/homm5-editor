@@ -24,7 +24,8 @@
 // and the arena's obstacle group. Those are other things: the faction's own
 // creatures replace the first two, and the biome stock stays the game's.
 
-import { buildingGlyph, buildingIcon, raceIcon, textureFiles, towerIcon, townIcon } from './faction-icons.ts';
+import { buildingGlyph, buildingIcon, raceIcon, specialButtonSkins, textureFiles, towerIcon, townIcon } from './faction-icons.ts';
+import type { TownButton } from './town-button.ts';
 import type { IconTheme } from './faction-icons.ts';
 import { copyArt, dataPath, resolve } from './mod-art.ts';
 import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
@@ -145,6 +146,12 @@ export interface BuildingEdit {
    * donor's model when absent.
    */
   model?: BuildingModel;
+  /**
+   * The town screen's centre button opens it: the map function the click
+   * calls, with the town's script name. One building of a town at most — the
+   * dial has one such button (town-button.ts).
+   */
+  button?: { lua: string };
 }
 
 export function buildingKey(type: string, level: number): BuildingKey {
@@ -246,6 +253,8 @@ export interface TownBuild {
   raceIcon?: string;
   /** The siege tower on the initiative bar, likewise — for `ATB_TOWER_ICONS`. */
   towerIcon?: string;
+  /** The centre button's building, function and skins, for the faction to register (town-button.ts). */
+  button?: Omit<TownButton, 'town'>;
 }
 
 /**
@@ -507,6 +516,16 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     tower = put('tower', towerIcon(theme)).replace(/#.*$/, '').slice(1);
   }
 
+  // The centre button: one building's, its skins drawn from the theme.
+  let button: Omit<TownButton, 'town'> | undefined;
+  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+    if (!edit?.button) continue;
+    if (button) throw new Error(`${spec.file}: two buildings want the centre button; the dial has one`);
+    if (!spec.icons) throw new Error(`${spec.file}: a button needs the icon theme to draw its skins`);
+    const { type } = parseBuildingKey(key);
+    button = { building: type, lua: edit.button.lua, skins: specialButtonSkins(buildingGlyph(type, 1), spec.icons), dir: p.icons };
+  }
+
   files.set(p.build, Buffer.from(build, 'latin1'));
   files.set(p.name, utf16(spec.name));
 
@@ -519,6 +538,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     paths: p, at: copy.at, records, stopped: copy.stopped, missing: copy.missing,
     ...(race ? { raceIcon: race } : {}),
     ...(tower ? { towerIcon: tower } : {}),
+    ...(button ? { button } : {}),
   };
 }
 

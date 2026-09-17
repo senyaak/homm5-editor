@@ -51,6 +51,13 @@ pre-release.
   model of the game's, placed where a dropped building of the donor's stood
   (its camera and pick hull reused) or at a spot given outright, at its own
   size or a chosen width (`TownSpec.buildings[…].model`).
+- The town screen's centre button is a faction's own: `TownSpec.buildings[…]
+  .button` names the map function a click calls, the mod appends a ninth
+  skin (drawn) and a ninth click to the game's `EnterSpecial` button
+  (`src/mods/town-button.ts`), and the extension registers the click's
+  message on the town screen, enables the button by the building's presence
+  the engine's own way and says `<function>("<town>")` to the map's Lua
+  (`native/faction/town-button.c`, `bin/homm5-editor-buildings.txt`).
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were

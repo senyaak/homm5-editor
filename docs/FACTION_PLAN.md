@@ -150,6 +150,19 @@ fully, in the probe, one launch per question.
   opens the engine's own info box — name, description, our drawn icon —
   with no hook at all, so "a building you can look at" is complete in
   data; only a click that DOES something needs the button and its message.
+  **The click — BUILT, launch 22 pending (2026-09-17):** `TownSpec.buildings[…].button = { lua }`
+  → a ninth skin and a ninth click on the shipped `EnterSpecial` button
+  (`src/mods/town-button.ts`), a row in `bin/homm5-editor-buildings.txt`,
+  and `native/faction/town-button.c` registering `enter_own` on the town
+  screen through the engine's own registrar, enabling the button by the
+  building's presence through the engine's own `0x854030`, and saying
+  `<lua>("<town>")` to the map's Lua. The map calls `H5ETownButtons()` once
+  at its start (the click has no Lua context to reach the map by). **To
+  launch:** the ninth skin drawn; off until the Bone Pit stands, on after;
+  the box WHILE the town screen is open (the map's Lua is a scheduled
+  thread — does the scheduler run under the town screen?); the town's name
+  in the log. Not yet: the tooltip's `<value=special>` (the building's
+  name — four unmeasured calls).
   **Still unknown:** the grail's common bonuses. Launch 20, the AI's first
   turn, crashed — not the tree: the ceiling patcher had raised the wrong
   table's accessor (engineInternals/FACTIONS.md, "The table half").

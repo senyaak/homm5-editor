@@ -18,6 +18,8 @@ import { dataReader } from '../src/mods/mod-files.ts';
 import { buildTown, dropGridCell, moveGridCell, parseBuildingKey } from '../src/mods/town-files.ts';
 import type { TownBuild, TownSpec } from '../src/mods/town-files.ts';
 import { positionsBox, wideBase } from '../src/scene/geometry.ts';
+import { BONE_ON_PLUM } from '../src/mods/faction-icons.ts';
+import { SHIPPED_BUTTON_STATES, SPECIAL_BUTTON, SPECIAL_BUTTON_SHARED, TOWN_BUILDINGS, addTownButtons, buildingsFileText } from '../src/mods/town-button.ts';
 import { dataDir } from './game-dir.ts';
 
 let failures = 0;
@@ -176,6 +178,30 @@ console.log('a model of ours in the screen');
   throws('a place the donor has not', () => build({ 'TB_SPECIAL_1': { model: { source: GRAVES, place: 'TB_SPECIAL_9' } } }), 'TB_SPECIAL_9');
   throws('a model without a place or a spot', () => build({ 'TB_SPECIAL_1': { model: { source: GRAVES } } }), 'place or a spot');
   throws('a source that is not there', () => build({ 'TB_SPECIAL_1': { model: { source: 'Arenas/Town/Nowhere/Nothing.xdb', place: 'TB_SHIPYARD' } } }), 'Nothing.xdb');
+}
+
+console.log('the centre button');
+{
+  const enumAt = read('types.xml')!.toString('latin1');
+  const listed = [...enumAt.slice(enumAt.indexOf('<Name>TB_TOWN_HALL</Name>')).matchAll(/<Name>(TB_[A-Z_0-9]+)<\/Name>\s*<Value>(\d+)<\/Value>/g)]
+    .slice(0, TOWN_BUILDINGS.length).map((m) => [m[1]!, Number(m[2])] as const);
+  check('ETownBuilding is the list the DLL is told', listed.every(([name, value]) => TOWN_BUILDINGS[value] === name) && listed.length === TOWN_BUILDINGS.length);
+  throws('a button needs the theme', () => build({ 'TB_SPECIAL_1': { button: { lua: 'BonePit' } } }), 'icon theme');
+  const t2 = buildTown({ ...base, icons: BONE_ON_PLUM, buildings: { 'TB_SPECIAL_1': { button: { lua: 'BonePit' } } } }, HEAVEN, read);
+  check("the build hands over the building, the function and three skins", t2.button?.building === 'TB_SPECIAL_1' && t2.button.lua === 'BonePit' && t2.button.skins.normal.width === 82 && t2.button.skins.pushed.height === 82 && t2.button.skins.disabled.width === 82);
+  throws('two buttons', () => buildTown({ ...base, icons: BONE_ON_PLUM, buildings: { 'TB_SPECIAL_1': { button: { lua: 'A' } }, 'TB_SPECIAL_2': { button: { lua: 'B' } } } }, HEAVEN, read), 'dial has one');
+  const button = read(SPECIAL_BUTTON)!.toString('latin1'), shared = read(SPECIAL_BUTTON_SHARED)!.toString('latin1');
+  const out = addTownButtons(button, shared, [{ ...t2.button!, town: 11 }]);
+  check('a ninth button state', out.button.split('<MessageOnEnterState/>').length - 1 === SHIPPED_BUTTON_STATES + 1);
+  check('whose click is ours', out.button.includes('Own.(UISDirectRunReaction).xdb#xpointer(/UISDirectRunReaction)') && out.button.split('Special.(UISDirectRunReaction)').length === button.split('Special.(UISDirectRunReaction)').length);
+  check('a ninth visual state', (out.shared.match(/<DefaultSubState>/g) ?? []).length === SHIPPED_BUTTON_STATES + 1);
+  check('drawn in our three skins', ['normal', 'pushed', 'disabled'].every((s) => out.shared.includes(`/Factions/Test/icons/special_${s}.(BackgroundSimpleTexture).xdb#xpointer(/BackgroundSimpleTexture)`)));
+  check('the shipped eight untouched', out.shared.startsWith(shared.slice(0, shared.lastIndexOf('</Item>'))) && out.button.startsWith(button.slice(0, button.lastIndexOf('</Item>'))));
+  check('the message and reaction files, the six picture files', out.files.filter((f) => f.path.startsWith('UI/TownScreen/Own.')).length === 2 && out.files.filter((f) => f.path.endsWith('.dds')).length === 3 && out.files.filter((f) => f.path.includes('(BackgroundSimpleTexture)')).length === 3);
+  check('the message is enter_own', out.files.find((f) => f.path.endsWith('Own.(ARSendGameMessage).xdb'))!.data.toString('latin1').includes('<EventName>enter_own</EventName>'));
+  check('the row: type, TB_SPECIAL_1 = 17, the appended state, the function', buildingsFileText(out.rows).trim().endsWith('button 11 17 8 BonePit'));
+  throws('a function name that is not one', () => addTownButtons(button, shared, [{ ...t2.button!, town: 11, lua: 'Bone Pit' }]), 'Lua function name');
+  throws('a document already extended', () => addTownButtons(out.button, shared, []), 'not the shipped');
 }
 
 console.log('the grid alone');

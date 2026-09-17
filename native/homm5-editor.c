@@ -107,6 +107,10 @@
 #include "qol/pandora-notify.c"
 #include "faction/race-order.c"
 #include "faction/start-probe.c"
+// The town screen's centre button for a building of ours: after adv-cast.c,
+// whose door to the map's Lua it uses, and after race-order.c, whose word
+// reader it borrows.
+#include "faction/town-button.c"
 #include "net/ubi-log.c"
 #include "net/ubi-module-probe.c"
 #include "net/ubi-friends-probe.c"
@@ -236,6 +240,9 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // it as a row the map calls. Unconditional like the two above — `load_qol` has
   // not run yet, so a flag read here reads nothing (native/lua/hero-spells.c).
   add_hero_spell_map_functions();
+  // A map with a button of ours calls this once at its start, so the map is
+  // known here by the time the button is clicked (native/faction/town-button.c).
+  add_town_button_map_functions();
   install_lua_functions();
   // The same argument, one context over — and the one thing here that a battle
   // has to answer for itself, so it says what it saw whether or not anything
@@ -330,6 +337,9 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // draws the icons learns the ones the constructor never heard of.
   load_races();
   if (g_raceCount) install_race_order();
+  // The town screen's centre button for a building of ours, one row per faction.
+  load_town_buttons();
+  if (g_townButtonCount && install_town_buttons()) log_line("town buttons: the special button is ours for a town of ours");
   // A probe, in a build that asks — `--log faction/start-probe`: what a race's
   // player, town and hero come out as at the start of a game.
   if (install_start_probe()) log_line("the start of a game is being watched");
