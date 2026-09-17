@@ -81,7 +81,7 @@ and the other eight-wide arrays the engine indexes by race.
 The town is the faction's face and most of its rules; it is done first and
 fully, in the probe, one launch per question.
 
-- **1a. The building tree — DONE (code), one launch owed.** `TownSpec.buildings`,
+- **1a. The building tree — DONE, launched (launch 19, 2026-09-17 22:00: the edited tree on the build screen, the Bone Pit built, a clean log).** `TownSpec.buildings`,
   by `TB_<TYPE>` or `TB_<TYPE>/<level>`: `name`, `description`, `cost` (the
   resources named), `devLevel`, `requires` (the list, whole), `slot` (the
   grid cell); `null` drops the building with every level above it — before
@@ -139,9 +139,11 @@ fully, in the probe, one launch per question.
     `0xA4B6A0`, the world-side machine written for exactly this and never
     called, with `CRunScriptCallbackCmd` beside it — not to forbid Lua.
     Separate item; the Pandora box already depends on Lua.
-  **Unknown, one launch:** what the engine does with a built special of a
-  type it never compiled (nothing, expected), with the ninth skin index of
-  `EnterSpecial`, and with the grail's common bonuses.
+  **Launch 19 (22:00):** a special of a type the engine never compiled
+  BUILDS — the Bone Pit (Haven's `TB_SPECIAL_1` renamed, recosted, moved)
+  went up with nothing in the log. **Still unknown:** what a click on it
+  and the `EnterSpecial` button do for the ninth type, and the grail's
+  common bonuses.
 - **1c. Magic — READ (2026-09-17), nothing launched.** Two separate
   things, and neither is a field of the town:
   - **The guild's spells.** The town's `MagicSchool_0/1` (shared `+0x124`,
