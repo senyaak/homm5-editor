@@ -47,6 +47,10 @@ pre-release.
   the effects' — and raising the town types to twelve sent the AI to a
   twelfth effect that does not exist, a crash on its first turn. The town
   types' own accessor is dead and stays as shipped.
+- A faction's building can have a model of its own in the town screen: any
+  model of the game's, placed where a dropped building of the donor's stood
+  (its camera and pick hull reused) or at a spot given outright, at its own
+  size or a chosen width (`TownSpec.buildings[…].model`).
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were

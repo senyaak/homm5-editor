@@ -181,10 +181,21 @@ fully, in the probe, one launch per question.
     (a form; the Hall's routine is what it would call), and a class of
     ours the DLL answers "barbarian-like" for at those sixteen places —
     a `class → warcries` column of the classes file. Not started.
-- **1d. The screen's own models.** Replace an interior building's model
-  with one copied from another town or object; the interior's lightmap is
-  keyed by the `ArenaDesc`'s uid in `bin/Lightmaps` — **unknown** whether
-  a changed scene needs its own (the engine may bake).
+- **1d. The screen's own models — DONE (code), one launch owed.**
+  `BuildingEdit.model` (`src/mods/town-screen.ts`): a `Model` document from
+  anywhere (another town's screen, an adventure-map object) is copied under
+  `Factions/<file>/buildings/<name>/`, its positions moved — the one array a
+  geometry file keeps a coordinate in, the edit every baked map building
+  goes through — to `place: 'TB_SHIPYARD'` (where the dropped donor building
+  stood: its level-1 model's ground centre, its camera and its pick hull
+  reused) or to `at: {x, y, z}` outright (the donor building's camera moved
+  by as much; no pick hull — the AI hull is a container the geometry tools
+  do not rewrite), optionally `across` scene units wide; an
+  `ArenaModObject` named `<file>_<type>` with the model at every level, a
+  camera `<name>_cam`, both listed in the ArenaDesc, every record of the
+  type pointed at the name. **To launch:** is it lit (the lightmap is baked
+  per ArenaDesc uid), picked, flown to. The probe puts the Necropolis graves
+  on the shipyard's spot.
 - **1e. The exterior.** The ten stage models on the map: another town's,
   or a mix by level, the way the siege mixes.
 - **1f. Texts.** Building names and descriptions, the town name, the

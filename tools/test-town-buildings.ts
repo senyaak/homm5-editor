@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { buildTown, dropGridCell, moveGridCell, parseBuildingKey } from '../src/mods/town-files.ts';
 import type { TownBuild, TownSpec } from '../src/mods/town-files.ts';
+import { positionsBox } from '../src/scene/geometry.ts';
 import { dataDir } from './game-dir.ts';
 
 let failures = 0;
@@ -72,7 +73,7 @@ check('Haven has 36 records', plain.records.size === 36, `${plain.records.size}`
 check('and 19 slots on the grid', slots(grid0).length === 19, `${slots(grid0).length}`);
 check('the town hall has four cells', cells(grid0, 'TB_TOWN_HALL').length === 4);
 const shipyard = plain.records.get('TB_SHIPYARD')!;
-const shipyardName = /<NameFileRef href="\/([^"#]+)"/.exec(text(plain, shipyard))![1]!;
+const shipyardName = /<NameFileRef href="\/([^"#]+)/.exec(text(plain, shipyard))![1]!;
 check('the shipyard\'s name text is in the copy', plain.files.some((f) => f.path === shipyardName), shipyardName);
 
 console.log('drops');
@@ -109,8 +110,8 @@ const edited = build({
   'TB_TAVERN': { requires: [] },
 });
 const special = text(edited, edited.records.get('TB_SPECIAL_1')!);
-const nameAt = /<NameFileRef href="\/([^"#]+)"/.exec(special)![1]!;
-const descAt = /<DescriptionFileRef href="\/([^"#]+)"/.exec(special)![1]!;
+const nameAt = /<NameFileRef href="\/([^"#]+)/.exec(special)![1]!;
+const descAt = /<DescriptionFileRef href="\/([^"#]+)/.exec(special)![1]!;
 check('the name is written into the copy\'s text', utf16(edited, nameAt) === 'Bone Pit');
 check('the description too', utf16(edited, descAt) === 'Where the dead are sorted.');
 check('gold and sulfur changed', special.includes('<Gold>2000</Gold>') && special.includes('<Sulfur>0</Sulfur>'));
@@ -121,6 +122,57 @@ check('an empty requires is an empty element', text(edited, edited.records.get('
 check('the other records are the donor\'s', text(edited, edited.records.get('TB_FORT')!) === text(plain, plain.records.get('TB_FORT')!));
 throws('a resource that is not one', () => build({ 'TB_TAVERN': { cost: { Iron: 1 } as never } }), 'Iron');
 throws('a cell for a level the slot has not', () => build({ 'TB_TAVERN': { slot: { x: 1, y: 1 } }, 'TB_TAVERN/2': { slot: { x: 1, y: 1 } } }), 'TB_TAVERN/2');
+
+console.log('a model of ours in the screen');
+{
+  const GRAVES = 'Arenas/Town/Necropolis/UneartheGrave_u1r0.xdb';
+  const t = build({ 'TB_SHIPYARD': null, 'TB_SPECIAL_1': { model: { source: GRAVES, place: 'TB_SHIPYARD' } } });
+  const record = text(t, t.records.get('TB_SPECIAL_1')!);
+  check('the record names the object of ours', record.includes('<ModObjectName>Test_special_1</ModObjectName>'));
+  const interior = /<Interior href="\/([^"#]+)/.exec(text(t, t.paths.shared))![1]!;
+  const scene = text(t, interior);
+  const sceneDir = interior.slice(0, interior.lastIndexOf('/'));
+  check('the screen lists the object', scene.includes('<Item href="Test_special_1.(ArenaModObject).xdb#xpointer(/ArenaModObject)"/>'));
+  check('and its camera', scene.includes('<Item href="Test_special_1_cam.(Camera).xdb#xpointer(/Camera)"/>'));
+  const object = text(t, `${sceneDir}/Test_special_1.(ArenaModObject).xdb`);
+  check('the object is level 0 empty and one built level', (object.match(/<Model\/>/g) ?? []).length === 1 && (object.match(/<Model href=/g) ?? []).length === 1);
+  const modelPath = /<Model href="\/([^"#]+)/.exec(object)![1]!;
+  check('the model is copied under the faction', modelPath.startsWith('Factions/Test/buildings/Test_special_1/'), modelPath);
+  const geomDoc = text(t, modelPath.replace(/[^/]+$/, '') + /<Geometry href="([^"#]+)/.exec(text(t, modelPath))![1]!);
+  const uid = /<uid>([0-9A-F-]{36})<\/uid>/i.exec(geomDoc)![1]!;
+  const placed = positionsBox(t.files.find((f) => f.path === `bin/Geometries/${uid.toUpperCase()}`)!.data)!;
+  const shipyardBin = t.files.find((f) => f.path.endsWith('/Shipyard_u1r0-geom.xdb'))!;
+  const shipyardUid = /<uid>([0-9A-F-]{36})<\/uid>/i.exec(shipyardBin.data.toString('latin1'))![1]!;
+  const shipyard = positionsBox(t.files.find((f) => f.path === `bin/Geometries/${shipyardUid.toUpperCase()}`)!.data)!;
+  check('the model stands where the shipyard stood', Math.abs(placed.cx - shipyard.cx) < 0.01 && Math.abs(placed.cy - shipyard.cy) < 0.01, `${placed.cx.toFixed(1)},${placed.cy.toFixed(1)} vs ${shipyard.cx.toFixed(1)},${shipyard.cy.toFixed(1)}`);
+  const source = positionsBox(read(`bin/Geometries/${/<uid>([0-9A-F-]{36})<\/uid>/i.exec(read('Arenas/Town/Necropolis/UneartheGrave_u1r0-geom.xdb')!.toString('latin1'))![1]!.toUpperCase()}`)!)!;
+  check('at its own size', Math.abs(placed.sx - source.sx) < 0.01 && Math.abs(placed.sy - source.sy) < 0.01);
+  check('and not where it came from (the graves stood at y 295, z 61 in their own scene)', Math.abs(source.cy - placed.cy) > 1 && Math.abs(source.cz - placed.cz) > 1);
+  check('the geometry document says so too', geomDoc.includes(`<x>${placed.cx.toFixed(4)}</x>`));
+  check("the shipyard's pick hull serves", geomDoc.includes('<AIGeometry href="/Factions/Test/town/Arenas/Town/NewHaven/Shipyard_u1r0-geom-AI.xdb#xpointer(/AIGeometry)"/>'));
+  check("the source's own hull is not copied", !t.files.some((f) => f.path.includes('UneartheGrave_u1r0-geom-AI')));
+  const camera = text(t, `${sceneDir}/Test_special_1_cam.(Camera).xdb`);
+  const theirs = text(t, `${sceneDir}/Shipyard3_cam.(Camera).xdb`);
+  check("the camera is the shipyard's, renamed", camera.includes('<Name>Test_special_1_cam</Name>') && /<Pos>[\s\S]*?<\/Pos>/.exec(camera)![0] === /<Pos>[\s\S]*?<\/Pos>/.exec(theirs)![0]);
+
+  const u = build({ 'TB_SPECIAL_1': { model: { source: GRAVES, at: { x: 250, y: 340, z: 10 }, across: 20 } } });
+  const uScene = text(u, interior);
+  const uObject = text(u, `${sceneDir}/Test_special_1.(ArenaModObject).xdb`);
+  const uModel = /<Model href="\/([^"#]+)/.exec(uObject)![1]!;
+  const uGeom = text(u, uModel.replace(/[^/]+$/, '') + /<Geometry href="([^"#]+)/.exec(text(u, uModel))![1]!);
+  const uBox = positionsBox(u.files.find((f) => f.path === `bin/Geometries/${/<uid>([0-9A-F-]{36})<\/uid>/i.exec(uGeom)![1]!.toUpperCase()}`)!.data)!;
+  check('a spot given outright is where it stands', Math.abs(uBox.cx - 250) < 0.01 && Math.abs(uBox.cy - 340) < 0.01, `${uBox.cx.toFixed(1)},${uBox.cy.toFixed(1)}`);
+  check('twenty across', Math.abs(Math.max(uBox.sx, uBox.sy) - 20) < 0.05, `${Math.max(uBox.sx, uBox.sy).toFixed(2)}`);
+  check("its ground at the spot's z", Math.abs(uBox.cz - uBox.sz / 2 - 10) < 0.05, `${(uBox.cz - uBox.sz / 2).toFixed(2)}`);
+  check('no hull', uGeom.includes('<AIGeometry/>'));
+  const uCamera = text(u, `${sceneDir}/Test_special_1_cam.(Camera).xdb`);
+  const tg = text(u, `${sceneDir}/TrainingGround_cam.(Camera).xdb`);
+  check("the camera is the training grounds', moved", uCamera.includes('<Name>Test_special_1_cam</Name>') && /<Pos>[\s\S]*?<\/Pos>/.exec(uCamera)![0] !== /<Pos>[\s\S]*?<\/Pos>/.exec(tg)![0]);
+  check('the screen lists it once', (uScene.match(/Test_special_1\.\(ArenaModObject\)/g) ?? []).length === 1);
+  throws('a place the donor has not', () => build({ 'TB_SPECIAL_1': { model: { source: GRAVES, place: 'TB_SPECIAL_9' } } }), 'TB_SPECIAL_9');
+  throws('a model without a place or a spot', () => build({ 'TB_SPECIAL_1': { model: { source: GRAVES } } }), 'place or a spot');
+  throws('a source that is not there', () => build({ 'TB_SPECIAL_1': { model: { source: 'Arenas/Town/Nowhere/Nothing.xdb', place: 'TB_SHIPYARD' } } }), 'Nothing.xdb');
+}
 
 console.log('the grid alone');
 check('dropping the last cell drops the slot', !dropGridCell(grid0, 'TB_TAVERN', 1).includes('TB_TAVERN'));

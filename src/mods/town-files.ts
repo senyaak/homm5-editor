@@ -29,6 +29,8 @@ import type { IconTheme } from './faction-icons.ts';
 import { copyArt, dataPath, resolve } from './mod-art.ts';
 import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
+import { donorObjectsOf, placeBuildingModel } from './town-screen.ts';
+import type { BuildingModel } from './town-screen.ts';
 import { EOL, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
 
 export const TOWN_CLASS = 'AdvMapTownShared';
@@ -137,6 +139,12 @@ export interface BuildingEdit {
   requires?: readonly BuildingKey[];
   /** Its cell on the build grid (`XSlotPos`/`YSlotPos`). */
   slot?: { x: number; y: number };
+  /**
+   * Its model in the town screen, from anywhere, placed where a dropped
+   * building stood or at a spot given outright — see town-screen.ts. The
+   * donor's model when absent.
+   */
+  model?: BuildingModel;
 }
 
 export function buildingKey(type: string, level: number): BuildingKey {
@@ -450,6 +458,31 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       build = moveGridCell(build, type, level, edit.slot);
     }
     files.set(path, Buffer.from(text, 'latin1'));
+  }
+
+  // Models of ours in the town screen: placed, named, and every level of the
+  // building pointed at the name.
+  let donorObjects: Map<string, string> | null = null;
+  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+    if (!edit?.model) continue;
+    const { type } = parseBuildingKey(key);
+    const interiorHref = hrefOf(town, 'Interior');
+    if (!interiorHref) throw new Error(`${spec.donor} names no Interior`);
+    const ofType = [...records].filter(([k]) => parseBuildingKey(k).type === type).map(([, path]) => path);
+    const name = `${spec.file}_${type.slice(3).toLowerCase()}`;
+    donorObjects ??= donorObjectsOf(mustRead(read, source), source, read);
+    const placed = placeBuildingModel({
+      name, levels: ofType.length, model: edit.model, interior: dataPath(interiorHref), files, read,
+      dir: `${p.dir}/buildings/${name}`,
+      donorObject: /<ModObjectName>([^<]*)<\/ModObjectName>/.exec(files.get(records.get(key)!)!.toString('latin1'))?.[1] ?? '',
+      donorObjects,
+    });
+    for (const [path, data] of placed.files) files.set(path, data);
+    for (const path of ofType) {
+      const text = files.get(path)!.toString('latin1');
+      once(text, '<ModObjectName>', `${key} model object`);
+      files.set(path, Buffer.from(text.replace(/<ModObjectName>[^<]*<\/ModObjectName>/, `<ModObjectName>${placed.name}</ModObjectName>`), 'latin1'));
+    }
   }
 
   // The icons, drawn: one per building record, the town's two, the race's.
