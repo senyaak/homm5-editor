@@ -640,18 +640,25 @@ function decodeMeshGroup(b: Buffer, start: number, end: number, options: MeshOpt
     //
     // The 20-byte render vertex ends in THREE packed byte triples, at 8, 12 and
     // 16 — a tangent BASIS, not one vector, and the normal is the first of them.
-    // Which is which is measured, not assumed (`_tmp/normcensus.ts`): over 1790
-    // mesh groups the triple at 8 has mean dot 0.294 with the face normal of the
-    // triangles that use it, while the two after it sit at -0.050 and 0.005 —
-    // perpendicular, because they are the tangent and the binormal. Within one
-    // vertex all three are unit length and mutually orthogonal (mean |dot| 0.002
-    // between any pair), which is what says it is a basis at all. Reading 12
-    // lit every model by a vector lying IN its surface: the sun term then had
-    // nothing to do with which way a face pointed, and a peasant came out in
-    // patches, neighbouring panels of one shirt at different brightnesses.
+    // Which is which is measured, not assumed (`_tmp/normcensus.ts`): the triple
+    // at 8 is the one that agrees with the faces, the two after it lie in the
+    // surface — the tangent and the binormal. Within one vertex all three are
+    // unit length and mutually orthogonal, which is what says it is a basis.
+    //
+    // AND THE BYTES ARE Z, Y, X — a D3DCOLOR, which is what the engine's own
+    // vertex declaration calls the slot it copies this into (docs/LIGHTING.md,
+    // `normal0` typed D3DCOLOR at +12), and a D3DCOLOR lies in memory as
+    // B, G, R, A. Read as x, y, z the triple agreed with the face normal at
+    // a mean dot of 0.27 over 3534 shipped meshes, which the census had
+    // explained away as inconsistent winding; read as z, y, x it agrees at
+    // 0.88 (terrain objects), 0.94 (buildings), 0.83 (creatures), and wins on
+    // 3506 of the 3534. The old reading lit a tree by a normal field leaning
+    // along its own x axis: the whole trunk went light and dark as the tree
+    // was turned, the lit side riding round with the model (Senya, Bigtree
+    // on a flat new map), and no sun direction could be right for it.
     if (stride >= 11) {
       for (let c = 0; c < 3; c++) {
-        normals[i * 3 + c] = (b[vertA.at + i * stride + 8 + c]! - 128) / 127;
+        normals[i * 3 + c] = (b[vertA.at + i * stride + 8 + (2 - c)]! - 128) / 127;
       }
     }
     if (skin) {

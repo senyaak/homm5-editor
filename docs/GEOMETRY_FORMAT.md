@@ -126,7 +126,7 @@ Per render vertex the 20-byte attribute stream (tag3) is:
 |---|---|---|
 | 0–3 | **UV** | 2× int16 ÷ 2048 (V spans [0,1], U tiles). Confirmed by UV edge-continuity |
 | 4–7 | (zero / uv2 slot) | unused here |
-| 8–11 | **normal** | byte ×3 + pad, `(b − 128) / 127` |
+| 8–11 | **normal** | byte ×3 + pad, `(b − 128) / 127`, **stored z, y, x** (a D3DCOLOR: B, G, R) |
 | 12–15 | tangent | same packing |
 | 16–19 | binormal | same packing |
 
@@ -140,10 +140,20 @@ are. Inside one vertex all three decode to unit length for 100% of vertices and
 are mutually orthogonal (mean |dot| 0.002 between any pair): that is what says
 the trailing twelve bytes are a basis rather than three unrelated fields.
 
-Why the average is 0.294 rather than ~0.9: the shipped triangle lists do not
-keep a consistent winding, so a signed comparison against the face normal
-cancels on roughly a quarter of the faces. The ratio between the three
-candidates is the discriminator, not the absolute number.
+**And the three bytes lie z, y, x (2026-09-17).** The 0.294 was not the
+winding: it was the axes. The engine's own vertex declaration types the slot
+it copies this into as a `D3DCOLOR` (LIGHTING.md, `normal0` at +12), and a
+D3DCOLOR sits in memory as B, G, R, A — so byte 8 is z, byte 9 y, byte 10 x.
+Read that way the triple agrees with the face normal at a mean dot of
+**0.882** over 2243 terrain-object meshes, **0.944** over 624 building meshes
+and **0.825** over 667 creature meshes, and wins the comparison on 3506 of
+those 3534 (`_tmp/normcensus2.ts`); read x, y, z it sits at 0.27 in all
+three. The shipped winding is consistent after all — the signed and the
+absolute means coincide. What the wrong axes looked like: a normal field
+leaning along the model's own x, so a tree's whole trunk went light and dark
+as it was turned, the lit side riding round with the model, on flat ground
+under any sun. Our own writer (`geometry-write.ts`) packs the same order,
+so a mesh of ours is lit by the engine along the right axis.
 
 The decoder prefers these authored normals and recomputes only the ones that
 arrive zero-length (`repairZeroNormals`) — averaging every normal over the faces

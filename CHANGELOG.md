@@ -67,6 +67,17 @@ trunk sat below its own shadow-caster. The shadow pass now drapes exactly the
 vertices the colour pass drapes — every model, every part — so a mountain's
 shadow falls from its draped foot too.
 
+**Models are lit by the sun, not by their own x axis.** Turn any tree and its
+trunk went light and dark as a whole, the lit side riding round with the model
+(Senya, Bigtree on a flat new map). The authored normals were being read with
+x and z swapped: the geometry file stores the packed normal as a D3DCOLOR —
+z, y, x — which is what the engine's own vertex declaration calls the slot.
+Read the right way round, the normals agree with the faces at 0.88–0.94
+across 3500 shipped meshes where they sat at 0.27 before. Every model on
+every map is lit differently now — and correctly: the sun side is the sun
+side whichever way the object is turned. Meshes the editor writes itself
+(the Pandora box) pack the same order, so the game lights them right too.
+
 ## 0.11.0-alpha.1 — 2026-09-16
 
 **Still an alpha, for the same reason as before.** The multiplayer half is as

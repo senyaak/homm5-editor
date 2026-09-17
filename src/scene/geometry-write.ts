@@ -278,10 +278,15 @@ export function buildGeometry(blocks: GroupData[][]): Buffer {
 
 // --- building a box ----------------------------------------------------------
 
-/** Pack a unit vector the way the tag-3 stream does: byte 128 is zero. */
+/**
+ * Pack a unit vector the way the tag-3 stream does: byte 128 is zero, and
+ * the components lie as a D3DCOLOR does — z, y, x (geometry.ts on how that
+ * was measured). Written x, y, z, a box of ours was lit by the engine along
+ * the wrong axis.
+ */
 function packVector(out: Buffer, at: number, v: readonly [number, number, number]): void {
   for (let c = 0; c < 3; c++) {
-    out[at + c] = Math.max(0, Math.min(255, Math.round(v[c]! * 127) + 128));
+    out[at + (2 - c)] = Math.max(0, Math.min(255, Math.round(v[c]! * 127) + 128));
   }
   out[at + 3] = 0xff; // the pad byte every shipped vertex carries
 }
