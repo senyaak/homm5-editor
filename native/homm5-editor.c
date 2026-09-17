@@ -106,6 +106,7 @@
 #include "qol/pandora-box.c"
 #include "qol/pandora-notify.c"
 #include "faction/race-order.c"
+#include "faction/start-probe.c"
 #include "net/ubi-log.c"
 #include "net/ubi-module-probe.c"
 #include "net/ubi-friends-probe.c"
@@ -329,6 +330,9 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // draws the icons learns the ones the constructor never heard of.
   load_races();
   if (g_raceCount) install_race_order();
+  // A probe, in a build that asks — `--log faction/start-probe`: what a race's
+  // player, town and hero come out as at the start of a game.
+  if (install_start_probe()) log_line("the start of a game is being watched");
   // The multiplayer agent. An import table entry, so it has to be in before the
   // game makes its socket — which is long after this, WinMain not having run —
   // and it is gated on the flag like everything else here: with it clear the
