@@ -47,7 +47,7 @@ function cleanup(): void {
 // not arrive on the first release run of v0.11 (17.09) while the same clicks
 // land every time on a machine with a display. The spec is about the
 // mapping from tile to pixel, which the runner cannot draw honestly.
-test.skip(!!process.env.CI, 'clicks land a tile off on the runner's software GL');
+test.skip(!!process.env.CI, "clicks land a tile off on the runner's software GL");
 
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
