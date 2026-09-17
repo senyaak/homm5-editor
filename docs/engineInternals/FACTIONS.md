@@ -323,3 +323,32 @@ itself was fine (one entry, Brem, in the ninth of the `0x1207BE0` vectors)
 onto "is in our table" with the other four. The probe's state log
 (`IPlayer::SetState`, `+0x650`) is what showed player 1 never becoming
 active; the player dumps showed him otherwise whole.
+
+## The race plays (2026-09-17, launch nine)
+
+Two more widths after `IsRealTown`, and then the twelfth town started a game:
+
+- **`TownSpecs`** (`GameMechanics/RefTables/TownSpecs.xdb`, 255): a random
+  town becomes a town of the player's race by drawing a specialization with
+  `TownType == race` (`0xB543E0`, the least-used first); none means no town,
+  and no town means no hero (`HeroInTown`) and a player out before turn one.
+  `TOWN_SPEC_TABLE` in `table-limit.ts` (push imm32, accessor `0xD268D0`).
+- **Creatures of the race**: the hero's starting army (`0xC26FA0`) is the
+  tier-1..3 BASE creatures whose `CreatureTown` is his race; none reads
+  record 0 and dies at `0xC2E487`. Three through the editor's own creature
+  mod (`_tmp/town12-units.ts`: ids 181–183, Necropolis donors, ceiling 184).
+
+The start ledger, complete: TownType (11→12) · the picker's five accessors
+(`RaceCount`, `TownOfIndex`, `IndexOfTown`, the selector, `IsRealTown`) ·
+`TownSpecs` · creatures with `CreatureTown`. The probe's instruments stay in
+`native/faction/start-probe.c` (`--log faction/start-probe`).
+
+**What a town is** (read out of `Heaven.(AdvMapTownShared).xdb`): the shared
+(Type, ten exterior stage models, tiles, `Interior` = the ArenaDesc town
+screen, `Combat` = the siege arena, `buildings`, `MagicSchool_0/1`, icons),
+~36 `TownBuildingSharedStats` records (Type `TB_*`, upgrade, cost,
+dependencies, `Creature` for a dwelling, `ModObjectName` in the interior,
+`UIObjectName` on the build screen, icon, texts), the `TownBuildDefinition`
+grid + `town_buildings_N`, the `TownTypesInfo` record, `TownSpecs`, and
+7 tiers × 3 creatures behind the dwellings. Compiled by name and left for
+later: the specials' and grail's effects, the racial screens.
