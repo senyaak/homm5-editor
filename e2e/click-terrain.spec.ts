@@ -42,6 +42,13 @@ function cleanup(): void {
   if (existsSync(MAP_DIR)) rmSync(MAP_DIR, { recursive: true, force: true });
 }
 
+// Not on the runner: it has no GPU, and a click aimed at the pixel the view
+// names for a tile lands a tile off there — the middle of three raises did
+// not arrive on the first release run of v0.11 (17.09) while the same clicks
+// land every time on a machine with a display. The spec is about the
+// mapping from tile to pixel, which the runner cannot draw honestly.
+test.skip(!!process.env.CI, 'clicks land a tile off on the runner's software GL');
+
 test.beforeAll(async () => { cleanup(); ed = await launchEditor(); });
 test.afterAll(async () => { await ed?.app.close(); cleanup(); });
 
