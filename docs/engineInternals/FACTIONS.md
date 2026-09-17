@@ -62,12 +62,18 @@ exactly like `HeroClass`: enum item list, name→value map,
 `ref_table_num_objs`/`MinElements`/`MaxElements` all saying 11, and a data
 record per town (moat damage and spells, silo income, native war machine,
 icons — nothing structurally hard). The registration site pushes the count as
-`push 11` (imm8), and there is **one live accessor**: `mov eax,11; ret` at
-`0xa9f0e0`, with six call sites (`0x8a10b3`, `0x8a6f3b`, `0xb95aeb`,
-`0xb95d70`, `0xb9632e`, `0xd8ebf1`). Both are the two numbers
-`table-limit.ts` already knows how to move; a `TOWN_TYPE_TABLE` spec is ~6
-lines. Note this accessor sits *inside* the block HERO_CLASSES.md once called
-dead — that page carries the correction.
+`push 11` (imm8) and then the table's global, `0x120C714`; the records are
+INLINE in the table (`0x10C` bytes each, getter `0xc73270`: `table + 8 +
+index * 0x10C`), and the count accessor beside it, `mov eax,11; ret` at
+`0xc73260`, is DEAD — nothing calls it. **Corrected 2026-09-17 (launch 20):**
+this page first named `0xa9f0e0` (eleven, six callers) as the town types'
+live accessor. It is the MICRO-ARTIFACT-EFFECTS count — its getter `0xa9f0f0`
+reads `0x1204624`, the global that table's registration pushes — and the
+value-anchored search in `table-limit.ts` patched it to 12 along with the
+town types; the AI's first turn then walked twelve micro-artifact effects and
+read a NULL twelfth (`0xb95d50`, crash at `0xa458c4` copying its cost). The
+finder anchors on the table's global now, and the probe repairs the wrong
+twelve. A `TOWN_TYPE_TABLE` spec moves the push; there is no second number.
 
 `/GameMechanics/RefTables/RMGPresetTable.xdb` registers as `push 12`
 (11 + `__RACE_COUNT`) and must move in lockstep.

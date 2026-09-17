@@ -146,8 +146,13 @@ fully, in the probe, one launch per question.
   was not seen — to look at again once a model of ours stands in the open
   (1d). **The `EnterSpecial` button was neither drawn
   nor active** for the ninth type — no ninth skin, no compiled target —
-  so the jog-dial slot is free for a button of ours. **Still unknown:**
-  a click on the model, and the grail's common bonuses.
+  so the jog-dial slot is free for a button of ours. A click on the model
+  opens the engine's own info box — name, description, our drawn icon —
+  with no hook at all, so "a building you can look at" is complete in
+  data; only a click that DOES something needs the button and its message.
+  **Still unknown:** the grail's common bonuses. Launch 20, the AI's first
+  turn, crashed — not the tree: the ceiling patcher had raised the wrong
+  table's accessor (engineInternals/FACTIONS.md, "The table half").
 - **1c. Magic — READ (2026-09-17), nothing launched.** Two separate
   things, and neither is a field of the town:
   - **The guild's spells.** The town's `MagicSchool_0/1` (shared `+0x124`,

@@ -260,10 +260,10 @@ test('and the executable counts exactly what is installed', { tag: '@game' }, ()
   // And the skill table's SECOND number, which is the one the game walks the
   // table by: with this left at 221 every perk of ours loaded and none was ever
   // offered. The class table has no live accessor, so there is nothing to check.
-  const accessor = findCountAccessor(bytes, HERO_SKILL_TABLE, skills);
+  const accessor = findCountAccessor(bytes, HERO_SKILL_TABLE);
   expect(accessor, 'the skill count accessor').not.toBeNull();
   expect(bytes.readUInt32LE(accessor!.at)).toBe(skills);
-  expect(findCountAccessor(bytes, HERO_CLASS_TABLE, classes)).toBeNull();
+  expect(findCountAccessor(bytes, HERO_CLASS_TABLE)).toBeNull();
 });
 
 // Nothing is swept here. The stages share one install, and it is reset by the

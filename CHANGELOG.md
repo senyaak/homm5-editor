@@ -41,6 +41,12 @@ pre-release.
   or drops it with every upgrade above it — the record, its texts and its
   icon then never enter the copy, and a building that needed it is refused
   until re-parented (`tools/test-town-buildings.ts`).
+- The table-ceiling patcher finds a table's count accessor by the table's own
+  global, not by the number it returns: `mov eax,11; ret` fitted the town
+  types and the micro-artifact effects alike, the search took the live one —
+  the effects' — and raising the town types to twelve sent the AI to a
+  twelfth effect that does not exist, a crash on its first turn. The town
+  types' own accessor is dead and stays as shipped.
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were

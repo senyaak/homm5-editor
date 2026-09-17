@@ -26,11 +26,14 @@ function check(name: string, ok: boolean, detail = ''): void {
 }
 
 /**
- * A miniature executable: PE header, one section, the string, and the push.
+ * A miniature executable: PE header, one section, the string, the push, and
+ * the table's global pushed after it, the way the registration does.
  *
- * `accessors` adds out-of-line `mov eax,count; ret` functions, `called` says how
- * many of them something calls. A table's second number is only its own when
- * exactly one live one returns it, so both halves have to be forgeable here.
+ * `accessors` adds out-of-line `mov eax,count; ret` functions, each followed by
+ * a getter that reads a global — the FIRST reads this table's, the rest read
+ * globals of their own (other tables returning the same number, which is what
+ * once got the micro-artifact effects patched for the town types); `called`
+ * says how many of them, first to last, something calls.
  */
 function tinyExe(
   table: TableSpec,
@@ -42,19 +45,23 @@ function tinyExe(
   const HEADER = 0x200;
 
   const body: number[] = [];
-  // A decoy first: another table's registration, with its own count. The search
-  // must not drift onto it — which is what anchoring on the path buys.
-  if (o.decoy) body.push(0x6a, 0x7b, 0x68, 0x63, 0, 0, 0);
+  const GLOBAL = 0x1200000;
+  const dword = (n: number): number[] => { const b = Buffer.alloc(4); b.writeUInt32LE(n >>> 0); return [...b]; };
+  // A decoy first: another table's registration, with its own count and its
+  // own global. The search must not drift onto it — which is what anchoring on
+  // the path buys.
+  if (o.decoy) body.push(0x6a, 0x7b, 0x50, 0x50, 0x68, ...dword(GLOBAL + 0x100), 0xe8, 0, 0, 0, 0);
 
   // The accessors come first, before anything that ends in a call: the tail
   // below is `call <the next byte>`, and with the accessors after it that call
   // landed on one of them and made a fixture that meant to have none live.
+  // Each is `mov eax,count; ret`, int3 padding, then the getter that reads the
+  // global — the first this table's, the others their own.
   const accessors: number[] = [];
   for (let i = 0; i < (o.accessors ?? 0); i++) {
-    const imm = Buffer.alloc(4);
-    imm.writeUInt32LE(count);
     accessors.push(BASE + SECTION_VA + body.length);
-    body.push(0xb8, ...imm, 0xc3, 0x90, 0x90, 0x90, 0x90);   // mov eax,count; ret
+    body.push(0xb8, ...dword(count), 0xc3, 0xcc, 0xcc, 0xcc);
+    body.push(0x56, 0x8b, 0x35, ...dword(GLOBAL + i * 4), 0x5e, 0xc3, 0xcc, 0xcc);   // push esi; mov esi,[g]; pop esi; ret
   }
 
   const name = Buffer.from(`${table.path}\0`, 'latin1');
@@ -76,7 +83,9 @@ function tinyExe(
       body.push(0x6a, count);                     // push imm8
     }
   }
-  body.push(0x50, 0xe8, 0, 0, 0, 0);              // push eax; call
+  // push eax; push eax; push <global>; call — the global goes with the count:
+  // a registration without one is a registration without the other.
+  body.push(0x50, 0x50, ...(o.noPush ? [] : [0x68, ...dword(GLOBAL)]), 0xe8, 0, 0, 0, 0);
 
   // And the calls that make some of the accessors live.
   for (let i = 0; i < (o.called ?? 0); i++) {
@@ -139,13 +148,13 @@ for (const table of [HERO_CLASS_TABLE, HERO_SKILL_TABLE, SPELL_TABLE, TOWN_TYPE_
   {
     const want = table.shipped + 4;
     const dead = tinyExe(table, { accessors: 2, called: 0 });
-    check('an accessor nothing calls is not this table\'s', findCountAccessor(dead, table, want) === null);
+    check('an accessor nothing calls is not this table\'s', findCountAccessor(dead, table) === null);
     const p = patchTableLimit(dead, table, want);
     check('and a patch leaves both of them alone', differing(dead, p.data) <= 4,
       `${differing(dead, p.data)} bytes differ`);
 
     const live = tinyExe(table, { accessors: 2, called: 1 });
-    const found = findCountAccessor(live, table, want);
+    const found = findCountAccessor(live, table);
     check('the one that is called is', found !== null && found.callers === 1);
     const q = patchTableLimit(live, table, want);
     check('and a patch moves both numbers',
@@ -160,10 +169,29 @@ for (const table of [HERO_CLASS_TABLE, HERO_SKILL_TABLE, SPELL_TABLE, TOWN_TYPE_
     check('and raising it again finds the accessor by what it now says',
       r.accessor !== null && r.data.readUInt32LE(r.accessor.at) === want + 1);
 
-    let refused = false;
-    try { findCountAccessor(tinyExe(table, { accessors: 2, called: 2 }), table, want); } catch { refused = true; }
-    check('two live accessors returning the same number are refused, not guessed', refused);
+    // Another table's live accessor returning the same number — the one the
+    // value-anchored search took for the town types' and patched, to the AI's
+    // death — is not this table's: it sits beside a getter of another global.
+    const both = tinyExe(table, { accessors: 2, called: 2 });
+    const ours = findCountAccessor(both, table);
+    check('a live accessor of another table returning the same number is not this table\'s',
+      ours !== null && ours.address === accessorAddress(both, 0));
+    // And a wrong number left in the accessor is still found, and put right:
+    // identification is by the global, never by the value.
+    const wrong = tinyExe(table, { accessors: 1, called: 1 });
+    wrong.writeUInt32LE(want + 7, findCountAccessor(wrong, table)!.at);
+    const fixed = patchTableLimit(wrong, table, table.shipped);
+    check('an accessor saying a number nobody asked for is found and repaired',
+      fixed.written && fixed.accessor !== null && fixed.data.readUInt32LE(fixed.accessor.at) === table.shipped);
   }
+}
+
+/** The address of a fixture's i-th accessor: they open the body, sixteen bytes each. */
+function accessorAddress(buf: Buffer, i: number): number {
+  const pe = buf.readUInt32LE(0x3c);
+  const base = buf.readUInt32LE(pe + 0x34);
+  const va = buf.readUInt32LE(pe + 24 + buf.readUInt16LE(pe + 20) + 12);
+  return base + va + i * 16;
 }
 
 /** How many bytes moved — this is code, and a stray byte is a game that dies. */
@@ -190,7 +218,7 @@ for (const exe of gameRoot ? ['bin/H5_Game_H5E.exe', 'bin/H5_Game.exe'] : []) {
     check(`${table.what}: the count is found`, r.limit !== null, `${r.limit}`);
     // Said out loud because it is the thing that was missed once: the skill
     // table has a second number and the class table does not.
-    const a = findCountAccessor(buf, table, r.limit ?? table.shipped);
+    const a = findCountAccessor(buf, table);
     console.log(`        accessor: ${a ? `0x${a.address.toString(16)}, ${a.callers} caller(s)` : 'none'}`);
   }
 }

@@ -45,12 +45,21 @@
 // the racial fine (a racial is handed out by class, not looked up by id) and
 // silently offers no perk past the shipped ones. That was the bug.
 //
-// So the accessor is found rather than assumed, and only when it identifies
-// itself: a one-liner returning this table's count WITH callers. `mov eax,9;
-// ret` fits the hero class table and the player colour table equally — but
-// neither is called by anything, so there is nothing to choose between and
-// nothing to write. If two live ones ever return the same number, this refuses
-// instead of guessing.
+// So the accessor is found rather than assumed — and found by what it BELONGS
+// TO, not by the number it returns. The registration hands in, right after the
+// count, the table's own global (`push 120C714h` for the town types), and the
+// accessor sits immediately before the getter that reads that global:
+//
+//   0xc73260  mov eax,0Bh ; ret                 ; the count
+//   0xc73270  mov eax,[120C714h] ; imul … ; ret  ; the record at index
+//
+// A search by value alone once patched the wrong table: `mov eax,11; ret` at
+// 0xa9f0e0 is the MICRO-ARTIFACT-EFFECTS count (its getter reads 0x1204624),
+// six callers strong, and the town types' own (0xc73260, dead) was never it.
+// Written to 12, it sent the AI to the twelfth micro-artifact effect on its
+// first turn, which is a NULL record and a crash (2026-09-17, launch 20). The
+// global settles it: one table, one global, one getter, one accessor beside it.
+// A dead accessor (nothing calls it) is reported and left alone.
 //
 // FOUND BY PATTERN, NEVER BY ADDRESS — the discipline the two older ceilings
 // arrived at after a build mismatch cost two rounds.
@@ -142,6 +151,12 @@ export interface LoadSite {
   /** File offset of the immediate itself, not of the opcode. */
   at: number;
   width: 1 | 4;
+  /**
+   * The table's own global, as the registration pushes it after the count —
+   * what the count accessor is found by. Absent when the registration has no
+   * such push within reach (no shipped table lacks it).
+   */
+  global?: number;
 }
 
 /** What an executable says about one table. */
@@ -202,8 +217,15 @@ export function findLoadSite(buf: Buffer, table: TableSpec): LoadSite | null {
     // address that happens to read 6Ah is not a push.
     const to = Math.min(buf.length - 5, ref + 64);
     for (let i = ref + 4; i < to; i++) {
-      if (buf[i] === 0x6a) return { at: i + 1, width: 1 };   // push imm8
-      if (buf[i] === 0x68) return { at: i + 1, width: 4 };   // push imm32
+      const width = buf[i] === 0x6a ? 1 : buf[i] === 0x68 ? 4 : 0;   // push imm8 / push imm32
+      if (!width) continue;
+      const site: LoadSite = { at: i + 1, width };
+      // The table's global: the next `push imm32` — `push count; push eax;
+      // push eax; push <global>; call` is the shape, so it is close.
+      for (let j = i + 1 + width; j < Math.min(buf.length - 5, i + 1 + width + 24); j++) {
+        if (buf[j] === 0x68) { site.global = buf.readUInt32LE(j + 1); break; }
+      }
+      return site;
     }
   }
   return null;
@@ -253,37 +275,46 @@ export interface CountAccessor {
 /**
  * The accessor this table's count is read through, if it has a live one.
  *
- * Several values are looked for — the count the game ships with, the count we are
- * about to write, and whatever the registration says right now — so an executable
- * already patched, or patched only halfway, still finds its own accessor rather
- * than reporting none. Only accessors something calls are considered; the twelve
- * dead copies would otherwise make every table look ambiguous.
+ * Found beside the getter that reads the table's global (`LoadSite.global`):
+ * the `mov eax,N; ret` that ends just before that getter begins, across the
+ * int3 padding. What it returns is not looked at — it is the accessor whether
+ * it says the shipped count, ours, or a number a wrong patch once left in it,
+ * which is what lets such a patch be undone. A dead one (no `call` reaches it)
+ * is null: the game reads its count some other way, and a number nothing reads
+ * is not worth a byte of the executable.
  */
-export function findCountAccessor(buf: Buffer, table: TableSpec, ...counts: number[]): CountAccessor | null {
-  const wanted = new Set([table.shipped, ...counts]);
+export function findCountAccessor(buf: Buffer, table: TableSpec): CountAccessor | null {
+  const site = findLoadSite(buf, table);
+  if (!site?.global) return null;
   const at = mapSections(buf);
   const address = (off: number): number | null => {
     for (const s of at) if (off >= s.raw && off < s.raw + s.size) return s.virtual + (off - s.raw);
     return null;
   };
-
-  // A section's virtual size can run past what the file holds, and the last
-  // instruction of a section is as real as the first — so the end is clamped and
-  // the bounds are inclusive.
   const ends = new Map(at.map((s) => [s, Math.min(s.raw + s.size, buf.length)]));
 
+  const global = Buffer.alloc(4);
+  global.writeUInt32LE(site.global >>> 0);
   const candidates = new Map<number, number>();   // address -> file offset of the immediate
-  for (const s of at) {
-    for (let i = s.raw; i <= ends.get(s)! - 9; i++) {
-      if (buf[i] !== 0xb8 || !wanted.has(buf.readUInt32LE(i + 1))) continue;
-      // A `ret` close behind, which is what makes it an accessor and not the
-      // first instruction of something that happens to load the same number.
-      if (!buf.subarray(i + 5, i + 9).includes(0xc3)) continue;
-      const va = address(i);
-      if (va !== null) candidates.set(va, i + 1);
-    }
+  for (let o = buf.indexOf(global); o >= 0; o = buf.indexOf(global, o + 1)) {
+    // A read of the global: `mov eax,[g]` (A1) or `mov r32,[g]` (8B /r, mod 00 r/m 101).
+    const reader = buf[o - 1] === 0xa1 ? o - 1 : buf[o - 2] === 0x8b && (buf[o - 1]! & 0xc7) === 0x05 ? o - 2 : -1;
+    if (reader < 0) continue;
+    // The getter this read opens: back over at most a few instructions to the
+    // padding before it, then over the padding to the `ret` of the one before.
+    let start = reader;
+    while (start > 0 && buf[start - 1] !== 0xcc && reader - start < 8) start--;
+    if (buf[start - 1] !== 0xcc) continue;   // a read in the middle of something, not a getter's
+    let p = start;
+    while (p > 0 && buf[p - 1] === 0xcc) p--;
+    if (buf[p - 1] !== 0xc3 || buf[p - 6] !== 0xb8) continue;   // mov eax,imm32 ; ret
+    const va = address(p - 6);
+    if (va !== null) candidates.set(va, p - 5);
   }
   if (!candidates.size) return null;
+  if (candidates.size > 1) {
+    throw new Error(`${candidates.size} count accessors sit beside readers of the ${table.what} table — cannot tell which is its`);
+  }
 
   const callers = new Map<number, number>();
   for (const s of at) {
@@ -295,13 +326,9 @@ export function findCountAccessor(buf: Buffer, table: TableSpec, ...counts: numb
       if (candidates.has(target)) callers.set(target, (callers.get(target) ?? 0) + 1);
     }
   }
-
-  const live = [...callers.keys()];
-  if (!live.length) return null;
-  if (live.length > 1) {
-    throw new Error(`${live.length} live accessors return the ${table.what} count — cannot tell which is this table's`);
-  }
-  return { at: candidates.get(live[0]!)!, address: live[0]!, callers: callers.get(live[0]!)! };
+  const [va, imm] = [...candidates][0]!;
+  const called = callers.get(va) ?? 0;
+  return called ? { at: imm, address: va, callers: called } : null;
 }
 
 export interface TablePatch {
@@ -343,7 +370,7 @@ export function patchTableLimit(buf: Buffer, table: TableSpec, limit: number): T
   // The registration and the accessor are two independent numbers, and either can
   // already be right — the executable in the install had 225 pushed and 221
   // returned for a day. So both are written, and "written" means either moved.
-  const accessor = findCountAccessor(data, table, limit, reading.limit);
+  const accessor = findCountAccessor(data, table);
   if (accessor) data.writeUInt32LE(limit, accessor.at);
 
   const written = reading.limit !== limit || (accessor !== null && buf.readUInt32LE(accessor.at) !== limit);
