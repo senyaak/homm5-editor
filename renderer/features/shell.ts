@@ -26,6 +26,7 @@ import { deselect, renderExList } from '#features/selection.ts';
 import { forgetScriptContext } from '#features/text-editor/context.ts';
 import { geomSkin, setFxCardsVisible, worldGeos } from '#viewport/geoms.ts';
 import { idleMode, setIdleMode } from '#viewport/idle.ts';
+import { markShadowsDirty } from '#viewport/shadows.ts';
 import type { IdleMode } from '#viewport/idle.ts';
 import { replaceInstances } from '#viewport/instancing.ts';
 import { refreshLighting } from '#viewport/lighting.ts';
@@ -65,6 +66,7 @@ export function setExplorer(open: boolean): void {
 export function setShowObjects(on: boolean): void {
   state.showObjects = on;
   if (state.world) for (const fl of state.world.floors) fl.objGroup.visible = on;
+  markShadowsDirty();
   if (!on) deselect();
   $('showobj').classList.toggle('on', on);
   $('showobj').textContent = on ? 'Objects: on' : 'Objects: off';

@@ -17,7 +17,7 @@ import { state } from '#core/state.ts';
 import type { Floor3D } from '#core/state.ts';
 import type { Instance, SkinnedGeom } from '#src/scene/payload.ts';
 import { worldGeos, worldMats, geomSkin } from '#viewport/geoms.ts';
-import { markShadowRoles } from '#viewport/shadows.ts';
+import { markShadowRoles, markShadowsDirty } from '#viewport/shadows.ts';
 import { bakeBoneTable, SkinnedInstances, TableSkeleton } from '#viewport/skinning.ts';
 import type { IdleBody, IdleKind } from '#viewport/skinning.ts';
 import { cam } from '#viewport/stage.ts';
@@ -92,14 +92,17 @@ export function advanceIdle(dt: number): void {
   for (const { skel } of skeletons.values()) skel.time += dt;
   if (mode !== 'visible') {
     // Back from `visible`: whatever it hid is drawn again.
-    if (hid) { for (const body of fl.idle) place(body, true); hid = false; }
+    if (hid) { for (const body of fl.idle) if (!body.shown) place(body, true); hid = false; }
     return;
   }
   idleViewProjection.multiplyMatrices(cam.active.projectionMatrix, cam.active.matrixWorldInverse);
   idleFrustum.setFromProjectionMatrix(idleViewProjection);
   for (const body of fl.idle) {
     _idlePoint.setFromMatrixPosition(body.matrix);
-    place(body, idleFrustum.containsPoint(_idlePoint));
+    const shown = idleFrustum.containsPoint(_idlePoint);
+    // Only a change is written: a write is an instance-buffer upload and a
+    // shadow-map redraw, and with a still camera nothing changes.
+    if (shown !== body.shown) place(body, shown);
   }
   hid = true;
 }
@@ -108,8 +111,10 @@ let hid = false;
 
 /** Write a body's placement — or nothing — into its slot. */
 function place(body: IdleBody, shown: boolean): void {
+  body.shown = shown;
   body.kind.mesh.setMatrixAt(body.slot, shown ? body.matrix : NOWHERE);
   body.kind.mesh.instanceMatrix.needsUpdate = true;
+  markShadowsDirty();
 }
 
 /** The loop's playback head, seconds — the furthest along of any kind's. */
@@ -143,10 +148,11 @@ export function removeIdle(fl: Floor3D, inst: Instance): void {
     const moved = kind.bodies[last]!;
     moved.slot = body.slot;
     kind.bodies[body.slot] = moved;
-    place(moved, true);
+    place(moved, moved.shown);
   }
   kind.bodies.length = last;
   kind.mesh.count = last;
+  markShadowsDirty();
   if (last) return;
   fl.objGroup.remove(kind.mesh);
   kind.mesh.dispose();
@@ -194,7 +200,7 @@ export function addIdle(objGroup: THREE.Group, list: IdleBody[], kinds: Map<Skin
   // The creature display scale rides the handle, so its world matrix is the
   // whole placement.
   handle.updateMatrixWorld();
-  const body: IdleBody = { inst, kind, slot: kind.bodies.length, matrix: handle.matrixWorld.clone() };
+  const body: IdleBody = { inst, kind, slot: kind.bodies.length, matrix: handle.matrixWorld.clone(), shown: true };
   kind.bodies.push(body);
   kind.mesh.count = kind.bodies.length;
   place(body, true);

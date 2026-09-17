@@ -610,6 +610,8 @@ interface ViewApi {
     idle: { bodies: number; tables: number; tableBytes: number };
     /** The renderer's JS heap in use, bytes (Chromium's counter; 0 where absent). */
     jsHeapBytes: number;
+    /** Shadow-map redraws since start, and how many a change asked for (shadows.ts). */
+    shadow: { redraws: number; dirty: number };
     loaf: LongFrame[];
   };
   /** Forget the frames and long frames seen so far — to measure from here. */

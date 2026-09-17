@@ -45,6 +45,9 @@ pre-release.
 - Every creature of one kind on a floor is one draw call, as the static
   objects already were: 1200 monsters of 182 kinds went from 2990 calls and
   18 ms of JavaScript a frame to 790 and 10.
+- The shadow map is redrawn when something in it changed — an object placed,
+  moved or removed, the sun, the view — or every half second, not every
+  frame. A creature's breathing does not count; its shadow stands.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

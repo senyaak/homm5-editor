@@ -285,4 +285,6 @@ export interface IdleBody {
   slot: number;
   /** The body's placement — the object's world matrix (display scale included). */
   matrix: THREE.Matrix4;
+  /** Whether its slot holds that placement (true) or nothing (`visible` mode, off screen). */
+  shown: boolean;
 }

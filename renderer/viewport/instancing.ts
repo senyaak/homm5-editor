@@ -23,7 +23,7 @@ import { moveFx, reloadFx } from '#viewport/fx.ts';
 import { addIdle, clearIdle, moveIdle } from '#viewport/idle.ts';
 import { syncFootprints } from '#viewport/overlays.ts';
 import { bakeLightMap, markLightsDirty } from '#viewport/point-lights.ts';
-import { markShadowRoles } from '#viewport/shadows.ts';
+import { markShadowRoles, markShadowsDirty } from '#viewport/shadows.ts';
 import { applyProjectedMaterials } from '#viewport/splat.ts';
 
 /** Spare slots kept so placing a few objects does not reallocate every time. */
@@ -33,6 +33,7 @@ const BATCH_HEADROOM = 8;
 export function syncInstance(fl: Floor3D, inst: Instance): void {
   const batch = fl.batches.get(inst.g);
   const mesh = fl.meshes.get(inst);
+  markShadowsDirty();
   // If the object carries designer point lights, its pool follows it (rebaked
   // by the render loop, throttled, so a drag doesn't bake per mousemove).
   markLightsDirty(fl, inst);
@@ -65,6 +66,7 @@ export function syncInstance(fl: Floor3D, inst: Instance): void {
  * free list for no benefit.
  */
 export function removeFromBatch(fl: Floor3D, inst: Instance): void {
+  markShadowsDirty();
   const batch = fl.batches.get(inst.g);
   if (!batch) return;
   const slot = batch.slot.get(inst);
@@ -91,6 +93,7 @@ export function removeFromBatch(fl: Floor3D, inst: Instance): void {
  * so placing a run of the same object does not reallocate on every click.
  */
 export function addToBatch(fl: Floor3D, inst: Instance, mesh: THREE.Mesh): void {
+  markShadowsDirty();
   let batch = fl.batches.get(inst.g);
   const geo = worldGeos[inst.g], mat = worldMats[inst.g];
   if (!geo || !mat) return;
@@ -179,6 +182,7 @@ export function buildBatches(
  * a handful of milliseconds and cannot drift.
  */
 export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
+  markShadowsDirty();
   for (const b of fl.batches.values()) { fl.objGroup.remove(b.im); b.im.dispose(); }
   fl.batches.clear();
   fl.meshes.clear();

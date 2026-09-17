@@ -46,7 +46,8 @@ const line = (tag: string, p: Perf): string =>
   + ` · fx ${p.fx.copies} copies in ${p.fx.batches} batches, ${p.fx.alive} alive,`
   + ` ${p.fx.atlases} atlases (${p.fx.distinctAtlases} distinct) = ${mb(p.fx.atlasBytes)},`
   + ` ${p.fx.tables} tables = ${mb(p.fx.tableBytes)}`
-  + ` · idle ${p.idle.bodies} bodies over ${p.idle.tables} tables = ${mb(p.idle.tableBytes)}`;
+  + ` · idle ${p.idle.bodies} bodies over ${p.idle.tables} tables = ${mb(p.idle.tableBytes)}`
+  + ` · shadow redraws ${p.shadow.redraws} (${p.shadow.dirty} asked) in ${p.frames} frames`;
 
 /** Watch the frame for WINDOW_MS from a clean slate. */
 async function reading(): Promise<Perf> {

@@ -19,7 +19,7 @@ import { addIdle, clearIdle } from '#viewport/idle.ts';
 import { buildBatches } from '#viewport/instancing.ts';
 import { applyAmbient, refreshLighting } from '#viewport/lighting.ts';
 import { bakeLightMap, makeLightMap } from '#viewport/point-lights.ts';
-import { markShadowRoles } from '#viewport/shadows.ts';
+import { markShadowRoles, markShadowsDirty } from '#viewport/shadows.ts';
 import type { IdleBody, IdleKind } from '#viewport/skinning.ts';
 import { clearSky } from '#viewport/sky.ts';
 import { disposeSplats, upgradeToSplat } from '#viewport/splat.ts';
@@ -158,6 +158,7 @@ export function buildWorld(S: Scene): void {
 export function setActiveFloor(i: number): void {
   if (!state.world) return;
   state.world.active = i;
+  markShadowsDirty();
   state.world.floors.forEach((fl, idx) => { fl.group.visible = idx === i; });
   // Each floor lights like its own preset says — surface day, underground dark
   // (unless the Light toggle asks for the flat editing look).
