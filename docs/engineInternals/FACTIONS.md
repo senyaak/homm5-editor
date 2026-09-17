@@ -288,3 +288,28 @@ handed for each owned hero, and `TownType` is the only race-shaped field the
 hero's reader writes), and what happens after "Test" is chosen — the starting
 hero of a race with one hero, the bonus, the first town screen. The launch
 says.
+
+## What a race needs before its first turn
+
+Read out of three launches on 2026-09-17, each one screen further:
+
+- **The picker's tooltip** is compiled like its icon: the constructor's helper
+  `0x8F6B00` fills `map<TownType, String>` at the item's shared tooltip object
+  (`+0x108`, map `+0x30`) from `race_tooltip_haven` … `race_tooltip_stronghold`.
+  A row's third word in the races file is put there the same way.
+- **A random town becomes the race's town** through `RPGRoot`'s `TOWN_ANY`
+  group (`MapObjects/_(AdvMapSharedGroup)/Towns/any.xdb`): `0xAC0CB0` walks
+  the members and returns the `AdvMapTownShared` whose `Type` (`+0xFC`) is the
+  race. So a town of ours is a shared in that group and nothing else.
+- **A random hero of the race** comes from `HEROES_ANY`
+  (`…/Heroes/Any.xdb`): `0xB911E0` takes a member whose `TownType` (`+0x164`,
+  now confirmed) is the race **and whose `ScenarioHero` (`+0x1FC`) is false**.
+  The first hero of the probe was Alaric, a scenario hero — the race had
+  nobody, the player started with nothing and was out before the first turn,
+  and the adventure screen came up for the next player, an AI, whose
+  `CPlayer` has no log list (`+0x624`, made only for humans by
+  `CPlayer::Init` at `0xC0312A`); `0x6DA580` asks that list for a kind-0x26
+  entry without a null check and dies at `0xBF9684`. A launch with Haven on
+  the same map was fine, which is what pointed at the race.
+- A map's roster (`AvailableHeroes`) is explicit on every shipped map, so the
+  probe's map (S1 under its own folder) lists the race's hero too.
