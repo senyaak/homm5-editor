@@ -104,6 +104,50 @@ export interface TownSpec {
    * the race picker (`TownBuild.raceIcon`). See faction-icons.ts.
    */
   icons?: IconTheme;
+  /**
+   * The building tree, edited: by building, what changes in its copied
+   * record and on the build grid, or `null` to drop it — with every upgrade
+   * above it, so `TB_SHIPYARD: null` is a slot gone and `'TB_TOWN_HALL/4':
+   * null` a town without a Capitol. A dropped building is never copied: its
+   * record, texts and icon stay the donor's. What depended on it has to be
+   * re-parented (`requires`) or dropped too; the copy refuses otherwise.
+   */
+  buildings?: Readonly<Record<BuildingKey, BuildingEdit | null>>;
+}
+
+/**
+ * A building's name in `TownSpec.buildings`: its `ETownBuilding` type, and
+ * its upgrade level after a slash when past the first — `TB_SPECIAL_1`,
+ * `TB_TOWN_HALL/4`, `TB_DWELLING_2/2`.
+ */
+export type BuildingKey = string;
+
+export type Resource = 'Wood' | 'Ore' | 'Mercury' | 'Crystal' | 'Sulfur' | 'Gem' | 'Gold';
+export const RESOURCES: readonly Resource[] = ['Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gem', 'Gold'];
+
+export interface BuildingEdit {
+  /** Its name on the build screen; the donor's when absent. */
+  name?: string;
+  description?: string;
+  /** The resources named change; the rest keep the donor's price. */
+  cost?: Partial<Record<Resource, number>>;
+  /** The town level it asks for (`DevLevelNeeded`: 0, 3, 6, 9, 12, 15). */
+  devLevel?: number;
+  /** What has to stand first, replacing the donor's list; `[]` for nothing. */
+  requires?: readonly BuildingKey[];
+  /** Its cell on the build grid (`XSlotPos`/`YSlotPos`). */
+  slot?: { x: number; y: number };
+}
+
+export function buildingKey(type: string, level: number): BuildingKey {
+  return level === 1 ? type : `${type}/${level}`;
+}
+
+export function parseBuildingKey(key: BuildingKey): { type: string; level: number } {
+  const m = /^(TB_[A-Z0-9_]+?)(?:\/([1-9]))?$/.exec(key);
+  if (!m) throw new Error(`${key}: a building is TB_<TYPE> or TB_<TYPE>/<level>`);
+  if (m[2] === '1') throw new Error(`${key}: the first level is ${m[1]} alone`);
+  return { type: m[1]!, level: m[2] ? Number(m[2]) : 1 };
 }
 
 /**
@@ -185,6 +229,8 @@ export interface TownBuild {
   paths: TownPaths;
   /** Source path → the copy's path, for whoever edits a building record next. */
   at: Map<string, string>;
+  /** The building records that made it into the copy, by key. */
+  records: Map<BuildingKey, string>;
   /** What the copy left in the game's data. */
   stopped: string[];
   missing: string[];
@@ -265,6 +311,51 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       seeded.set(arenaPath, arena);
     }
   }
+  // A dropped building leaves the donor's list BEFORE the walk too, so its
+  // record, its texts and its icon are never copied; and a re-parented one
+  // has its dependencies rewritten before the walk as well, or the walk
+  // would reach the dropped record through the old list. The grid loses
+  // the building's cell here too (and the slot, when it was the last).
+  let build = mustRead(read, donorBuildDefinition(donorOrdinal, read));
+  if (spec.buildings) {
+    const donor = seeded.get(source) ?? mustRead(read, source);
+    const listed = listedBuildings(donor, source, read);
+    const byKey = new Map(listed.map((b) => [b.key, b]));
+    const dropped = new Set<string>();
+    for (const [key, edit] of Object.entries(spec.buildings)) {
+      const { type, level } = parseBuildingKey(key);
+      if (!byKey.has(key)) throw new Error(`${spec.donor} has no building ${key} — it has ${[...byKey.keys()].join(', ')}`);
+      if (edit !== null) continue;
+      for (const b of listed) if (b.type === type && b.level >= level) dropped.add(b.path);
+    }
+    const keyOf = new Map(listed.map((b) => [b.path, b.key]));
+    let town = donor;
+    for (const b of listed) {
+      if (dropped.has(b.path)) {
+        town = dropLine(town, once(town, b.item, `${b.key} in ${spec.donor}'s list`));
+        build = dropGridCell(build, b.type, b.level);
+        continue;
+      }
+      const requires = spec.buildings[b.key]?.requires;
+      if (requires) {
+        const items = requires.map((dep) => {
+          const on = byKey.get(dep);
+          if (!on || dropped.has(on.path)) throw new Error(`${b.key} requires ${dep}, which the town has not`);
+          return `\t\t<Item href="/${on.path}#xpointer(/TownBuildingSharedStats)"/>`;
+        });
+        const block = items.length ? ['\t<dependencies>', ...items, '\t</dependencies>'].join(EOL) : '\t<dependencies/>';
+        const re = /[ \t]*<dependencies(?:\/>|>[\s\S]*?<\/dependencies>)/;
+        const record = mustRead(read, b.path);
+        if (!re.test(record)) throw new Error(`${b.key}: no <dependencies> in ${b.path}`);
+        seeded.set(b.path, record.replace(re, block));
+        continue;
+      }
+      for (const dep of dependenciesOf(mustRead(read, b.path), b.path)) {
+        if (dropped.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which is dropped — re-parent it (requires) or drop it too`);
+      }
+    }
+    if (dropped.size) seeded.set(source, town);
+  }
   const readSeeded: DataReader = (rel) => {
     const text = seeded.get(rel);
     return text ? Buffer.from(text, 'latin1') : read(rel);
@@ -305,12 +396,22 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   }
   files.set(p.shared, Buffer.from(town, 'latin1'));
 
-  // The dwellings' creatures: every building record in the copy whose Type is
-  // a dwelling of a tier we were given, by its upgrade level.
+  // The building records in the copy, by key — the ones the walk reached,
+  // which after a drop is the tree as the spec has it.
+  const records = new Map<BuildingKey, string>();
   for (const [path, data] of files) {
-    if (!path.toLowerCase().endsWith('.xdb')) continue;
+    if (!path.toLowerCase().endsWith('.xdb') || !path.startsWith(p.art)) continue;
     const text = data.toString('latin1');
     if (!text.includes('<TownBuildingSharedStats')) continue;
+    const key = buildingKey(...typeAndLevel(text, path));
+    if (records.has(key)) throw new Error(`${spec.donor} lists ${key} twice: ${records.get(key)} and ${path}`);
+    records.set(key, path);
+  }
+
+  // The dwellings' creatures: every building record in the copy whose Type is
+  // a dwelling of a tier we were given, by its upgrade level.
+  for (const path of records.values()) {
+    const text = files.get(path)!.toString('latin1');
     const tier = /<Type>TB_DWELLING_(\d)<\/Type>/.exec(text);
     const level = /<Upgrade>BLD_UPG_(\d)<\/Upgrade>/.exec(text);
     const hires = tier && level && spec.dwellings?.[Number(tier[1])];
@@ -318,6 +419,37 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     const creature = level[1] === '1' ? hires.base : hires.upgrade;
     once(text, '<Creature>', `${path} creature`);
     files.set(path, Buffer.from(text.replace(/<Creature>[^<]*<\/Creature>/, `<Creature>${creature}</Creature>`), 'latin1'));
+  }
+
+  // The tree's edits: what a record says, and where its cell is on the grid.
+  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+    if (!edit) continue;
+    const path = records.get(key);
+    if (!path) throw new Error(`${key} is dropped, nothing to edit`);
+    let text = files.get(path)!.toString('latin1');
+    // The texts are the copy's own files, one per record: ours go in their place.
+    for (const [field, value] of [['NameFileRef', edit.name], ['DescriptionFileRef', edit.description]] as const) {
+      if (value === undefined) continue;
+      const href = hrefOf(text, field);
+      const target = href && dataPath(href);
+      if (!target || !files.has(target)) throw new Error(`${key}: ${field} names no text in the copy (${href})`);
+      files.set(target, utf16(value));
+    }
+    for (const [resource, amount] of Object.entries(edit.cost ?? {})) {
+      if (!RESOURCES.includes(resource as Resource)) throw new Error(`${key}: no such resource as ${resource}`);
+      const at = once(text, `<${resource}>`, `${key} cost`);
+      text = text.slice(0, at) + text.slice(at).replace(new RegExp(`<${resource}>\\d+</${resource}>`), `<${resource}>${amount}</${resource}>`);
+    }
+    if (edit.devLevel !== undefined) {
+      once(text, '<DevLevelNeeded>', `${key} town level`);
+      text = text.replace(/<DevLevelNeeded>\d+<\/DevLevelNeeded>/, `<DevLevelNeeded>${edit.devLevel}</DevLevelNeeded>`);
+    }
+    // `requires` went into the donor's record before the walk.
+    if (edit.slot) {
+      const { type, level } = parseBuildingKey(key);
+      build = moveGridCell(build, type, level, edit.slot);
+    }
+    files.set(path, Buffer.from(text, 'latin1'));
   }
 
   // The icons, drawn: one per building record, the town's two, the race's.
@@ -329,13 +461,9 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       for (const f of textureFiles(path, image)) files.set(f.path, f.data);
       return `/${path}#xpointer(/Texture)`;
     };
-    for (const [path, data] of files) {
-      if (!path.toLowerCase().endsWith('.xdb') || !path.startsWith(p.art)) continue;
-      const text = data.toString('latin1');
-      if (!text.includes('<TownBuildingSharedStats')) continue;
-      const type = /<Type>(TB_\w+)<\/Type>/.exec(text)?.[1];
-      const level = Number(/<Upgrade>BLD_UPG_(\d)<\/Upgrade>/.exec(text)?.[1] ?? 1);
-      if (!type) continue;
+    for (const path of records.values()) {
+      const text = files.get(path)!.toString('latin1');
+      const [type, level] = typeAndLevel(text, path);
       const href = put(`${type.slice(3).toLowerCase()}_${level}`, buildingIcon(buildingGlyph(type, level), theme));
       files.set(path, Buffer.from(setHref(text, 'Icon', href, `${path} icon`), 'latin1'));
     }
@@ -346,7 +474,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     tower = put('tower', towerIcon(theme)).replace(/#.*$/, '').slice(1);
   }
 
-  files.set(p.build, Buffer.from(mustRead(read, donorBuildDefinition(donorOrdinal, read)), 'latin1'));
+  files.set(p.build, Buffer.from(build, 'latin1'));
   files.set(p.name, utf16(spec.name));
 
   // The palette tile names the town's own icon, as a dwelling's does.
@@ -355,7 +483,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
 
   return {
     files: [...files].map(([path, data]) => ({ path, data })),
-    paths: p, at: copy.at, stopped: copy.stopped, missing: copy.missing,
+    paths: p, at: copy.at, records, stopped: copy.stopped, missing: copy.missing,
     ...(race ? { raceIcon: race } : {}),
     ...(tower ? { towerIcon: tower } : {}),
   };
@@ -381,6 +509,107 @@ function buildingsOf(combat: string): { type: string; text: string }[] {
     if (type) out.push({ type, text: m[0] });
   }
   return out;
+}
+
+// --- the building tree --------------------------------------------------------
+//
+// The tree is the town's `buildings` list — one `TownBuildingSharedStats`
+// each: type, upgrade level, cost, town level, dependencies (hrefs to other
+// records), texts, icon — and the build grid (`TownBuildDefinition`): one
+// slot per type, one cell per level, both written by the game's editor with
+// tabs, so a slot is a line at two tabs and a cell one at four.
+
+const RECORD_ITEM = /<Item href="([^"]+)"\/>/g;
+
+/** A record's type and upgrade level; a record without them is not one. */
+function typeAndLevel(text: string, what: string): [string, number] {
+  const type = /<Type>(TB_\w+)<\/Type>/.exec(text)?.[1];
+  const level = /<Upgrade>BLD_UPG_(\d)<\/Upgrade>/.exec(text)?.[1];
+  if (!type || !level) throw new Error(`${what}: no <Type>/<Upgrade> in the building record`);
+  return [type, Number(level)];
+}
+
+interface ListedBuilding {
+  key: BuildingKey;
+  type: string;
+  level: number;
+  /** The record's data path. */
+  path: string;
+  /** The `<Item href=…/>` that lists it in the town document. */
+  item: string;
+}
+
+/** Every record a town document lists, read for its type and level. */
+function listedBuildings(town: string, from: string, read: DataReader): ListedBuilding[] {
+  const start = once(town, '<buildings>', 'town buildings');
+  const end = once(town, '</buildings>', 'town buildings end');
+  const out: ListedBuilding[] = [];
+  for (const m of town.slice(start, end).matchAll(RECORD_ITEM)) {
+    const path = resolve(from, m[1]!);
+    if (!path) throw new Error(`${from}: building href ${m[1]} resolves nowhere`);
+    const [type, level] = typeAndLevel(mustRead(read, path), path);
+    out.push({ key: buildingKey(type, level), type, level, path, item: m[0] });
+  }
+  return out;
+}
+
+/** The records a record depends on, as data paths. */
+function dependenciesOf(text: string, from: string): string[] {
+  const m = /<dependencies>([\s\S]*?)<\/dependencies>/.exec(text);
+  if (!m) return [];
+  return [...m[1]!.matchAll(RECORD_ITEM)].map((i) => resolve(from, i[1]!)).filter((x): x is string => x !== null);
+}
+
+/** The text without the line `at` falls on. */
+function dropLine(text: string, at: number): string {
+  const start = text.lastIndexOf('\n', at) + 1;
+  const end = text.indexOf('\n', at) + 1;
+  return text.slice(0, start) + (end ? text.slice(end) : '');
+}
+
+/** Where a grid slot's `<Item>` begins and ends (the line after `</Item>` included). */
+function gridSlot(build: string, type: string): [number, number] | null {
+  const at = build.indexOf(`<BuildingType>${type}</BuildingType>`);
+  if (at < 0) return null;
+  const start = build.lastIndexOf('\n\t\t<Item>', at) + 1;
+  const close = build.indexOf('\n\t\t</Item>', at);
+  if (!start || close < 0) throw new Error(`build grid: slot ${type} is not laid out as the game writes it`);
+  return [start, build.indexOf('\n', close + 1) + 1];
+}
+
+/** A slot's cell for `level`, as a span inside the slot's text. */
+function gridCell(slot: string, type: string, level: number): [number, number] {
+  const at = slot.indexOf(`<Upgrade>BLD_UPG_${level}</Upgrade>`);
+  if (at < 0) throw new Error(`build grid: slot ${type} has no cell for level ${level}`);
+  const start = slot.lastIndexOf('\n\t\t\t\t<Item>', at) + 1;
+  const close = slot.indexOf('\n\t\t\t\t</Item>', at);
+  if (!start || close < 0) throw new Error(`build grid: ${type} level ${level} is not laid out as the game writes it`);
+  return [start, slot.indexOf('\n', close + 1) + 1];
+}
+
+/** The grid without the cell for `type` at `level`, and without the slot when that was its last cell. */
+export function dropGridCell(build: string, type: string, level: number): string {
+  const span = gridSlot(build, type);
+  if (!span) return build;
+  const [s, e] = span;
+  let slot = build.slice(s, e);
+  if (!slot.includes(`<Upgrade>BLD_UPG_${level}</Upgrade>`)) return build;
+  const [cs, ce] = gridCell(slot, type, level);
+  slot = slot.slice(0, cs) + slot.slice(ce);
+  return build.slice(0, s) + (slot.includes('<Upgrade>') ? slot : '') + build.slice(e);
+}
+
+/** The grid with the cell for `type` at `level` moved to `to`. */
+export function moveGridCell(build: string, type: string, level: number, to: { x: number; y: number }): string {
+  const span = gridSlot(build, type);
+  if (!span) throw new Error(`build grid: no slot for ${type}`);
+  const [s, e] = span;
+  const slot = build.slice(s, e);
+  const [cs, ce] = gridCell(slot, type, level);
+  const cell = slot.slice(cs, ce)
+    .replace(/<XSlotPos>\d+<\/XSlotPos>/, `<XSlotPos>${to.x}</XSlotPos>`)
+    .replace(/<YSlotPos>\d+<\/YSlotPos>/, `<YSlotPos>${to.y}</YSlotPos>`);
+  return build.slice(0, s) + slot.slice(0, cs) + cell + slot.slice(ce) + build.slice(e);
 }
 
 /** The palette entry: a link file pointing at our town. */

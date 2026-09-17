@@ -178,6 +178,7 @@
     "test-players": "node tools/test-players.ts",
     "test-map-tag": "node tools/test-map-tag.ts",
     "test-startable": "node tools/test-startable.ts",
+    "test-town-buildings": "node tools/test-town-buildings.ts",
     "e2e-live": "node tools/e2e-live.ts",
     "sod-content": "node tools/build-sod-content.ts"
   },

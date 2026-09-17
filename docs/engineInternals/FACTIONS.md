@@ -444,7 +444,59 @@ ours, with a drawn portrait.
   tower portrait). `TownSpec.icons` repoints every building record and the
   town's own icons to `Factions/<file>/icons/`.
 
+- **The tree** is the spec's (`TownSpec.buildings`, not launched yet): a
+  building's record is edited in the copy — texts written over the copy's
+  own text files (one per record, none shared), cost by resource, town
+  level — and its cell moved on the grid. A drop is done on the donor's
+  document BEFORE the walk (the record is unlisted, so nothing it alone
+  reached is copied) and on the grid (the cell, or the slot when it was
+  the last); a level drops the levels above it. `requires` is written into
+  the donor's record before the walk too, else the walk would reach the
+  dropped record through the old list (the first run of the test caught
+  exactly that: the Stables came along as the arena's dependency). A survivor depending on a
+  dropped record is refused, since the engine would read a missing href.
+
 Registries keyed by the type's NAME, for the faction mod to keep in one
 list: the picker's textures and texts, the initiative bar's tower portraits.
 By ORDINAL: `town_buildings_N`, `TownTypesInfo`, `RMGPresetTable`. By
 membership: `Towns/any.xdb`, `Heroes/Any.xdb`, `TownSpecs`.
+
+## Special buildings, the town screen, and magic (2026-09-17, read only)
+
+- **`TB_SPECIAL_0…9` are numbered slots.** A record is data (cost,
+  dependencies, level, texts, icon, `ModObjectName`, `UIObjectName`, grid
+  cell); the MEANING of a slot is compiled per (town type, slot) — the same
+  `TB_SPECIAL_3` is Academy's artifact merchant, Necropolis's Unearthed
+  Graves, Stronghold's Travellers' Shelter (`scripts/advmap-startup.lua`
+  lists every pair). The magnitudes are data under compiled names —
+  `DefaultStats.xdb` `RPGStats/adventure/TownBuildingBonuses` (`adventure`
+  at `+0x58`, the block at `+0xD4` of it: `Heaven_GrailLuckBoost` first,
+  `Stronghold_GarbagePile_GoblinGrowthAddition` last) — and the screens
+  are classes (`CHavenTraining`, `CStrongholdSlaveMarket`,
+  `CNecropolisTransformCreature`, the Inferno/Dungeon sacrifice screens).
+  No data ties a slot to an effect; a type of ours falls through every
+  switch.
+- **In the town screen** a building is an `ArenaModObject` named by the
+  record's `ModObjectName` (`upgrades[level].ruins[ruin].Model`, level 0
+  empty), a static camera `<Name>_cam`, an `AIGeometry` pick volume
+  (`-geom-AI`), locators for creatures; the models are exported from one
+  Maya scene in WORLD coordinates (`placement` all zero). The left jog-dial
+  (`UI/TownScreen/`) is a fixed set of buttons, each an `ARSendGameMessage`
+  the engine handles by name — `enter_hall`, `enter_fort`, `enter_market`,
+  `enter_tavern`, `enter_blacksmith`, `enter_magic_guild`,
+  `enter_shipyard`, `upgrade_creatures`, ONE `enter_special` (its target
+  compiled per town; its skin one of eight `VisualStates` picked by town
+  ordinal) and `buy_artifacts` (Academy's merchant and Stronghold's
+  shelter alike).
+- **Magic.** `MagicSchool_0/1` of the shared (`+0x124`, `+0x128`) are the
+  guild's favoured schools; `0xAC3B50` (a `CAdvMapTown` virtual, no direct
+  caller) returns them and the other two of {Destructive 0, Dark 1, Light
+  2, Summoning 3}, defaults Light/Dark. Stronghold has no guild in data:
+  no grid cells, five free stub records. Warcries are the Hall of Trial
+  (`TB_SPECIAL_1` ×3) on the town side and `IHero::GetClass() ==
+  HERO_CLASS_BARBARIAN` (slot `+0x258`, compared only to 1…8 across the
+  executable) on the hero side, at sixteen sites listed in
+  `FACTION_PLAN.md` §1c; `0x70CC7A` picks `CCreateOrcsSpellBook` over
+  `CCreateSpellBook` (`UIGameRoot` `OrcsSpellBook` / `SpellBook`).
+
+

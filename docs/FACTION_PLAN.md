@@ -81,28 +81,95 @@ and the other eight-wide arrays the engine indexes by race.
 The town is the faction's face and most of its rules; it is done first and
 fully, in the probe, one launch per question.
 
-- **1a. The building tree.** Every record's `dependencies`, `Cost`,
-  `DevLevelNeeded`, the grid's slot positions, the upgrade chains — all
-  data in the copied records and `TownBuildDefinition`. `TownSpec` gets a
-  `buildings` description the copy applies (rename, recost, re-parent,
-  drop a building, drop a whole slot).
-- **1b. Custom buildings.** `ETownBuilding` has `TB_SPECIAL_0…9`; a town
-  uses four or five. A building of ours in a free slot needs: a record, a
-  place on the grid (`UIObjectName`), a model in the screen
-  (`ModObjectName` — an `ArenaModObject` added to the interior's object
-  list, with a model copied from anywhere), an icon, texts. **Unknown:**
-  what the engine does when a special of a type it never compiled is
-  built — nothing, most likely, which makes it an inert building we can
-  hang an effect on ourselves (a DLL hook on the build event, or a Lua
-  trigger where Lua runs — not in multiplayer). One launch answers it.
-- **1c. Magic.** `MagicSchool_0/1` in the shared document are the guild's
-  two schools — set them. **Unknown:** how the guild draws its spells per
-  level (`UndividedSpells.xdb`? the spells' own school and level?) and
-  whether a school of ours reaches it. **Unknown, and the one that
-  matters:** where the engine decides spellbook versus warcries — the
-  class record has no such field and Stronghold's town names Light/Dark
-  like everyone's, so it is compiled, probably on the hero's `TownType ==
-  TOWN_STRONGHOLD`. Found, it becomes one more column of the races file.
+- **1a. The building tree — DONE (code), one launch owed.** `TownSpec.buildings`,
+  by `TB_<TYPE>` or `TB_<TYPE>/<level>`: `name`, `description`, `cost` (the
+  resources named), `devLevel`, `requires` (the list, whole), `slot` (the
+  grid cell); `null` drops the building with every level above it — before
+  the copy walks, so its record, texts and icon never enter the copy — and
+  the grid loses the cell, or the slot. A survivor that needed a dropped one
+  is refused until re-parented. `tools/test-town-buildings.ts`. The probe's
+  `TEST_TOWN` carries an example (no shipyard, no Capitol, no Stables, the
+  arena on the citadel, the training grounds renamed and moved) — **to
+  launch:** does the build screen draw the edited tree, and does the game
+  mind a town without a Capitol or a shipyard.
+- **1b. Buildings of our own — the model (settled 2026-09-17).** A town is
+  a BASE every faction has and cannot lose — the hall ×4, the fort ×3, the
+  marketplace and silo, the blacksmith, the tavern, the guild ×5 (spellbook
+  or warcries, item 1c), seven dwellings ×2, the grail; the shipyard is the
+  one optional base building — of which only the tree (1a) is edited; plus
+  up to ten buildings of ours in `TB_SPECIAL_0…9`, which the engine treats
+  as numbered slots whose meaning is compiled per (town, slot): the same
+  `TB_SPECIAL_3` is Academy's artifact merchant and Necropolis's graves
+  (`scripts/advmap-startup.lua` lists the pairs; the magnitudes sit in
+  `DefaultStats.xdb` `TownBuildingBonuses` under names like
+  `Stronghold_GarbagePile_GoblinGrowthAddition`; the screens are compiled
+  classes — `CHavenTraining`, `CStrongholdSlaveMarket`…). For a type of
+  ours no branch fires, so a special of ours is data plus what WE hang on
+  it. A building of ours is:
+  - **data** — the record (cost, dependencies, level, texts, icon), its cell
+    on the build grid, and in the town screen an `ArenaModObject` named by
+    `ModObjectName` (a model per upgrade level, level 0 empty), a static
+    camera `<Name>_cam`, an `AIGeometry` pick volume, locators — the
+    interior's models are in WORLD coordinates (one Maya scene), so a model
+    of ours stands where we put it (1d);
+  - **a passive effect** — a FORM for what we know and the engine computes
+    (growth +N of a tier, resources per day, a hero stat while owned, luck
+    or morale in a siege, a percentage…): native, in the DLL, from the
+    config the editor writes — the same split the artifacts already use
+    (numbers native, events Lua); anything else — Lua, for modders;
+  - **a click** — the town screen's left jog-dial has fixed buttons, each
+    a game message the engine handles (`enter_hall`, `enter_market`…, ONE
+    `enter_special` whose target is compiled per town and whose skin is
+    picked by town ORDINAL out of eight `VisualStates`, and `buy_artifacts`
+    shared by Academy's merchant and Stronghold's shelter); a click on the
+    model goes through the record's type. Ours: a message the DLL catches
+    and routes to Lua (`QuestionBox`/`MessageBox` today; our own window
+    functions later).
+  - **an API "building built"** — a DLL hook on `CUpgradeTownBuildingCmd`
+    (the replicated command, so every client sees it) calling into Lua; an
+    extended trigger "new day + has building" on top of it, later.
+  - **The grail**: the racial part is compiled per town like a special; the
+    common +5000 gold and +50% growth are NOT in `DefaultStats` — code, and
+    whether inside or outside the race switch is unknown (launch).
+  - **The AI**: what it builds is a compiled valuation (the race-indexed
+    arrays of §4); a faction has to say what its AI builds and when.
+  - **Lua in multiplayer** is off (no machine is created — engine gate
+    `0x7223E0`), which would make every Lua effect single-player; the fix
+    is to REVIVE the engine's own dead door — `CWorldScriptSystem`
+    `0xA4B6A0`, the world-side machine written for exactly this and never
+    called, with `CRunScriptCallbackCmd` beside it — not to forbid Lua.
+    Separate item; the Pandora box already depends on Lua.
+  **Unknown, one launch:** what the engine does with a built special of a
+  type it never compiled (nothing, expected), with the ninth skin index of
+  `EnterSpecial`, and with the grail's common bonuses.
+- **1c. Magic — READ (2026-09-17), nothing launched.** Two separate
+  things, and neither is a field of the town:
+  - **The guild's spells.** The town's `MagicSchool_0/1` (shared `+0x124`,
+    `+0x128`; Light/Dark when unset) are the two FAVOURED schools; a
+    `CAdvMapTown` virtual (`0xAC3B50`) answers them plus the other two of
+    the four combat schools (Destructive, Dark, Light, Summoning). The pool
+    is the spell table by `Level` and `MagicSchool`, so a spell of ours
+    with a school and a level is drawn like any other; a school of OURS is
+    not (the enum, the skills, the book's tabs are compiled). Set the two
+    schools in the spec and stop there.
+  - **Warcries.** Stronghold has NO guild: its `TB_MAGIC_GUILD` slot on the
+    grid has no cells, its five guild records are free level-0 stubs with
+    no icon and no `UIObjectName` (the engine wants a record per level, the
+    screen never shows one), and warcries are taught by the Hall of Trial —
+    `TB_SPECIAL_1` ×3 levels, a special like any other, compiled per
+    (STRONGHOLD, SPECIAL_1) and opened by the `enter_special` button. The
+    HERO side is `IHero::GetClass() == HERO_CLASS_BARBARIAN` (vtable slot
+    `+0x258`; its answers are compared to 1…8 and to nothing else, so it
+    is the class), at sixteen sites: `0x70CC7A` (which spellbook to open —
+    `CCreateOrcsSpellBook` vs `CCreateSpellBook`, both `UIGameRoot`
+    fields), `0x850793` `0x8507CC` `0x859893` `0x8598BE` `0xACBD02`
+    `0xB84414` `0xBCBD7A` `0xBCC863` `0xC1F910` `0xC2A408` `0xD16CE7`
+    `0xD35B86` `0xD36576` `0xD366D1` `0xD3BE09` `0xD47787`. So "a faction
+    of warcries" = a town with the guild stubbed the way Stronghold's is
+    (data, the copier can do it), a building of ours that teaches warcries
+    (a form; the Hall's routine is what it would call), and a class of
+    ours the DLL answers "barbarian-like" for at those sixteen places —
+    a `class → warcries` column of the classes file. Not started.
 - **1d. The screen's own models.** Replace an interior building's model
   with one copied from another town or object; the interior's lightmap is
   keyed by the `ArenaDesc`'s uid in `bin/Lightmaps` — **unknown** whether

@@ -36,6 +36,11 @@ pre-release.
   the address space left; a name-of-town-type hook answers for a type past
   the compiled eleven (the executable's switch is no longer patched — its
   twelfth slot broke under ASLR).
+- The faction's building tree is the spec's: `TownSpec.buildings` renames,
+  recosts, re-levels, re-parents and moves a copied building on the grid,
+  or drops it with every upgrade above it — the record, its texts and its
+  icon then never enter the copy, and a building that needed it is refused
+  until re-parented (`tools/test-town-buildings.ts`).
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were
