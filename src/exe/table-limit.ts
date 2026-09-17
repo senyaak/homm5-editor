@@ -117,6 +117,26 @@ export const TOWN_TYPE_TABLE: TableSpec = {
   shipped: 11,
 };
 
+/**
+ * The town specializations — every random town's name, biography and bonus,
+ * one record per shipped town name, keyed by `TownType`.
+ *
+ * A random town on a map becomes a town of the player's race by DRAWING one of
+ * these (`0xB543E0`: the table walked, `TownType == race`, `RandomTown` still
+ * random, the least-used first); a race with no specialization gets no town at
+ * all, and a player with no town and no hero is out before the first turn.
+ * That is the fourth compiled width a ninth faction meets, after the town
+ * types, the race picker and `IsRealTown` — docs/engineInternals/FACTIONS.md.
+ *
+ * Registered `push imm32` (255 is past the imm8 range) with one live accessor,
+ * `mov eax,0FFh; ret` at `0xD268D0`, the walk's bound.
+ */
+export const TOWN_SPEC_TABLE: TableSpec = {
+  what: 'town specializations',
+  path: '/GameMechanics/RefTables/TownSpecs.xdb',
+  shipped: 255,
+};
+
 /** Where the count sits in the file, and how wide the instruction holds it. */
 export interface LoadSite {
   /** File offset of the immediate itself, not of the opcode. */
