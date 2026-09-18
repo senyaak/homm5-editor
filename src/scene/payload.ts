@@ -164,9 +164,9 @@ export interface GeomPart {
  */
 export interface SkinnedGeom {
   /** 4 bone indices per vertex, in `pos` order. */
-  index: number[];
+  index: Uint8Array;
   /** 4 weights per vertex, summing to 1. */
-  weight: number[];
+  weight: Float32Array;
   /** Bones in skeleton order; `parent` is -1 for a root. */
   bones: { name: string; parent: number; pos: number[]; quat: number[] }[];
   /**
@@ -178,11 +178,19 @@ export interface SkinnedGeom {
   clip: BakedClip | null;
 }
 
-/** One decoded mesh, ready for the renderer. Arrays are plain JSON. */
+/**
+ * One decoded mesh, ready for the renderer.
+ *
+ * The arrays are TYPED: they are what the file holds, what the GPU takes,
+ * and — going to the window — what leaves the IPC reply for the blob fetch
+ * (blob-table.ts). As plain `number[]` they crossed element by element: the
+ * mix stress map's 6.3 million geometry numbers and its clips were ~3 s of a
+ * 7.5 s open, in the clone alone.
+ */
 export interface GeomData {
-  pos: number[];
+  pos: Float32Array;
   /** Null when the mesh has no usable texture coordinates. */
-  uv: number[] | null;
+  uv: Float32Array | null;
   /**
    * Normals as the model authored them, or null to compute from the faces.
    *
@@ -191,8 +199,8 @@ export interface GeomData {
    * separates its planks, stone and rails when they all share one greyscale
    * texture, as the Abandoned Mine's do.
    */
-  nrm: number[] | null;
-  idx: number[];
+  nrm: Float32Array | null;
+  idx: Uint32Array;
   /** One entry per submesh, in index order; always covers all of `idx`. */
   parts: GeomPart[];
   /**

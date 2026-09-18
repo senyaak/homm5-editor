@@ -469,6 +469,51 @@ What it says, in the order it matters:
   A2C1M1 (the IPC's share 0.9 → 0.7); the map is on screen at ~4.5 s from
   11.5 this morning. The texels never touch the renderer's heap now, and
   the GPU holds a quarter (DXT3/5) to a sixth (DXT1) of what it did.
+* **Done — the payload's bytes leave the IPC** (2026-09-18, late). Measured
+  first: main's `map:load total` against the renderer's `loadMap` in one
+  run is the IPC's share — A2C1M1 (61 MB) 600–700 ms, the mix map (207 MB)
+  **3.4 s of a 7.5 s open**; `_tmp/clone-bench.ts` (v8 serialize +
+  deserialize by component) put the clone itself at ~150 ms for A2C1M1, so
+  the trip through Mojo was the cost, at 60–95 MB/s. Two moves. (1) A
+  privileged scheme `h5e-blob:` (electron/blobs.ts): the main process keeps
+  the map's typed arrays under an id, `packBlobs` (src/scene/blob-table.ts)
+  replaces each one in the payload by `{url, at, kind, length}` — sharing
+  kept, a picture worn by fifty parts is one handle — and the renderer
+  `fetch`es ONE response per map, the arrays streamed back to back, and
+  puts them in place (`unpackBlobs`). Throughput measured with a 64 MB
+  buffer: 400–470 MB/s; 651 separate fetches ran at 80 MB/s (a request
+  costs a task on each side), and forty thousand pieces in one stream were
+  most of a fetch too, so pieces under 64 KB are copied into megabyte
+  staging pieces. (2) `GeomData`, `SkinnedGeom` and `BakedClip` are TYPED
+  now — Float32Array/Uint32Array/Uint8Array as the decoders make them
+  instead of `Array.from(…, round)` into `number[]` — because after (1) the
+  IPC share barely moved: 555 ms on A2C1M1 with 37 MB of pictures gone. The
+  clone's cost is ELEMENTS, not bytes; the mix map's 6.3 M geometry numbers
+  and its clips were the 3 s. Typed, they ride the blob. Results, renderer
+  side (request → world built): A2C1M1 **~2.1 → ~1.7 s** (the IPC share
+  600–700 → 140–150 ms, `buildWorld` 220 → 65–85: the arrays go into
+  BufferAttributes as they are), mix **~8.2 → ~5.0 s** (IPC 3.4 s → 0.4,
+  blob 152 MB in ~250 ms, `buildWorld` 840 → 200); main's `buildScene`
+  ~150 ms less without the rounding pass, and its heap no longer grows a
+  map's `number[]`s per open (900 → 1685 MB RSS over four opens before,
+  ~650 flat after). Three things learned the hard way, each a run:
+  the renderer binds its loader for a scheme at NAVIGATION, so a handler
+  swapped in after the page loaded answers nothing (the first bench read
+  404s until `page.reload()`); an array made as a VIEW onto the fetched
+  blob drags the whole blob into every structured clone — the bake worker
+  was posted one kind's clip and got 150 MB with it, once per kind, and
+  ran out of memory — so each array is `slice()`d into its own buffer; and
+  the frame loop went on drawing the OLD map under the loading overlay,
+  which the body of a reopened map's fetch had to share the thread with
+  (260 ms on an empty window, 1.5–3 s over a drawn one) — `state.loading`
+  stands the loop still from the request to `buildWorld`. The picture:
+  masks and the grass crop against the previous build agree; the scattered
+  sub-threshold differences are the vertices and normals no longer rounded
+  to 3–4 decimals. **Found, not fixed:** the renderer grows ~700 MB per
+  reopen of the mix map (Tab 103 → 1605 → 2348 → 2620 MB on the base
+  build, 966 → 1676 → 1743 after) — something of the old world survives
+  `clearWorld`; outside the JS heap (GC 40–170 ms), so three's kept images
+  or GPU-side copies are the suspects.
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,

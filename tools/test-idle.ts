@@ -48,7 +48,7 @@ const geometry = new THREE.BufferGeometry();
 geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(geom.pos), 3));
 geometry.setAttribute('skinIndex', new THREE.BufferAttribute(new Uint8Array(geom.skin.index), 4));
 geometry.setAttribute('skinWeight', new THREE.BufferAttribute(new Float32Array(geom.skin.weight), 4));
-geometry.setIndex(geom.idx);
+geometry.setIndex(new THREE.BufferAttribute(geom.idx, 1));
 
 const idle = makeIdle(geom.skin, geometry, [new THREE.MeshBasicMaterial()]);
 if (!idle) { console.log('\nFAIL: makeIdle returned nothing'); process.exit(1); }

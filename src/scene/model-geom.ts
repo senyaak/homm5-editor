@@ -17,7 +17,6 @@ import type { Mesh, MeshOptions } from './geometry.ts';
 import type { MaterialInfo } from './materials.ts';
 import type { ReadXdb } from './xdb.ts';
 import type { GeomData, GeomPart, AlphaMode, CompressedPicture, Picture } from './payload.ts';
-import { round } from './units.ts';
 
 
 /**
@@ -51,12 +50,15 @@ export function transformGeom(
 export function mergeGeom(into: GeomData, add: GeomData): void {
   const base = into.pos.length / 3;
   const idxBase = into.idx.length;
-  for (const v of add.pos) into.pos.push(v);
+  into.pos = concat(into.pos, add.pos);
   // A geom counts as textured only if EVERY part carries UVs, so a part without
   // them drops the whole geom to untextured rather than leaving a ragged array.
-  if (into.uv && add.uv) for (const v of add.uv) into.uv.push(v); else into.uv = null;
-  if (into.nrm && add.nrm) for (const v of add.nrm) into.nrm.push(v); else into.nrm = null;
-  for (const i of add.idx) into.idx.push(i + base);
+  into.uv = into.uv && add.uv ? concat(into.uv, add.uv) : null;
+  into.nrm = into.nrm && add.nrm ? concat(into.nrm, add.nrm) : null;
+  const idx = new Uint32Array(idxBase + add.idx.length);
+  idx.set(into.idx);
+  for (let i = 0; i < add.idx.length; i++) idx[idxBase + i] = add.idx[i]! + base;
+  into.idx = idx;
   for (const p of add.parts) into.parts.push({ ...p, start: p.start + idxBase });
   // The skin arrays run one entry per vertex, so anything appended has to be
   // bound too or the buffers no longer line up with the positions. What gets
@@ -66,11 +68,20 @@ export function mergeGeom(into: GeomData, add: GeomData): void {
   // does anyway. Weight 1 on bone 0, the rest zero.
   if (into.skin) {
     const added = add.pos.length / 3;
-    for (let v = 0; v < added; v++) {
-      into.skin.index.push(0, 0, 0, 0);
-      into.skin.weight.push(1, 0, 0, 0);
-    }
+    const index = new Uint8Array(into.skin.index.length + added * 4), weight = new Float32Array(into.skin.weight.length + added * 4);
+    index.set(into.skin.index);
+    weight.set(into.skin.weight);
+    for (let v = 0; v < added; v++) weight[into.skin.weight.length + v * 4] = 1;
+    into.skin.index = index;
+    into.skin.weight = weight;
   }
+}
+
+function concat(a: Float32Array, b: Float32Array): Float32Array {
+  const out = new Float32Array(a.length + b.length);
+  out.set(a);
+  out.set(b, a.length);
+  return out;
 }
 
 /**
@@ -373,17 +384,17 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
   geoms.push({
     // Left in the world units the file is authored in. The renderer builds its
     // world in those units too, so nothing here has to be converted.
-    pos: Array.from(pos, (v) => round(v, 3)),
-    uv: hasUV ? Array.from(uv, (v) => round(v, 4)) : null,
-    nrm: hasNrm ? Array.from(nrm, (v) => round(v, 4)) : null,
-    idx: Array.from(idxs),
+    pos,
+    uv: hasUV ? uv : null,
+    nrm: hasNrm ? nrm : null,
+    idx: idxs,
     parts,
     // The bones themselves are not known here — the model file has the binding,
     // the animation set has the skeleton and the clip, and only the caller knows
     // the shared that names it. So the binding is packed now and the resolver
     // fills the rest in (or drops `skin` outright when there is no clip to play).
     ...(skinIndex && skinWeight
-      ? { skin: { index: Array.from(skinIndex), weight: Array.from(skinWeight, (v) => round(v, 4)), bones: [], bind: [], clip: null } }
+      ? { skin: { index: skinIndex, weight: skinWeight, bones: [], bind: [], clip: null } }
       : {}),
   });
   return idx;

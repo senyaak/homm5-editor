@@ -28,6 +28,8 @@ import { History } from '#src/map/history.ts';
 import { Registry } from '#src/schema/registry.ts';
 import { buildScene } from '#src/scene/scene.ts';
 import { packTextures } from '#src/scene/tex-table.ts';
+import { packBlobs } from '#src/scene/blob-table.ts';
+import { clearBlobs, openBlob } from '#electron/blobs.ts';
 import { MAP_SIZES } from '#src/terrain/terrain-blank.ts';
 import { watchMapDir } from '#src/map/watch.ts';
 
@@ -411,8 +413,14 @@ export function registerMaps(): void {
     // tree, and the clone across to the renderer would carry each copy. The
     // `scene` kept here is the unpacked one — the resolver holds its geoms.
     const packed = packTextures(scene);
+    // And the typed arrays — the textures, by bytes — go out of band: the
+    // window fetches them over the blob scheme (electron/blobs.ts) while it
+    // is already holding the rest. The previous map's are let go first.
+    clearBlobs();
+    const blobbed = packBlobs(packed.payload, openBlob());
+    console.log(`[perf] map:load blobs: ${blobbed.count} typed arrays = ${(blobbed.bytes / 1048576).toFixed(1)} MB in one blob for the window to fetch`);
     return {
-      scene: packed.payload,
+      scene: blobbed.payload,
       textures: packed.textures,
       info: {
         name: displayName(mapDir),
@@ -440,6 +448,7 @@ export function registerMaps(): void {
   ipcMain.handle('map:close', (): void => {
     state.session?.watch.stop();
     state.session = null;
+    clearBlobs();
   });
 
   // Project status (drift vs last pack).

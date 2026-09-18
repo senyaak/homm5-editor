@@ -424,7 +424,7 @@ export function geometryFor(g: GeomData): THREE.BufferGeometry {
     groups[at]!.push(i);
   });
   if (groups.length === g.parts.length) {
-    b.setIndex(g.idx);
+    b.setIndex(new THREE.BufferAttribute(g.idx, 1));
     g.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
   } else {
     const idx = new Array<number>(g.idx.length);

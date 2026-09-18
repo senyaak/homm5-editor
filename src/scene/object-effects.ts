@@ -80,10 +80,10 @@ export function lightGlowCard(): GeomData {
   const t: Picture = { width: S, height: S, rgba: px, key: 'lightGlowCard' };
   const hw = 1.5, h = 3; // reads as a small fire glow, about a tile wide
   return {
-    pos: [-hw, 0, 0, hw, 0, 0, hw, 0, h, -hw, 0, h],
-    uv: [0, 1, 1, 1, 1, 0, 0, 0],
-    nrm: [0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0],
-    idx: [0, 1, 2, 0, 2, 3],
+    pos: new Float32Array([-hw, 0, 0, hw, 0, 0, hw, 0, h, -hw, 0, h]),
+    uv: new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]),
+    nrm: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0]),
+    idx: new Uint32Array([0, 1, 2, 0, 2, 3]),
     parts: [{ start: 0, count: 6, tex: t, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false, additive: true, selfIllum: true, twoSided: true, card: true }],
   };
 }
@@ -144,10 +144,10 @@ export function effectGeom(
   // and columns, and a card lying flat would be hidden by the ground.
   const hw = w / 2;
   return {
-    pos: [-hw, 0, 0, hw, 0, 0, hw, 0, h, -hw, 0, h],
-    uv: [0, 1, 1, 1, 1, 0, 0, 0],
-    nrm: [0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0],
-    idx: [0, 1, 2, 0, 2, 3],
+    pos: new Float32Array([-hw, 0, 0, hw, 0, 0, hw, 0, h, -hw, 0, h]),
+    uv: new Float32Array([0, 1, 1, 1, 1, 0, 0, 0]),
+    nrm: new Float32Array([0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0]),
+    idx: new Uint32Array([0, 1, 2, 0, 2, 3]),
     // A particle stand-in is a glow: draw it additive and full-bright so it
     // reads as light, the way the game's particles do, not as a dark grey decal.
     parts: [{ start: 0, count: 6, tex: t.picture, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false, additive: true, selfIllum: true, twoSided: true, card: true }],

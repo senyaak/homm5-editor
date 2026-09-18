@@ -119,6 +119,14 @@ pre-release.
   warnings per map open: the angle is stored wrapped to (−π, π], which its
   cos and sin cannot tell apart. Opening the stress map: 12.4 → 11.4 s.
   `npm run test-fx-table` covers the bake.
+- A map's bytes no longer cross to the window through the IPC. The
+  textures, geometry and animation clips — typed arrays now, as the files
+  hold them — stay in the main process and the window fetches them in one
+  stream over the editor's own `h5e-blob:` scheme at 400+ MB/s, where the
+  IPC reply moved them at 60–95 with both sides waiting. Opening A2C1M1:
+  ~2.1 → ~1.7 s; a stress map of 2000 objects and 600 creatures: ~8.2 →
+  ~5.0 s. The frame loop also stands still while a map loads instead of
+  drawing the old one under the spinner.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

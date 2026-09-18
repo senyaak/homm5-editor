@@ -11,6 +11,7 @@ import { api } from '#core/ipc.ts';
 import { uiPrefs } from '#core/prefs.ts';
 import { state } from '#core/state.ts';
 import { unpackTextures } from '#src/scene/tex-table.ts';
+import { unpackBlobs } from '#src/scene/blob-table.ts';
 import { updateHistoryUI } from '#features/history.ts';
 import { loadLocState, loc } from '#features/localization.ts';
 import { allTiles, initObjectPalette, renderPalette, setPalette, tiles } from '#features/palettes.ts';
@@ -43,6 +44,17 @@ interface OpenedMap {
 /** What is open, as paths, for anything that has to know where the map went. */
 export const session = { openedMap: null as OpenedMap | null };
 
+/** One blob of the open map, over the scheme the main process serves them on (electron/blobs.ts). */
+async function fetchBlob(url: string): Promise<ArrayBuffer> {
+  const t0 = performance.now();
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url}: ${res.status} — the main process no longer holds this map's bytes (another map opened over it?)`);
+  const t1 = performance.now();
+  const buf = await res.arrayBuffer();
+  console.log(`[perf] blob fetch: headers ${(t1 - t0) | 0}ms · body ${(performance.now() - t1) | 0}ms · ${(buf.byteLength / 1048576).toFixed(1)} MB`);
+  return buf;
+}
+
 export async function loadMapPath(path: string | null, archive: string | null = null): Promise<void> {
   if (!path) return;
   session.openedMap = { mapPath: path, mapDir: path.replace(/[\\/][^\\/]*$/, ''), archive };
@@ -57,6 +69,7 @@ export async function loadMapPath(path: string | null, archive: string | null = 
   };
   $('loading').classList.add('on');
   await say('decoding map…');
+  state.loading = true;
   try {
     // The heavy lifting is in the main process (mesh/texture decode), so the
     // renderer's own thread is free to keep the spinner turning while it runs.
@@ -66,6 +79,10 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     // The pictures came once each and the scene holds handles into that table
     // — see src/scene/tex-table.ts. Put them back before anything draws.
     unpackTextures(S, textures);
+    // The typed arrays — the textures, by bytes — did not come in the reply at
+    // all: the main process holds them and the scene names them (blob-table.ts).
+    // Fetched now, eight at a time, straight into place.
+    const blobs = await unpackBlobs(S, fetchBlob);
     const tUnpacked = performance.now();
     // The scene says which mode it was BUILT for, and that is what the view
     // follows: a map built without bones cannot be animated by asking nicely.
@@ -76,9 +93,10 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     await say('building scene…');
     const tBuild = performance.now();
     buildWorld(S);
+    state.loading = false; // the world is in: draw it while the panels catch up
     // [perf] The two halves of opening a map: the main-process decode (IPC) and
     // the renderer-blocking scene build. Grep "[perf]" while chasing a stall.
-    console.log(`[perf] loadMap ${(tLoad - tReq) | 0}ms · unpack ${(tUnpacked - tLoad) | 0}ms · buildWorld ${(performance.now() - tBuild) | 0}ms · ${S.geoms.length} geoms`);
+    console.log(`[perf] loadMap ${(tLoad - tReq) | 0}ms · blobs ${blobs.count} = ${(blobs.bytes / 1048576).toFixed(1)} MB in ${(tUnpacked - tLoad) | 0}ms · buildWorld ${(performance.now() - tBuild) | 0}ms · ${S.geoms.length} geoms`);
     // A history kept from a previous run is adopted when the files still hash
     // the same, so opening a map is not always a blank slate.
     const tWorld = performance.now();
@@ -171,6 +189,7 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     $('hud').textContent = 'error: ' + (e instanceof Error ? e.message : String(e));
     console.error(e);
   } finally {
+    state.loading = false;
     $('loading').classList.remove('on');
   }
 }

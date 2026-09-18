@@ -111,7 +111,7 @@ function bodyOf(actor: ActorView): { geometry: THREE.BufferGeometry; material: T
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(g.pos), 3));
   if (g.uv) geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.uv), 2));
   if (g.nrm) geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(g.nrm), 3));
-  geometry.setIndex(g.idx);
+  geometry.setIndex(new THREE.BufferAttribute(g.idx, 1));
   if (!g.nrm) geometry.computeVertexNormals();
   geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(g.skin.index, 4));
   geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(g.skin.weight, 4));
@@ -240,7 +240,7 @@ function effectMesh(g: GeomData): { mesh: THREE.Mesh; idle: IdleObject | null } 
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(g.pos), 3));
   if (g.uv) geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.uv), 2));
   if (g.nrm) geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(g.nrm), 3));
-  geometry.setIndex(g.idx);
+  geometry.setIndex(new THREE.BufferAttribute(g.idx, 1));
   if (!g.nrm) geometry.computeVertexNormals();
   // An effect model is animated as often as not — the meteor falls, the ice
   // bolt drops, the Prayer's hands rise out of the ground they start under.

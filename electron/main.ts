@@ -28,6 +28,7 @@ import { closeSetup, runSetup } from '#electron/setup.ts';
 const DEV_MODE = process.argv.includes('--dev') || process.env.HOMM5_DEV === '1';
 import { stopSceneBuilder } from '#electron/scene-jobs.ts';
 import { assetRootFor, state } from '#electron/state.ts';
+import { registerBlobScheme, serveBlobs } from '#electron/blobs.ts';
 import { registerApp } from '#electron/channels/app.ts';
 import { registerCampaigns } from '#electron/channels/campaigns.ts';
 import { registerEntities } from '#electron/channels/entities.ts';
@@ -177,6 +178,7 @@ function createWindow(): void {
 // as a side effect of being imported would work right up until something tidied
 // an import it looked unused from — and the channel it owned would answer
 // "no handler registered" with nothing anywhere saying why.
+registerBlobScheme();
 registerApp();
 registerMaps();
 registerRmg();
@@ -218,6 +220,9 @@ app.whenReady().then(async () => {
     const ok = await runSetup();
     if (!ok) { app.quit(); return; }
   }
+  // Before the window: the renderer binds its loader for the scheme when the
+  // page navigates, and a handler installed after that answers nothing.
+  serveBlobs();
   createWindow();
   // Only now is setup's window redundant. It stays open (hidden) until here so
   // that the app is never windowless, which Electron takes as its cue to quit.

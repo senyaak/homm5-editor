@@ -160,15 +160,9 @@ export function attachAnimation(
     for (let f = fps * 2; f <= 60 && worstSampleStep(clip) > 45; f *= 2) {
       clip = bakeClip(skeleton, animation, f, animSkeleton);
     }
-    geom.skin.clip = {
-      duration: clip.duration,
-      times: clip.times.map((v) => round(v, 4)),
-      rotations: clip.rotations.map((r) => r.map((v) => round(v, 5))),
-      positions: clip.positions.map((p) => p.map((v) => round(v, 4))),
-      // Only the clips that leave unit scale carry this at all (bakeClip), so
-      // rounding a copy that is not there must not invent one.
-      ...(clip.scales ? { scales: clip.scales.map((s) => s.map((v) => round(v, 4))) } : {}),
-    };
+    // As baked: the samples are float32 already, which is finer than the
+    // rounding the JSON payload used to apply to them.
+    geom.skin.clip = clip;
   } catch { drop(); }
 }
 

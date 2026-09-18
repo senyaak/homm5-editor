@@ -169,6 +169,14 @@ export const state = {
   showFx: uiPrefs.showFx,
   mapLight: uiPrefs.mapLight,
   showFxCards: uiPrefs.showFxCards,
+  /**
+   * A map is on its way in: the frame loop stands still. The old world would
+   * otherwise go on drawing under the loading overlay for the whole load,
+   * and a crowded map's frame is what the new map's bytes then had to share
+   * the thread with — the blob fetch of a reopened stress map ran 260 ms on
+   * an empty window and 1.5–3 s over a drawn one.
+   */
+  loading: false,
 };
 
 /** Only called while a map is loaded; every caller is gated on `state.world`. */

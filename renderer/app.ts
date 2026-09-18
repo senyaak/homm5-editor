@@ -1217,6 +1217,7 @@ function bakePendingLights(now: number): void {
   if (frame > JANK_MS) console.warn(`[perf] jank: main thread blocked ${frame | 0}ms`);
   const dt = Math.min(frame / 1000, 0.1); // clamp so a stall can't teleport
   lastT = now;
+  if (state.loading) return; // the overlay is composited; nothing here is wanted until the map is in
   lapStart();
   keyPan(dt);
   // Resolve at most one deferred hover pick per frame (see hoverEv).

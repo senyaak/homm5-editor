@@ -429,16 +429,16 @@ export function skinPositions(positions: Float32Array, skin: SkinBinding, matric
   return out;
 }
 
-/** A clip flattened to even samples, ready to hand a renderer as plain JSON. */
+/** A clip flattened to even samples, ready to hand a renderer (typed, like GeomData — payload.ts says why). */
 export interface BakedClip {
   /** Seconds. */
   duration: number;
   /** Sample times, evenly spaced, starting at 0. */
-  times: number[];
+  times: Float32Array;
   /** Per bone, in skeleton order: 4 floats per sample (x, y, z, w). */
-  rotations: number[][];
+  rotations: Float32Array[];
   /** Per bone: 3 floats per sample. */
-  positions: number[][];
+  positions: Float32Array[];
   /**
    * Per bone: 3 floats per sample — the diagonal of the `scaleShear` 3x3.
    * Absent when the clip leaves every bone at unit scale, which is the common
@@ -460,7 +460,7 @@ export interface BakedClip {
    * carry a scaleShear track at all have any off-diagonal term above 0.01,
    * the worst 0.304. Those 11 are drawn without their shear.
    */
-  scales?: number[][];
+  scales?: Float32Array[];
 }
 
 /**
@@ -543,7 +543,8 @@ export function bakeClip(skeleton: Skeleton, animation: Animation, fps = 15, pos
     positions.push(pos);
     scales.push(scl);
   }
-  return { duration: animation.duration, times, rotations, positions, ...(scaled ? { scales } : {}) };
+  const typed = (a: number[][]): Float32Array[] => a.map((b) => Float32Array.from(b));
+  return { duration: animation.duration, times: Float32Array.from(times), rotations: typed(rotations), positions: typed(positions), ...(scaled ? { scales: typed(scales) } : {}) };
 }
 
 /** The diagonal of a rest `scaleShear`, defaulting to unit when it is absent. */
