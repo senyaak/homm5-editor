@@ -182,6 +182,7 @@
     "test-town-exterior": "node tools/test-town-exterior.ts",
     "test-capture-marker": "node tools/test-capture-marker.ts",
     "test-town-type-info": "node tools/test-town-type-info.ts",
+    "test-shared-groups": "node tools/test-shared-groups.ts",
     "e2e-live": "node tools/e2e-live.ts",
     "perf-stress": "node tools/perf-stress.ts",
     "sod-content": "node tools/build-sod-content.ts"

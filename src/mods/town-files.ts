@@ -36,12 +36,11 @@ import type { DataReader, ModFile } from './mod-files.ts';
 import { donorObjectsOf, placeBuildingModel } from './town-screen.ts';
 import type { BuildingModel } from './town-screen.ts';
 import { EOL, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
+import { TOWN_GROUP } from './shared-groups.ts';
+export { TOWN_GROUP };
 
 export const TOWN_CLASS = 'AdvMapTownShared';
 export const BUILD_CLASS = 'TownBuildDefinition';
-
-/** The random-town group: every town the game can put on a map by race. */
-export const TOWN_GROUP = 'MapObjects/_(AdvMapSharedGroup)/Towns/any.xdb';
 
 /** Where the editor's object palette lists towns. */
 export const TOWN_LINK_DIR = 'MapObjects/_(AdvMapObjectLink)/Towns';

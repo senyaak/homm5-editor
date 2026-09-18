@@ -242,8 +242,10 @@ Heroes are already a thing the editor makes (`HeroSpec`, classes, skills,
 specializations); the faction reuses them. What is specific:
 
 - a hero of the race is one with `TownType` ours and `ScenarioHero` false,
-  listed in `Heroes/Any.xdb` (the random pool) — check that the hero
-  builder does the listing;
+  listed in `Heroes/Any.xdb` (the random pool). The hero builder writes the
+  two fields and does NOT list him — listing is membership, the faction's
+  business like `Towns/any.xdb`: `src/mods/shared-groups.ts` does both
+  (2026-09-18), the probe calls it, the faction entity (§5) will;
 - his class is one of ours or a shipped one; his starting army is the
   race's tier 1–3 base creatures (engine, works);
 - **spellbook or warcries** — item 1c's finding, applied per faction;

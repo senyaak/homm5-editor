@@ -126,6 +126,11 @@ pre-release.
   log into is forgotten when the engine closes the combat, and checked for
   life before every line — opening the town screen after a fight crashed on
   the freed host.
+- Membership in the game's random groups is one splice: `src/mods/
+  shared-groups.ts` seats a town in `Towns/any.xdb` and a hero in
+  `Heroes/Any.xdb` — the two lists a random town and a random hero of a
+  race are drawn from, and the only thing that makes either "of the race"
+  (`test-shared-groups`). A race with no hero listed starts with nothing.
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were
