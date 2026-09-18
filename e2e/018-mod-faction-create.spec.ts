@@ -345,8 +345,12 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   // install copies it under Music/H5E/<faction>/ and the row points there.
   const ogg = join(REPO_ROOT, '_tmp', 'e2e-own-model', 'town.ogg');
   writeFileSync(ogg, 'OggS');
-  await press(page, page.locator('#facedit summary', { hasText: 'Tracks of your own' }));
+  await press(page, page.locator('#facedit summary', { hasText: 'Tracks and sounds of your own' }));
   await page.locator('#fac-tracks .fc-file').first().fill(ogg);
+  // And the guild's click as a WAV of ours — a binary inside the mod, not a loose file.
+  const wav = join(REPO_ROOT, '_tmp', 'e2e-own-model', 'click.wav');
+  writeFileSync(wav, 'RIFF....WAVEfmt ');
+  await page.locator('#fac-sounds .fc-file').nth(1).fill(wav);
 
   // One more named town, and the shipyard is kept after all.
   await press(page, page.locator('#fac-town-add'));
@@ -375,6 +379,9 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(names).toContain(`Factions/${FILE}/town/own/necro/Necromancy-town_AI.xdb`);
   expect(f?.siege).toEqual({ arena: 'TOWN_HEAVEN', gate: { models: [necro] } });
   expect(f?.race?.tracks).toEqual({ town: ogg });
+  expect(f?.race?.sounds).toEqual({ guild: wav });
+  expect(names).toContain(`Factions/${FILE}/sounds/guild.(Sound).xdb`);
+  expect(names.some((n) => n.startsWith('bin/Sounds/')), 'the click is a binary of the mod').toBe(true);
   expect(existsSync(join(GAME, 'Music', 'H5E', FILE, 'town.ogg')), 'the track is copied loose under the game').toBe(true);
   expect(names).toContain(`Factions/${FILE}/music/town.(Music).xdb`);
   expect(names).toContain(`Factions/${FILE}/siege/gate_1/${FILE}_gate_1.(ArenaModObject).xdb`);

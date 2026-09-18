@@ -217,6 +217,21 @@ console.log('tracks of our own');
   const doc = text('Factions/Tune/music/town.(Music).xdb');
   check('the document names the loose file the way the shipped ones do', doc.includes('<FileName>..' + ['', 'Music', 'H5E', 'Tune', 'town.ogg'].join(String.fromCharCode(92)) + '</FileName>') && doc.includes('<FadeIn>2000</FadeIn>'));
   check('the install copies five files under Music/H5E/Tune', r.factions?.loose.length === 5 && r.factions.loose.every((l) => l.path.startsWith('Music/H5E/Tune/')) && r.factions.musicDirs.join() === 'Music/H5E/Tune');
+  // Sounds: a WAV of ours for the guild's click and an ambient loop.
+  const wav = join(dir, 'click.wav'); writeFileSync(wav, 'RIFF....WAVEfmt ');
+  const m2: CreatureMod = newCreatureMod();
+  addFaction(m2, spec('Snd', { race: { name: 'Snd', sounds: { guild: wav, ambient: ogg('amb') } } }));
+  const r2 = buildCreatureMod(m2, read);
+  const music2 = r2.files.find((f) => f.path === RACE_MUSIC)!.data.toString('latin1');
+  const row2 = music2.slice(music2.indexOf('<race>TOWN_SND</race>'));
+  check('the guild click and the ambient set are ours in the row', row2.includes('<MagicGuildSound href="/Factions/Snd/sounds/guild.(Sound).xdb#xpointer(/Sound)"/>') && row2.includes('<TownAmbientSoundSet href="/Factions/Snd/sounds/ambient.(AmbientSoundSet).xdb#xpointer(/AmbientSoundSet)"/>'));
+  const sndDoc = r2.files.find((f) => f.path === 'Factions/Snd/sounds/guild.(Sound).xdb')!.data.toString('latin1');
+  const sndUid = /<uid>([0-9A-F-]{36})<\/uid>/i.exec(sndDoc)![1]!;
+  check('the sound document keys a binary of ours holding the file as it is', r2.files.some((f) => f.path === `bin/Sounds/${sndUid}` && f.data.toString('latin1') === 'RIFF....WAVEfmt ') && sndDoc.includes('<Loop>false</Loop>'));
+  const ambDoc = r2.files.find((f) => f.path === 'Factions/Snd/sounds/ambient.(Sound).xdb')!.data.toString('latin1');
+  check('the ambient loop loops, and its set names it', ambDoc.includes('<Loop>true</Loop>') && r2.files.find((f) => f.path === 'Factions/Snd/sounds/ambient.(AmbientSoundSet).xdb')!.data.toString('latin1').includes('<Loop href="/Factions/Snd/sounds/ambient.(Sound).xdb#xpointer(/Sound)"/>'));
+  check("the hall's click stays the set's", /<TownHallSound href="\/Sounds\//.test(row2));
+  throws('a sound that is neither wav nor ogg', () => { const m = newCreatureMod(); addFaction(m, spec('Mp3s', { race: { name: 'x', sounds: { hall: join(dir, 'x.mp3') } } })); buildCreatureMod(m, read); }, 'not a .wav or an .ogg');
   throws('a track that is not an ogg', () => { const m = newCreatureMod(); addFaction(m, spec('Mp3', { race: { name: 'x', tracks: { town: join(dir, 'x.mp3') } } })); buildCreatureMod(m, read); }, 'not an .ogg');
   rmSync(dir, { recursive: true, force: true });
 }

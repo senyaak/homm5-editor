@@ -19,6 +19,9 @@
 
 import { buildingGlyph, buildingIcon, pictureIcon, textureFiles } from './faction-icons.ts';
 import type { IconTheme } from './faction-icons.ts';
+import { existsSync, readFileSync } from 'node:fs';
+import { basename } from 'node:path';
+import { uidFor } from './mod-art.ts';
 import { utf16 } from './mod-files.ts';
 import type { ModFile } from './mod-files.ts';
 import { EOL, hrefOf, once, setHref } from './xml-edit.ts';
@@ -51,6 +54,67 @@ export interface RaceSpec {
    * points there (musicFiles, mod-archive.ts).
    */
   tracks?: OwnTracks;
+  /**
+   * Sounds of our own, by slot — `.wav` (PCM) or `.ogg` files on disk: the
+   * town screen's ambient loop, and the clicks of the guild, the hall, the
+   * marketplace, the shipyard, the blacksmith, a building going up. Unlike a
+   * track, a sound is a uid-keyed binary under `bin/Sounds/`, so it travels
+   * inside the archive (soundFiles).
+   */
+  sounds?: OwnSounds;
+}
+
+export const SOUND_SLOTS = ['ambient', 'guild', 'hall', 'marketplace', 'shipyard', 'blacksmith', 'upgrade'] as const;
+export type SoundSlot = typeof SOUND_SLOTS[number];
+export type OwnSounds = Partial<Record<SoundSlot, string>>;
+
+/** The element each sound slot is in the music row; the ambient one names a set, the rest a sound. */
+const SOUND_ELEMENTS: Record<SoundSlot, string> = {
+  ambient: 'TownAmbientSoundSet', guild: 'MagicGuildSound', hall: 'TownHallSound', marketplace: 'MarketplaceSound',
+  shipyard: 'ShipyardSound', blacksmith: 'BlacksmithSound', upgrade: 'UpgradeTownBuildingSound',
+};
+
+/**
+ * The `Sound` documents and binaries for the sounds of ours, and the ambient
+ * set around the ambient one. The binary is the file as it is — the game
+ * keeps WAV (PCM or ADPCM) and Ogg Vorbis alike under `bin/Sounds/<uid>` —
+ * under a uid of ours.
+ */
+export function soundFiles(spec: Pick<TownSpec, 'file'>, sounds: OwnSounds | undefined): { files: ModFile[]; docs: Map<SoundSlot, string> } {
+  const files: ModFile[] = [];
+  const docs = new Map<SoundSlot, string>();
+  if (!sounds) return { files, docs };
+  const dir = `Factions/${spec.file}/sounds`;
+  for (const slot of SOUND_SLOTS) {
+    const from = sounds[slot];
+    if (!from) continue;
+    if (!/\.(wav|ogg)$/i.test(from)) throw new Error(`${spec.file}: the ${slot} sound ${from} is not a .wav or an .ogg`);
+    if (!existsSync(from)) throw new Error(`${from}: no such file — the ${slot} sound the faction names`);
+    const uid = uidFor(`sound:${spec.file}:${slot}`);
+    const doc = `${dir}/${slot}.(Sound).xdb`;
+    files.push({ path: `bin/Sounds/${uid}`, data: readFileSync(from) });
+    files.push({ path: doc, data: Buffer.from([
+      '<?xml version="1.0" encoding="UTF-8"?>', '<Sound>',
+      `\t<SrcName>${basename(from)}</SrcName>`, `\t<uid>${uid}</uid>`,
+      `\t<Loop>${slot === 'ambient'}</Loop>`, '\t<Is3D>false</Is3D>',
+      '\t<MinDistance>10</MinDistance>', '\t<MaxDistance>10000</MaxDistance>', '\t<Priority>0</Priority>',
+      '\t<EndingSamples>0</EndingSamples>', '\t<StartSamples>0</StartSamples>', '\t<FrequencyVar>0</FrequencyVar>',
+      '\t<VolumeBase>1</VolumeBase>', '\t<VolumeVar>0</VolumeVar>', '\t<FinalSound/>', '</Sound>', '',
+    ].join(EOL), 'latin1') });
+    if (slot === 'ambient') {
+      // The set the row names: our loop, no one-off sounds, the shipped pauses.
+      const set = `${dir}/ambient.(AmbientSoundSet).xdb`;
+      files.push({ path: set, data: Buffer.from([
+        '<?xml version="1.0" encoding="UTF-8"?>', '<AmbientSoundSet>',
+        `\t<Loop href="/${doc}#xpointer(/Sound)"/>`, '\t<sounds>', '\t\t<Item/>', '\t</sounds>',
+        '\t<MinPauseTime>5</MinPauseTime>', '\t<MaxPauseTime>6</MaxPauseTime>', '</AmbientSoundSet>', '',
+      ].join(EOL), 'latin1') });
+      docs.set(slot, set);
+    } else {
+      docs.set(slot, doc);
+    }
+  }
+  return { files, docs };
 }
 
 /** The slots of a race's music set that take a track of ours. */
@@ -256,6 +320,17 @@ export function patchRaceMusic(table: string, spec: TownSpec): string {
       const items = tracks.combat.map((_, i) => `\t\t\t\t\t<Item href="/${docs.get(`combat_${i + 1}`)}#xpointer(/Music)"/>`);
       if (!/<combatMusics>[\s\S]*?<\/combatMusics>/.test(row)) throw new Error(`${RACE_MUSIC}: the row of ${from} has no <combatMusics>`);
       row = row.replace(/<combatMusics>[\s\S]*?<\/combatMusics>/, ['<combatMusics>', ...items, '\t\t\t\t</combatMusics>'].join(EOL));
+    }
+  }
+  // The sounds of ours, likewise.
+  const sounds = spec.race?.sounds;
+  if (sounds) {
+    const { docs } = soundFiles(spec, sounds);
+    for (const [slot, doc] of docs) {
+      const el = SOUND_ELEMENTS[slot];
+      const re = new RegExp(`<${el}(?: href="[^"]*")?\\s*/>`);
+      if (!re.test(row)) throw new Error(`${RACE_MUSIC}: the row of ${from} has no <${el}> for the ${slot} sound`);
+      row = row.replace(re, `<${el} href="/${doc}#xpointer(/${slot === 'ambient' ? 'AmbientSoundSet' : 'Sound'})"/>`);
     }
   }
   const close = table.lastIndexOf('</objects>');

@@ -28,7 +28,7 @@
 
 import { SHIPPED_TOWN_ORDINALS, SHIPPED_TOWN_SPECS, TOWN_SPECS, ATB_TOWER_ICONS, buildNamedTowns, buildTown, patchTownSpecTable, patchTownSpecTypes, patchTowerIcons } from './town-files.ts';
 import type { TownBuild } from './town-files.ts';
-import { RACE_MUSIC, TOWN_TYPES_INFO, musicFiles, patchRaceMusic, patchTownTypesInfo, raceFiles } from './town-type-info.ts';
+import { RACE_MUSIC, TOWN_TYPES_INFO, musicFiles, patchRaceMusic, patchTownTypesInfo, raceFiles, soundFiles } from './town-type-info.ts';
 import type { LooseFile } from './town-type-info.ts';
 import { PLAYER_COLOUR_SCHEMES, patchColourSchemes } from './capture-marker.ts';
 import { HERO_GROUP, TOWN_GROUP, addGroupMember } from './shared-groups.ts';
@@ -148,6 +148,7 @@ export function buildFactions(
       files.push(...m.files);
       loose.push(...m.loose);
       musicDirs.push(`Music/H5E/${f.file}`);
+      files.push(...soundFiles(f, f.race.sounds).files);
     }
     rmg = cloneRecord(rmg, raceFor(f.donor), raceFor(f.type), '__RACE_COUNT');
 

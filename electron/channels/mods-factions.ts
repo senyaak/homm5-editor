@@ -111,9 +111,9 @@ export function registerModFactions(): void {
       properties: ['openFile' as const],
       filters: [{ name: 'Model documents', extensions: ['xdb'] }, { name: 'All files', extensions: ['*'] }],
     } : kind === 'sound' ? {
-      title: 'Choose a track — Ogg Vorbis, as the game plays',
+      title: 'Choose a sound — Ogg Vorbis for a track; a WAV or an Ogg for a sound',
       properties: ['openFile' as const],
-      filters: [{ name: 'Ogg Vorbis', extensions: ['ogg'] }, { name: 'All files', extensions: ['*'] }],
+      filters: [{ name: 'Sounds', extensions: ['ogg', 'wav'] }, { name: 'All files', extensions: ['*'] }],
     } : {
       title: 'Choose a picture',
       properties: ['openFile' as const],

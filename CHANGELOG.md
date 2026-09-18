@@ -57,7 +57,10 @@ pre-release.
   under `Music/H5E/<faction>/` on install (the game plays music from loose
   files, not from an archive) and removed with the faction. The gate the hero walks
   into as an AIGeometry document of your own, and the capture sign and flag as
-  pictures — one pair for every player colour, or a pair per colour. A model of yours that
+  pictures — one pair for every player colour, or a pair per colour. The town's
+  ambient loop and the clicks of its buildings as .wav or .ogg files of your
+  own, carried inside the mod. Nothing of a faction is the donor's now unless
+  you leave it so. A model of yours that
   names a document its folder has not is refused by name, not shipped without
   it.
   A building's model can be a file of

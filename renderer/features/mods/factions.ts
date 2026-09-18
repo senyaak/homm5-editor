@@ -24,7 +24,7 @@ import { modRow, NL } from '#features/mods/shared.ts';
 import type { FactionTreeDTO, ModFactionDTO, ModsFactionDataResult, ModsFactionPayload } from '#electron/ipc.ts';
 import type { BuildingEdit, BuildingKey, Resource, SiegeMix, ExteriorMix } from '#src/mods/town-files.ts';
 import type { TreeBuilding } from '#src/mods/town-tree.ts';
-import type { MoatSpell, OwnTracks, TrackSlot } from '#src/mods/town-type-info.ts';
+import type { MoatSpell, OwnSounds, OwnTracks, SoundSlot, TrackSlot } from '#src/mods/town-type-info.ts';
 import type { IconPictures } from '#src/mods/faction-icons.ts';
 import type { OwnSiegePart, SiegePartName } from '#src/mods/siege-parts.ts';
 
@@ -122,6 +122,26 @@ const TRACK_LABELS: ReadonlyArray<{ id: TrackSlot | 'combat.0' | 'combat.1' | 'c
   { id: 'retreat', label: 'Retreat' }, { id: 'wait', label: "The AI's turn" },
 ];
 let tracks: Record<string, string> = {};
+const SOUND_LABELS: ReadonlyArray<{ id: SoundSlot; label: string }> = [
+  { id: 'ambient', label: 'Town ambience' }, { id: 'guild', label: 'Guild click' }, { id: 'hall', label: 'Hall click' },
+  { id: 'marketplace', label: 'Market click' }, { id: 'shipyard', label: 'Shipyard click' }, { id: 'blacksmith', label: 'Smithy click' },
+  { id: 'upgrade', label: 'Building built' },
+];
+let sounds: Record<string, string> = {};
+
+function drawSounds(): void {
+  const box = $('fac-sounds');
+  box.innerHTML = '';
+  for (const s of SOUND_LABELS) {
+    box.appendChild(fileRow(s.label, sounds[s.id] ?? '', 'sound', (v) => { if (v) sounds[s.id] = v; else delete sounds[s.id]; }, '.wav (PCM) or .ogg'));
+  }
+}
+
+function readSounds(): OwnSounds | undefined {
+  const out: OwnSounds = {};
+  for (const s of SOUND_LABELS) if (sounds[s.id]) out[s.id] = sounds[s.id];
+  return Object.keys(out).length ? out : undefined;
+}
 
 function drawTracks(): void {
   const box = $('fac-tracks');
@@ -371,6 +391,8 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
     else if (typeof v === 'string') tracks[k] = v;
   }
   drawTracks();
+  sounds = { ...(existing?.race?.sounds ?? {}) } as Record<string, string>;
+  drawSounds();
   (document.getElementById('fac-script') as HTMLTextAreaElement).value = existing?.script ?? '';
 
   drawGrid();
@@ -1130,6 +1152,8 @@ function readPayload(): ModsFactionPayload {
   if (moat) race.moat = moat;
   const own = readTracks();
   if (own) race.tracks = own;
+  const ownSounds = readSounds();
+  if (ownSounds) race.sounds = ownSounds;
   const p: ModsFactionPayload = {
     file,
     type: townTypeFor(file),

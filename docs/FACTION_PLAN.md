@@ -343,11 +343,11 @@ the picker's tooltip and a named town's bonus text, the siege parts
 the race's tracks (`RaceSpec.tracks`, loose .ogg files under Music/H5E/).
 the gate hull (`ExteriorMix.gates` as an AIGeometry file), the capture sign
 and flag (`pictures.capture`, per colour or for all).
+the ambient loop and the buildings' clicks (`RaceSpec.sounds`, uid-keyed binaries in the archive).
 Not done, said
 honestly: the town SCREEN itself (the ArenaDesc scene — background, lightmap,
 cameras — stays the donor's; ours replace its buildings one by one; a whole
-scene of ours is the asset editor's business), the town's ambient sound set
-and the UI sounds (the set's).
+scene of ours is the asset editor's business, item 2e).
 
 When 1–4 have stopped changing the list above: `FactionSpec` in the mod
 model, `faction-files.ts` writing every registry in the table, the races
