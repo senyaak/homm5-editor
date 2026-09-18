@@ -141,6 +141,17 @@ pre-release.
   (`native/faction/magic-kind.c`, `bin/homm5-editor-magic.txt`); the book,
   the hall's teaching and the AI's casting follow. Two buildings on one grid
   cell are refused now (`test-magic-kind`, `test-town-buildings`).
+- What a special building DOES is a row of one compiled table — forty-seven
+  `{feature, town, building, level}` rows behind the Library, the Hall of
+  Trial, the Capitol and every other shipped special — and the table is the
+  extension's now (`native/faction/town-features.c`): the engine's rows,
+  then a row per building of ours, the six readers pointed at the copy. A
+  building of ours grants any shipped building's effect
+  (`BuildingEdit.grants: { like: 'TOWN_ACADEMY', building: 'TB_SPECIAL_1' }`
+  for a Library of ours; `from` brings its source's; a hall of warcries
+  brings Stronghold's three tiers), written as `feature` rows of
+  `bin/homm5-editor-buildings.txt` (`test-town-features` reads the table
+  back out of the executable).
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were

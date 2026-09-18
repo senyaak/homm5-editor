@@ -27,9 +27,12 @@
 import { buildingGlyph, buildingIcon, raceIcon, specialButtonSkins, textureFiles, towerIcon, townIcon } from './faction-icons.ts';
 import { captureMarkerFiles } from './capture-marker.ts';
 import type { CaptureMarkerBuild } from './capture-marker.ts';
+import { buildingOrdinal } from './town-button.ts';
 import type { TownButton } from './town-button.ts';
 import type { RaceSpec } from './town-type-info.ts';
 import type { IconTheme } from './faction-icons.ts';
+import { grantedFeatures } from './town-features.ts';
+import type { Grant, OwnFeature } from './town-features.ts';
 import { copyArt, dataPath, resolve, uidFor } from './mod-art.ts';
 import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
@@ -188,6 +191,14 @@ export interface BuildingEdit {
    * the edit applies to the records taken.
    */
   from?: string;
+  /**
+   * What it DOES: the compiled effect of a shipped town's building, level
+   * for level — the Library's spell, the Hall of Trial's warcry tiers
+   * (town-features.ts). A building taken with `from` grants what it granted
+   * there unless this says otherwise; `null` is a building with no effect.
+   * A record with no such row does nothing whatever the engine has.
+   */
+  grants?: Grant | null;
   /** Its name on the build screen; the donor's when absent. */
   name?: string;
   description?: string;
@@ -323,6 +334,8 @@ export function donorBuildDefinition(ordinal: number, read: DataReader): string 
 export interface TownBuild {
   files: ModFile[];
   paths: TownPaths;
+  /** The effects the faction's buildings grant, for the buildings file (`featureLines`). */
+  features: OwnFeature[];
   /** Source path → the copy's path, for whoever edits a building record next. */
   at: Map<string, string>;
   /** The building records that made it into the copy, by key. */
@@ -640,6 +653,22 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   // After every drop, swap and move: no two buildings on one cell.
   checkGridCells(build, spec.file);
 
+  // What the buildings do: a row per level of the shipped building each
+  // grant names, under our slot. A building taken from another town keeps
+  // its effect unless told otherwise; a hall of warcries is Stronghold's.
+  const features: OwnFeature[] = [];
+  for (const [key, edit] of Object.entries(edits ?? {})) {
+    if (!edit) continue;
+    const { type, level } = parseBuildingKey(key);
+    if (edit.grants === undefined && !edit.from) continue;
+    if (level !== 1) throw new Error(`${key}: an effect is the whole building's — name ${type}, not a level of it`);
+    if (edit.grants === null) continue;
+    features.push(...grantedFeatures(type, edit.grants ?? { like: edit.from! }, `${spec.file}: ${key}`, edit.grants === undefined));
+  }
+  if (spec.magic === 'warcries' && !features.some((f) => f.building === buildingOrdinal(HALL_BUILDING))) {
+    features.push(...grantedFeatures(HALL_BUILDING, { like: HALL_DONOR }, `${spec.file}: the hall`));
+  }
+
   // Models of ours in the town screen: placed, named, and every level of the
   // building pointed at the name.
   let donorObjects: Map<string, string> | null = null;
@@ -710,7 +739,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
 
   return {
     files: [...files].map(([path, data]) => ({ path, data })),
-    paths: p, at: copy.at, records, stopped: copy.stopped, missing: copy.missing,
+    paths: p, at: copy.at, records, stopped: copy.stopped, missing: copy.missing, features,
     ...(race ? { raceIcon: race } : {}),
     ...(tower ? { towerIcon: tower } : {}),
     ...(captureMarker ? { captureMarker } : {}),

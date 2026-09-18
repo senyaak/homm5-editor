@@ -231,21 +231,29 @@ export function addTownButtons(button: string, shared: string, buttons: readonly
   return { button: b, shared: s, files, rows };
 }
 
-/** The buildings file's text. */
-export function buildingsFileText(rows: readonly TownButtonRow[]): string {
+/**
+ * The buildings file's text: the centre button's rows, and the rows that say
+ * what a building of ours does (town-features.ts, `featureLines`).
+ */
+export function buildingsFileText(rows: readonly TownButtonRow[], features: readonly string[] = []): string {
   const lines = [
-    '# The town screen\'s centre button, one row per faction. Written by the editor; read by homm5-editor.dll.',
-    '#   button <townType> <buildingType> <state> <luaFunction>',
+    '# A faction\'s buildings. Written by the editor; read by homm5-editor.dll.',
+    '#   button <townType> <buildingType> <state> <luaFunction>   the town screen\'s centre button',
+    '#   feature <townType> <buildingType> <minLevel> <feature>   the effect a building grants',
   ];
   for (const r of rows) lines.push(`button ${r.town} ${r.building} ${r.state} ${r.lua}`);
+  for (const f of features) {
+    if (!/^feature \d+ \d+ \d+ \d+$/.test(f)) throw new Error(`not a feature row: ${f}`);
+    lines.push(f);
+  }
   return lines.join('\n') + '\n';
 }
 
 /** Write it beside the executable and say where. Always whole: a stale row would keep a button after its faction is gone. */
-export function writeBuildingsFile(gameRoot: string, rows: readonly TownButtonRow[]): string {
+export function writeBuildingsFile(gameRoot: string, rows: readonly TownButtonRow[], features: readonly string[] = []): string {
   const path = join(gameRoot, BUILDINGS_FILE);
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, buildingsFileText(rows), 'latin1');
+  writeFileSync(path, buildingsFileText(rows, features), 'latin1');
   return path;
 }
 

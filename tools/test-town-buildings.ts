@@ -20,6 +20,7 @@ import type { TownBuild, TownSpec } from '../src/mods/town-files.ts';
 import { positionsBox, wideBase } from '../src/scene/geometry.ts';
 import { BONE_ON_PLUM } from '../src/mods/faction-icons.ts';
 import { SHIPPED_BUTTON_STATES, SPECIAL_BUTTON, SPECIAL_BUTTON_SHARED, TOWN_BUILDINGS, addTownButtons, buildingsFileText, factionScriptFile, factionScriptLoadLine } from '../src/mods/town-button.ts';
+import { featureLines } from '../src/mods/town-features.ts';
 import { patchCommonScript } from '../src/mods/artifact-scripts.ts';
 import { dataDir } from './game-dir.ts';
 
@@ -255,6 +256,31 @@ console.log('a town of warcries');
   check('the guild slot has no cells; the hall took its 4,2', cells(grid, 'TB_MAGIC_GUILD').length === 0 && cells(grid, 'TB_SPECIAL_1').every((c) => c.x === 4 && c.y === 2));
   check('the Monastery needs the fort now', text(shouts, shouts.records.get('TB_DWELLING_5')!).includes(`/${shouts.records.get('TB_FORT')}#xpointer`));
   check('the schools stay as the donor wrote them', text(shouts, shouts.paths.shared).includes('<MagicSchool_0>'));
+  // What the hall DOES: Stronghold's three rows, under our slot.
+  check("the hall grants Stronghold's three tiers", JSON.stringify(shouts.features) === JSON.stringify([
+    { building: 17, minLevel: 1, feature: 0x27 }, { building: 17, minLevel: 2, feature: 0x28 }, { building: 17, minLevel: 3, feature: 0x29 },
+  ]), JSON.stringify(shouts.features));
+  check('as rows of the buildings file', featureLines(11, shouts.features).join('|') === 'feature 11 17 1 39|feature 11 17 2 40|feature 11 17 3 41');
+  check('the file carries them after the buttons', buildingsFileText([], featureLines(11, shouts.features)).trim().endsWith('feature 11 17 3 41'));
+  throws('a row that is not one', () => buildingsFileText([], ['feature x']), 'not a feature row');
+  const ownHall = buildTown({ ...base, magic: 'warcries', buildings: { 'TB_SPECIAL_1': { from: 'TOWN_STRONGHOLD', grants: null }, 'TB_DWELLING_5': { requires: ['TB_FORT'] } } }, HEAVEN, read);
+  check('a hall told to grant nothing still grants the tiers - it is what makes it a hall', ownHall.features.length === 3);
+}
+
+console.log('what a building does');
+{
+  const noGuild = { 'TB_MAGIC_GUILD': null, 'TB_DWELLING_5': { requires: ['TB_FORT'] } } as const;
+  const taken = build({ ...noGuild, 'TB_SPECIAL_1': { from: 'TOWN_STRONGHOLD' } });
+  check("a building taken keeps its effect: Stronghold's SPECIAL_1 is the three tiers", taken.features.map((f) => f.feature).join() === '39,40,41');
+  check('under our slot', taken.features.every((f) => f.building === 17));
+  const silent = build({ ...noGuild, 'TB_SPECIAL_1': { from: 'TOWN_STRONGHOLD', grants: null } });
+  check('unless told to do nothing', silent.features.length === 0);
+  const library = build({ 'TB_SPECIAL_2': { grants: { like: 'TOWN_ACADEMY', building: 'TB_SPECIAL_1' } } });
+  check("a building of the donor's granting another town's effect: the Library's, on our SPECIAL_2", JSON.stringify(library.features) === JSON.stringify([{ building: 18, minLevel: 1, feature: 0x15 }]));
+  check('the donor as shipped grants nothing of its own - the engine has its rows', plain.features.length === 0);
+  throws("an effect is the whole building's", () => build({ 'TB_TOWN_HALL/2': { grants: { like: 'TOWN_HEAVEN' } } }), 'whole building');
+  throws('a building with no effect has none to grant', () => build({ 'TB_TAVERN': { grants: { like: 'TOWN_HEAVEN' } } }), 'no effect to grant');
+  throws('a town that is not shipped', () => build({ 'TB_SPECIAL_1': { grants: { like: 'TOWN_TEST' } } }), 'not a shipped town');
 }
 
 console.log('the grid alone');

@@ -708,3 +708,54 @@ Own SCHOOLS are still out of reach: `MagicSchool` is nine values compiled
 None), the book's tabs and the skills are keyed on them. A faction chooses
 between the book and the warcries, or — a plan, not a finding — a hall of
 ours teaching a school the engine has, through the same sites.
+
+## Launch 35, and the table behind every special building (2026-09-18)
+
+The class and town sites answered as read: the orc header over the guild
+button, the orc book for the Knight, a three-level hall built. **The hall was
+empty** — "spells of the first circle", nothing under it — because a hall is
+not what teaches warcries. A FEATURE is.
+
+Every compiled effect a special building has is a number 0…0x2E and one
+table at `0x10909B0` (RVA `0xC909B0`) says who grants it:
+
+```
+{ feature, town, building, minLevel } ×47      town 2 = any
+ 0x00–0x04 Haven SPECIAL_1…5      0x05–0x09 Inferno SPECIAL_1…5
+ 0x0A/0x0B Sylvan SPECIAL_0 lv1/2, 0x0C/0x0D SPECIAL_2 lv1/2, 0x0E, 0x0F
+ 0x10–0x14 Necropolis             0x15–0x19 Academy (0x15 = the Library)
+ 0x1A/0x1B Dungeon SPECIAL_1 lv1/2, 0x1C–0x1F
+ 0x20–0x22 Fortress SPECIAL_1 lv1/2/3 (the runic shrine), 0x23–0x26
+ 0x27–0x29 Stronghold SPECIAL_1 lv1/2/3 (the Hall of Trial), 0x2A–0x2D
+ 0x2E      any town, TB_TOWN_HALL ≥ 4 (the Capitol)
+```
+
+Six readers, all CAdvMapTown virtuals with one test — `row.town == 2 ||
+row.town == GetType()`: `+0x40` `0xAC8970` (may it be built: the row's
+building and level through `+0x5C`, `+0xB4`), `+0x44` `0xAC8A10`
+`HasFeature(f)` (`BuildingLevel(row.building) >= row.minLevel`), `+0x48`
+`0xAC8A80` `FeatureOf(building)` (the FIRST row's feature, else −1),
+`+0x4C` `0xAC8AD0` `BuildingOf(f)` (else 0x1A), `+0x50` `0xAC8B20` through
+`RowOf` `0xAD0710` (an index, read back as a column), `+0x54` `0xAC8B90`.
+`OnBuildingBuilt` (`0xAC7FF0`) asks `FeatureOf` and for 0x27 at level 0
+calls `0xAC4740(1, 1)`, which draws the tier's warcries into the town's list
+(`+0x2D8/+0x2DC` of the whole object — `+0x1E0` of the `+0xF8` subobject the
+readers get as `this`); `GetSpellsOfLevel` `0xAC7B40` reads that list under
+`HasFeature(0x27..0x29)`, the Library's `+0xFC` list under 0x15, the runic
+`+0x1CC` under 0x20–0x22, and the guild's `+0x98` under the guild's level —
+which is where the town-type sites of the previous section sat.
+
+So "what does the engine do with a special of a twelfth type" is answered:
+nothing, because no row. And the plan's 1b — "known static effects = forms
+= native from config" — is this table: `native/faction/town-features.c`
+copies the 47 rows into the DLL, appends `feature <town> <building>
+<minLevel> <feature>` rows from `bin/homm5-editor-buildings.txt`, and moves
+the twenty address operands of the six readers onto the copy (start, end,
+columns — checked against the table's loaded address, ASLR included; all or
+none). A building of ours grants what any shipped building grants
+(`BuildingEdit.grants: { like, building? }`, `src/mods/town-features.ts`);
+`from` implies its source's rows, a hall of warcries implies Stronghold's
+three. The 46 effects are the menu; an effect of our own is a term of the
+extension, not a row.
+
+Launch 36 pending: the same map, the hall's rows in the file.
