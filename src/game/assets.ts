@@ -50,15 +50,35 @@ export function assets(roots: readonly string[]): Assets {
   if (!chain.length) throw new Error('an asset chain needs at least one root');
   const base = chain[chain.length - 1]!;
 
+  // Answered once per path for the life of the chain. A scene build asks for
+  // the same texture and material documents thousands of times over (every
+  // object's chain of hrefs runs through the same few hundred files), and a
+  // stat per root per ask — a thrown exception per root that lacks it — was
+  // a fifth of opening a map. The chain describes its roots as they were when
+  // it was made: mods are mounted into a new chain, not into this one.
+  const where = new Map<string, string | null>();
   const found = (rel: string): string | null => {
+    const known = where.get(rel);
+    if (known !== undefined) return known;
+    let hit: string | null = null;
     for (const root of chain) {
       const p = join(root, rel);
       try {
-        if (statSync(p).isFile()) return p;
+        if (statSync(p).isFile()) { hit = p; break; }
       } catch { /* not in this root */ }
     }
-    return null;
+    where.set(rel, hit);
+    return hit;
   };
+
+  // Documents read through `text` are kept: a scene build opens a material's
+  // document for every mesh that names it and a texture's for every material,
+  // which is the same few hundred files thousands of times. Bytes (`bytes`)
+  // are not kept — a model or a texture is read once per decode, and the
+  // decodes have caches of their own.
+  const texts = new Map<string, string>();
+  let textBytes = 0;
+  const TEXT_BUDGET = 64 * 1024 * 1024;
 
   return {
     roots: chain,
@@ -66,7 +86,19 @@ export function assets(roots: readonly string[]): Assets {
     exists: (rel) => found(rel) !== null,
     text: (rel, encoding = 'utf8') => {
       const p = found(rel);
-      return p ? readFileSync(p, encoding) : null;
+      if (!p) return null;
+      const k = `${encoding}|${p}`;
+      const known = texts.get(k);
+      if (known !== undefined) return known;
+      const s = readFileSync(p, encoding);
+      texts.set(k, s);
+      textBytes += s.length;
+      for (const old of texts.keys()) {
+        if (textBytes <= TEXT_BUDGET || old === k) break;
+        textBytes -= texts.get(old)!.length;
+        texts.delete(old);
+      }
+      return s;
     },
     bytes: (rel) => {
       const p = found(rel);

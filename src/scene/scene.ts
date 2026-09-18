@@ -160,10 +160,7 @@ export function parseFootprint(sharedXml: string): Footprint | null {
 
 export function createGeomResolver(root: string | Assets, texSize = TEXTURE_CAP, options: SceneAnimationOptions = {}): GeomResolver {
   const data = toAssets(root);
-  const readXdb: ReadXdb = (href) => {
-    const p = data.path(href.split('#')[0]!);
-    return existsSync(p) ? readFileSync(p, 'utf8') : null;
-  };
+  const readXdb: ReadXdb = (href) => data.text(href.split('#')[0]!);
   const geoms: GeomData[] = [];
   const geomIndex = new Map<string, number>();
   const resolve = (sharedHref: string): number => {
@@ -276,10 +273,7 @@ export function buildScene(
 ): { map: HommMap; skipped: string[]; scene: Scene; resolver: GeomResolver } {
   const data = toAssets(root);
   const texSize = opt.texSize || TEXTURE_CAP;
-  const readXdb: ReadXdb = (href) => {
-    const p = data.path(href.split('#')[0]);
-    return existsSync(p) ? readFileSync(p, 'utf8') : null;
-  };
+  const readXdb: ReadXdb = (href) => data.text(href.split('#')[0]!);
 
   // --- map model ---
   const map = loadMap(readFileSync(mapXdbPath, 'latin1'));

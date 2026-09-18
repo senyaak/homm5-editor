@@ -8,7 +8,7 @@
 // wanted: the first is what a freshly loaded map draws with while the second is
 // still being decoded.
 
-import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { parseTerrain, readTextureLayers, readMask } from '../terrain/terrain.ts';
 import { decodeDDS } from '../format/dds.ts';
@@ -142,10 +142,7 @@ function flatTexture(col: number[], size: number): Uint8Array {
  */
 export function splatFor(raw: Buffer, root: string | Assets, tileSize = 256): SplatData | null {
   const data = toAssets(root);
-  const readXdb: ReadXdb = (href) => {
-    const p = data.path(href.split('#')[0]);
-    return existsSync(p) ? readFileSync(p, 'utf8') : null;
-  };
+  const readXdb: ReadXdb = (href) => data.text(href.split('#')[0]!);
   return buildSplat(parseTerrain(raw), readXdb, data, new Map(), new Map(), tileSize);
 }
 
@@ -238,10 +235,7 @@ export function listTiles(root: string | Assets, thumbSize = 64): TileInfo[] {
   // the deeper root reaches it, which is the same rule the readers follow.
   const bases = data.dirs(TILE_DIR);
   if (!bases.length) return [];
-  const readXdb: ReadXdb = (href) => {
-    const p = data.path(href.split('#')[0]);
-    return existsSync(p) ? readFileSync(p, 'utf8') : null;
-  };
+  const readXdb: ReadXdb = (href) => data.text(href.split('#')[0]!);
   const colCache = new Map<string, number[] | null>();
   const seen = new Set<string>();
   const out: TileInfo[] = [];

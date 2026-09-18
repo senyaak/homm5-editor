@@ -7,7 +7,6 @@
 // a vector, a quaternion) is the whole vocabulary; the modules above this one
 // differ only in which tags they ask for.
 
-import { readFileSync, existsSync } from 'node:fs';
 import type { Assets } from '../game/assets.ts';
 
 
@@ -17,8 +16,7 @@ export type ReadXdb = (href: string) => string | null;
 /** Read a data-root-relative asset as text, or null if it is missing. */
 export function readAsset(data: Assets, rel: string): string | null {
   try {
-    const p = data.path(rel);
-    return existsSync(p) ? readFileSync(p, 'utf8') : null;
+    return data.text(rel);
   } catch { return null; }
 }
 

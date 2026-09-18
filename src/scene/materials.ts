@@ -109,9 +109,9 @@ function materialInfo(itemXml: string, data: Assets, baseDir: string): MaterialI
   if (!ext || !ext[1]) return NO_MATERIAL;
   try {
     const rel = resolveHref(baseDir, ext[1]);
-    const p = data.path(rel);
-    if (!existsSync(p)) return NO_MATERIAL;
-    const info = read(readFileSync(p, 'utf8'), dirOf(rel));
+    const doc = data.text(rel);
+    if (doc === null) return NO_MATERIAL;
+    const info = read(doc, dirOf(rel));
     // By the document's path, as the engine goes by the document's identity.
     if (rel.replace(/^\/+/, '') === TERRAIN_SKIN_MATERIAL) info.terrainSkin = true;
     return info;
@@ -242,6 +242,12 @@ interface DecodedTexture { picture: Picture; hasAlpha: boolean; opaque: boolean 
 const decoded = new Map<string, DecodedTexture | null>();
 const DECODED_BUDGET = 384 * 1024 * 1024;
 let decodedBytes = 0;
+/**
+ * The same, by the texture document's href — so that a texture already
+ * decoded is not found by reading its document again to learn which file it
+ * names. Every part of every object asks; the read was most of the asking.
+ */
+const byHref = new Map<string, DecodedTexture | null>();
 
 function remember(key: string, value: DecodedTexture | null): DecodedTexture | null {
   decoded.set(key, value);
@@ -264,13 +270,17 @@ function remember(key: string, value: DecodedTexture | null): DecodedTexture | n
 export function textureDataUri(model: string, data: Assets, cap: number, href?: string): DecodedTexture | null {
   try {
     const t = href ? [href, href] : model.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/); if (!t) return null;
-    const tx = readFileSync(data.path(t[1].split('#')[0]), 'utf8');
-    const dest = tx.match(/<DestName href="([^"]+)"/); if (!dest) return null;
+    const docPath = data.path(t[1].split('#')[0]);
+    const hkey = `${docPath}|${cap}`;
+    const byDoc = byHref.get(hkey);
+    if (byDoc !== undefined && (byDoc === null || decoded.get(byDoc.picture.key!) === byDoc)) return byDoc;
+    const tx = data.text(t[1].split('#')[0]!);
+    const dest = tx?.match(/<DestName href="([^"]+)"/); if (!dest) return null;
     const ddsPath = data.path(join(dirname(t[1].split('#')[0]), dest[1]));
     if (!existsSync(ddsPath)) return null;
     const key = `${ddsPath}|${cap}`;
     const known = decoded.get(key);
-    if (known !== undefined) return known;
+    if (known !== undefined) { byHref.set(hkey, known); return known; }
     const img = shrinkToFit(decodeDDS(ddsPath, cap), cap);
     let hasAlpha = false, solidTexels = 0;
     for (let i = 3; i < img.rgba.length; i += 4) {
@@ -281,11 +291,13 @@ export function textureDataUri(model: string, data: Assets, cap: number, href?: 
     // Half the texels opaque is far from either measured case (a solid rock
     // skin sits at 96%, a feathered overlay at 11%), so where the line lands
     // between them does not matter.
-    return remember(key, {
+    const made = remember(key, {
       picture: { width: img.width, height: img.height, rgba: img.rgba, key },
       hasAlpha,
       opaque: solidTexels > img.width * img.height * 0.5,
     });
+    byHref.set(hkey, made);
+    return made;
   } catch { return null; }
 }
 
@@ -307,8 +319,8 @@ let frameBytes = 0;
  */
 export function particleFrame(data: Assets, size: number, href: string): Picture | null {
   try {
-    const tx = readFileSync(data.path(href.split('#')[0]!), 'utf8');
-    const dest = tx.match(/<DestName href="([^"]+)"/);
+    const tx = data.text(href.split('#')[0]!);
+    const dest = tx?.match(/<DestName href="([^"]+)"/);
     if (!dest) return null;
     const ddsPath = data.path(join(dirname(href.split('#')[0]!), dest[1]!));
     if (!existsSync(ddsPath)) return null;
