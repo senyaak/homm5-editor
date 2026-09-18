@@ -259,7 +259,7 @@ export const SHADOW_FRAG_PARS = `
 float sunlitHere() {
   #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
     DirectionalLightShadow s = directionalLightShadows[0];
-    return getShadow(directionalShadowMap[0], s.shadowMapSize, s.shadowBias,
+    return getShadow(directionalShadowMap[0], s.shadowMapSize, s.shadowIntensity, s.shadowBias,
                      s.shadowRadius, vDirectionalShadowCoord[0]);
   #else
     return 1.0;

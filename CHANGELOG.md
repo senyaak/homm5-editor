@@ -90,6 +90,10 @@ pre-release.
 - A model's meshes that wear the same material are one draw call instead
   of one each — a building's walls, a tree's branches. A2C1M1: 604 → 427
   draw calls a frame, the picture unchanged.
+- three.js 0.160 → 0.186 (run `npm install`). Our shaders pass the new
+  shadow intensity to three's `getShadow`; a non-square texture's padded
+  mip tail has the block count its levels take (the new upload path
+  checks, the old one did not).
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

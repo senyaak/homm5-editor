@@ -118,7 +118,7 @@ function gameLit(m: THREE.Material, lit: boolean, drape = false): void {
          #if defined( USE_SHADOWMAP ) && NUM_DIR_LIGHT_SHADOWS > 0
            if (receiveShadow) {
              DirectionalLightShadow dls = directionalLightShadows[0];
-             sunlit = getShadow(directionalShadowMap[0], dls.shadowMapSize, dls.shadowBias,
+             sunlit = getShadow(directionalShadowMap[0], dls.shadowMapSize, dls.shadowIntensity, dls.shadowBias,
                                 dls.shadowRadius, vDirectionalShadowCoord[0]);
            }
          #endif

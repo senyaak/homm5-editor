@@ -237,7 +237,13 @@ export function ddsChain(b: Buffer, cap?: number): DxtChain | null {
   while (last.width > 1 || last.height > 1) {
     const avg = averageOf(decodeLevel(b, fourCC, last));
     w = Math.max(1, last.width >> 1); h = Math.max(1, last.height >> 1);
-    last = { width: w, height: h, data: flatBlock(fourCC, avg) };
+    // A level of a non-square texture can still be more than one block
+    // (4×8 is two) — the same block, repeated.
+    const block = flatBlock(fourCC, avg);
+    const blocks = Math.ceil(w / 4) * Math.ceil(h / 4);
+    const data = new Uint8Array(block.length * blocks);
+    for (let i = 0; i < blocks; i++) data.set(block, i * block.length);
+    last = { width: w, height: h, data };
     levels.push(last);
   }
   return { format: fourCC, width, height, levels };

@@ -17,7 +17,7 @@
 // needs: data
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { decodeDDS } from '../src/format/dds.ts';
+import { ddsChain, decodeDDS } from '../src/format/dds.ts';
 import { assets } from '../src/game/assets.ts';
 import { resampleTo, shrinkToFit } from '../src/format/texture.ts';
 import { setCompressedTextures, textureDataUri } from '../src/scene/materials.ts';
@@ -166,6 +166,21 @@ function testAgainstData(): void {
   check('each level is the blocks its size takes', !!c && c.levels.every((l) => l.data.byteLength === Math.ceil(l.width / 4) * Math.ceil(l.height / 4) * 16));
   check('and a quarter of the texels\' bytes, chain and all', !!c && bytesOf(c) * 2 < bytesOf(big!.picture), c ? `${(bytesOf(c) / 1024) | 0} KB` : '');
   check('the alpha verdict is the same read off a small level', !!dxt && dxt.hasAlpha === big!.hasAlpha && dxt.opaque === big!.opaque);
+
+  // A non-square chain: the padded tail has as many blocks as its level
+  // needs (4×8 is two), or the GPU refuses the level as the wrong size.
+  const tall = join(root, 'Textures', 'auto-imported', 'Creatures', 'Dungeon', 'BlackDragon', 'BlackDragon.tga.dds');
+  if (existsSync(tall)) {
+    const chain = ddsChain(readFileSync(tall), 512);
+    const bb = chain?.format === 'DXT1' ? 8 : 16;
+    let w = chain?.width ?? 0, h = chain?.height ?? 0, sized = !!chain;
+    for (const l of chain?.levels ?? []) {
+      if (l.width !== w || l.height !== h || l.data.byteLength !== Math.ceil(w / 4) * Math.ceil(h / 4) * bb) sized = false;
+      w = Math.max(1, w >> 1); h = Math.max(1, h >> 1);
+    }
+    check('a non-square chain has every level the size its blocks take, down to 1×1', sized && w === 1 && h === 1,
+      chain ? `${chain.width}×${chain.height}, ${chain.levels.length} levels` : 'no chain');
+  }
 }
 
 testShrink();
