@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { uiPrefs } from '#core/prefs.ts';
 import type { Floor3D, MaterialBatch } from '#core/state.ts';
 import type { IdleKind } from '#viewport/skinning.ts';
-import type { GeomPart, Instance, SplatData } from '#src/scene/payload.ts';
+import type { GeomPart, Instance, Picture, SplatData } from '#src/scene/payload.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { DRAPE_PARS, DRAPE_VERT_PARS, TERRAIN_DEPTH, drapeUniforms } from '#viewport/drape.ts';
 import { geomParts } from '#viewport/geoms.ts';
@@ -122,23 +122,17 @@ void main() {
                                + max(-ndl, 0.0) * (uShade - uAmb) + pl) * uWhiten), 1.0);
 }`;
 
-const loadImg = (src: string): Promise<HTMLImageElement> => new Promise((res, rej) => {
-  const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('image decode failed')); i.src = src;
-});
-
-// Stack same-sized images into one DataArrayTexture via a canvas read-back.
-async function arrayTexture(uris: string[], size: number): Promise<THREE.DataArrayTexture> {
-  const data = new Uint8Array(uris.length * size * size * 4);
-  const cv = document.createElement('canvas'); cv.width = cv.height = size;
-  const cx = cv.getContext('2d', { willReadFrequently: true });
-  if (!cx) throw new Error('no 2d canvas context');
-  for (let i = 0; i < uris.length; i++) {
-    const img = await loadImg(uris[i]!);
-    cx.clearRect(0, 0, size, size);
-    cx.drawImage(img, 0, 0, size, size);
-    data.set(cx.getImageData(0, 0, size, size).data, i * size * size * 4);
+// Stack same-sized pictures into one DataArrayTexture: a layer is its texels,
+// copied into place (the array texture wants one buffer; the brush writes
+// into it — paintMaskTexture — so it is the texture's own, not the payload's).
+function arrayTexture(pictures: Picture[], size: number): THREE.DataArrayTexture {
+  const data = new Uint8Array(pictures.length * size * size * 4);
+  for (let i = 0; i < pictures.length; i++) {
+    const p = pictures[i]!;
+    if (p.width !== size || p.height !== size) throw new Error(`a ${p.width}×${p.height} layer in a ${size}px stack`);
+    data.set(p.rgba, i * size * size * 4);
   }
-  const tex = new THREE.DataArrayTexture(data, size, size, uris.length);
+  const tex = new THREE.DataArrayTexture(data, size, size, pictures.length);
   tex.format = THREE.RGBAFormat; tex.type = THREE.UnsignedByteType;
   tex.needsUpdate = true;
   return tex;
@@ -435,10 +429,8 @@ export async function upgradeToSplat(fl: Floor3D): Promise<void> {
   // [perf] Ground textures decode off the critical path but still upload on the
   // GPU thread; timed so a slow splat shows up next to the other phase logs.
   const tSplat = performance.now();
-  const [ground, masks] = await Promise.all([
-    arrayTexture(s.layerTex, s.size),
-    arrayTexture(s.maskGroups, s.V),
-  ]);
+  const ground = arrayTexture(s.layerTex, s.size);
+  const masks = arrayTexture(s.maskGroups, s.V);
   ground.wrapS = ground.wrapT = THREE.RepeatWrapping;
   ground.magFilter = THREE.LinearFilter;
   ground.minFilter = THREE.LinearMipmapLinearFilter;
@@ -450,7 +442,15 @@ export async function upgradeToSplat(fl: Floor3D): Promise<void> {
 
   let rock = null;
   if (s.rockTex) {
-    rock = await new THREE.TextureLoader().loadAsync(s.rockTex);
+    rock = new THREE.DataTexture(s.rockTex.rgba, s.rockTex.width, s.rockTex.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+    // As the image loader set it up: row 0 at the top, mipmapped, filtered
+    // both ways (a DataTexture's defaults are none of those: unflipped, no
+    // mips, nearest — which drew the cliffs as a cross-hatch).
+    rock.flipY = true;
+    rock.generateMipmaps = true;
+    rock.minFilter = THREE.LinearMipmapLinearFilter;
+    rock.magFilter = THREE.LinearFilter;
+    rock.needsUpdate = true;
     rock.wrapS = rock.wrapT = THREE.RepeatWrapping;
     rock.anisotropy = renderer.capabilities.getMaxAnisotropy();
     // Deliberately NOT sRGB-tagged. Tagging it makes the GPU decode to linear on

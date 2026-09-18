@@ -290,7 +290,7 @@ export function buildScene(
   // --- terrains, one per floor (surface = 0, underground = 1) ---
   const mapDir = dirname(mapXdbPath);
   const tileColorCache = new Map();
-  const tileTexCache = new Map(); // tile path -> texture data URI (shared across floors)
+  const tileTexCache = new Map(); // tile path -> texture texels (shared across floors)
   const loadTerrain = (file: string): LoadedTerrain | null => {
     const p = join(mapDir, file);
     if (!existsSync(p)) return null;

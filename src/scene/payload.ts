@@ -395,16 +395,24 @@ export interface WaterData {
   tex: string | null;
 }
 
-/** Everything the splat shader needs: tile textures plus their weight masks. */
+/**
+ * Everything the splat shader needs: tile textures plus their weight masks.
+ *
+ * As texels, like a model's skin and a particle's frame (`Picture`): the
+ * renderer stacks them into its array textures as they are. They were PNG
+ * data URIs, decoded through an `<img>` and a canvas read-back — ~300 ms of
+ * a map open spent after the world was already up, and a second swap of
+ * the ground's material when they landed.
+ */
 export interface SplatData {
   V: number;
   size: number;
   layerCount: number;
-  /** One PNG data URI per layer, sorted by the tile`s <Priority>. */
-  layerTex: string[];
-  /** Masks packed three per RGB image. */
-  maskGroups: string[];
-  rockTex: string | null;
+  /** One `size`² picture per layer, sorted by the tile's <Priority>. */
+  layerTex: Picture[];
+  /** Masks packed three per picture (R, G, B), `V`² each. */
+  maskGroups: Picture[];
+  rockTex: Picture | null;
   paths: string[];
 }
 

@@ -636,9 +636,14 @@ What it says, in the order it matters:
   and the first frame's time was within run noise with and without).
   What is left of the tail: the first frame's uploads (~200 ms, 92 MB of
   DXT and tables — unavoidable as bytes, could be spread over frames behind
-  the overlay), `buildWorld` ~145, the ground splat's PNG decode → canvas →
+  the overlay), `buildWorld` ~145. ~~The ground splat's PNG decode → canvas →
   `getImageData` path (~300 ms async, then a swap frame) — texels like the
-  models' would remove it.
+  models' would remove it.~~ **Done**: `SplatData` carries `Picture`s
+  (layers, mask groups, rock), the renderer stacks them into its array
+  textures with a memcpy — the splat 300 → 16 ms, no swap frame, `buildWorld`
+  ~160 with it inside. Caught by the masks: a DataTexture's defaults are
+  nearest filtering, no mips and no flip — the rock drew as a cross-hatch
+  until it was set up as the image loader had set it up.
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,

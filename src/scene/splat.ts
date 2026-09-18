@@ -17,7 +17,7 @@ import { toAssets } from '../game/assets.ts';
 import type { Assets } from '../game/assets.ts';
 import type { Terrain, TextureLayer } from '../terrain/terrain.ts';
 import type { ReadXdb } from './xdb.ts';
-import type { SplatData, TileInfo } from './payload.ts';
+import type { Picture, SplatData, TileInfo } from './payload.ts';
 import { round } from './units.ts';
 
 
@@ -152,7 +152,7 @@ export function splatFor(raw: Buffer, root: string | Assets, tileSize = 256): Sp
 
 export function buildSplat(
   t: Terrain, readXdb: ReadXdb, data: Assets,
-  texCache: Map<string, string>, colCache: Map<string, number[] | null>, size: number,
+  texCache: Map<string, Picture>, colCache: Map<string, number[] | null>, size: number,
 ): SplatData | null {
   // A predicate, not a plain truthiness filter: only this tells the checker the
   // surviving layers definitely carry a path.
@@ -170,17 +170,17 @@ export function buildSplat(
     .map((l, ord) => ({ ...l, priority: tilePriority(l.path, readXdb, priCache), ord }))
     .sort((a, b) => a.priority - b.priority || a.ord - b.ord);
 
-  const layerTex = layers.map((l): string => {
+  const layerTex = layers.map((l): Picture => {
     const hit = texCache.get(l.path);
     if (hit !== undefined) return hit;
     let px = tileTexture(l.path, readXdb, data, size);
     if (!px) px = flatTexture(tileColor(l.path, readXdb, colCache) || [0.3, 0.33, 0.24], size);
-    const uri = pngDataUri(size, size, px);
-    texCache.set(l.path, uri);
-    return uri;
+    const pic: Picture = { width: size, height: size, rgba: px, key: `tile|${l.path}|${size}` };
+    texCache.set(l.path, pic);
+    return pic;
   });
 
-  const maskGroups = [];
+  const maskGroups: Picture[] = [];
   for (let g = 0; g * 3 < layers.length; g++) {
     const rgba = new Uint8Array(N * 4);
     for (let i = 0; i < N; i++) rgba[i * 4 + 3] = 255;
@@ -189,14 +189,14 @@ export function buildSplat(
       const m = readMask(t, layers[li]);
       for (let i = 0; i < N; i++) rgba[i * 4 + c] = m[i];
     }
-    maskGroups.push(pngDataUri(V, V, rgba));
+    maskGroups.push({ width: V, height: V, rgba });
   }
 
   // Cliff face texture. Where the ground drops steeply (the `lower`/`plato`
   // tools leave jumps of up to 11 units across a single tile) the engine shows
   // rock, not stretched grass. One shared texture, projected vertically.
   const rockPx = tileTexture(ROCK_TILE, readXdb, data, size);
-  const rockTex = rockPx ? pngDataUri(size, size, rockPx) : null;
+  const rockTex: Picture | null = rockPx ? { width: size, height: size, rgba: rockPx, key: `tile|${ROCK_TILE}|${size}` } : null;
 
   return { V, size, layerCount: layers.length, layerTex, maskGroups, rockTex, paths: layers.map((l) => l.path) };
 }

@@ -177,3 +177,9 @@ tried and dropped, and what is left is in [SLICE_fx_performance.md](../SLICE_fx_
   model entry pointing at shared entries of the old version, which are
   never rewritten — the version is in a shared entry's name now, and a
   trim removes files of another version first.
+- The ground's textures travel as texels, like a model's skin: the tile
+  layers, the weight masks and the cliff rock were PNG data URIs decoded
+  through an `<img>` and a canvas read-back after the world was up (~300
+  ms, and a second swap of the ground's material when they landed). The
+  splat stands with the world now — 16 ms — and the map's first frame is
+  its first frame with textured ground.
