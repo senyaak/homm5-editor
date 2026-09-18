@@ -127,9 +127,19 @@ const CELL = 128;
  * every pool that draws the same frames — the key is the frames' CONTENT,
  * so two instances of one particle, or two loads of it, meet at one texture —
  * and reference-counted like the recording tables.
+ *
+ * A frame sits in its cell at its OWN size, from the cell's top-left corner
+ * (a 64-texel puff fills a quarter of it), and `cell` says per frame how
+ * much of the cell it fills, so the shader scales the quad's uv into it and
+ * the GPU's sampler does the stretch a bilinear loop here used to do — 140
+ * ms of A2C1M1's build, in the one thread the window draws with, for what
+ * the sampler does for free. What is left of laying an atlas out is a row
+ * copy per frame.
  */
 interface FxAtlas {
   tex: THREE.DataTexture;
+  /** Per frame, the fraction of its cell it fills, (x, y) — N × 1 texels, read by `texelFetch` at the frame's index. */
+  cell: THREE.DataTexture;
   cols: number;
   rows: number;
   refs: number;
@@ -177,10 +187,18 @@ function atlasFor(key: string, textures: (Picture | null)[], rawColor: boolean):
   const rows = Math.max(1, Math.ceil(textures.length / cols));
   const width = cols * CELL, height = rows * CELL;
   const data = new Uint8Array(width * height * 4); // an empty slot stays transparent
+  const cellData = new Float32Array(Math.max(1, textures.length) * 2);
   for (let i = 0; i < textures.length; i++) {
     const t = textures[i];
-    if (t) blitCell(t, data, width, (i % cols) * CELL, Math.floor(i / cols) * CELL);
+    if (!t) continue;
+    blitCell(t, data, width, (i % cols) * CELL, Math.floor(i / cols) * CELL);
+    cellData[i * 2] = t.width / CELL;
+    cellData[i * 2 + 1] = t.height / CELL;
   }
+  const cell = new THREE.DataTexture(cellData, Math.max(1, textures.length), 1, THREE.RGFormat, THREE.FloatType);
+  cell.magFilter = cell.minFilter = THREE.NearestFilter;
+  cell.generateMipmaps = false;
+  cell.needsUpdate = true;
   const tex = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
   // Row 0 of a frame is its top; uploaded flipped, as the canvas path was, so
   // v counts from the bottom and the shaders' tile arithmetic holds.
@@ -198,7 +216,7 @@ function atlasFor(key: string, textures: (Picture | null)[], rawColor: boolean):
   // context re-uploads from the image, so the effects would come back blank
   // until the map is reopened — a GPU reset in a map editor can have that.)
   tex.onUpdate = () => { (tex.image as { data: Uint8Array | null }).data = null; };
-  const atlas: FxAtlas = { tex, cols, rows, refs: 1, key };
+  const atlas: FxAtlas = { tex, cell, cols, rows, refs: 1, key };
   atlases.set(key, atlas);
   countBake('atlas', performance.now() - t0);
   return atlas;
@@ -207,6 +225,7 @@ function atlasFor(key: string, textures: (Picture | null)[], rawColor: boolean):
 function releaseAtlas(atlas: FxAtlas): void {
   if (--atlas.refs > 0) return;
   atlas.tex.dispose();
+  atlas.cell.dispose();
   atlases.delete(atlas.key);
 }
 
@@ -218,33 +237,14 @@ export function fxAtlasStats(): { atlases: number; bytes: number } {
 }
 
 /**
- * A frame into its cell of the atlas, stretched to fill it — the canvas used
- * to draw it that way, and a 64-texel puff is authored to be a full tile.
- * Bilinear where it has to stretch (a frame never exceeds the cell), a row
- * copy where it fits exactly, which is the common case.
+ * A frame into its cell of the atlas, at its own size, from the cell's
+ * top-left corner — a row copy per row (a frame never exceeds the cell:
+ * object-effects.ts decodes it no larger). The stretch to the full tile a
+ * 64-texel puff is authored to be is the sampler's, through `FxAtlas.cell`.
  */
 function blitCell(f: Picture, data: Uint8Array, width: number, x0: number, y0: number): void {
-  const src = f.rgba;
-  if (f.width === CELL && f.height === CELL) {
-    for (let y = 0; y < CELL; y++) data.set(src.subarray(y * CELL * 4, (y + 1) * CELL * 4), ((y0 + y) * width + x0) * 4);
-    return;
-  }
-  const sx = f.width / CELL, sy = f.height / CELL;
-  for (let y = 0; y < CELL; y++) {
-    const fy = Math.min(f.height - 1, Math.max(0, (y + 0.5) * sy - 0.5));
-    const iy = Math.floor(fy), ty = fy - iy, iy1 = Math.min(f.height - 1, iy + 1);
-    for (let x = 0; x < CELL; x++) {
-      const fx = Math.min(f.width - 1, Math.max(0, (x + 0.5) * sx - 0.5));
-      const ix = Math.floor(fx), tx = fx - ix, ix1 = Math.min(f.width - 1, ix + 1);
-      const a = (iy * f.width + ix) * 4, b = (iy * f.width + ix1) * 4, c = (iy1 * f.width + ix) * 4, d = (iy1 * f.width + ix1) * 4;
-      const o = ((y0 + y) * width + x0 + x) * 4;
-      for (let k = 0; k < 4; k++) {
-        const top = src[a + k]! + (src[b + k]! - src[a + k]!) * tx;
-        const bottom = src[c + k]! + (src[d + k]! - src[c + k]!) * tx;
-        data[o + k] = Math.round(top + (bottom - top) * ty);
-      }
-    }
-  }
+  const src = f.rgba, w = Math.min(f.width, CELL), h = Math.min(f.height, CELL);
+  for (let y = 0; y < h; y++) data.set(src.subarray(y * f.width * 4, y * f.width * 4 + w * 4), ((y0 + y) * width + x0) * 4);
 }
 
 /**
@@ -353,10 +353,28 @@ void main() {
   vTex = P.tex;
 }`;
 
+/**
+ * Where in the atlas a quad's uv lands: the frame's cell, and within it the
+ * frame's own extent (`uCell`, its size over the cell's). Atlas row 0 is the
+ * TOP and the texture is flipY'd, so v counts from the bottom — a tile on
+ * atlas row r spans v rows [rows-1-r, rows-r]. A frame laid from its cell's
+ * top-left corner stays at the cell's TOP once the whole image is flipped
+ * (the flip turns the image over, the cell with it): its v runs over the
+ * last `fill.y` of the cell, its u over the first `fill.x`.
+ */
+const ATLAS_UV = `
+uniform sampler2D uAtlas;  // the frame table, straight RGBA
+uniform sampler2D uCell;   // per frame: the fraction of its cell it fills
+uniform vec2 uGrid; // cols, rows
+vec2 atlasUv(float t, vec2 quadUv) {
+  float col = mod(t, uGrid.x), row = floor(t / uGrid.x);
+  vec2 fill = texelFetch(uCell, ivec2(int(t), 0), 0).xy;
+  return vec2(col + quadUv.x * fill.x, (uGrid.y - row) - fill.y + quadUv.y * fill.y) / uGrid;
+}`;
+
 const FRAG = `
 precision highp float;
-uniform sampler2D uAtlas;  // the frame table, straight RGBA
-uniform vec2 uGrid; // cols, rows
+${ATLAS_UV}
 in vec2 vUv;
 in vec4 vColor;
 in float vTex;
@@ -364,11 +382,7 @@ out vec4 outColor;
 void main() {
   if (vTex < -0.5) discard; // hidden frame
   float t = floor(vTex + 0.5);
-  float col = mod(t, uGrid.x), row = floor(t / uGrid.x);
-  // Atlas row 0 is the TOP; the texture is flipY'd, so v counts from the
-  // bottom — a tile on atlas row r spans v rows [rows-1-r, rows-r].
-  vec2 uv = vec2(col + vUv.x, (uGrid.y - 1.0 - row) + vUv.y) / uGrid;
-  vec4 s = texture(uAtlas, uv);
+  vec4 s = texture(uAtlas, atlasUv(t, vUv));
   // The era's particle pipeline in two lines. Colour: modulate-x2 (baked
   // colours are authored around 128 = full brightness — the ghost dragon's
   // mist peaks at 57), faded by the baked alpha curve; the lit tint is
@@ -391,8 +405,7 @@ void main() {
 // ADDS its colour over the scene, which is where the neon glow came from.
 const FRAG_STATIC = `
 precision highp float;
-uniform sampler2D uAtlas;
-uniform vec2 uGrid;
+${ATLAS_UV}
 in vec2 vUv;
 in vec4 vColor;
 in float vTex;
@@ -400,9 +413,7 @@ out vec4 outColor;
 void main() {
   if (vTex < -0.5) discard;
   float t = floor(vTex + 0.5);
-  float col = mod(t, uGrid.x), row = floor(t / uGrid.x);
-  vec2 uv = vec2(col + vUv.x, (uGrid.y - 1.0 - row) + vUv.y) / uGrid;
-  vec4 s = texture(uAtlas, uv);
+  vec4 s = texture(uAtlas, atlasUv(t, vUv));
   float a = s.a * vColor.a;
   if (a < 0.01) discard;
   outColor = vec4(s.rgb * a, a);
@@ -634,6 +645,7 @@ class FxPool {
       fragmentShader: standing ? FRAG_STATIC : FRAG,
       uniforms: {
         uAtlas: { value: atlas.tex },
+        uCell: { value: atlas.cell },
         uGrid: { value: new THREE.Vector2(atlas.cols, atlas.rows) },
         // Shared by reference: the app mutates the lit tint in place when the
         // preset (or the Light toggle) changes, like the terrain uniforms.

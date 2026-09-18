@@ -41,7 +41,7 @@ import type { FxBaked } from './fx-bake.ts';
 import { fileRef, mapHandles, packBlobs, readFileRefs, unpackBlobsSync, BLOB_ALIGN } from './blob-table.ts';
 
 /** Bumped whenever what a decode or a bake writes changes shape or value. */
-export const DECODER_VERSION = 1;
+export const DECODER_VERSION = 2;
 
 /** One file a decode read (or asked for and found missing), as it was then. */
 export interface Dep {
@@ -121,7 +121,12 @@ interface SharedRef { '\0ref': string }
 const isRef = (v: unknown): v is SharedRef => !!v && typeof v === 'object' && typeof (v as SharedRef)['\0ref'] === 'string';
 const ref = (id: string): SharedRef => ({ '\0ref': id });
 const sharedDir = (entryFile: string): string => join(entryFile, '..', 'shared');
-const sharedPath = (dir: string, id: string): string => join(dir, `${createHash('sha1').update(id).digest('hex')}.h5s`);
+// The version is in a shared entry's NAME, as in a model entry's key: one
+// that exists is never rewritten (the same bytes whoever wrote it), so a
+// version bump that left the names alone would leave every model entry
+// pointing at a shared entry of the old version — unreadable, and every
+// map decoding afresh on every open until the budget happened to trim it.
+const sharedPath = (dir: string, id: string): string => join(dir, `${createHash('sha1').update(`${DECODER_VERSION}|${id}`).digest('hex')}.h5s`);
 /** What a picture is shared by: its own key (file and cap). A recording: its uid. */
 const pictureId = (p: Picture | CompressedPicture): string | null => (p.key ? `pic|${p.key}` : null);
 const recordingId = (fx: FxInstancePayload): string => `fx|${fx.uid}`;
@@ -195,7 +200,7 @@ function readBlobFile<H>(file: string, whole: boolean): { header: H; object: unk
       }
     }
     return { header: rest as unknown as H, object };
-  } catch { return null; }
+  } catch (e) { if (process.env.H5E_CACHE_DEBUG) console.warn(`[geom-cache] ${file}:`, e instanceof Error ? e.message : e); return null; }
 }
 
 type Head<H> = { object: unknown; rest: Omit<H, 'object'>; arrays: { buffer: ArrayBuffer; at?: undefined; size?: undefined } | { buffer?: undefined; at: number; size: number } };
@@ -307,7 +312,7 @@ export function loadGeomEntry(file: string, shared: SharedLoader, whole = true):
         f.baked = resolve(f.baked) as FxBaked;
       }
     }
-  } catch { return null; }
+  } catch (e) { if (process.env.H5E_CACHE_DEBUG) console.warn(`[geom-cache] ${file}:`, e instanceof Error ? e.message : e); return null; }
   return { entry: { ...read.header, geom }, geom };
 }
 
@@ -336,25 +341,38 @@ export function readCachedArrays<T>(geom: T): T {
  * model entries and shared ones alike. A shared entry taken from under a
  * model entry that still names it makes that entry unreadable, which its
  * next load answers by decoding afresh — so nothing here has to know who
- * references what. Returns the bytes removed.
+ * references what. Files of another decoder version go first of all,
+ * budget or no budget: nothing will ever read them again (their keys and
+ * names carry the version), and after a bump they are the whole of the
+ * old cache. Returns the bytes removed.
  */
 export function pruneGeomCache(dir: string, budget: number): number {
   const files: { path: string; size: number; mtime: number }[] = [];
+  let removed = 0;
   for (const sub of [dir, join(dir, 'shared')]) {
     let names: string[];
     try { names = readdirSync(sub); } catch { continue; }
     for (const n of names) {
       if (!/\.h5[gs]$/.test(n)) continue;
-      try { const s = statSync(join(sub, n)); files.push({ path: join(sub, n), size: s.size, mtime: s.mtimeMs }); } catch { /* gone */ }
+      const path = join(sub, n);
+      try {
+        const s = statSync(path);
+        if (versionOf(path) !== DECODER_VERSION) { unlinkSync(path); removed += s.size; continue; }
+        files.push({ path, size: s.size, mtime: s.mtimeMs });
+      } catch { /* gone, or in use: next time */ }
     }
   }
   let total = files.reduce((n, f) => n + f.size, 0);
-  if (total <= budget) return 0;
+  if (total <= budget) return removed;
   files.sort((a, b) => a.mtime - b.mtime);
-  let removed = 0;
   for (const f of files) {
     if (total <= budget) break;
     try { unlinkSync(f.path); total -= f.size; removed += f.size; } catch { /* in use: next time */ }
   }
   return removed;
+}
+
+/** The decoder version a blob file was written by — its header's `v`; -1 for a file that is not one. */
+function versionOf(file: string): number {
+  try { return (readHead<{ v: number }>(file).rest as { v?: number }).v ?? -1; } catch { return -1; }
 }

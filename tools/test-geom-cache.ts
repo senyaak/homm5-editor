@@ -12,7 +12,7 @@
 // record: what a decode read through the recording chain, and that touching
 // one of those files invalidates the entry while a file still missing keeps it.
 
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { assets } from '../src/game/assets.ts';
@@ -119,6 +119,12 @@ try {
   const removed = pruneGeomCache(dir, 1024);
   check('trimming to a budget removes the oldest written first', removed > 0 && loadGeomEntry(file, sharedLoader()) === null);
   check('and leaves the cache under it', pruneGeomCache(dir, 1024 * 1024 * 1024) === 0);
+  // A file of another decoder version: gone at the next trim, whatever the budget.
+  const stale = join(dir, 'stale.h5g');
+  const json = Buffer.from(JSON.stringify({ v: 0, href: '/old.xdb', deps: [], object: null }));
+  const head = Buffer.alloc(4); head.writeUInt32LE(json.byteLength, 0);
+  writeFileSync(stale, Buffer.concat([head, json]));
+  check('a file of another decoder version is removed under any budget', pruneGeomCache(dir, 1024 * 1024 * 1024) === 4 + json.byteLength && !existsSync(stale));
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }

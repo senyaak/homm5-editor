@@ -200,10 +200,19 @@ export function packBlobs<T>(payload: T, sink: BlobSink, minBytes = MIN_BYTES): 
 
 /**
  * Fetch the blob(s) the handles in `payload` name and put the arrays back, in
- * place, each in a buffer of its own — this side owns its payload, which
+ * place, as views onto the fetched bytes — this side owns its payload, which
  * arrived as a clone addressed to it. `fetchBytes` answers a blob's URL; a
  * fetch that fails fails the whole unpack, since a scene with a texture
  * missing is not a scene to draw.
+ *
+ * Views, not copies: the arrays ARE the blob, so one buffer holds the map
+ * and nothing is copied on arrival (10 000 slices of A2C1M1's 92 MB were
+ * ~60 ms of the open). The buffer lives as long as any one array does,
+ * which is as long as the map is open — the same bytes either way. The one
+ * thing a view must never do is be posted to a worker: a structured clone
+ * takes the whole buffer with it. The window has no workers that take
+ * payload arrays (the bakes moved to the scene build); one that appears
+ * again copies what it posts.
  */
 export async function unpackBlobs(
   payload: unknown, fetchBytes: (url: string) => Promise<ArrayBuffer>,
@@ -239,12 +248,7 @@ export async function unpackBlobs(
       let view = views.get(handle);
       if (!view) {
         if (handle.at + handle.length * bytesPer(handle.kind) > buf.byteLength) throw new Error(`blob ${url}: ${handle.length} ${handle.kind} at ${handle.at} is past its ${buf.byteLength} bytes`);
-        // Its OWN buffer, not a view onto the blob: a view drags the whole blob
-        // along wherever it is cloned — the bake worker is posted one kind's clip
-        // and would receive the map's 150 MB with it, once per kind (it ran out
-        // of memory doing so) — and keeps the blob alive for as long as any one
-        // array lives. The copy is a memcpy of what arrived, once.
-        view = new KINDS[handle.kind](buf, handle.at, handle.length).slice();
+        view = new KINDS[handle.kind](buf, handle.at, handle.length);
         views.set(handle, view);
       }
       (holder as Record<string | number, unknown>)[key] = view;

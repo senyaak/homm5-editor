@@ -165,3 +165,15 @@ tried and dropped, and what is left is in [SLICE_fx_performance.md](../SLICE_fx_
   2.1 for the first, which still decoded 43 of its 89 models — and the
   scenes decode DXT textures like the map now (the child was never told
   the GPU takes them).
+- The window's share of a warm open, measured frame by frame (`view.perf()`
+  reports the last frames one by one now, and Chromium's long frames with
+  their start time): the blob's arrays are views onto the fetched bytes
+  rather than ten thousand copies (~60 ms), and the effects' atlases are
+  laid out by row copies with the GPU's sampler doing the stretch a
+  bilinear loop did (a frame sits in its cell at its own size, and the
+  shader scales into it) — A2C1M1's `buildWorld` 245 → ~145 ms, the
+  effects' build 190 → 60–90. The picture is the previous build's to the
+  phase of the run. Found on the way: a decoder-version bump left every
+  model entry pointing at shared entries of the old version, which are
+  never rewritten — the version is in a shared entry's name now, and a
+  trim removes files of another version first.

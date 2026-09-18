@@ -28,6 +28,7 @@ const LOAF_KEPT = 50;
 const frameMs = new Float32Array(RING);
 const jsMs = new Float32Array(RING);
 let head = 0, count = 0;
+const RECENT = 128;
 let calls = 0, triangles = 0;
 /** The loop's sections, each its own ring — where inside our JS the time goes. */
 const sections = new Map<string, Float32Array>();
@@ -45,6 +46,8 @@ export function lap(name: string): void {
 
 /** One long animation frame, as Chromium attributes it. */
 export interface LongFrame {
+  /** When it started, on the page's clock (`performance.now()`), so a frame can be placed against a map open's marks. */
+  at: number;
   /** Total duration of the animation frame, ms. */
   duration: number;
   /** The part of it that blocked input, ms. */
@@ -153,6 +156,8 @@ export function perfStats(): {
   js: { p50: number; p95: number; max: number };
   calls: number; triangles: number;
   textures: number; geometries: number;
+  /** Shader programs three holds — every distinct material/object parameter set drawn so far. */
+  programs: number;
   pixelRatio: number; size: number[];
   sections: Record<string, { p50: number; p95: number; max: number }>;
   fx: ReturnType<typeof fxSummary>;
@@ -163,7 +168,16 @@ export function perfStats(): {
   bakes: ReturnType<typeof bakeStats>;
   draws: ReturnType<typeof drawBreakdown>;
   loaf: LongFrame[];
+  /** The last few frames one by one, oldest first — for the frames right after a map lands, which no percentile shows. */
+  recent: { frame: number; js: number; sections: Record<string, number> }[];
 } {
+  const recent: { frame: number; js: number; sections: Record<string, number> }[] = [];
+  for (let k = Math.min(count, RECENT); k > 0; k--) {
+    const i = (head - k + RING) % RING;
+    const s: Record<string, number> = {};
+    for (const [name, ring] of sections) s[name] = ring[i]!;
+    recent.push({ frame: frameMs[i]!, js: jsMs[i]!, sections: s });
+  }
   const it = idleTableStats();
   const sec: Record<string, { p50: number; p95: number; max: number }> = {};
   for (const [name, ring] of sections) sec[name] = percentiles(ring);
@@ -174,6 +188,7 @@ export function perfStats(): {
     calls, triangles,
     textures: renderer.info.memory.textures,
     geometries: renderer.info.memory.geometries,
+    programs: renderer.info.programs?.length ?? 0,
     pixelRatio: renderer.getPixelRatio(),
     size: [renderer.domElement.width, renderer.domElement.height],
     sections: sec,
@@ -186,6 +201,7 @@ export function perfStats(): {
     bakes: bakeStats(),
     draws: drawBreakdown(),
     loaf: [...loaf],
+    recent,
   };
 }
 
@@ -201,6 +217,7 @@ try {
         .sort((a, b) => b.duration - a.duration)
         .map((s) => `${s.name || s.invoker || '?'} ${s.duration | 0}ms @${(s.sourceURL ?? '').split('/').pop()}:${s.sourceCharPosition ?? ''}`);
       loaf.push({
+        at: e.startTime,
         duration: e.duration,
         blocking: e.blockingDuration,
         render: e.renderStart ? e.styleAndLayoutStart - e.renderStart : 0,
