@@ -25,9 +25,11 @@
 // creatures replace the first two, and the biome stock stays the game's.
 
 import { buildingGlyph, buildingIcon, raceIcon, specialButtonSkins, textureFiles, towerIcon, townIcon } from './faction-icons.ts';
+import { captureMarkerFiles } from './capture-marker.ts';
+import type { CaptureMarkerBuild } from './capture-marker.ts';
 import type { TownButton } from './town-button.ts';
 import type { IconTheme } from './faction-icons.ts';
-import { copyArt, dataPath, resolve } from './mod-art.ts';
+import { copyArt, dataPath, resolve, uidFor } from './mod-art.ts';
 import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
 import { donorObjectsOf, placeBuildingModel } from './town-screen.ts';
@@ -95,6 +97,15 @@ export interface TownSpec {
    * (the siege layout is the same eight times over), so the parts combine.
    */
   siege?: string | SiegeMix;
+  /**
+   * What the town looks like on the map: the `TownType` of a shipped town
+   * whose `Exterior` — its ten stage models with their effects and its gate
+   * geometry — replaces the donor's; or a MIX, a town per stage. The donor's
+   * own when absent. Every shipped town lists the same ten stages in the
+   * same order (`EXTERIOR_STAGES`), each one model and one effect, so the
+   * stages combine.
+   */
+  exterior?: string | ExteriorMix;
   /**
    * Who mans the towers: the Character that stands on them and the Shot it
    * fires, as hrefs. Every tower with a shooter gets this one; the donor's
@@ -192,6 +203,28 @@ const SIEGE_PARTS: Record<Exclude<keyof SiegeMix, 'arena'>, readonly string[]> =
   moat: ['MOAT'],
 };
 
+/**
+ * The ten stages of a town on the map, in the order every shipped town lists
+ * them under `Exterior/upgrades` — named after the models' files
+ * (`Heaven-town_mg_wall1.xdb`): the hall's level (town, city, capital),
+ * the magic guild (`mg`) and the walls (1, 2).
+ */
+export const EXTERIOR_STAGES = [
+  'town', 'town_wall1', 'town_wall2', 'town_mg', 'town_mg_wall1', 'town_mg_wall2',
+  'city_mg', 'city_mg_wall1', 'city_mg_wall2', 'capital_mg_wall2',
+] as const;
+export type ExteriorStage = typeof EXTERIOR_STAGES[number];
+
+/**
+ * An exterior assembled from several towns: the town whose model and effect
+ * stand at each stage, the donor's at a stage left out; and whose gate
+ * geometry the AI walks through — the donor's when absent.
+ */
+export interface ExteriorMix {
+  stages: Partial<Record<ExteriorStage, string>>;
+  gates?: string;
+}
+
 export interface TownPaths {
   dir: string;
   /** The town: `AdvMapTownShared`, ours. */
@@ -259,6 +292,8 @@ export interface TownBuild {
   raceIcon?: string;
   /** The siege tower on the initiative bar, likewise — for `ATB_TOWER_ICONS`. */
   towerIcon?: string;
+  /** The sign over an owned town and its flag, in every player's colour — for `patchColourSchemes` (capture-marker.ts). */
+  captureMarker?: CaptureMarkerBuild;
   /** The centre button's building, function and skins, for the faction to register (town-button.ts). */
   button?: Omit<TownButton, 'town'>;
 }
@@ -333,6 +368,30 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       }
       seeded.set(arenaPath, arena);
     }
+  }
+  // Another town's exterior goes in the same way, before the walk: the whole
+  // `AdvMapTownExterior`, or the donor's with a stage swapped for another
+  // town's item — every href in a part taken from elsewhere made absolute
+  // first, so the walk copies what the part names as it copies the rest.
+  if (spec.exterior) {
+    const whole = typeof spec.exterior === 'string' ? spec.exterior : null;
+    const mix: ExteriorMix = typeof spec.exterior === 'string' ? { stages: {} } : spec.exterior;
+    const exteriorFrom = (type: string): string => exteriorOf(type === spec.donor ? source : donorTown(type, read), read, type);
+    let exterior = exteriorFrom(whole ?? spec.donor);
+    const ours = stagesOf(exterior, whole ?? spec.donor);
+    for (const [stage, from] of Object.entries(mix.stages) as [ExteriorStage, string][]) {
+      const i = EXTERIOR_STAGES.indexOf(stage);
+      if (i < 0) throw new Error(`no exterior stage ${stage} — the ten are ${EXTERIOR_STAGES.join(', ')}`);
+      if (from === spec.donor) continue;
+      exterior = exterior.replace(ours[i]!, stagesOf(exteriorFrom(from), from)[i]!);
+    }
+    if (mix.gates && mix.gates !== spec.donor) {
+      exterior = exterior.replace(gatesOf(exterior, spec.donor), gatesOf(exteriorFrom(mix.gates), mix.gates));
+    }
+    const donor = seeded.get(source) ?? mustRead(read, source);
+    const [es, ee] = exteriorSpan(donor, spec.donor);
+    const id = `item_${uidFor(`exterior:${spec.file}`).toLowerCase()}`;
+    seeded.set(source, `${donor.slice(0, es)}<Exterior href="#n:inline(AdvMapTownExterior)" id="${id}">${EOL}\t\t${exterior}${EOL}\t</Exterior>${donor.slice(ee)}`);
   }
   // A dropped building leaves the donor's list BEFORE the walk too, so its
   // record, its texts and its icon are never copied; and a re-parented one
@@ -501,7 +560,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   }
 
   // The icons, drawn: one per building record, the town's two, the race's.
-  let race: string | undefined, tower: string | undefined;
+  let race: string | undefined, tower: string | undefined, captureMarker: CaptureMarkerBuild | undefined;
   if (spec.icons) {
     const theme = spec.icons;
     const put = (name: string, image: ReturnType<typeof townIcon>): string => {
@@ -520,6 +579,8 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     files.set(p.shared, Buffer.from(town, 'latin1'));
     race = put('race', raceIcon(theme)).replace(/#.*$/, '').slice(1);
     tower = put('tower', towerIcon(theme)).replace(/#.*$/, '').slice(1);
+    captureMarker = captureMarkerFiles(spec, theme, read);
+    for (const f of captureMarker.files) files.set(f.path, f.data);
   }
 
   // The centre button: one building's, its skins drawn from the theme.
@@ -544,6 +605,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     paths: p, at: copy.at, records, stopped: copy.stopped, missing: copy.missing,
     ...(race ? { raceIcon: race } : {}),
     ...(tower ? { towerIcon: tower } : {}),
+    ...(captureMarker ? { captureMarker } : {}),
     ...(button ? { button } : {}),
   };
 }
@@ -568,6 +630,65 @@ function buildingsOf(combat: string): { type: string; text: string }[] {
     if (type) out.push({ type, text: m[0] });
   }
   return out;
+}
+
+/** Where a town document's `Exterior` element begins and ends — inline with a body, or one line with an href. */
+function exteriorSpan(text: string, what: string): [number, number] {
+  const start = once(text, '<Exterior ', `${what} exterior`);
+  const oneLine = text.indexOf('/>', start), body = text.indexOf('>', start);
+  if (oneLine === body - 1) return [start, oneLine + '/>'.length];
+  return [start, once(text, '</Exterior>', `${what} exterior end`) + '</Exterior>'.length];
+}
+
+/**
+ * A town's `AdvMapTownExterior` element, whole, with every href in it made
+ * absolute — so it can stand in another document. Seven shipped towns write
+ * it inline in the shared document; Stronghold keeps it in a document of its
+ * own beside it.
+ */
+function exteriorOf(sharedPath: string, read: DataReader, what: string): string {
+  const shared = mustRead(read, sharedPath);
+  const href = hrefOf(shared, 'Exterior');
+  if (!href) throw new Error(`${what}: no <Exterior> in ${sharedPath}`);
+  let text: string, from: string;
+  if (href.startsWith('#n:inline')) {
+    const s = once(shared, '<AdvMapTownExterior', `${what} exterior`);
+    const e = once(shared, '</AdvMapTownExterior>', `${what} exterior end`) + '</AdvMapTownExterior>'.length;
+    text = shared.slice(s, e);
+    from = sharedPath;
+  } else {
+    const path = resolve(sharedPath, href);
+    if (!path) throw new Error(`${what}: the exterior's href ${href} names nothing`);
+    from = path;
+    const doc = mustRead(read, path);
+    const s = once(doc, '<AdvMapTownExterior', `${what} exterior`);
+    const e = once(doc, '</AdvMapTownExterior>', `${what} exterior end`) + '</AdvMapTownExterior>'.length;
+    text = doc.slice(s, e);
+  }
+  return text.replace(/href="([^"#][^"]*)"/g, (whole, h: string) => {
+    if (h.startsWith('/') || h.startsWith('\\')) return whole;
+    const target = resolve(from, h);
+    if (!target) return whole;
+    const hash = h.indexOf('#');
+    return `href="/${target}${hash < 0 ? '' : h.slice(hash)}"`;
+  });
+}
+
+/** The exterior's stage items, whole, in the shipped order — exactly ten. */
+function stagesOf(exterior: string, what: string): string[] {
+  const s = once(exterior, '<upgrades>', `${what} exterior stages`);
+  const e = once(exterior, '</upgrades>', `${what} exterior stages end`);
+  const items = [...exterior.slice(s, e).matchAll(/<Item>[\s\S]*?<\/Item>/g)].map((m) => m[0]);
+  if (items.length !== EXTERIOR_STAGES.length) throw new Error(`${what}'s exterior has ${items.length} stages, not ${EXTERIOR_STAGES.length}`);
+  return items;
+}
+
+/** The exterior's gate geometry element, whole — inline with a body, or one line with an href. */
+function gatesOf(exterior: string, what: string): string {
+  const start = once(exterior, '<Gates', `${what} exterior gates`);
+  const oneLine = exterior.indexOf('/>', start), body = exterior.indexOf('>', start);
+  if (oneLine === body - 1) return exterior.slice(start, oneLine + '/>'.length);
+  return exterior.slice(start, once(exterior, '</Gates>', `${what} exterior gates end`) + '</Gates>'.length);
 }
 
 // --- the building tree --------------------------------------------------------

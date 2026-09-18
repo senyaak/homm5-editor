@@ -106,6 +106,19 @@ pre-release.
 - A faction's adventure-map Lua (`TownSpec.script`) is a file of the
   mod's under `scripts/homm5-editor/`, loaded by the mod's global script on
   every map — where the button's function lives.
+- A faction's town looks like what it is told on the map: `TownSpec.exterior`
+  takes another shipped town's whole exterior or a MIX, a town per stage
+  (`EXTERIOR_STAGES`, the ten every town lists) plus whose gate, spliced into
+  the donor's document before the copy walks it (`test-town-exterior`).
+- A captured town of a faction carries its owner's colour and the race's
+  crest, like a shipped one: `src/mods/capture-marker.ts` draws the sign and
+  the flag in the eight player colours and puts the faction's item into every
+  record of `UI/RefTables/PlayerColourSchemes.xdb`, ninth, before the grey
+  one that mines and dwellings index (`test-capture-marker`).
+- The extension no longer speaks into a dead battle: the host it mirrors the
+  log into is forgotten when the engine closes the combat, and checked for
+  life before every line — opening the town screen after a fight crashed on
+  the freed host.
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were

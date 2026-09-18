@@ -213,8 +213,15 @@ fully, in the probe, one launch per question.
   type pointed at the name. **To launch:** is it lit (the lightmap is baked
   per ArenaDesc uid), picked, flown to. The probe puts the Necropolis graves
   on the shipyard's spot.
-- **1e. The exterior.** The ten stage models on the map: another town's,
-  or a mix by level, the way the siege mixes.
+- **1e. The exterior — DONE (2026-09-18, launches 31–32).** `TownSpec.exterior`:
+  another town's whole `Exterior` or a mix per stage, gate named separately
+  (town-files.ts, `EXTERIOR_STAGES`). The stage is `0xAC7980`: hall ≤ 2 →
+  walls (0 none, 1 fort or citadel, 2 castle) + 3 with the guild; hall 3 →
+  6 + walls; hall 4 → 9. Launch 32 showed Necropolis, Dungeon and Haven
+  stages in turn. **Debt:** a black stripe before the entrance on the
+  Necropolis stages only — not looked into. **Found on the way:** the sign
+  over an owned town (`PlayerColourSchemes.xdb`, capture-marker.ts) — done,
+  the red skull stands over the town.
 - **1f. Texts.** Building names and descriptions, the town name, the
   race's own name — written by the copy from the spec, the way the named
   towns already are. **To find:** the text the town window's "Race:" line
