@@ -310,7 +310,13 @@ view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
   models — a `BatchedMesh` with instances, which three r160 does not have
   (its BatchedMesh copies the geometry per object; instancing of a
   geometry inside a batch arrived in r165+), so that step is a three
-  upgrade first.
+  upgrade first. **What it would buy**, from the mix stress map's
+  breakdown: its static batches are 469 meshes issuing 775 draws over
+  **148** distinct materials — the trees share their bark and leaves —
+  so one draw per material would take 775 → 148, some 40% of that
+  frame's 1494 calls; on A2C1M1 235 → 111. The creature kinds gain
+  nothing there (326 draws over 322 materials) and the effects are a
+  draw per batch by construction.
 * `map:load` is 11.6 s. The worst number on the page, and not in a frame.
 
 ### 7a. Under a map no designer would make (`tools/perf-stress.ts`, 2026-09-17)
@@ -323,6 +329,7 @@ from three views, then saved and reopened. Idle `all`, effects on.
 | effects (chests, fires, wisps, haze, crystals) | 1500 | 757 | 16.7 (4.4) | 4.3 | 1295 copies / 56 batches | 122 | 53 MB | 6 + 1.6 MB | — / 621 MB | 1.6 s |
 | creatures (182 kinds) | 1200 | 2990 | 18.8 (18.3) | 17.0 | 1938 / 315 | 1134 | 200 MB | 28 + 104 MB | 670 MB / 2.5 GB | 15.6 s |
 | mix (fires, monsters, trees) | 2400 | 3100 | 27.8 (27.4) | 26.2 | 2254 / 528 | 715 | 478 MB | 28 + 104 MB | 803 MB / 3.3 GB | 24 s |
+| mix again, 2026-09-18 evening (`perf/load-and-edits`) | 2000 | **1494** | 16.7 (13.5) | 11.8 | 1779 / 528 | 591 | **131 MB** | 35 + 104 MB | 850 MB / **1.7 GB** | **11.6 s** |
 
 What it says, in the order it matters:
 
