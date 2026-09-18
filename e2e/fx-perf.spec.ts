@@ -80,7 +80,7 @@ test('A2C1M1: the frame with effects on and off', { tag: '@data' }, async () => 
   await page.waitForFunction(() => window.view.idle().fx > 0, null, { timeout: 60_000 });
   await page.waitForFunction(() => {
     const p = window.view.perf();
-    return p.fx.batches > 0 && p.fx.atlases === p.fx.batches;
+    return p.fx.batches > 0 && p.fx.atlases === p.fx.batches && p.bakes.pending === 0;
   }, null, { timeout: 120_000 });
   const fxReadyMs = Date.now() - t0;
   // Effects on, whatever the profile remembers.
@@ -96,7 +96,7 @@ test('A2C1M1: the frame with effects on and off', { tag: '@data' }, async () => 
   const metrics = await page.evaluate(() => window.editor.appMetrics());
 
   const report = [
-    `map:load ${loadMs} ms · effects ready at ${fxReadyMs} ms`,
+    `map:load ${loadMs} ms · effects ready at ${fxReadyMs} ms · bakes: ${Object.entries(on.bakes).filter(([k]) => k !== 'pending').map(([k, v]) => `${k} ${(v as { n: number; ms: number }).n} in ${(v as { n: number; ms: number }).ms | 0} ms`).join(', ')}`,
     `${on.size[0]}×${on.size[1]} @ pixelRatio ${on.pixelRatio}`,
     line('on', on),
     line('off', off),

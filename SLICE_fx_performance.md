@@ -330,10 +330,22 @@ What it says, in the order it matters:
   go after upload), decoded texture data three keeps referenced after upload,
   the bone tables (216 → 104 MB after dropping the world rows; half-float
   would halve again).
-* **Load is seconds per thousand objects** — 24 s for the mix — and it janks
+* ~~**Load is seconds per thousand objects** — 24 s for the mix — and it janks
   for up to 3 s at a time: the idle tables bake at ~21 ms a kind on the main
   thread (4 s for 182 kinds), the effect tables up to 280 ms each. A worker,
-  or a bake that yields.
+  or a bake that yields.~~ **The bakes are in workers** (2026-09-18):
+  `bakery.ts` hands a skin or a recording to one of up to four workers
+  (`workers/bake.ts`, its own esbuild bundle) and the table lands when it
+  lands — a creature stands at rest till then (`restTable`), an effect draws
+  nothing. Measured with `view.perf().bakes` and Chromium's long frames on
+  A2C1M1: buildWorld 520 → 310 ms, the effects' build 560 → 200 (137 of it
+  the atlases, still here), the load's long frames 3.3 → 2.6 s in total;
+  creature stress map buildWorld 2.4 s → 0.8. What the load still stalls
+  on, in order: the main-process decode (`loadMap` 6.5 s on A2C1M1, 12 s on
+  the creature map — the renderer is free but the user waits), the first
+  render's texture uploads (~330 ms of `render` plus the GPU's time), the
+  payload's deserialisation (~300 ms), buildWorld's own 300 ms, and the
+  atlases (137 ms; frames could go to the worker too).
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,

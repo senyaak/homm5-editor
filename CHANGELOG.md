@@ -60,6 +60,13 @@ pre-release.
   them out again on every placement (~95 ms of the ~110 a placement cost on
   a 2700-object map; 14 ms now). The undo recorder's document diff skips
   unchanged blocks natively (3 ms → 0.2 on a megabyte map).
+- The tables a map opens with — every creature kind's idle, every effect's
+  recording — are baked in worker threads instead of freezing the window
+  for the batch: creatures stand at rest and effects wait until their table
+  lands, a few hundred milliseconds in. A2C1M1's scene build went from 520
+  to 310 ms and its effects' from 560 to 200; on the creature stress map
+  the scene build was 2.4 s and is 0.8. `view.perf()` reports the bakes
+  (count, milliseconds, still pending).
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

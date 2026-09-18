@@ -18,7 +18,8 @@ import type { Floor3D } from '#core/state.ts';
 import type { Instance, SkinnedGeom } from '#src/scene/payload.ts';
 import { worldGeos, worldMats, geomSkin } from '#viewport/geoms.ts';
 import { markShadowRoles, markShadowsDirty } from '#viewport/shadows.ts';
-import { bakeBoneTable, SkinnedInstances, TableSkeleton } from '#viewport/skinning.ts';
+import { bakeIdle } from '#viewport/bakery.ts';
+import { restTable, SkinnedInstances, TableSkeleton } from '#viewport/skinning.ts';
 import type { IdleBody, IdleKind } from '#viewport/skinning.ts';
 import { cam } from '#viewport/stage.ts';
 
@@ -46,16 +47,18 @@ const NOWHERE = new THREE.Matrix4().makeScale(0, 0, 0);
  */
 const skeletons = new Map<SkinnedGeom, { skel: TableSkeleton; refs: number }>();
 
-function skeletonFor(skin: SkinnedGeom, geo: THREE.BufferGeometry, mat: THREE.Material[]): TableSkeleton | null {
+function skeletonFor(skin: SkinnedGeom): TableSkeleton | null {
   const have = skeletons.get(skin);
   if (have) { have.refs++; return have.skel; }
-  const t0 = performance.now();
-  const table = bakeBoneTable(skin, geo, mat);
-  if (!table) return null;
-  const ms = performance.now() - t0;
-  if (ms > 20) console.log(`[perf] idle table: ${table.frames} frames × ${table.bones} bones in ${ms | 0}ms`);
-  const skel = new TableSkeleton(table);
+  // Over the rest pose now, over the baked idle when the bakery hands it
+  // back — unless every kind of the creature is gone by then.
+  const rest = restTable(skin);
+  if (!rest) return null;
+  const skel = new TableSkeleton(rest);
   skeletons.set(skin, { skel, refs: 1 });
+  void bakeIdle(skin).then((table) => {
+    if (table && skeletons.get(skin)?.skel === skel) skel.setTable(table);
+  });
   return skel;
 }
 
@@ -183,7 +186,7 @@ export function addIdle(objGroup: THREE.Group, list: IdleBody[], kinds: Map<Skin
   if (!skin || !geo || !mat) return false;
   let kind = kinds.get(skin);
   if (!kind) {
-    const skel = skeletonFor(skin, geo, mat);
+    const skel = skeletonFor(skin);
     if (!skel) return false;
     kind = { mesh: makeDraw(geo, mat, 1 + KIND_HEADROOM, skel), skel, skin, bodies: [] };
     kinds.set(skin, kind);

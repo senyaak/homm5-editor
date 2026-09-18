@@ -147,7 +147,7 @@ try {
   await page.evaluate((p) => window.view.open(p), mapPath);
   await page.waitForFunction(() => window.view.size() > 0, undefined, { timeout: 300_000 });
   const loadMs = Date.now() - t1;
-  await page.waitForFunction(() => { const p = window.view.perf(); return p.fx.batches === 0 || p.fx.atlases === p.fx.batches; }, null, { timeout: 300_000 });
+  await page.waitForFunction(() => { const p = window.view.perf(); return (p.fx.batches === 0 || p.fx.atlases === p.fx.batches) && p.bakes.pending === 0; }, null, { timeout: 300_000 });
   const readyMs = Date.now() - t1;
   console.log(`[perf] reopen: map:load ${loadMs} ms · effects ready at ${readyMs} ms`);
   const reopened = await read('reopened');

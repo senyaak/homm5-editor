@@ -46,9 +46,10 @@ export async function loadFx(floors: Floor3D[]): Promise<void> {
   if (!geomFx.size) return;
   const uids = [...new Set([...geomFx.values()].flat().map((f) => f.uid))];
   const bank = await api.fx(uids);
+  const t0 = performance.now();
   let built = 0, batches = 0;
   for (const fl of floors) { built += buildFx(fl, bank); batches += fl.fx.length; }
-  if (built) console.log(`[perf] effects: ${built} cop${built === 1 ? 'y' : 'ies'} in ${batches} batch(es) over ${uids.length} unique effect(s)`);
+  if (built) console.log(`[perf] effects: ${built} cop${built === 1 ? 'y' : 'ies'} in ${batches} batch(es) over ${uids.length} unique effect(s), built in ${(performance.now() - t0) | 0}ms`);
 }
 
 /** Place the copies for the objects standing on one floor, from a fetched bank. */

@@ -18,6 +18,7 @@ import { renderer } from '#viewport/stage.ts';
 import { fxAtlasStats, fxTableStats } from '#viewport/particles.ts';
 import { idleTableStats } from '#viewport/idle.ts';
 import { shadowRedraws } from '#viewport/shadows.ts';
+import { bakeStats } from '#viewport/bakes.ts';
 
 /** Frames kept for the percentiles — ten seconds at 60 Hz. */
 const RING = 600;
@@ -123,6 +124,7 @@ export function perfStats(): {
   jsHeapBytes: number;
   /** Shadow-map redraws so far, and how many were asked for by a change (the rest: the view moved, or the periodic refresh). */
   shadow: { redraws: number; dirty: number };
+  bakes: ReturnType<typeof bakeStats>;
   loaf: LongFrame[];
 } {
   const it = idleTableStats();
@@ -144,6 +146,7 @@ export function perfStats(): {
     // a big map's memory is ours (JS) or the GPU's.
     jsHeapBytes: (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0,
     shadow: shadowRedraws(),
+    bakes: bakeStats(),
     loaf: [...loaf],
   };
 }

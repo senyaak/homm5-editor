@@ -149,7 +149,7 @@ export class TableSkeleton extends THREE.Skeleton {
   time = 0;
   /** The row `boneMatrices` currently holds; -1 before the first update. */
   private row = -1;
-  readonly table: BoneTable;
+  table: BoneTable;
   constructor(table: BoneTable) {
     super([], []);
     this.table = table;
@@ -161,6 +161,16 @@ export class TableSkeleton extends THREE.Skeleton {
     this.boneMatrices = new Float32Array(size * size * 4);
     this.boneTexture = new THREE.DataTexture(this.boneMatrices, size, size, THREE.RGBAFormat, THREE.FloatType);
     this.boneTexture.needsUpdate = true;
+  }
+  /**
+   * The baked table, arriving after the skeleton was made over the rest
+   * table (`restTable`): the same bones, so the texture fits; the row and
+   * the bone cache are forgotten so the next frame comes from it.
+   */
+  setTable(table: BoneTable): void {
+    this.table = table;
+    this.row = -1;
+    this.worldCache.clear();
   }
   /** The frame `time` falls on — the table is a loop, so it wraps. */
   frameAt(): number {
@@ -209,6 +219,25 @@ export interface BoneTable {
   bind: Float32Array;
 }
 const _bind = new THREE.Matrix4();
+
+/**
+ * A skin at rest, as a one-frame table: what a body is drawn from until its
+ * idle is baked (bakery.ts). An offset row of identities is the bind pose —
+ * `world × boneInverse` is the identity exactly when the bone stands where
+ * it was bound — and the bind matrices are the inverses the skin carries,
+ * inverted back. The duration is the clip's, so the clock runs on.
+ */
+export function restTable(skin: SkinnedGeom): BoneTable | null {
+  if (!skin.clip || !skin.bones.length) return null;
+  const bones = skin.bones.length;
+  const offsets = new Float32Array(bones * 16);
+  const bind = new Float32Array(bones * 16);
+  for (let b = 0; b < bones; b++) {
+    _bind.identity().toArray(offsets, b * 16);
+    _bind.fromArray(skin.bind[b]!).invert().toArray(bind, b * 16);
+  }
+  return { bones, frames: 1, duration: skin.clip.duration, offsets, bind };
+}
 
 /**
  * Bake a skin's idle to a table.

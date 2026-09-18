@@ -62,10 +62,11 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     // renderer's own thread is free to keep the spinner turning while it runs.
     const tReq = performance.now();
     const { scene: S, info, history, idleAnimation, textures } = await api.loadMap(path);
+    const tLoad = performance.now();
     // The pictures came once each and the scene holds handles into that table
     // — see src/scene/tex-table.ts. Put them back before anything draws.
     unpackTextures(S, textures);
-    const tLoad = performance.now();
+    const tUnpacked = performance.now();
     // The scene says which mode it was BUILT for, and that is what the view
     // follows: a map built without bones cannot be animated by asking nicely.
     setIdleMode(idleAnimation);
@@ -73,10 +74,11 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     // buildWorld DOES block this thread, so let the new message paint first —
     // the GPU-composited spinner keeps moving through the freeze regardless.
     await say('building scene…');
+    const tBuild = performance.now();
     buildWorld(S);
     // [perf] The two halves of opening a map: the main-process decode (IPC) and
     // the renderer-blocking scene build. Grep "[perf]" while chasing a stall.
-    console.log(`[perf] loadMap ${(tLoad - tReq) | 0}ms · buildWorld ${(performance.now() - tLoad) | 0}ms · ${S.geoms.length} geoms`);
+    console.log(`[perf] loadMap ${(tLoad - tReq) | 0}ms · unpack ${(tUnpacked - tLoad) | 0}ms · buildWorld ${(performance.now() - tBuild) | 0}ms · ${S.geoms.length} geoms`);
     // A history kept from a previous run is adopted when the files still hash
     // the same, so opening a map is not always a blank slate.
     updateHistoryUI(history.canUndo, history.canRedo, history.undoLabel, history.redoLabel);

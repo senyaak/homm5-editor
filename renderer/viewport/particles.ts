@@ -42,6 +42,9 @@
 import * as THREE from 'three';
 import type { FxFrame, FxInstancePayload } from '#src/scene/payload.ts';
 import type { FxTransfer } from '#src/scene/effects.ts';
+import { countBake } from '#viewport/bakes.ts';
+import { bakeFx } from '#viewport/bakery.ts';
+import { TABLE_ROW, TABLE_W } from '#viewport/fx-table.ts';
 
 /**
  * One effect, simulated once and drawn for every copy of it on a floor.
@@ -149,6 +152,7 @@ function atlasFor(textures: (FxFrame | null)[], rawColor: boolean): FxAtlas {
   const key = `${rawColor ? 'raw' : 'srgb'}|${textures.map((t) => (t ? frameKey(t) : '-')).join('|')}`;
   const have = atlases.get(key);
   if (have) { have.refs++; return have; }
+  const t0 = performance.now();
   const cols = Math.max(1, Math.ceil(Math.sqrt(textures.length)));
   const rows = Math.max(1, Math.ceil(textures.length / cols));
   const width = cols * CELL, height = rows * CELL;
@@ -176,6 +180,7 @@ function atlasFor(textures: (FxFrame | null)[], rawColor: boolean): FxAtlas {
   tex.onUpdate = () => { (tex.image as { data: Uint8Array | null }).data = null; };
   const atlas: FxAtlas = { tex, cols, rows, refs: 1, key };
   atlases.set(key, atlas);
+  countBake('atlas', performance.now() - t0);
   return atlas;
 }
 
@@ -221,10 +226,6 @@ function blitCell(f: FxFrame, data: Uint8Array, width: number, x0: number, y0: n
     }
   }
 }
-
-/** Entries per texture row: the width is `TABLE_ROW × 3` texels, well under any GPU's limit. */
-const TABLE_ROW = 1024;
-const TABLE_W = TABLE_ROW * 3;
 
 // The copy this quad instance belongs to, and its matrix — a row of four
 // texels in uMat. A slot past the copies in use draws nothing: its corner
@@ -372,10 +373,6 @@ void main() {
   outColor = vec4(s.rgb * a, a);
 }`;
 
-/** Strides of the flat [frame, ...values] channel arrays. */
-const STRIDE = { pos: 4, rot: 2, size: 3, color: 5, tex: 2 } as const;
-type Chan = keyof typeof STRIDE;
-
 /**
  * One recording, sampled frame by frame and laid out for the GPU.
  *
@@ -396,16 +393,37 @@ export interface FxTable {
 }
 const tables = new Map<string, FxTable>();
 
-/** The table for a uid — baked on first use, shared after. Pair with releaseTable. */
+/**
+ * The table for a uid — asked of the bakery on first use, shared after. Pair
+ * with releaseTable. Until the bake lands the table is empty: every frame
+ * has no entries, so the batches over it draw nothing; then its texels and
+ * counts are put in place, and the batches pick the texture up on their
+ * next update.
+ */
 function tableFor(uid: string, baked: FxTransfer): FxTable {
   const have = tables.get(uid);
   if (have) { have.refs++; return have; }
-  const t0 = performance.now();
-  const t = bakeTable(baked);
+  const frames = Math.max(1, Math.ceil(baked.duration * baked.rate));
+  const t: FxTable = { tex: tableTexture(new Uint16Array(TABLE_W * 4), 1), base: new Int32Array(frames + 1), count: new Int32Array(frames), frames, entries: 0, refs: 1 };
   tables.set(uid, t);
-  const ms = performance.now() - t0;
-  if (ms > 20) console.log(`[perf] fx table ${uid.slice(0, 8)}: ${t.entries} entries over ${t.frames} frames in ${ms | 0}ms`);
+  void bakeFx(baked).then((d) => {
+    // Released while baking: the table is nobody's now.
+    if (tables.get(uid) !== t) return;
+    t.tex.dispose();
+    t.tex = tableTexture(d.data, d.rows);
+    t.base = d.base; t.count = d.count; t.entries = d.entries;
+  });
   return t;
+}
+
+/** A table's texels as the texture the shader reads them from. */
+function tableTexture(data: Uint16Array, rows: number): THREE.DataTexture {
+  const tex = new THREE.DataTexture(data, TABLE_W, rows, THREE.RGBAFormat, THREE.HalfFloatType);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.generateMipmaps = false;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 function releaseTable(uid: string): void {
@@ -420,98 +438,6 @@ export function fxTableStats(): { tables: number; entries: number; bytes: number
   let entries = 0, bytes = 0;
   for (const t of tables.values()) { entries += t.entries; bytes += (t.tex.image.data as Uint16Array).byteLength; }
   return { tables: tables.size, entries, bytes };
-}
-
-/**
- * Sample every frame of a recording into a table.
- *
- * Walks the frames in order with a cursor per particle and channel, exactly
- * as the per-frame sampler did — the same lerp between the same keys, at the
- * recording's own integer frames. Two passes: count the entries so the
- * texture is allocated once, then fill.
- */
-export function bakeTable(baked: FxTransfer): FxTable {
-  const parts = baked.particles;
-  const frames = Math.max(1, Math.ceil(baked.duration * baked.rate));
-  const base = new Int32Array(frames + 1), count = new Int32Array(frames);
-  // Particles sorted by birth: frame f's candidates are a prefix of this order,
-  // and a particle whose death has passed is skipped, not scanned twice.
-  const order = [...parts.keys()].sort((a, b) => parts[a]!.birth - parts[b]!.birth);
-  let entries = 0, born = 0;
-  for (let f = 0; f < frames; f++) {
-    while (born < order.length && parts[order[born]!]!.birth <= f) born++;
-    let c = 0;
-    for (let i = 0; i < born; i++) {
-      const p = parts[order[i]!]!;
-      if (f > p.death) continue;
-      // Hidden frames are decided by the tex channel alone — it is stepped, so
-      // the value at f is the last key at or before it.
-      if (texAt(p.tex, f) < 0) continue;
-      c++;
-    }
-    base[f] = entries; count[f] = c; entries += c;
-  }
-  base[frames] = entries;
-  const rows = Math.max(1, Math.ceil(entries / TABLE_ROW));
-  const data = new Uint16Array(TABLE_W * rows * 4);
-  const cursors = { pos: new Int32Array(parts.length), rot: new Int32Array(parts.length), size: new Int32Array(parts.length), color: new Int32Array(parts.length), tex: new Int32Array(parts.length) };
-  const v: number[] = [0, 0, 0, 0];
-  const half = THREE.DataUtils.toHalfFloat;
-  let e = 0;
-  born = 0;
-  for (let f = 0; f < frames; f++) {
-    while (born < order.length && parts[order[born]!]!.birth <= f) born++;
-    for (let i = 0; i < born; i++) {
-      const pi = order[i]!, p = parts[pi]!;
-      if (f > p.death) continue;
-      const ch = (name: Chan, arr: Float32Array, lerp: boolean): void => {
-        cursors[name][pi] = sample(arr, STRIDE[name], cursors[name][pi]!, f, v, lerp);
-      };
-      ch('tex', p.tex, false);
-      if (v[0]! < 0) continue;
-      const o = e * 12;
-      data[o + 6] = half(v[0]!);
-      ch('pos', p.pos, true);
-      data[o] = half(v[0]!); data[o + 1] = half(v[1]!); data[o + 2] = half(v[2]!);
-      ch('rot', p.rot, true);
-      data[o + 3] = half(v[0]!);
-      ch('size', p.size, true);
-      data[o + 4] = half(Math.abs(v[0]!)); data[o + 5] = half(Math.abs(v[1]!));
-      ch('color', p.color, true);
-      data[o + 8] = half(v[0]! / 255); data[o + 9] = half(v[1]! / 255);
-      data[o + 10] = half(v[2]! / 255); data[o + 11] = half(v[3]! / 255);
-      e++;
-    }
-  }
-  const tex = new THREE.DataTexture(data, TABLE_W, rows, THREE.RGBAFormat, THREE.HalfFloatType);
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
-  tex.generateMipmaps = false;
-  tex.needsUpdate = true;
-  return { tex, base, count, frames, entries, refs: 1 };
-}
-
-/** The tex channel's value at frame f: stepped, so the last key at or before f. */
-function texAt(a: Float32Array, f: number): number {
-  let k = 0;
-  while ((k + 1) * 2 < a.length && a[(k + 1) * 2]! <= f) k++;
-  return a[k * 2 + 1]!;
-}
-
-/**
- * Sample a flat channel at frame `f`, linearly interpolated, into `out`
- * starting at `at`. `cur` is this channel's cursor (last key at or before f),
- * advanced in place — frames only move forward between calls until the loop
- * wraps and the caller resets it.
- */
-function sample(a: Float32Array, stride: number, cur: number, f: number, out: number[], lerp: boolean): number {
-  const keys = a.length / stride;
-  while (cur + 1 < keys && a[(cur + 1) * stride]! <= f) cur++;
-  const k0 = cur * stride, k1 = Math.min(cur + 1, keys - 1) * stride;
-  const f0 = a[k0]!, f1 = a[k1]!;
-  const t = lerp && f1 > f0 ? Math.min(1, Math.max(0, (f - f0) / (f1 - f0))) : 0;
-  for (let i = 1; i < stride; i++) out[i - 1] = a[k0 + i]! + (a[k1 + i]! - a[k0 + i]!) * t;
-  return cur;
 }
 
 /** The unlit instances' fixed tint — one shared object, never mutated. */
@@ -643,6 +569,8 @@ export function createFxBatch(
     // the table; the shader draws them back to back.
     update(seconds: number) {
       if (!this.copies) return;
+      // The table's texture is replaced when its bake lands (tableFor).
+      if (mat.uniforms.uTable!.value !== table.tex) mat.uniforms.uTable!.value = table.tex;
       // Every copy of an effect is at the same t. The per-placement phase
       // that used to be added here (so thirty campfires would not flicker in
       // step) was the editor's own invention, not the game's, and it was the

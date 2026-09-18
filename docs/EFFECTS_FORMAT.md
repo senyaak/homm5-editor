@@ -172,7 +172,10 @@ particles of each frame, three half-float texels each, one table per uid
 however many instances play it (24 MB for A2C1M1's 82) — and a frame update
 only decides which copies of the trigger train are playing and at which
 frame each is: at most eight (base, count) segments as uniforms, from which
-the vertex shader finds its particle. Playback steps at the recording's rate
+the vertex shader finds its particle. The sampling runs in a worker
+(`renderer/viewport/fx-table.ts` is the arithmetic, `bakery.ts` the door):
+a batch draws nothing until its uid's table lands, then plays from wherever
+the clock is. Playback steps at the recording's rate
 (30 Hz) rather than lerping between keys per display frame. One shared clock
 and no per-placement phase: identical objects flicker in step, being one
 recording — which is what makes the sharing possible. The static stand-in

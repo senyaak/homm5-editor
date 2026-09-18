@@ -26,6 +26,12 @@ export const options = {
   outfile: join(root, 'renderer', 'app.js'),
   sourcemap: true,
 };
+/** The bake worker (renderer/workers/bake.ts): its own bundle, loaded by the page's next to app.js. */
+export const workerOptions = {
+  ...options,
+  entryPoints: [join(root, 'renderer', 'workers', 'bake.ts')],
+  outfile: join(root, 'renderer', 'bake-worker.js'),
+};
 
 /**
  * Assemble renderer/index.html from the shell and its parts.
@@ -58,7 +64,7 @@ export function buildPage(): void {
 /** Build once. Throws if the page is incomplete or the bundle does not compile. */
 export async function buildRenderer(): Promise<void> {
   buildPage();
-  await build(options);
+  await Promise.all([build(options), build(workerOptions)]);
 }
 
 // pathToFileURL, not string surgery: the repo lives under a path with spaces,
@@ -71,7 +77,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     buildPage();
     const ctx = await context(options);
     await ctx.watch();
-    console.log('watching renderer/app.ts');
+    const wctx = await context(workerOptions);
+    await wctx.watch();
+    console.log('watching renderer/app.ts and renderer/workers/bake.ts');
   } else {
     await buildRenderer();
     console.log('renderer/index.html and renderer/app.js built');

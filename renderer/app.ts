@@ -615,6 +615,8 @@ interface ViewApi {
     jsHeapBytes: number;
     /** Shadow-map redraws since start, and how many a change asked for (shadows.ts). */
     shadow: { redraws: number; dirty: number };
+    /** The bakes since the map opened — idle bone tables, effect tables, effect atlases: how many, and their milliseconds in the workers — and how many are still out. */
+    bakes: Record<'idle' | 'fx' | 'atlas', { n: number; ms: number }> & { pending: number };
     loaf: LongFrame[];
   };
   /** Forget the frames and long frames seen so far — to measure from here. */

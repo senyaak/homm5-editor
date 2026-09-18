@@ -157,8 +157,12 @@ baked once per kind to a table of skinning matrices at 30 Hz (`bakeBoneTable`,
 with the same lerp and slerp as the per-frame path) and one `TableSkeleton`
 per kind — a skeleton with no bones, whose bone texture is the table's
 current row — poses them all. Nothing is posed or drawn per body; `visible`
-empties the slots of the bodies whose origin is off screen. The scene player
-keeps real bones (`makeIdle`/`poseIdle`): its actors play clips of their own.
+empties the slots of the bodies whose origin is off screen. The bake runs in
+a worker (`renderer/viewport/bakery.ts`, `renderer/workers/bake.ts`): a body
+stands in its rest pose — a one-frame table of identities, which under a
+detached bind is the bind pose — until its kind's table lands, a few hundred
+milliseconds into the map. The scene player keeps real bones
+(`makeIdle`/`poseIdle`): its actors play clips of their own.
 
 **A baked clip carries SCALE, and for effects it is the whole animation.** The
 bake started as position + rotation, which is all a walking creature needs, and

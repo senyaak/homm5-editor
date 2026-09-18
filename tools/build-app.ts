@@ -72,7 +72,7 @@ for (const f of ['preload.cjs', 'setup-preload.cjs']) {
 // page (buildRenderer wrote it above from renderer/page.html and parts/), so
 // the parts themselves do not ship — but the stylesheets it links do. The
 // dev-only pages (harness, scene-view, terrain-view) are not part of the app.
-for (const f of ['index.html', 'setup.html', 'app.js', 'app.js.map', 'style']) {
+for (const f of ['index.html', 'setup.html', 'app.js', 'app.js.map', 'bake-worker.js', 'bake-worker.js.map', 'style']) {
   cpSync(join(root, 'renderer', f), join(out, 'renderer', f), { recursive: true });
 }
 
