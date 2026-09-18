@@ -42,7 +42,14 @@ pre-release.
   the picker's clamp) and writes the extension's races, buildings and magic
   files whole; removing the last faction puts all of them back. The town
   copier no longer refuses Necropolis as a donor (its Ruined Tower depends on
-  Sylvan's fort in the shipped data). A building's model can be a file of
+  Sylvan's fort in the shipped data). Files of your own everywhere a donor's
+  would go: a building's model in the town screen, a model at any exterior
+  stage on the map, and a PNG or GIF for any icon — a building's, the town's
+  two, the race tile, the siege tower, the four of the kingdom overview, the
+  dial button's three skins — each fitted to its size; a slot left blank is
+  the theme's or the donor's. Words of your own too: the picker's tooltip
+  and a named town's bonus, beside the names and descriptions already there.
+  A building's model can be a file of
   your own on disk ("file…" beside the field): its folder is read as a data
   root — the geometry document beside it, the binaries under `bin/` as the
   game keys them — and copied exactly as a shipped model is.

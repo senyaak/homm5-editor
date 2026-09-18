@@ -17,7 +17,7 @@
 // Light. The table's size is data (`types.xml`, `Table_TownTypeInfo_TownType`)
 // and moves with the type; that is the mod's business, not this file's.
 
-import { buildingGlyph, buildingIcon, textureFiles } from './faction-icons.ts';
+import { buildingGlyph, buildingIcon, pictureIcon, textureFiles } from './faction-icons.ts';
 import type { IconTheme } from './faction-icons.ts';
 import { utf16 } from './mod-files.ts';
 import type { ModFile } from './mod-files.ts';
@@ -33,6 +33,8 @@ export const RACE_MUSIC = 'Sounds/_(Music)/TableRaceMusic.xdb';
 export interface RaceSpec {
   /** What the race is called: "Race:" in the town window, the overview, the reports. */
   name: string;
+  /** What the picker's arrows say over the tile; the name when absent. */
+  tooltip?: string;
   /** The resource silo's weekly income; the donor's when absent. */
   siloIncome?: Partial<Record<Resource, number>>;
   /** `WAR_MACHINE_BALLISTA` | `WAR_MACHINE_FIRST_AID_TENT` | `WAR_MACHINE_AMMO_CART` | `WAR_MACHINE_NONE`; the donor's when absent. */
@@ -61,15 +63,17 @@ export interface RaceFiles {
 }
 
 /** The race's name text and its four overview icons, drawn in the theme. */
-export function raceFiles(spec: Pick<TownSpec, 'file'>, race: RaceSpec, theme: IconTheme | undefined): RaceFiles {
+export function raceFiles(spec: Pick<TownSpec, 'file'>, race: RaceSpec, theme: IconTheme | undefined, kingdom?: readonly [string, string, string, string]): RaceFiles {
   const dir = `Factions/${spec.file}`;
   const name = `${dir}/race.txt`;
   const files: ModFile[] = [{ path: name, data: utf16(race.name) }];
   const kingdomIcons: string[] = [];
-  if (theme) {
+  // Pictures of ours by hall level, or the theme's hall glyphs, or the donor's.
+  if (kingdom || theme) {
     for (let level = 1; level <= 4; level++) {
       const path = `${dir}/icons/kingdom_${level}.xdb`;
-      files.push(...textureFiles(path, buildingIcon(buildingGlyph('TB_TOWN_HALL', level), theme)));
+      const image = kingdom ? pictureIcon(kingdom[level - 1]!, 128) : buildingIcon(buildingGlyph('TB_TOWN_HALL', level), theme!);
+      files.push(...textureFiles(path, image));
       kingdomIcons.push(path);
     }
   }

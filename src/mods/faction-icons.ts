@@ -16,6 +16,42 @@ import { Painter, pt, star } from '../format/paint.ts';
 import type { Color, Point } from '../format/paint.ts';
 import { writeDDS, textureDoc } from '../format/texture.ts';
 import type { ModFile } from './mod-files.ts';
+import { readFileSync } from 'node:fs';
+import { basename } from 'node:path';
+import { readPicture } from '../format/png.ts';
+import { fitSquare, magnify } from '../format/texture.ts';
+import type { BuildingKey } from './town-files.ts';
+
+/**
+ * Pictures of our own for the icons a theme would draw — PNG or GIF files on
+ * disk, each fitted to the size the game reads that icon at. Any slot given
+ * replaces the drawn one; a slot left out is drawn from the theme when there
+ * is one and kept the donor's when there is not. The same rule for all of
+ * them, so a faction can start with a theme and replace its icons one by one.
+ */
+export interface IconPictures {
+  /** The build screen's icon per building record, by key (`TB_DWELLING_1/2`), 128×128. */
+  buildings?: Readonly<Record<BuildingKey, string>>;
+  /** The town on the map and in lists, 55×55, without and with a fort. */
+  town?: string;
+  townFort?: string;
+  /** The race picker's tile, 55×55. */
+  race?: string;
+  /** The siege tower's portrait on the initiative bar, 128×128. */
+  tower?: string;
+  /** The kingdom overview's four, by hall level, 128×128. */
+  kingdom?: readonly [string, string, string, string];
+  /** The dial's centre button, 82×82: normal, pushed, disabled. */
+  button?: { normal: string; pushed: string; disabled: string };
+}
+
+/** A picture file as an icon of `size`: read, grown by whole pixels when smaller, fitted square. */
+export function pictureIcon(file: string, size: number): Image {
+  let image = readPicture(readFileSync(file), basename(file));
+  const times = Math.floor(size / Math.max(image.width, image.height));
+  if (times > 1) image = magnify(image, times);
+  return fitSquare(image, size);
+}
 
 export interface IconTheme {
   /** The field a glyph sits on. */

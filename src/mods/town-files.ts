@@ -24,12 +24,12 @@
 // and the arena's obstacle group. Those are other things: the faction's own
 // creatures replace the first two, and the biome stock stays the game's.
 
-import { buildingGlyph, buildingIcon, raceIcon, specialButtonSkins, textureFiles, towerIcon, townIcon } from './faction-icons.ts';
+import { buildingGlyph, buildingIcon, pictureIcon, raceIcon, specialButtonSkins, textureFiles, towerIcon, townIcon } from './faction-icons.ts';
 import { captureMarkerFiles } from './capture-marker.ts';
 import type { CaptureMarkerBuild } from './capture-marker.ts';
 import type { TownButton } from './town-button.ts';
 import type { RaceSpec } from './town-type-info.ts';
-import type { IconTheme } from './faction-icons.ts';
+import type { IconPictures, IconTheme } from './faction-icons.ts';
 import { grantedFeatures } from './town-features.ts';
 import type { Grant, OwnFeature } from './town-features.ts';
 import { copyArt, dataPath, resolve, uidFor } from './mod-art.ts';
@@ -142,6 +142,12 @@ export interface TownSpec {
    * the race picker (`TownBuild.raceIcon`). See faction-icons.ts.
    */
   icons?: IconTheme;
+  /**
+   * Pictures of our own for any of those icons — files on disk, each fitted
+   * to the icon's size. A slot given here wins over the theme; a slot left
+   * out is the theme's when there is one, the donor's when there is not.
+   */
+  pictures?: IconPictures;
   /**
    * The building tree, edited: by building, what changes in its copied
    * record and on the build grid, or `null` to drop it — with every upgrade
@@ -267,7 +273,10 @@ export type ExteriorStage = typeof EXTERIOR_STAGES[number];
 /**
  * An exterior assembled from several towns: the town whose model and effect
  * stand at each stage, the donor's at a stage left out; and whose gate
- * geometry the AI walks through — the donor's when absent.
+ * geometry the AI walks through — the donor's when absent. A stage may
+ * instead name a `Model` document of our own on disk (`C:\\…\\Town.xdb`,
+ * own-files.ts): that model stands at the stage, with the donor's effect
+ * for it.
  */
 export interface ExteriorMix {
   stages: Partial<Record<ExteriorStage, string>>;
@@ -424,6 +433,10 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   // `AdvMapTownExterior`, or the donor's with a stage swapped for another
   // town's item — every href in a part taken from elsewhere made absolute
   // first, so the walk copies what the part names as it copies the rest.
+  // Folders of ours mounted for the walk: a stage model on disk is read
+  // through these, by its mounted path, and copied under the town like
+  // anything else the exterior names.
+  const owns: DataReader[] = [];
   if (spec.exterior) {
     const whole = typeof spec.exterior === 'string' ? spec.exterior : null;
     const mix: ExteriorMix = typeof spec.exterior === 'string' ? { stages: {} } : spec.exterior;
@@ -434,6 +447,16 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       const i = EXTERIOR_STAGES.indexOf(stage);
       if (i < 0) throw new Error(`no exterior stage ${stage} — the ten are ${EXTERIOR_STAGES.join(', ')}`);
       if (from === spec.donor) continue;
+      if (isOwnFile(from)) {
+        // A model of ours at the stage; the effect stays the one the stage had.
+        const own = mountOwn(read, from);
+        owns.push(own.local);
+        const effect = /<Effect[^>]*\/>/.exec(ours[i]!)?.[0] ?? '<Effect/>';
+        const item = ours[i]!.replace(/<Model[^>]*\/>/, `<Model href="/${own.rel}#xpointer(/Model)"/>`).replace(/<Effect[^>]*\/>/, effect);
+        if (item === ours[i]) throw new Error(`${spec.file}: the exterior's ${stage} names no <Model> to replace`);
+        exterior = exterior.replace(ours[i]!, item);
+        continue;
+      }
       exterior = exterior.replace(ours[i]!, stagesOf(exteriorFrom(from), from)[i]!);
     }
     if (mix.gates && mix.gates !== spec.donor) {
@@ -545,7 +568,12 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   }
   const readSeeded: DataReader = (rel) => {
     const text = seeded.get(rel);
-    return text ? Buffer.from(text, 'latin1') : read(rel);
+    if (text) return Buffer.from(text, 'latin1');
+    for (const own of owns) {
+      const data = own(rel);
+      if (data) return data;
+    }
+    return read(rel);
   };
   const copy = copyArt([source], p.art, readSeeded, `town:${spec.file}`, { stopAt: TOWN_STOP_AT, leave: TOWN_LEAVE });
   const copied = copy.at.get(source)!;
@@ -692,40 +720,58 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     }
   }
 
-  // The icons, drawn: one per building record, the town's two, the race's.
+  // The icons: one per building record, the town's two, the race's, the
+  // tower's, the sign over a captured town — each a picture of ours when
+  // given, drawn from the theme when there is one, the donor's otherwise.
   let race: string | undefined, tower: string | undefined, captureMarker: CaptureMarkerBuild | undefined;
-  if (spec.icons) {
-    const theme = spec.icons;
+  const theme = spec.icons;
+  const pictures = spec.pictures ?? {};
+  if (theme || spec.pictures) {
     const put = (name: string, image: ReturnType<typeof townIcon>): string => {
       const path = `${p.icons}/${name}.xdb`;
       for (const f of textureFiles(path, image)) files.set(f.path, f.data);
       return `/${path}#xpointer(/Texture)`;
     };
-    for (const path of records.values()) {
+    /** The picture given for a slot, or what the theme draws, or nothing. */
+    const icon = (file: string | undefined, size: number, drawn: () => ReturnType<typeof townIcon>): ReturnType<typeof townIcon> | null =>
+      file ? pictureIcon(file, size) : theme ? drawn() : null;
+    for (const [key, path] of records) {
       const text = files.get(path)!.toString('latin1');
       const [type, level] = typeAndLevel(text, path);
       // A stub — Stronghold's guild records, never shown — has no icon and keeps none.
       if (/<Icon\/>/.test(text)) continue;
-      const href = put(`${type.slice(3).toLowerCase()}_${level}`, buildingIcon(buildingGlyph(type, level), theme));
+      const image = icon(pictures.buildings?.[key], 128, () => buildingIcon(buildingGlyph(type, level), theme!));
+      if (!image) continue;
+      const href = put(`${type.slice(3).toLowerCase()}_${level}`, image);
       files.set(path, Buffer.from(setHref(text, 'Icon', href, `${path} icon`), 'latin1'));
     }
-    town = setHref(town, 'Icon55x55', put('town', townIcon(theme, false)), 'town icon');
-    town = setHref(town, 'IconWithFort55x55', put('town_fort', townIcon(theme, true)), 'town icon with fort');
+    const plain = icon(pictures.town, 55, () => townIcon(theme!, false));
+    if (plain) town = setHref(town, 'Icon55x55', put('town', plain), 'town icon');
+    const fortified = icon(pictures.townFort, 55, () => townIcon(theme!, true));
+    if (fortified) town = setHref(town, 'IconWithFort55x55', put('town_fort', fortified), 'town icon with fort');
     files.set(p.shared, Buffer.from(town, 'latin1'));
-    race = put('race', raceIcon(theme)).replace(/#.*$/, '').slice(1);
-    tower = put('tower', towerIcon(theme)).replace(/#.*$/, '').slice(1);
-    captureMarker = captureMarkerFiles(spec, theme, read);
-    for (const f of captureMarker.files) files.set(f.path, f.data);
+    const raceTile = icon(pictures.race, 55, () => raceIcon(theme!));
+    if (raceTile) race = put('race', raceTile).replace(/#.*$/, '').slice(1);
+    const towerTile = icon(pictures.tower, 128, () => towerIcon(theme!));
+    if (towerTile) tower = put('tower', towerTile).replace(/#.*$/, '').slice(1);
+    if (theme) {
+      captureMarker = captureMarkerFiles(spec, theme, read);
+      for (const f of captureMarker.files) files.set(f.path, f.data);
+    }
   }
 
-  // The centre button: one building's, its skins drawn from the theme.
+  // The centre button: one building's, its skins pictures of ours or drawn from the theme.
   let button: Omit<TownButton, 'town'> | undefined;
   for (const [key, edit] of Object.entries(edits ?? {})) {
     if (!edit?.button) continue;
     if (button) throw new Error(`${spec.file}: two buildings want the centre button; the dial has one`);
-    if (!spec.icons) throw new Error(`${spec.file}: a button needs the icon theme to draw its skins`);
     const { type } = parseBuildingKey(key);
-    button = { building: type, lua: edit.button.lua, skins: specialButtonSkins(buildingGlyph(type, 1), spec.icons), dir: p.icons };
+    const given = pictures.button;
+    const skins = given
+      ? { normal: pictureIcon(given.normal, 82), pushed: pictureIcon(given.pushed, 82), disabled: pictureIcon(given.disabled, 82) }
+      : theme ? specialButtonSkins(buildingGlyph(type, 1), theme) : null;
+    if (!skins) throw new Error(`${spec.file}: a button needs its three skins — pictures of yours, or the icon theme to draw them`);
+    button = { building: type, lua: edit.button.lua, skins, dir: p.icons };
   }
 
   files.set(p.build, Buffer.from(build, 'latin1'));
@@ -1042,6 +1088,8 @@ export interface NamedTown {
   biography: string;
   /** A `TOWN_BONUS_*` out of `types.xml`, or `TOWN_NO_BONUS`. */
   bonus: string;
+  /** What the bonus is described as, in the town's own words; the game's blank when absent. */
+  bonusText?: string;
   /** For scripted maps only: never drawn for a random town. */
   scripted?: boolean;
 }
@@ -1051,9 +1099,9 @@ export function namedTownId(faction: Pick<TownSpec, 'file'>, t: NamedTown): stri
   return `TOWNSPEC_${up(faction.file)}_${t.scripted ? 'SCRIPT' : 'RANDOM'}_${up(t.file)}`;
 }
 
-export function namedTownPaths(faction: Pick<TownSpec, 'file'>, t: NamedTown): { doc: string; name: string; biography: string } {
+export function namedTownPaths(faction: Pick<TownSpec, 'file'>, t: NamedTown): { doc: string; name: string; biography: string; bonus: string } {
   const dir = `${townPaths(faction).dir}/towns/${t.file}`;
-  return { doc: `${dir}.xdb`, name: `${dir}_Name.txt`, biography: `${dir}_Bio.txt` };
+  return { doc: `${dir}.xdb`, name: `${dir}_Name.txt`, biography: `${dir}_Bio.txt`, bonus: `${dir}_Bonus.txt` };
 }
 
 /** Each named town's document and two texts. */
@@ -1067,7 +1115,7 @@ export function buildNamedTowns(faction: TownSpec, towns: readonly NamedTown[]):
       `\t<NameFileRef href="/${p.name}"/>`,
       `\t<BiographyFileRef href="/${p.biography}"/>`,
       `\t<Bonus>${t.bonus}</Bonus>`,
-      '\t<BonusDescriptionFileRef href=""/>',
+      `\t<BonusDescriptionFileRef href="${t.bonusText ? `/${p.bonus}` : ''}"/>`,
       `\t<TownType>${faction.type}</TownType>`,
       `\t<RandomTown>${t.scripted ? 'TOWN_SCRIPT_ONLY' : 'TOWN_RANDOM'}</RandomTown>`,
       '</TownSpecialization>',
@@ -1075,6 +1123,7 @@ export function buildNamedTowns(faction: TownSpec, towns: readonly NamedTown[]):
     files.push({ path: p.doc, data: Buffer.from(doc, 'latin1') });
     files.push({ path: p.name, data: utf16(t.name) });
     files.push({ path: p.biography, data: utf16(t.biography) });
+    if (t.bonusText) files.push({ path: p.bonus, data: utf16(t.bonusText) });
   }
   return files;
 }

@@ -42,7 +42,8 @@
           <div class="on-body um-form">
             <label class="on-row"><span>Identifier<b class="req">*</b></span><input id="fac-file" type="text" spellcheck="false" autocomplete="off" placeholder="letters and digits, e.g. BoneCourt" title="names its folder in the mod, its town type (TOWN_BONE_COURT) and every file"></label>
             <label class="on-row"><span>Type</span><input id="fac-type" type="text" readonly title="the ETownType value the identifier gives — what maps store"></label>
-            <label class="on-row"><span>Race<b class="req">*</b></span><input id="fac-race-name" type="text" placeholder="the “Race:” line, the picker's tooltip"></label>
+            <label class="on-row"><span>Race<b class="req">*</b></span><input id="fac-race-name" type="text" placeholder="the “Race:” line"></label>
+            <label class="on-row"><span>Tooltip</span><input id="fac-race-tooltip" type="text" placeholder="over the picker's tile; the race's name when blank"></label>
             <label class="on-row"><span>Town<b class="req">*</b></span><input id="fac-name" type="text" placeholder="what a town of it is called on the map"></label>
             <!-- The donor is the START: everything below is filled from it in
                  one press and stays editable. It is also what the copy is
@@ -107,6 +108,12 @@
               <input id="fac-icon-field" type="color" value="#3a1c42" title="field"><input id="fac-icon-rim" type="color" value="#c4a046" title="rim"><input id="fac-icon-ink" type="color" value="#e8dec4" title="ink"><input id="fac-icon-accent" type="color" value="#82cdc3" title="accent">
             </label>
           </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Pictures of your own — instead of the drawn or the donor's icons</legend>
+          <div class="um-note">PNG or GIF, fitted to the icon's size. A slot left blank is drawn from the theme when there is one, kept the donor's when there is not. A building's icon is set in its cell.</div>
+          <div id="fac-pictures" class="fc-tiers"></div>
         </fieldset>
 
         <fieldset>

@@ -31,6 +31,8 @@ import { findClamp } from '../src/exe/faction-limit.ts';
 import { TOWN_SPEC_TABLE, TOWN_TYPE_TABLE, readTableLimit } from '../src/exe/table-limit.ts';
 import { RACES_FILE } from '../src/mods/race-order.ts';
 import { BUILDINGS_FILE } from '../src/mods/town-button.ts';
+import { pngDataUri } from '../src/format/png.ts';
+import { decodeDDSBuffer } from '../src/format/dds.ts';
 
 let ed: Launched;
 const GAME = modGameRoot();
@@ -74,6 +76,43 @@ function ownGraves(): string {
   const ai = uidIn(`${stem}-geom-AI.xdb`);
   writeFileSync(join(dir, 'bin', 'AIGeometries', ai), readFileSync(join(DATA, 'bin', 'AIGeometries', ai)));
   return join(dir, `${stem}.xdb`);
+}
+
+/** Necropolis's first exterior stage as a folder of ours: the model, its geometry, hull and materials, the binaries under bin/. */
+function ownNecroTown(): string {
+  const dir = join(REPO_ROOT, '_tmp', 'e2e-own-model', 'necro');
+  mkdirSync(join(dir, 'bin', 'Geometries'), { recursive: true });
+  mkdirSync(join(dir, 'bin', 'AIGeometries'), { recursive: true });
+  const src = join(DATA, 'MapObjects');
+  for (const f of ['Necromancy-town.xdb', 'Necromancy-town-geom.xdb', 'Necromancy-town_AI.xdb',
+    'Necromancy-town-Podlojka1.(Material).xdb', 'Necromancy-town-lambert7.(Material).xdb', 'Necromancy-town-lambert8.(Material).xdb']) {
+    writeFileSync(join(dir, f), readFileSync(join(src, f)));
+  }
+  const uidIn = (f: string): string => /<uid>([0-9A-F-]{36})<\/uid>/i.exec(readFileSync(join(src, f), 'latin1'))![1]!.toUpperCase();
+  writeFileSync(join(dir, 'bin', 'Geometries', uidIn('Necromancy-town-geom.xdb')), readFileSync(join(DATA, 'bin', 'Geometries', uidIn('Necromancy-town-geom.xdb'))));
+  writeFileSync(join(dir, 'bin', 'AIGeometries', uidIn('Necromancy-town_AI.xdb')), readFileSync(join(DATA, 'bin', 'AIGeometries', uidIn('Necromancy-town_AI.xdb'))));
+  return join(dir, 'Necromancy-town.xdb');
+}
+
+/** A 16×16 magenta PNG of ours. */
+function ownPicture(name: string): string {
+  const dir = join(REPO_ROOT, '_tmp', 'e2e-own-model');
+  mkdirSync(dir, { recursive: true });
+  const rgba = new Uint8Array(16 * 16 * 4);
+  for (let i = 0; i < 16 * 16; i++) { rgba[i * 4] = 255; rgba[i * 4 + 2] = 255; rgba[i * 4 + 3] = 255; }
+  const path = join(dir, `${name}.png`);
+  writeFileSync(path, Buffer.from(pngDataUri(16, 16, rgba).split(',')[1]!, 'base64'));
+  return path;
+}
+
+/** The centre pixel of a DDS in the archive: magenta means the picture of ours. */
+function centreIsMagenta(names: string[], entries: { name: string; data: Buffer }[], path: string): boolean {
+  const e = entries.find((x) => x.name.split(String.fromCharCode(92)).join('/') === path);
+  if (!e) return false;
+  const img = decodeDDSBuffer(e.data);
+  const at = ((img.height >> 1) * img.width + (img.width >> 1)) * 4;
+  void names;
+  return img.rgba[at] === 255 && img.rgba[at + 1] === 0 && img.rgba[at + 2] === 255;
 }
 
 const cell = (page: Page, x: number, y: number): Locator => page.locator(`#fac-grid .fc-cell[data-x="${x}"][data-y="${y}"]`);
@@ -271,11 +310,25 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await at.nth(0).fill('250');
   await at.nth(1).fill('340');
   await at.nth(2).fill('10');
+  // And a picture of ours for the pit's icon — the same field shape.
+  const pitIcon = ownPicture('pit');
+  await page.locator('#fac-cell .fc-file').first().fill(pitIcon);
+
+  // A picture for the siege tower's portrait, a tooltip for the picker, the
+  // first exterior stage as a model of ours, and a bonus said in words.
+  const towerPic = ownPicture('tower');
+  await page.locator('#fac-pictures .fc-file').nth(3).fill(towerPic);
+  await page.locator('#fac-race-tooltip').fill('The dead of the Bone Court');
+  const necro = ownNecroTown();
+  await press(page, page.locator('#facedit summary', { hasText: 'stage by stage' }));
+  await page.locator('#fac-stages .fc-stage-file').first().fill(necro);
+  await expect(page.locator('#fac-stages .fc-stage').first()).toBeDisabled();
 
   // One more named town, and the shipyard is kept after all.
   await press(page, page.locator('#fac-town-add'));
   await page.locator('#fac-towns .town-file').nth(1).fill('Charnel');
   await page.locator('#fac-towns .town-name').nth(1).fill('Charnel House');
+  await page.locator('#fac-towns .town-bonus-text').nth(1).fill('A marketplace from the first day.');
   await press(page, cell(page, 5, 5));
   await press(page, page.locator('#fac-cell button', { hasText: 'keep it' }));
   await expect(cell(page, 5, 5)).not.toHaveClass(/dropped/);
@@ -291,6 +344,18 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   const names = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM))).map((e) => e.name.split(String.fromCharCode(92)).join('/'));
   expect(names).toContain(`Factions/${FILE}/buildings/${FILE}_special_1/own/graves/UneartheGrave_u1r0.xdb`);
   expect(names).toContain(`Factions/${FILE}/buildings/${FILE}_special_1/own/graves/UneartheGrave_u1r0-geom.xdb`);
+  // The pictures, the stage, the words.
+  expect(f?.pictures).toEqual({ buildings: { TB_SPECIAL_1: pitIcon }, tower: towerPic });
+  expect(f?.race?.tooltip).toBe('The dead of the Bone Court');
+  expect(f?.exterior).toEqual({ stages: { town: necro } });
+  expect(f?.towns[1]?.bonusText).toBe('A marketplace from the first day.');
+  const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
+  expect(centreIsMagenta(names, entries, `Factions/${FILE}/icons/special_1_1.dds`), "the pit's icon is the picture").toBe(true);
+  expect(centreIsMagenta(names, entries, `Factions/${FILE}/icons/tower.dds`), "the tower's portrait is the picture").toBe(true);
+  expect(names).toContain(`Factions/${FILE}/town/own/necro/Necromancy-town.xdb`);
+  expect(names).toContain(`Factions/${FILE}/towns/Charnel_Bonus.txt`);
+  const tooltip = entries.find((e) => e.name.split(String.fromCharCode(92)).join('/') === 'UI/MPWait/PlayersList/Item/race_tooltip_e2ebone.txt')!;
+  expect(tooltip.data.subarray(2).toString('utf16le')).toBe('The dead of the Bone Court');
   rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-model'), { recursive: true, force: true });
   expect(exeNumbers()).toEqual({ towns: 12, specs: 257, clamp: 8 });
   expect(ed.errors).toEqual([]);

@@ -307,6 +307,18 @@ everything from a shipped town, as the creature dialog's is. The e2e that
 builds the probe's "Bone Court" through the palette is the probe's
 replacement.
 
+**Files of our own (2026-09-19).** Senya: "our own" is the same copy from
+another source — wherever the form takes a donor's, it takes a file of
+ours. Done: a building's screen model, an exterior stage's model
+(own-files.ts mounts the folder as a data root), every icon as a picture,
+the picker's tooltip and a named town's bonus text. Not done, said
+honestly: the town SCREEN itself (the ArenaDesc scene — background, lightmap,
+cameras — stays the donor's; ours replace its buildings one by one; a whole
+scene of ours is the asset editor's business), the siege parts (walls,
+towers, gate, moat are shipped towns' — a part of ours is a combat building
+record with locators and a shooter stand, later), the music (a shipped
+town's set), the gate geometry, the capture marker (drawn from the theme).
+
 When 1–4 have stopped changing the list above: `FactionSpec` in the mod
 model, `faction-files.ts` writing every registry in the table, the races
 file written by the install, a window in the editor with the creature

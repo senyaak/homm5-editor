@@ -25,6 +25,7 @@ import type { FactionTreeDTO, ModFactionDTO, ModsFactionDataResult, ModsFactionP
 import type { BuildingEdit, BuildingKey, Resource, SiegeMix, ExteriorMix } from '#src/mods/town-files.ts';
 import type { TreeBuilding } from '#src/mods/town-tree.ts';
 import type { MoatSpell } from '#src/mods/town-type-info.ts';
+import type { IconPictures } from '#src/mods/faction-icons.ts';
 
 const RESOURCES: readonly Resource[] = ['Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gem', 'Gold'];
 const COLUMNS = 5;
@@ -45,6 +46,87 @@ const trees = new Map<string, FactionTreeDTO>();
 let edits: Record<BuildingKey, BuildingEdit | null> = {};
 /** The cell and level under the editor. */
 let picked: { x: number; y: number; key: BuildingKey | null } | null = null;
+/** Pictures of our own for the icons, by slot; the buildings' by key. */
+let pictures: { buildings: Record<BuildingKey, string>; [slot: string]: unknown } = { buildings: {} };
+
+/** The picture slots beside the buildings', with the size each is read at. */
+const PICTURE_SLOTS: ReadonlyArray<{ id: string; label: string; size: number }> = [
+  { id: 'town', label: 'Town, 55', size: 55 }, { id: 'townFort', label: 'Town with fort, 55', size: 55 },
+  { id: 'race', label: 'Race tile, 55', size: 55 }, { id: 'tower', label: 'Siege tower, 128', size: 128 },
+  { id: 'kingdom.0', label: 'Overview: village', size: 128 }, { id: 'kingdom.1', label: 'Overview: town', size: 128 },
+  { id: 'kingdom.2', label: 'Overview: city', size: 128 }, { id: 'kingdom.3', label: 'Overview: capital', size: 128 },
+  { id: 'button.normal', label: 'Button, 82', size: 82 }, { id: 'button.pushed', label: 'Button pushed', size: 82 },
+  { id: 'button.disabled', label: 'Button disabled', size: 82 },
+];
+
+/** A path box with a file picker beside it — the shape every file of ours is given in. */
+function fileRow(label: string, value: string, kind: 'model' | 'picture', on: (v: string) => void, title = ''): HTMLElement {
+  const row = document.createElement('label');
+  row.className = 'on-row';
+  const l = document.createElement('span');
+  l.textContent = label;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.spellcheck = false;
+  input.className = 'fc-file';
+  input.placeholder = kind === 'picture' ? 'a PNG or GIF of yours' : 'a path in the data, or a file of yours';
+  input.title = title;
+  input.value = value;
+  input.oninput = () => on(input.value.trim());
+  const pick = document.createElement('button');
+  pick.className = 'ghost he-file';
+  pick.textContent = 'file…';
+  pick.onclick = (ev) => {
+    ev.preventDefault();
+    void api.pickFactionFile(kind).then((path) => { if (path) { input.value = path; on(path); } });
+  };
+  row.append(l, input, pick);
+  return row;
+}
+
+function drawPictures(): void {
+  const box = $('fac-pictures');
+  box.innerHTML = '';
+  for (const slot of PICTURE_SLOTS) {
+    const [head, sub] = slot.id.split('.') as [string, string | undefined];
+    const current = sub === undefined ? pictures[head] : (pictures[head] as Record<string, string> | undefined)?.[sub];
+    box.appendChild(fileRow(slot.label, typeof current === 'string' ? current : '', 'picture', (v) => {
+      if (sub === undefined) { if (v) pictures[head] = v; else delete pictures[head]; }
+      else {
+        const group = { ...((pictures[head] as Record<string, string> | undefined) ?? {}) };
+        if (v) group[sub] = v; else delete group[sub];
+        if (Object.keys(group).length) pictures[head] = group; else delete pictures[head];
+      }
+      formGate().check();
+    }, `read at ${slot.size}×${slot.size}`));
+  }
+}
+
+/** What the form holds as the spec's `pictures`, or nothing. */
+function readPictures(): IconPictures | undefined {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(pictures)) {
+    if (k === 'buildings') { if (Object.keys(pictures.buildings).length) out.buildings = { ...pictures.buildings }; continue; }
+    if (k === 'kingdom') {
+      const g = v as Record<string, string>;
+      const four = ['0', '1', '2', '3'].map((i) => g[i]);
+      // Four or none: the overview has four levels and reads them by index.
+      if (four.every((x) => x)) out.kingdom = four; else if (four.some((x) => x)) out.kingdom = four.map((x) => x ?? four.find((y) => y)!);
+      continue;
+    }
+    if (k === 'button') {
+      const g = v as Record<string, string>;
+      if (g.normal && g.pushed && g.disabled) out.button = { normal: g.normal, pushed: g.pushed, disabled: g.disabled };
+      else if (g.normal || g.pushed || g.disabled) {
+        const one = g.normal ?? g.pushed ?? g.disabled!;
+        out.button = { normal: g.normal ?? one, pushed: g.pushed ?? one, disabled: g.disabled ?? one };
+      }
+      continue;
+    }
+    if (v) out[k] = v;
+  }
+  return Object.keys(out).length ? (out as IconPictures) : undefined;
+}
 
 const townTypeFor = (file: string): string =>
   `TOWN_${file.trim().replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`;
@@ -108,6 +190,16 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   trees.clear();
   edits = { ...(existing?.buildings ?? {}) };
   picked = null;
+  {
+    const p = existing?.pictures;
+    pictures = { buildings: { ...(p?.buildings ?? {}) } };
+    if (p?.town) pictures.town = p.town;
+    if (p?.townFort) pictures.townFort = p.townFort;
+    if (p?.race) pictures.race = p.race;
+    if (p?.tower) pictures.tower = p.tower;
+    if (p?.kingdom) pictures.kingdom = { 0: p.kingdom[0], 1: p.kingdom[1], 2: p.kingdom[2], 3: p.kingdom[3] };
+    if (p?.button) pictures.button = { ...p.button };
+  }
 
   $('facedit-title').textContent = existing ? 'Edit faction' : 'New faction';
   $('fac-editing').textContent = existing ? `editing ${existing.file} (${existing.type}, ordinal ${existing.number}) — its identifier cannot change` : '';
@@ -116,6 +208,7 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   $input('fac-file').readOnly = !!existing;
   $input('fac-type').value = existing?.type ?? '';
   $input('fac-race-name').value = existing?.race?.name ?? '';
+  $input('fac-race-tooltip').value = existing?.race?.tooltip ?? '';
   $input('fac-name').value = existing?.name ?? '';
   fillSelect($select('fac-donor'), data.donors.map((d) => ({ id: d.type, label: d.label })), existing?.donor ?? data.donors[0]!.type);
   $('fac-donor-note').textContent = existing ? 'the tree below is the donor\'s with the faction\'s edits over it' : 'press to load the donor\'s tree';
@@ -150,6 +243,7 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
     $input('fac-icon-accent').value = hex(existing.icons.accent);
   }
   drawTowns(data, existing?.towns ?? []);
+  drawPictures();
   (document.getElementById('fac-script') as HTMLTextAreaElement).value = existing?.script ?? '';
 
   drawGrid();
@@ -217,8 +311,34 @@ function drawStages(data: ModsFactionDataResult, current: ExteriorMix['stages'])
     const sel = document.createElement('select');
     sel.className = 'fc-stage';
     sel.dataset.stage = stage;
-    fillSelect(sel, townOptions(data, 'as the exterior'), (current as Record<string, string>)[stage] ?? '');
-    row.append(label, sel);
+    const value = (current as Record<string, string>)[stage] ?? '';
+    const own = /^[A-Za-z]:[\\/]|^[\\/]{2}/.test(value);
+    fillSelect(sel, townOptions(data, 'as the exterior'), own ? '' : value);
+    // Or a model of ours at the stage: the file's path rides on the row, and
+    // the select stands down while it is there.
+    sel.dataset.file = own ? value : '';
+    sel.disabled = own;
+    const file = document.createElement('input');
+    file.type = 'text';
+    file.spellcheck = false;
+    file.className = 'fc-stage-file';
+    file.placeholder = 'or a Model of yours';
+    file.title = 'a Model document of yours for this stage; its folder is read as a data root';
+    file.value = own ? value : '';
+    const setFile = (path: string): void => {
+      sel.dataset.file = path;
+      sel.disabled = !!path;
+      if (path) sel.value = '';
+    };
+    file.oninput = () => setFile(file.value.trim());
+    const pick = document.createElement('button');
+    pick.className = 'ghost he-file';
+    pick.textContent = 'file…';
+    pick.onclick = (ev) => {
+      ev.preventDefault();
+      void api.pickFactionFile('model').then((path) => { if (path) { file.value = path; setFile(path); } });
+    };
+    row.append(label, sel, file, pick);
     box.appendChild(row);
   }
 }
@@ -227,7 +347,10 @@ function readExterior(): ModsFactionPayload['exterior'] {
   const whole = $select('fac-exterior').value;
   const gates = $select('fac-exterior-gates').value;
   const stages: Record<string, string> = {};
-  for (const el of document.querySelectorAll<HTMLSelectElement>('.fc-stage')) if (el.value) stages[el.dataset.stage!] = el.value;
+  for (const el of document.querySelectorAll<HTMLSelectElement>('.fc-stage')) {
+    const v = el.dataset.file || el.value;
+    if (v) stages[el.dataset.stage!] = v;
+  }
   if (!Object.keys(stages).length && !gates) return whole || undefined;
   // A whole exterior with a stage or a gate said differently is a mix whose
   // unsaid stages are the whole's — which the copier reads as the donor's, so
@@ -348,6 +471,8 @@ function addTownRow(data: ModsFactionDataResult, t?: ModsFactionPayload['towns']
   name.type = 'text'; name.className = 'town-name'; name.placeholder = 'name'; name.value = t?.name ?? '';
   const bio = document.createElement('input');
   bio.type = 'text'; bio.className = 'town-bio'; bio.placeholder = 'history'; bio.value = t?.biography ?? '';
+  const bonusText = document.createElement('input');
+  bonusText.type = 'text'; bonusText.className = 'town-bonus-text'; bonusText.placeholder = 'the bonus, in words (optional)'; bonusText.value = t?.bonusText ?? '';
   const bonus = document.createElement('select');
   bonus.className = 'town-bonus';
   fillSelect(bonus, data.bonuses.map((b) => ({ id: b, label: b.replace('TOWN_BONUS_', '').replace('TOWN_', '').toLowerCase() })), t?.bonus ?? 'TOWN_NO_BONUS');
@@ -357,7 +482,7 @@ function addTownRow(data: ModsFactionDataResult, t?: ModsFactionPayload['towns']
   const drop = document.createElement('button');
   drop.className = 'um-recolor'; drop.textContent = '×'; drop.title = 'remove';
   drop.onclick = () => { row.remove(); formGate().check(); };
-  row.append(file, name, bio, bonus, scripted, drop);
+  row.append(file, name, bio, bonus, bonusText, scripted, drop);
   box.appendChild(row);
   formGate().rewatch();
 }
@@ -366,11 +491,13 @@ function readTowns(): ModsFactionPayload['towns'] {
   const out: ModsFactionPayload['towns'] = [];
   for (const row of document.querySelectorAll<HTMLElement>('.fc-town-row')) {
     const scripted = row.querySelector<HTMLInputElement>('.town-scripted')!.checked;
+    const bonusText = row.querySelector<HTMLInputElement>('.town-bonus-text')!.value.trim();
     out.push({
       file: row.querySelector<HTMLInputElement>('.town-file')!.value.trim(),
       name: row.querySelector<HTMLInputElement>('.town-name')!.value.trim(),
       biography: row.querySelector<HTMLInputElement>('.town-bio')!.value,
       bonus: row.querySelector<HTMLSelectElement>('.town-bonus')!.value,
+      ...(bonusText ? { bonusText } : {}),
       ...(scripted ? { scripted: true } : {}),
     });
   }
@@ -663,6 +790,10 @@ function drawCellEditor(): void {
     box.appendChild(row);
   }
   textRow('Name', edit.name, current.name, (v) => put({ name: v || undefined }));
+  box.appendChild(fileRow('Icon', pictures.buildings[current.key] ?? '', 'picture', (v) => {
+    if (v) pictures.buildings[current.key] = v; else delete pictures.buildings[current.key];
+    formGate().check();
+  }, "a picture of yours for this level's icon on the build screen, 128×128; blank is the theme's, or the donor's"));
   textRow('Description', edit.description, current.description, (v) => put({ description: v || undefined }), true);
   {
     const row = document.createElement('div');
@@ -746,7 +877,7 @@ function drawCellEditor(): void {
       pick.title = 'a Model document of your own on disk; its folder is read as a data root (geometry beside it, binaries under bin/)';
       pick.onclick = (ev) => {
         ev.preventDefault();
-        void api.pickModelFile().then((path) => { if (path) { input.value = path; setModel(path); } });
+        void api.pickFactionFile('model').then((path) => { if (path) { input.value = path; setModel(path); } });
       };
       row.append(l, input, pick);
       box.appendChild(row);
@@ -848,7 +979,7 @@ const formGate = (): { check: () => void; rewatch: () => void } => (gate ??= req
     if (!towns.length) missing.push('a named town');
     if (towns.some((t) => !t.file || !t.name)) missing.push('every named town\'s id and name');
     // The dial's button is drawn in the theme: no theme, no skins to draw it with.
-    if (Object.values(edits).some((e) => e?.button) && !$input('fac-icons').checked) missing.push("the icon theme (a button's skins are drawn in it)");
+    if (Object.values(edits).some((e) => e?.button) && !$input('fac-icons').checked && !(pictures.button as Record<string, string> | undefined)?.normal) missing.push("the icon theme, or pictures for the button (its skins are drawn in the theme)");
     if (!/^[A-Za-z][A-Za-z0-9]*$/.test($input('fac-file').value.trim()) && $input('fac-file').value.trim()) missing.push('an identifier of letters and digits');
     return missing;
   },
@@ -860,6 +991,7 @@ function readPayload(): ModsFactionPayload {
   const file = $input('fac-file').value.trim();
   const magic = $select('fac-magic').value as 'guild' | 'none';
   const race: NonNullable<ModsFactionPayload['race']> = { name: $input('fac-race-name').value.trim() };
+  if ($input('fac-race-tooltip').value.trim()) race.tooltip = $input('fac-race-tooltip').value.trim();
   const silo = readSilo();
   if (silo) race.siloIncome = silo;
   if ($select('fac-machine').value) race.warMachine = $select('fac-machine').value;
@@ -886,6 +1018,8 @@ function readPayload(): ModsFactionPayload {
   if (exterior) p.exterior = exterior;
   const icons = readIcons();
   if (icons) p.icons = icons;
+  const pics = readPictures();
+  if (pics) p.pictures = pics;
   const script = (document.getElementById('fac-script') as HTMLTextAreaElement).value;
   if (script.trim()) p.script = script;
   return p;

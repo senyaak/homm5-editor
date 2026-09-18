@@ -32,7 +32,7 @@ export function ownMountPrefix(file: string): string {
  * the data path the file is seen at — what to hand the copier instead of
  * the disk path.
  */
-export function mountOwn(read: DataReader, file: string): { read: DataReader; rel: string } {
+export function mountOwn(read: DataReader, file: string): { read: DataReader; rel: string; local: DataReader } {
   if (!isOwnFile(file)) throw new Error(`${file} is not a file on disk`);
   if (!existsSync(file) || !statSync(file).isFile()) throw new Error(`${file}: no such file`);
   const root = dirname(file);
@@ -44,10 +44,13 @@ export function mountOwn(read: DataReader, file: string): { read: DataReader; re
       return null;
     }
   };
-  const mounted: DataReader = (rel) => {
+  // The folder alone, by the mounted path or by the plain one.
+  const local: DataReader = (rel) => {
     const under = rel.startsWith(`${prefix}/`) ? rel.slice(prefix.length + 1) : rel;
-    // The folder first, by the mounted path or by the plain one; the game's data after.
-    return fromDisk(join(root, under)) ?? (under === rel ? read(rel) : null);
+    return fromDisk(join(root, under));
   };
-  return { read: mounted, rel: `${prefix}/${basename(file)}` };
+  // The folder first; the game's data after — but never for a mounted path,
+  // which is the folder's or nobody's.
+  const mounted: DataReader = (rel) => local(rel) ?? (rel.startsWith(`${prefix}/`) ? null : read(rel));
+  return { read: mounted, rel: `${prefix}/${basename(file)}`, local };
 }

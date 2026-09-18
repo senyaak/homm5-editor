@@ -11,7 +11,7 @@
 //   node tools/test-town-exterior.ts [dataRoot]
 
 // needs: data
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { EXTERIOR_STAGES, buildTown, townPaths } from '../src/mods/town-files.ts';
@@ -80,6 +80,36 @@ console.log('the exterior');
   const orcDoc = shared(orc);
   check("Stronghold's exterior, a document of its own, inlined", models(orcDoc).every((m, i) => m === `Orc_Stronghold-${EXTERIOR_STAGES[i]}`) && orcDoc.includes('</AdvMapTownExterior>') && !orcDoc.includes('(AdvMapTownExterior).xdb'));
   check('with its gate document copied', orc.files.some((f) => f.path.endsWith('Orc_Stronghold_Gate_AI.xdb')));
+
+  // A model of OUR OWN at a stage: Necropolis's first stage as a folder on
+  // disk — the model, its geometry, materials and hull beside each other, the
+  // binaries under bin/ as the game keys them — named by its path where a
+  // town's type would go. The walk copies it under the town like any model
+  // the exterior names; the stage keeps the donor's effect.
+  const dir = join(import.meta.dirname, '..', '_tmp', 'own-exterior-test', 'necro');
+  rmSync(join(dir, '..'), { recursive: true, force: true });
+  mkdirSync(join(dir, 'bin', 'Geometries'), { recursive: true });
+  mkdirSync(join(dir, 'bin', 'AIGeometries'), { recursive: true });
+  for (const f of ['Necromancy-town.xdb', 'Necromancy-town-geom.xdb', 'Necromancy-town_AI.xdb',
+    'Necromancy-town-Podlojka1.(Material).xdb', 'Necromancy-town-lambert7.(Material).xdb', 'Necromancy-town-lambert8.(Material).xdb']) {
+    writeFileSync(join(dir, f), read(`MapObjects/${f}`)!);
+  }
+  const uidIn = (f: string): string => /<uid>([0-9A-F-]{36})<\/uid>/i.exec(read(`MapObjects/${f}`)!.toString('latin1'))![1]!.toUpperCase();
+  writeFileSync(join(dir, 'bin', 'Geometries', uidIn('Necromancy-town-geom.xdb')), read(`bin/Geometries/${uidIn('Necromancy-town-geom.xdb')}`)!);
+  writeFileSync(join(dir, 'bin', 'AIGeometries', uidIn('Necromancy-town_AI.xdb')), read(`bin/AIGeometries/${uidIn('Necromancy-town_AI.xdb')}`)!);
+  const own = build({ stages: { town: join(dir, 'Necromancy-town.xdb'), town_mg: 'TOWN_DUNGEON' } });
+  const ownDoc = shared(own);
+  const ownStages = models(ownDoc);
+  check('a model of ours at the first stage, under the mounted folder', /<Model href="\/Factions\/Test\/town\/own\/necro\/Necromancy-town\.xdb#xpointer\(\/Model\)"\/>/.test(ownDoc), ownStages[0]);
+  check('the other stages as before', ownStages[3] === 'Dungeon-town_mg' && ownStages.slice(1, 3).every((m, i) => m === `Heaven-${EXTERIOR_STAGES[i + 1]}`), ownStages.join(' '));
+  check('its geometry, materials and hull copied with it', ['own/necro/Necromancy-town-geom.xdb', 'own/necro/Necromancy-town-lambert7.(Material).xdb', 'own/necro/Necromancy-town_AI.xdb'].every((n) => own.files.some((f) => f.path.endsWith(n))));
+  const ownGeom = own.files.find((f) => f.path.endsWith('own/necro/Necromancy-town-geom.xdb'))!.data.toString('latin1');
+  const ownUid = /<uid>([0-9A-F-]{36})<\/uid>/i.exec(ownGeom)![1]!.toUpperCase();
+  check('with a uid of its own and the binary from the folder', ownUid !== uidIn('Necromancy-town-geom.xdb') && own.files.some((f) => f.path === `bin/Geometries/${ownUid}` && f.data.equals(read(`bin/Geometries/${uidIn('Necromancy-town-geom.xdb')}`)!)));
+  const firstItem = /<upgrades>\s*<Item>([\s\S]*?)<\/Item>/.exec(ownDoc)![1]!;
+  check("the stage keeps the donor's effect", firstItem.includes('/TownsGlobalMap/Haven/'));
+  throws('a file that is not there', () => build({ stages: { town: join(dir, 'nothing.xdb') } }), 'no such file');
+  rmSync(join(dir, '..'), { recursive: true, force: true });
 
   throws('a stage that is not one', () => build({ stages: { village: 'TOWN_DUNGEON' } as never }), 'no exterior stage village');
   throws('a town that is not one', () => build('TOWN_ATLANTIS'), 'no shipped town of type TOWN_ATLANTIS');

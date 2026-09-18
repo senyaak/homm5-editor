@@ -14,7 +14,7 @@
 //   node tools/test-faction-mod.ts [dataRoot]
 
 // needs: data
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MOD_MANIFEST, dataReader, TYPES, UI_ROOT } from '../src/mods/mod-files.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
@@ -31,6 +31,8 @@ import { factionScriptPath } from '../src/mods/town-button.ts';
 import { BONE_ON_PLUM } from '../src/mods/faction-icons.ts';
 import { readTownTree } from '../src/mods/town-tree.ts';
 import { dataDir } from './game-dir.ts';
+import { pngDataUri } from '../src/format/png.ts';
+import { decodeDDSBuffer } from '../src/format/dds.ts';
 import type { BuildReport } from '../src/mods/mod-files.ts';
 
 let failures = 0;
@@ -148,6 +150,50 @@ let one: BuildReport;
   check('the rows: the picker, nine wide, ours last', one.factions?.picker.length === 9 && one.factions.picker[8]!.name === 'TOWN_TEST' && one.factions.picker[8]!.town === 11);
   check('the rows: the button', one.factions?.buttons.length === 1 && one.factions.buttons[0]!.lua === 'BonePit' && one.factions.buttons[0]!.town === 11);
   check('the manifest carries the faction', text(MOD_MANIFEST).includes('"factions"'));
+}
+
+console.log('pictures of our own for the icons');
+{
+  // A 16×16 magenta PNG for every slot: read, grown, fitted — and the DDS
+  // the game reads carries that colour where the theme would have drawn.
+  const dir = join(import.meta.dirname, '..', '_tmp', 'own-icons-test');
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const rgba = new Uint8Array(16 * 16 * 4);
+  for (let i = 0; i < 16 * 16; i++) { rgba[i * 4] = 255; rgba[i * 4 + 2] = 255; rgba[i * 4 + 3] = 255; }
+  const png = Buffer.from(pngDataUri(16, 16, rgba).split(',')[1]!, 'base64');
+  const pic = (name: string): string => { const f = join(dir, `${name}.png`); writeFileSync(f, png); return f; };
+  const mod: CreatureMod = newCreatureMod();
+  addFaction(mod, spec('Pix', {
+    pictures: {
+      buildings: { 'TB_TAVERN': pic('tavern'), 'TB_DWELLING_1/2': pic('d1u') },
+      town: pic('town'), race: pic('race'), tower: pic('tower'),
+      kingdom: [pic('k1'), pic('k2'), pic('k3'), pic('k4')],
+      button: { normal: pic('bn'), pushed: pic('bp'), disabled: pic('bd') },
+    },
+    buildings: { 'TB_SPECIAL_1': { button: { lua: 'Pit' } } },
+  }));
+  const r = buildCreatureMod(mod, read);
+  const file = (path: string) => r.files.find((f) => f.path === path);
+  const magenta = (path: string): boolean => {
+    const f = file(path);
+    if (!f) return false;
+    // The centre pixel: a picture smaller than the icon is grown by whole
+    // pixels and centred, so the corners are the transparent border.
+    const img = decodeDDSBuffer(f.data);
+    const at = ((img.height >> 1) * img.width + (img.width >> 1)) * 4;
+    return img.rgba[at] === 255 && img.rgba[at + 1] === 0 && img.rgba[at + 2] === 255;
+  };
+  check('the tavern icon is the picture, at 128', magenta('Factions/Pix/icons/tavern_1.dds') && decodeDDSBuffer(file('Factions/Pix/icons/tavern_1.dds')!.data).width === 128);
+  check('an upgrade level by its key', magenta('Factions/Pix/icons/dwelling_1_2.dds'));
+  check("a building not given keeps the donor's icon", !file('Factions/Pix/icons/blacksmith_1.dds'));
+  check('the town icon at 55, the fortified one kept', magenta('Factions/Pix/icons/town.dds') && decodeDDSBuffer(file('Factions/Pix/icons/town.dds')!.data).width === 55 && !file('Factions/Pix/icons/town_fort.dds'));
+  check('the race tile and the tower', magenta('Factions/Pix/icons/race.dds') && magenta('Factions/Pix/icons/tower.dds'));
+  check('the four kingdom icons', [1, 2, 3, 4].every((l) => magenta(`Factions/Pix/icons/kingdom_${l}.dds`)));
+  check("the button's three skins", r.factions?.buttons.length === 1 && r.files.some((f) => /Factions\/Pix\/icons\/.*special.*\.dds$/i.test(f.path)));
+  check('no theme, no capture marker of ours', !r.files.some((f) => f.path.includes('/capture/')));
+  throws('a button with neither pictures nor a theme', () => buildCreatureMod((() => { const m = newCreatureMod(); addFaction(m, spec('NoSkin', { buildings: { 'TB_SPECIAL_1': { button: { lua: 'X' } } } })); return m; })(), read), 'three skins');
+  rmSync(dir, { recursive: true, force: true });
 }
 
 console.log('the build, two factions');

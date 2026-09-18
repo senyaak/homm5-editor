@@ -133,7 +133,7 @@ export function buildFactions(
 
     // The race as such: its name, its overview icons, its record, its music.
     if (!f.race) throw new Error(`${f.file}: a faction names its race`);
-    const race = raceFiles(f, f.race, f.icons);
+    const race = raceFiles(f, f.race, f.icons, f.pictures?.kingdom);
     files.push(...race.files);
     townTypes = patchTownTypesInfo(townTypes, f, town, race);
     music = patchRaceMusic(music, f);
@@ -151,7 +151,7 @@ export function buildFactions(
       '<Item>', `\t<TextName>${names.tooltip}</TextName>`, `\t<text href="${names.tooltip}.txt"/>`, '</Item>',
     ]);
     files.push({ path: `${PICKER_DIR}/${names.texture}.txt`, data: utf16(f.race.name) });
-    files.push({ path: `${PICKER_DIR}/${names.tooltip}.txt`, data: utf16(f.race.name) });
+    files.push({ path: `${PICKER_DIR}/${names.tooltip}.txt`, data: utf16(f.race.tooltip ?? f.race.name) });
     picker.push({ name: f.type, town: f.number, texture: names.texture, tooltip: names.tooltip });
 
     if (town.towerIcon) towerIcons = patchTowerIcons(towerIcons, f.type, town.towerIcon);

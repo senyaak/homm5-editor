@@ -55,6 +55,7 @@ function factionSpecOf(p: ModsFactionPayload): FactionSpec {
     name: (p.name ?? '').trim(),
     towns: (p.towns ?? []).map((t) => ({
       file: t.file.trim(), name: t.name.trim(), biography: t.biography ?? '', bonus: t.bonus || 'TOWN_NO_BONUS',
+      ...(t.bonusText?.trim() ? { bonusText: t.bonusText.trim() } : {}),
       ...(t.scripted ? { scripted: true } : {}),
     })),
   };
@@ -67,6 +68,7 @@ function factionSpecOf(p: ModsFactionPayload): FactionSpec {
   if (p.shooter) spec.shooter = p.shooter;
   if (p.siegeShooter) spec.siegeShooter = p.siegeShooter;
   if (p.icons) spec.icons = p.icons;
+  if (p.pictures && Object.keys(p.pictures).length) spec.pictures = p.pictures;
   if (p.buildings && Object.keys(p.buildings).length) spec.buildings = p.buildings;
   if (p.script?.trim()) spec.script = p.script;
   return spec;
@@ -99,14 +101,19 @@ export function registerModFactions(): void {
     };
   });
 
-  // A Model document of our own, kept as a PATH: its folder is read as a data
-  // root of its own when the faction is built (src/mods/own-files.ts), so a
-  // cancelled form leaves nothing behind and the model can be edited in place.
-  ipcMain.handle('mods:pick-model-file', async (): Promise<string> => {
-    const opts = {
+  // A file of our own, kept as a PATH: a Model document's folder is read as a
+  // data root of its own when the faction is built (src/mods/own-files.ts), a
+  // picture is read and fitted then — so a cancelled form leaves nothing
+  // behind and the file can be edited in place until the next build.
+  ipcMain.handle('mods:pick-faction-file', async (_e: IpcMainInvokeEvent, { kind }: { kind: 'model' | 'picture' }): Promise<string> => {
+    const opts = kind === 'model' ? {
       title: 'Choose a Model document of your own',
       properties: ['openFile' as const],
       filters: [{ name: 'Model documents', extensions: ['xdb'] }, { name: 'All files', extensions: ['*'] }],
+    } : {
+      title: 'Choose a picture',
+      properties: ['openFile' as const],
+      filters: [{ name: 'Pictures', extensions: ['png', 'gif'] }, { name: 'All files', extensions: ['*'] }],
     };
     const w = state.win;
     const r = await (w ? dialog.showOpenDialog(w, opts) : dialog.showOpenDialog(opts));
