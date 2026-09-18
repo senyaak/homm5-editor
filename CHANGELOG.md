@@ -96,8 +96,9 @@ pre-release.
   skin (drawn) and a ninth click to the game's `EnterSpecial` button
   (`src/mods/town-button.ts`), and the extension registers the click's
   message on the town screen, enables the button by the building's presence
-  the engine's own way and says `<function>("<town>")` to the map's Lua
-  (`native/faction/town-button.c`, `bin/homm5-editor-buildings.txt`).
+  the engine's own way, puts the building's name into its tooltip and says
+  `<function>("<town>")` to the map's Lua (`native/faction/town-button.c`,
+  `bin/homm5-editor-buildings.txt`).
 - `H5EMessageBox(text[, header])` for a map's Lua: a message box on the
   screen that is up — the town screen included — where the game's own
   `MessageBox` only queues one for the adventure screen. The extension's

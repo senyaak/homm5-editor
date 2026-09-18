@@ -628,3 +628,20 @@ no Lua context, and the map is reached from one (`0xA455E0` reads
 - Our Lua table was sixteen wide and `H5EMessageBox` was the seventeenth:
   `Value was NIL` in the console and a refusal logged under a unit that was
   off. Sixty-four now, and the refusal always speaks.
+
+**The tooltip's `<value=special>` (launch 30, 2026-09-18, worked first
+time).** The four calls of `0x8541B0` between the cast and the enable:
+`town->+0x5C(String* out, building)` (`0xAC2D90`, `ret 8`) walks the
+town's map of building records — `town+0x68`, a hash map by name whose
+node holds the record at `+0x10` with the building TYPE at `+0` — and
+copies the node's KEY (the record's name) into `out`; `town->+0x30` is
+`lea eax,[ecx+68h]` and cleans nothing, which is why its two pushes are
+the arguments of the next call, `0x4EB510(map, iterator* {node, map},
+key*)` (`ret 8`, the hash is `h*5+c`); `0xAC0760(record, back)` (`ret 4`)
+picks the level `max(0, min(count-1, level-back))` — with `back = 1` the
+current level's name, the first level's when it is not built — from the
+record's `{type, level, count, entries[8 bytes]}`, resolves the entry's
+shared reference (`0x846B70`) and returns its text through `0x956620(obj +
+0x44)`, a cached pointer; and the button's IWindow base (`button + 4 +
+[[button+4]+8]`) takes it by slot `+0x80(String* "special", text)`. Ours
+does the same four with the row's building (`set_special_tooltip`).

@@ -164,8 +164,9 @@ fully, in the probe, one launch per question.
   (engineInternals/FACTIONS.md, launches 22–27). **The faction's Lua is the
   mod's, on every map** (`TownSpec.script` → `scripts/homm5-editor/
   faction-<file>.lua`, loaded by the mod's `advmap-common.lua`), never a
-  map's own script — launch 28, another map: "Value was NIL" at every click. Not yet: the tooltip's
-  `<value=special>` (the building's name — four unmeasured calls).
+  map's own script — launch 28, another map: "Value was NIL" at every click.
+  The tooltip's `<value=special>` is the building's name for its level
+  (launch 30). Nothing of the button is left.
   **Still unknown:** the grail's common bonuses. Launch 20, the AI's first
   turn, crashed — not the tree: the ceiling patcher had raised the wrong
   table's accessor (engineInternals/FACTIONS.md, "The table half").
