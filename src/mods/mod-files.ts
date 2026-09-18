@@ -50,6 +50,8 @@ export function dataReader(root: string): DataReader {
   };
 }
 
+import type { FactionRows } from './faction-files.ts';
+
 // --- building the mod ---------------------------------------------------------
 
 /** A file in the built mod. */
@@ -67,6 +69,12 @@ export interface BuildReport {
   art: Record<string, number>;
   /** References we could not resolve — authoring paths, mostly, and harmless. */
   missing: string[];
+  /**
+   * The rows the extension's files are written from, when the mod has a
+   * faction: the picker's order, the centre buttons, what the buildings do.
+   * Derived from the build because the build numbers them (mod-archive.ts).
+   */
+  factions?: FactionRows;
 }
 
 /** Read a data file that has to be there. */

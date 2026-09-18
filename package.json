@@ -187,6 +187,8 @@
     "test-shared-groups": "node tools/test-shared-groups.ts",
     "test-magic-kind": "node tools/test-magic-kind.ts",
     "test-town-features": "node tools/test-town-features.ts",
+    "test-faction-mod": "node tools/test-faction-mod.ts",
+    "test-faction-limit": "node tools/test-faction-limit.ts",
     "e2e-live": "node tools/e2e-live.ts",
     "perf-stress": "node tools/perf-stress.ts",
     "sod-content": "node tools/build-sod-content.ts"

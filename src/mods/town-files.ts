@@ -583,16 +583,23 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   }
   files.set(p.shared, Buffer.from(town, 'latin1'));
 
-  // The building records in the copy, by key — the ones the walk reached,
-  // which after a drop is the tree as the spec has it.
+  // The building records in the copy, by key — the ones the town's LIST
+  // names, which after a drop is the tree as the spec has it. The list and
+  // not every record the walk reached: Necropolis's Ruined Tower depends on
+  // PRESERVE's fort (shipped data), so the walk copies a second TB_FORT the
+  // town never lists, and which no screen draws.
   const records = new Map<BuildingKey, string>();
-  for (const [path, data] of files) {
-    if (!path.toLowerCase().endsWith('.xdb') || !path.startsWith(p.art)) continue;
-    const text = data.toString('latin1');
-    if (!text.includes('<TownBuildingSharedStats')) continue;
-    const key = buildingKey(...typeAndLevel(text, path));
-    if (records.has(key)) throw new Error(`${spec.donor} lists ${key} twice: ${records.get(key)} and ${path}`);
-    records.set(key, path);
+  {
+    const start = once(town, '<buildings>', `${spec.file}'s building list`);
+    const end = once(town, '</buildings>', `${spec.file}'s building list end`);
+    for (const m of town.slice(start, end).matchAll(/<Item href="([^"]+)"\/>/g)) {
+      const path = resolve(p.shared, m[1]!);
+      const data = path ? files.get(path) : undefined;
+      if (!path || !data) throw new Error(`${spec.file}: the copy lists ${m[1]}, which it does not hold`);
+      const key = buildingKey(...typeAndLevel(data.toString('latin1'), path));
+      if (records.has(key)) throw new Error(`${spec.donor} lists ${key} twice: ${records.get(key)} and ${path}`);
+      records.set(key, path);
+    }
   }
 
   // The dwellings' creatures: every building record in the copy whose Type is

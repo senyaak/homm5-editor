@@ -17,7 +17,7 @@ import type { ExeResult } from '#src/exe/creature-limit.ts';
 import { buildCreatureMod } from '#src/mods/creature-mod.ts';
 import { DRAGON_TAG } from '#src/mods/creatures.ts';
 import { editorAbility } from '#src/mods/ability-files.ts';
-import { findCreatureMods, installCreatureMod, packCreatureMod } from '#src/mods/mod-archive.ts';
+import { findCreatureMods, installCreatureMod, installFactionSide, packCreatureMod } from '#src/mods/mod-archive.ts';
 // The emptiness test lives with the model, beside the things it counts: it was
 // written out twice and the second copy went stale the moment a new kind
 // arrived — installing the first class of a mod deleted the archive and
@@ -62,13 +62,13 @@ export function buildAndInstall(g: string, mod: CreatureMod): { installed: Insta
     rmSync(archive, { force: true });
     writeEffectsFile(g, [], []);
     return {
-      installed: { archive, exe: null, artifacts: null, tables: [] },
+      installed: { archive, exe: null, artifacts: null, tables: [], factions: installFactionSide(g, mod) },
       report: { files: [], limit: 0, art: {}, missing: [] },
     };
   }
   const report = buildCreatureMod(mod, dataReader(gameData()));
   const archive = packCreatureMod(report);
-  const installed = installCreatureMod(g, mod, archive);
+  const installed = installCreatureMod(g, mod, archive, report.factions);
   // From the whole manifest, in one place, so a kind of row added tomorrow is
   // written by every caller — see writeModEffectsFile. The names a mod uses for
   // things it does not own (a shipped artifact in a set, an ability a spell

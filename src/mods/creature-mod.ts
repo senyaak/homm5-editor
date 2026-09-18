@@ -83,6 +83,8 @@ import {
 import { buildBuildings } from './building-files.ts';
 import { buildDwellings } from './dwelling-files.ts';
 import { buildHeroes, texturePair } from './hero-files.ts';
+import { buildFactions } from './faction-files.ts';
+import type { FactionBuild } from './faction-files.ts';
 import { patchSpecializationTypes } from './specializations.ts';
 import {
   CLASS_TABLE, classNameFile, patchClassTable, patchClassTypes, patchSkillPrerequisites,
@@ -201,6 +203,17 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   files.push(...buildArtifacts(mod.artifacts ?? [], read));
   files.push(...buildArtifactSets(mod.sets ?? []));
   files.push(...buildHeroes(mod.heroes ?? [], read, mod.specializations ?? []));
+  // A faction is a twelfth town type and every table the engine indexes by
+  // it. Its own files go in here; the three shared files it also edits —
+  // types.xml, UIGameRoot, the global script — are patched below, on the one
+  // copy of each the mod carries (faction-files.ts).
+  const factionBuild: FactionBuild | null = (mod.factions ?? []).length
+    ? buildFactions(mod.factions!, mod.heroes ?? [], read)
+    : null;
+  if (factionBuild) {
+    files.push(...factionBuild.files);
+    missing.push(...factionBuild.missing);
+  }
 
   // Only creatures need the game's own files touched: the enum and the id→number
   // map in types.xml, the reference table the ceiling indexes, and the hire
@@ -221,7 +234,7 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   const skills = mod.skills ?? [];
   const spells = mod.spells ?? [];
   if (mod.creatures.length || artifacts.length || sets.length || specializations.length
-    || classes.length || skills.length || spells.length) {
+    || classes.length || skills.length || spells.length || factionBuild) {
     let types = mustRead(read, TYPES);
     if (mod.creatures.length) types = patchTypes(types, mod, limit);
     if (artifacts.length) types = patchArtifactTypes(types, artifacts);
@@ -235,6 +248,9 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     // A spell is a reference table too — and the one whose size types.xml states
     // three times, `MinElements` included.
     if (spells.length) types = patchSpellTypes(types, spells);
+    // A faction is three tables and two enums of it — the town types, the
+    // races, the generator's presets, the named towns.
+    if (factionBuild) types = factionBuild.patchTypes(types);
     // The editor's own creature abilities — tags, which do nothing until
     // something asks about them. Shipped with any mod that has creatures, so
     // that the id a creature's record names always exists in the table beside
@@ -275,7 +291,14 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   }
   if (mod.creatures.length) {
     files.push({ path: REF_TABLE, data: Buffer.from(patchRefTable(mustRead(read, REF_TABLE), mod, read), 'latin1') });
-    files.push({ path: UI_ROOT, data: Buffer.from(patchUiRoot(mustRead(read, UI_ROOT), mod), 'latin1') });
+  }
+  // ONE UIGameRoot: the hire camera for the creatures, a build grid per
+  // faction — both on the same text, or the archive would carry two.
+  if (mod.creatures.length || factionBuild) {
+    let root = mustRead(read, UI_ROOT);
+    if (mod.creatures.length) root = patchUiRoot(root, mod);
+    if (factionBuild) root = factionBuild.patchUiRoot(root);
+    files.push({ path: UI_ROOT, data: Buffer.from(root, 'latin1') });
   }
   if (artifacts.length) {
     const spec = parseTypeSpec(mustRead(read, TYPES));
@@ -330,7 +353,9 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   // want both halves (src/mods/skill-scripts.ts).
   const scripts = [...setScriptFiles(sets), ...skillScriptFiles(skills)];
   for (const f of scripts) files.push({ path: f.path, data: Buffer.from(f.text, 'latin1') });
-  const onTheMap = skillMapScripts(skills);
+  // A faction's map-side Lua is a file of the mod's, loaded on every map by
+  // the same line a skill's is (town-button.ts).
+  const onTheMap = [...skillMapScripts(skills), ...(factionBuild?.scripts ?? [])];
   // A specialization that GIVES a spell is the third thing that wants this file:
   // the giving happens on the map, at run time, because that is the only way the
   // engine ever learns of the connection — see abilityLines. A pairing whose
@@ -390,7 +415,7 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   // Last, so it records the art each slot actually resolved to.
   files.unshift({ path: MOD_MANIFEST, data: Buffer.from(`${JSON.stringify(mod, null, 2)}\n`, 'utf8') });
 
-  return { files, limit, art, missing };
+  return { files, limit, art, missing, ...(factionBuild ? { factions: factionBuild.rows } : {}) };
 }
 
 /**

@@ -19,6 +19,13 @@ import { SHIPPED_CLASSES } from './hero-classes.ts';
 import { SHIPPED_SKILLS } from './hero-skills.ts';
 import { SHIPPED_SPELLS } from './spells.ts';
 import { setCreatureLimit } from '../exe/creature-limit.ts';
+import { setFactionLimits } from '../exe/faction-limit.ts';
+import type { FactionExeResult } from '../exe/faction-limit.ts';
+import { SHIPPED_PICKER_ORDER, writeRacesFile } from './race-order.ts';
+import { SHIPPED_TOWN_ORDINALS } from './town-files.ts';
+import { writeBuildingsFile } from './town-button.ts';
+import { magicRows, writeMagicFile } from './magic-kind.ts';
+import type { FactionRows } from './faction-files.ts';
 import { SHIPPED_CREATURES, creatureRoot, readStats } from './creatures.ts';
 import { artifactLimit, creatureLimit } from './mod-model.ts';
 import { MOD_MANIFEST, MOD_STEM, REF_TABLE, TYPES } from './mod-files.ts';
@@ -72,6 +79,13 @@ export interface Installed {
    * when the mod put something in that table.
    */
   tables: TableExeResult[];
+  /**
+   * And the faction's four: the town type and town specialization ceilings,
+   * the generator's row count, the picker's clamp — set together, and put
+   * back together when the last faction goes. Null when the executable was
+   * never patched and the mod has no faction.
+   */
+  factions: FactionExeResult | null;
 }
 
 /**
@@ -88,7 +102,7 @@ export interface Installed {
  * NOT installed either, because a mod the game will ignore is worse than no mod:
  * it looks installed.
  */
-export function installCreatureMod(gameRoot: string, mod: CreatureMod, archive: Buffer): Installed {
+export function installCreatureMod(gameRoot: string, mod: CreatureMod, archive: Buffer, rows?: FactionRows): Installed {
   const exe = mod.creatures.length ? setCreatureLimit(gameRoot, creatureLimit(mod)) : null;
   // Artifacts have a ceiling in the executable too, and finding that out cost
   // three wrong answers: raising the table's declared size in types.xml is
@@ -108,10 +122,33 @@ export function installCreatureMod(gameRoot: string, mod: CreatureMod, archive: 
     // it is the half the skill table lost a day to.
     mod.spells?.length ? setTableLimit(gameRoot, SPELL_TABLE, SHIPPED_SPELLS + mod.spells.length) : null,
   ].filter((r): r is TableExeResult => r !== null);
+  // A faction: two more ceilings, the generator's count and the picker's
+  // clamp, moved as one (src/exe/faction-limit.ts) — and the three files the
+  // extension reads beside the executable, written WHOLE every time so a
+  // row outlives nothing: the picker's order, the centre buttons with what
+  // the buildings do, the classes without magic. The rows come from the
+  // build, which numbered them; a caller that built nothing writes the
+  // shipped order and empty files, which is what a game without a faction
+  // should read.
+  const factions = installFactionSide(gameRoot, mod, rows);
   ensureModDir(gameRoot);
   const target = modFile(gameRoot, 'mod', mod.stem);
   writeFileSync(target, archive);
-  return { archive: target, exe, artifacts, tables };
+  return { archive: target, exe, artifacts, tables, factions };
+}
+
+/**
+ * The faction's side of an install, on its own so the empty mod can call it
+ * too: removing the last thing in a mod deletes the archive, and the
+ * ceilings and the extension's files have to go back to shipped with it.
+ */
+export function installFactionSide(gameRoot: string, mod: CreatureMod, rows?: FactionRows): FactionExeResult | null {
+  const list = mod.factions ?? [];
+  const result = setFactionLimits(gameRoot, list.length, list.reduce((n, f) => n + f.towns.length, 0));
+  writeRacesFile(gameRoot, rows?.picker ?? SHIPPED_PICKER_ORDER.map((name) => ({ name, town: SHIPPED_TOWN_ORDINALS[name]! })));
+  writeBuildingsFile(gameRoot, rows?.buttons ?? [], rows?.features ?? []);
+  writeMagicFile(gameRoot, magicRows(mod.classes ?? []));
+  return result;
 }
 
 // --- reading a built mod back -------------------------------------------------

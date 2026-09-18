@@ -31,6 +31,8 @@ import type { HeroSpec } from './heroes.ts';
 import type { ModSpecialization, SpecializationSpec } from './specializations.ts';
 import type { HeroClassSpec, ModHeroClass } from './hero-classes.ts';
 import type { HeroSkillSpec, ModHeroSkill } from './hero-skills.ts';
+import { SHIPPED_TOWN_TYPES, factionProblems } from './factions.ts';
+import type { FactionSpec, ModFaction } from './factions.ts';
 import type { RecolorOps } from '../format/recolor.ts';
 import type { ArtSlot } from './mod-art.ts';
 
@@ -209,6 +211,18 @@ export interface CreatureMod {
    * The extension catches the cast and hands it to Lua. See src/mods/spells.ts.
    */
   spells?: ModSpell[];
+  /**
+   * Factions of our own — a twelfth town type, and everything the engine
+   * indexes by it: a town copied from a shipped one and made ours, a race
+   * record, named towns, music, a picker tile, a hero pool, a centre button.
+   *
+   * The dearest thing in the archive: three reference tables with ceilings in
+   * the executable (town types, town specializations, generator presets), a
+   * clamp beside them, and three files the extension reads. Append-only for
+   * the reason a creature is — the ordinal is what `town_buildings_N` and
+   * every table key on. See src/mods/factions.ts and faction-files.ts.
+   */
+  factions?: ModFaction[];
 }
 
 /** One in a mod: a spec plus the id number it holds. */
@@ -289,7 +303,7 @@ export function modIsEmpty(mod: CreatureMod): boolean {
   return !mod.creatures.length && !mod.dwellings.length && !(mod.buildings ?? []).length
     && !(mod.artifacts ?? []).length && !(mod.sets ?? []).length && !(mod.heroes ?? []).length
     && !(mod.specializations ?? []).length && !(mod.classes ?? []).length && !(mod.skills ?? []).length
-    && !(mod.spells ?? []).length;
+    && !(mod.spells ?? []).length && !(mod.factions ?? []).length;
 }
 
 /**
@@ -917,3 +931,56 @@ export const SHIPPED_SET_EFFECTS_BY_NAME = [
   'ARTFSET_EFFECT_EDUCATIONAL', 'ARTFSET_EFFECT_HUNTERS', 'ARTFSET_EFFECT_OGRES',
   'ARTFSET_EFFECT_RUNIC', 'ARTFSET_EFFECT_DEMONIC',
 ];
+
+/**
+ * Append a faction and give it the next town type.
+ *
+ * APPEND-ONLY, like everything else that holds a number: a map stores a town's
+ * type by VALUE, `UIGameRoot` keys the build grid by it, and every table the
+ * engine indexes by race is read at it. `taken` is what the game's own enum
+ * already holds — a faction named after a shipped type would resolve to
+ * whichever entry the parser saw first.
+ */
+export function addFaction(
+  mod: CreatureMod, spec: FactionSpec, taken: ReadonlySet<string> = new Set(),
+): ModFaction {
+  if (!mod.factions) mod.factions = [];
+  if (taken.has(spec.type)) throw new Error(`${spec.type} is the game's own town type`);
+  if (mod.factions.some((f) => f.type === spec.type)) throw new Error(`${spec.type} is already in the mod`);
+  if (mod.factions.some((f) => f.file === spec.file)) throw new Error(`two factions cannot both be "${spec.file}"`);
+  const problems = factionProblems(spec);
+  if (problems.length) throw new Error(`${spec.file}: ${problems.join('; ')}`);
+  const f: ModFaction = { ...spec, number: SHIPPED_TOWN_TYPES + mod.factions.length };
+  mod.factions.push(f);
+  return f;
+}
+
+/** Change one already in the mod, keeping its ordinal. */
+export function updateFaction(mod: CreatureMod, file: string, spec: FactionSpec): ModFaction {
+  const at = (mod.factions ?? []).findIndex((f) => f.file === file);
+  if (at < 0) throw new Error(`${file} is not in the mod`);
+  if (spec.file !== file) throw new Error(`a faction cannot be renamed — ${file} names its folder, its type and every map that placed a town of it`);
+  const problems = factionProblems(spec);
+  if (problems.length) throw new Error(`${file}: ${problems.join('; ')}`);
+  const updated: ModFaction = { ...spec, number: mod.factions![at]!.number };
+  mod.factions![at] = updated;
+  return updated;
+}
+
+/**
+ * Take one out. Refused while a hero of the mod is of the type: his document
+ * names it, and a type the enum no longer declares is a parse error at
+ * startup, not a hero without a town. What to make him instead is his
+ * author's decision. The ones after it move down, as the classes do — a
+ * faction is a type maps store, so the caller warns first.
+ */
+export function removeFaction(mod: CreatureMod, file: string): ModFaction {
+  const list = mod.factions ?? [];
+  const at = list.findIndex((f) => f.file === file);
+  if (at < 0) throw new Error(`${file} is not in the mod`);
+  const heroes = (mod.heroes ?? []).filter((h) => h.town === list[at]!.type).map((h) => h.id);
+  if (heroes.length) throw new Error(`${list[at]!.type} is the town of ${heroes.join(', ')} — change them first`);
+  const gone = list.splice(at, 1)[0]!;
+  list.forEach((f, i) => { f.number = SHIPPED_TOWN_TYPES + i; });
+  return gone;
+}

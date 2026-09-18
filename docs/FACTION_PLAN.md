@@ -170,7 +170,7 @@ fully, in the probe, one launch per question.
   **Still unknown:** the grail's common bonuses. Launch 20, the AI's first
   turn, crashed — not the tree: the ceiling patcher had raised the wrong
   table's accessor (engineInternals/FACTIONS.md, "The table half").
-- **1c. Magic — DONE as "no magic" (2026-09-18, launches 35–38).** Warcries were built end to end and rolled back: a warcry is a charge of rage, and rage is the Horde's. What stands: a class without magic (`HeroClassSpec.magic: 'none'`, two gates of `CanLearnSpell`, `native/faction/magic-kind.c`) and a town without a guild (`TownSpec.magic: 'none'`, Stronghold's stubs); a guild town sets `magicSchools` and stops there. On the way: the compiled feature table behind every special building is the extension's (`native/faction/town-features.c`, `BuildingEdit.grants`/`from`). All of it in engineInternals/FACTIONS.md. The reading that led there, two separate The sites are scanned, not listed: nineteen for the class (the three the list below lacks are the book chooser's), nine for the guild's side of the town; `native/faction/magic-kind.c` answers at all of them for `bin/homm5-editor-magic.txt`, the copier takes Stronghold's stubs and hall (`TownSpec.magic`, `BuildingEdit.from`), the probe's Test town shouts and the Knight is the A/B class. See engineInternals/FACTIONS.md, "Warcries: where the engine asks". The reading that led there, two separate
+- **1c. Magic — DONE as "no magic" (2026-09-18, launches 35–38; launch 39 confirmed it: no guild on the build screen, the dial's guild button dark, an empty ordinary book on the Bone Lord).** Warcries were built end to end and rolled back: a warcry is a charge of rage, and rage is the Horde's. What stands: a class without magic (`HeroClassSpec.magic: 'none'`, two gates of `CanLearnSpell`, `native/faction/magic-kind.c`) and a town without a guild (`TownSpec.magic: 'none'`, Stronghold's stubs); a guild town sets `magicSchools` and stops there. On the way: the compiled feature table behind every special building is the extension's (`native/faction/town-features.c`, `BuildingEdit.grants`/`from`). All of it in engineInternals/FACTIONS.md. The reading that led there, two separate The sites are scanned, not listed: nineteen for the class (the three the list below lacks are the book chooser's), nine for the guild's side of the town; `native/faction/magic-kind.c` answers at all of them for `bin/homm5-editor-magic.txt`, the copier takes Stronghold's stubs and hall (`TownSpec.magic`, `BuildingEdit.from`), the probe's Test town shouts and the Knight is the A/B class. See engineInternals/FACTIONS.md, "Warcries: where the engine asks". The reading that led there, two separate
   things, and neither is a field of the town:
   - **The guild's spells.** The town's `MagicSchool_0/1` (shared `+0x124`,
     `+0x128`; Light/Dark when unset) are the two FAVOURED schools; a
@@ -262,6 +262,14 @@ a random creature. The shape is the extension's: the building is data
 one), the effect a term of the DLL — `OnBuildingBuilt` says it stands, the
 new-week hook puts a stack into the town's hire slots, the hire screen shows
 it. Done after §3–4, and if it works, any faction can be made for real.
+### 2c. A stage per building — later (Senya, 2026-09-19)
+
+The exterior has ten stages, chosen by the engine from the hall, the walls
+and the guild (`0xAC7980`, item 1e). A faction of ours should be able to
+show a model of the town for ANY building built — the stage table grown
+past ten in the DLL, the chooser ours, `TownSpec.exterior` naming a model
+per building. Not started; after the faction entity (§5) stands.
+
 ### 3. Fixes: large addresses
 
 The executable is not `LARGEADDRESSAWARE`: 2 GB, and a faction's copied
@@ -270,6 +278,11 @@ patch of the PE header, offered as a separate entry in the fixes list —
 optional, off by default, next to the H5_DLL ports.
 
 ### 4. Research still open
+
+The AI's race-indexed values are not only a crash to avoid: once read,
+they are a faction's AI PARAMETERS — what it builds and when, what it
+values — and a field of the faction entity (§5) later, editable like the
+rest.
 
 - 8-wide compiled arrays indexed by race (`AIRacesValues`, morale between
   races, the tavern's order): which ones a twelfth race reads past the end
@@ -282,7 +295,17 @@ optional, off by default, next to the H5_DLL ports.
 - Lua: scripts name types by number; `TOWN_TEST` exists in `types.xml`
   only for the serializer.
 
-### 5. The faction entity in the editor — last
+### 5. The faction entity in the editor — started 2026-09-19
+
+Started before §3–4 by decision (2026-09-19): the registries stopped
+changing at 1e/1f, and what §2b–§4 add are FIELDS (an effect of ours, AI
+parameters, a stage per building), which a dialog grows by a widget, not
+by a rewrite. The dialog is a build grid like the game's (one building
+per cell, a level per cell, a dependency below its requirement in the
+same column with no building between); "donor" is a button that fills
+everything from a shipped town, as the creature dialog's is. The e2e that
+builds the probe's "Bone Court" through the palette is the probe's
+replacement.
 
 When 1–4 have stopped changing the list above: `FactionSpec` in the mod
 model, `faction-files.ts` writing every registry in the table, the races
