@@ -212,6 +212,51 @@ console.log('the centre button');
   check('and the global script loads it', common.includes(factionScriptLoadLine('Test')) && factionScriptLoadLine('Test') === 'doFile("/scripts/homm5-editor/faction-Test.lua");');
 }
 
+console.log('a building from another town');
+{
+  // Stronghold's hall in Haven's tree: three records, their texts, their slot
+  // — which is the guild's cell in Haven, so the guild goes.
+  throws('two buildings on one cell are refused', () => build({ 'TB_SPECIAL_1': { from: 'TOWN_STRONGHOLD' } }), 'share grid cell 4,2');
+  const noGuild = { 'TB_MAGIC_GUILD': null, 'TB_DWELLING_5': { requires: ['TB_FORT'] } } as const;
+  const hall = build({ ...noGuild, 'TB_SPECIAL_1': { from: 'TOWN_STRONGHOLD' } });
+  const grid = text(hall, hall.paths.build);
+  const town = text(hall, hall.paths.shared);
+  check('three levels of TB_SPECIAL_1 now', ['TB_SPECIAL_1', 'TB_SPECIAL_1/2', 'TB_SPECIAL_1/3'].every((k) => hall.records.has(k)));
+  check("they are Stronghold's records, copied under the faction", hall.records.get('TB_SPECIAL_1')!.startsWith('Factions/Test/') && hall.records.get('TB_SPECIAL_1')!.includes('Stronghold/Special_1/HallOfTrial'));
+  check("Haven's training grounds record is gone, its texts with it", !hall.files.some((f) => f.path.includes('Special_1/Training_Grounds') || f.path.includes('Training_Grounds_Name')));
+  check('the Monument needs the hall now, not the grounds', text(hall, hall.records.get('TB_SPECIAL_2')!).includes(`/${hall.records.get('TB_SPECIAL_1')}#xpointer`));
+  check("the town lists the hall where the grounds were", town.indexOf('HallOfTrial') > town.indexOf('Dwelling_7') && town.indexOf('HallOfTrial') < town.indexOf('Special_2'));
+  check("the second level still needs the first, by its own relative href", text(hall, hall.records.get('TB_SPECIAL_1/2')!).includes('href="HallOfTrial.xdb#xpointer(/TownBuildingSharedStats)"'));
+  check("the slot is Stronghold's: three cells at 4,2", cells(grid, 'TB_SPECIAL_1').map((c) => `${c.level}:${c.x},${c.y}`).join(' ') === '1:4,2 2:4,2 3:4,2');
+  check("the hall's texts are in the copy", hall.files.some((f) => f.path.includes('Hall_of_Trial_1_Name')));
+  const renamed = build({ ...noGuild, 'TB_SPECIAL_1': { from: 'TOWN_STRONGHOLD', name: 'Костяной зал' } });
+  check('and an edit lands on the record taken', utf16(renamed, /<NameFileRef href="\/([^"#]+)/.exec(text(renamed, renamed.records.get('TB_SPECIAL_1')!))![1]!) === 'Костяной зал');
+  throws('a level cannot come from elsewhere on its own', () => build({ ...noGuild, 'TB_SPECIAL_1/2': { from: 'TOWN_STRONGHOLD' } }), 'whole building');
+  throws('a town with no such building', () => build({ 'TB_SPECIAL_7': { from: 'TOWN_STRONGHOLD' } }), 'no TB_SPECIAL_7 to take');
+  throws('a town that is not shipped', () => build({ 'TB_SPECIAL_1': { from: 'TOWN_TEST' } }), 'no shipped town');
+  check('the guild slot taken from Stronghold is empty, and the cells are gone', cells(text(build({ 'TB_MAGIC_GUILD': { from: 'TOWN_STRONGHOLD' } }), hall.paths.build), 'TB_MAGIC_GUILD').length === 0);
+}
+
+console.log('a town of warcries');
+{
+  // The Monastery needs the guild, which a hall's town never builds.
+  throws('what needed the guild has to be re-parented', () => buildTown({ ...base, magic: 'warcries', buildings: { 'TB_SPECIAL_1': { from: 'TOWN_STRONGHOLD' } } }, HEAVEN, read), 'TB_DWELLING_5 needs TB_MAGIC_GUILD');
+  throws('a hall is three levels', () => buildTown({ ...base, magic: 'warcries', buildings: { 'TB_DWELLING_5': { requires: ['TB_FORT'] } } }, HEAVEN, read), 'with 3 levels');
+  throws('the guild has no name to give', () => buildTown({ ...base, magic: 'warcries', buildings: { 'TB_MAGIC_GUILD/2': { name: 'x' } } }, HEAVEN, read), 'never shows its guild');
+  throws('the guild stays, as stubs', () => buildTown({ ...base, magic: 'warcries', buildings: { 'TB_MAGIC_GUILD': null } }, HEAVEN, read), 'do not drop');
+  throws('no schools without a guild', () => buildTown({ ...base, magic: 'warcries', magicSchools: ['MAGIC_SCHOOL_DARK', 'MAGIC_SCHOOL_LIGHT'], buildings: { 'TB_SPECIAL_1': { from: 'TOWN_STRONGHOLD' }, 'TB_DWELLING_5': { requires: ['TB_FORT'] } } }, HEAVEN, read), 'no guild to teach');
+  const shouts = buildTown({ ...base, magic: 'warcries', icons: BONE_ON_PLUM, buildings: { 'TB_SPECIAL_1': { from: 'TOWN_STRONGHOLD' }, 'TB_DWELLING_5': { requires: ['TB_FORT'] } } }, HEAVEN, read);
+  const grid = text(shouts, shouts.paths.build);
+  check('36 records still: five stubs for the guild, three for the hall, no training grounds', shouts.records.size === 36 + 2, `${shouts.records.size}`);
+  const stub = text(shouts, shouts.records.get('TB_MAGIC_GUILD/3')!);
+  check("the guild's records are Stronghold's stubs", stub.includes('<UIObjectName/>') && stub.includes('<Icon/>') && stub.includes('<DevLevelNeeded>0</DevLevelNeeded>'));
+  check('a stub keeps no icon even with a theme', !stub.includes('/Factions/Test/icons/'));
+  check('the hall has its drawn icon', text(shouts, shouts.records.get('TB_SPECIAL_1/3')!).includes('/Factions/Test/icons/special_1_3.xdb'));
+  check('the guild slot has no cells; the hall took its 4,2', cells(grid, 'TB_MAGIC_GUILD').length === 0 && cells(grid, 'TB_SPECIAL_1').every((c) => c.x === 4 && c.y === 2));
+  check('the Monastery needs the fort now', text(shouts, shouts.records.get('TB_DWELLING_5')!).includes(`/${shouts.records.get('TB_FORT')}#xpointer`));
+  check('the schools stay as the donor wrote them', text(shouts, shouts.paths.shared).includes('<MagicSchool_0>'));
+}
+
 console.log('the grid alone');
 check('dropping the last cell drops the slot', !dropGridCell(grid0, 'TB_TAVERN', 1).includes('TB_TAVERN'));
 check('dropping one of four keeps three', cells(dropGridCell(grid0, 'TB_TOWN_HALL', 2), 'TB_TOWN_HALL').length === 3);

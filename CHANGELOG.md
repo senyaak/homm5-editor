@@ -131,6 +131,16 @@ pre-release.
   `Heroes/Any.xdb` — the two lists a random town and a random hero of a
   race are drawn from, and the only thing that makes either "of the race"
   (`test-shared-groups`). A race with no hero listed starts with nothing.
+- A faction of warcries: `TownSpec.magic: 'warcries'` makes the town's guild
+  a hall — the guild's five records Stronghold's stubs, `TB_SPECIAL_1` three
+  levels (Stronghold's own through `BuildingEdit.from`, which takes any
+  building whole from another shipped town: records, texts, grid slot) —
+  and `HeroClassSpec.magic: 'warcries'` a class that shouts. The extension
+  answers "barbarian" for the class at the nineteen places the engine asks
+  and "Stronghold" for the town at the nine about its guild
+  (`native/faction/magic-kind.c`, `bin/homm5-editor-magic.txt`); the book,
+  the hall's teaching and the AI's casting follow. Two buildings on one grid
+  cell are refused now (`test-magic-kind`, `test-town-buildings`).
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were

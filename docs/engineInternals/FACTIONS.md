@@ -645,3 +645,66 @@ shared reference (`0x846B70`) and returns its text through `0x956620(obj +
 0x44)`, a cached pointer; and the button's IWindow base (`button + 4 +
 [[button+4]+8]`) takes it by slot `+0x80(String* "special", text)`. Ours
 does the same four with the row's building (`set_special_tooltip`).
+
+## Warcries: where the engine asks (2026-09-18, read; launch 35 pending)
+
+The game never asks "does this hero use warcries". It asks whether he IS a
+barbarian — `IHero::GetClass()` (vtable slot `+0x258`) `== 8` — and whether
+the town IS a Stronghold — the type virtual (slot `+0xD4` of the town, and of
+the shared at `+0xF8`) `== 10`. Scanned rather than listed by hand
+(`_tmp/class-sites.ts`, `_tmp/town-type-sites.ts`): every `call [reg+258h]`
+whose result meets a `cmp eax,N`, and every `call [reg+0D4h]` the same way.
+
+**The class, nineteen sites** (the plan's 1c knew sixteen; the three it
+missed are the book chooser's other two ways of finding the hero):
+
+| function | what the barbarian branch does |
+|---|---|
+| `0x70CC30` ×3 | which book the spellbook button opens: `CCreateOrcsSpellBook` (`0x7F5CD0`) for him, `CCreateSpellBook` (`0x7ECE40`) for the rest; the hero found through the combat, the adventure map or the hero screen |
+| `0x8506F0` ×2 | the town screen: a Stronghold (`+0xD4 == 10` first) with a barbarian in the garrison or visiting is taught — `0x8C91F0(hero, town)` |
+| `0x859860` ×2 | "does this town hold a barbarian" — the guild button's enable through `0x851D20` |
+| `0xACBC50` | why a cast is refused: 3 for a non-barbarian past an ability check (`0x2B`) |
+| `0xB840B0` | a barbarian casts no battle spell (the earthquake strings are the function's) |
+| `0xBCBD20`, `0xBCBE70` | a perk's multiplier: a ranger with skill 7 at expert reads `DefaultStats+0x11A8`, a barbarian with skill 8 at expert `+0x11B4` — inert without the skill |
+| `0xC1F8C0`, `0xC2A400`, `0xD16920` | the AI: what a barbarian is worth casting |
+| `0xD35B20`, `0xD47240` | learning (`TT_SPELL_LEARNED`, `RUNE_OBTAINED`): the branch for runes and warcries |
+| `0xD36380`, `0xD366A0` | may this hero cast this: a barbarian skips the school test (`+0xDC`) |
+| `0xD3BDC0` | a spell's cost by level (`0x1091FC8[level]`) goes through `0xB42570` for a barbarian |
+
+Other classes are asked the same way, fewer times: `== 6` (warlock) five,
+`== 1` (knight) four, `== 2` (ranger) three, `== 4` (demon lord) two,
+`== 3` and `== 7` (wizard, runemage) once each — the racial mechanics. And
+`0xB42630` maps a class to its racial skill by a switch (1…8 → 13, 16, 17,
+14, 15, 18, 0x97, 0xAC; else 0) — the skill binds the class from its own side
+(HERO_CLASSES.md), so a class of ours answering 0 there has cost nothing yet.
+
+**The town, twelve sites, nine of them the guild's:**
+
+| function | what the Stronghold branch does |
+|---|---|
+| `0x8564A0` | which building the guild button stands for: 17 (`TB_SPECIAL_1`, the Hall of Trial) against 6 |
+| `0x851D20` | the guild button's enable: a barbarian present (`0x859860`) against the guild's level (`0x856500(0x856430())`) |
+| `0x84D690` → `0x8506F0` | entering the town: teach warcries (`0x8506F0`) against spells (`0x850200`) |
+| `0x8BA6B0` | the guild window's header: `T_ORCS_HEADER` against `T_HEADER` |
+| `0xAC30D0`, `0xACAF50` | a record whose kind (`+0x10`) is 6 in a Stronghold is no building — its five guild records are stubs with no cells |
+| `0xAC7B40`, `0xAC7D80` | build rules: what needs the guild's level (`push 6` → `+0x34`) elsewhere needs nothing of the kind |
+| `0x850550` | Stronghold with `TB_SPECIAL_5` (the Slave Market) built: something for the heroes — not magic |
+| `0x856060`, `0x856330` | `buy_artifacts` against `traveller_shelter`: the merchant button — not magic |
+
+So "a faction of warcries" is exactly the plan's shape, measured: a class
+answering 8 at the nineteen, a town answering 10 at the nine, and the hall as
+DATA in `TB_SPECIAL_1` with three levels (the teaching reads the building by
+its ordinal — so the hall is that slot, not any). `native/faction/magic-kind.c`
+overwrites each six-byte `call [reg+slot]` with `call thunk / nop`; the thunk
+re-reads the vtable off the object in ecx (every site has it there), calls
+the same virtual, and answers the shipped identity for an ordinal in
+`bin/homm5-editor-magic.txt`. All sites of a list or none: a build where one
+mark has moved gets nothing. The copier's half is `TownSpec.magic` and
+`BuildingEdit.from` (src/mods/town-files.ts). The three Stronghold specials
+are left as they are — a faction has specials of its own.
+
+Own SCHOOLS are still out of reach: `MagicSchool` is nine values compiled
+(Destructive, Dark, Light, Summoning, Adventure, Runic, Warcries, Special,
+None), the book's tabs and the skills are keyed on them. A faction chooses
+between the book and the warcries, or — a plan, not a finding — a hall of
+ours teaching a school the engine has, through the same sites.

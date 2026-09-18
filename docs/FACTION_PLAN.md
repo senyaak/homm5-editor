@@ -170,7 +170,7 @@ fully, in the probe, one launch per question.
   **Still unknown:** the grail's common bonuses. Launch 20, the AI's first
   turn, crashed — not the tree: the ceiling patcher had raised the wrong
   table's accessor (engineInternals/FACTIONS.md, "The table half").
-- **1c. Magic — READ (2026-09-17), nothing launched.** Two separate
+- **1c. Magic — BUILT (2026-09-18), launch 35 pending.** The sites are scanned, not listed: nineteen for the class (the three the list below lacks are the book chooser's), nine for the guild's side of the town; `native/faction/magic-kind.c` answers at all of them for `bin/homm5-editor-magic.txt`, the copier takes Stronghold's stubs and hall (`TownSpec.magic`, `BuildingEdit.from`), the probe's Test town shouts and the Knight is the A/B class. See engineInternals/FACTIONS.md, "Warcries: where the engine asks". The reading that led there, two separate
   things, and neither is a field of the town:
   - **The guild's spells.** The town's `MagicSchool_0/1` (shared `+0x124`,
     `+0x128`; Light/Dark when unset) are the two FAVOURED schools; a

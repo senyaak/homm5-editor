@@ -69,6 +69,18 @@ export const TOWN_LEAVE = (rel: string): boolean =>
 /** `TOWN_HEAVEN`'s ordinal: the first real town, after none/random/neutral. */
 export const FIRST_REAL_TOWN = 3;
 
+/** The eight shipped towns by `TownType` name — the ordinal `town_buildings_N` and the tables key on. */
+export const SHIPPED_TOWN_ORDINALS: Readonly<Record<string, number>> = {
+  TOWN_HEAVEN: 3, TOWN_PRESERVE: 4, TOWN_ACADEMY: 5, TOWN_DUNGEON: 6,
+  TOWN_NECROMANCY: 7, TOWN_INFERNO: 8, TOWN_FORTRESS: 9, TOWN_STRONGHOLD: 10,
+};
+
+/** The guild's building type, and the hall's: Stronghold teaches its warcries from `TB_SPECIAL_1`, three levels. */
+export const GUILD_BUILDING = 'TB_MAGIC_GUILD';
+export const HALL_BUILDING = 'TB_SPECIAL_1';
+export const HALL_LEVELS = 3;
+export const HALL_DONOR = 'TOWN_STRONGHOLD';
+
 export interface TownSpec {
   /** Folder and file stem inside the mod. */
   file: string;
@@ -80,6 +92,19 @@ export interface TownSpec {
   name: string;
   /** The two schools its magic guild teaches; the donor's when absent. */
   magicSchools?: readonly [string, string];
+  /**
+   * What its heroes learn in it. `'guild'` (the default) is a magic guild
+   * teaching spells of `magicSchools`. `'warcries'` is a HALL: the guild's
+   * five records become the stubs Stronghold's are (never built, never shown
+   * — the engine wants a record per level), and `TB_SPECIAL_1` is the hall,
+   * three levels, teaching a warcry tier each — Stronghold's own through
+   * `buildings: { TB_SPECIAL_1: { from: 'TOWN_STRONGHOLD' } }`, or three
+   * levels of the donor's. The extension then answers "Stronghold" for the
+   * town wherever the engine asks whether the guild is a hall
+   * (native/faction/magic-kind.c); a hero shouts when his CLASS says so
+   * (hero-classes.ts). What needed the guild has to be re-parented.
+   */
+  magic?: 'guild' | 'warcries';
   /**
    * What the dwellings hire, by tier 1–7: the base creature for the dwelling
    * and its upgrade for the upgraded one (the expansion's second upgrade is
@@ -152,6 +177,17 @@ export type Resource = 'Wood' | 'Ore' | 'Mercury' | 'Crystal' | 'Sulfur' | 'Gem'
 export const RESOURCES: readonly Resource[] = ['Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gem', 'Gold'];
 
 export interface BuildingEdit {
+  /**
+   * Take this building from another shipped town instead of the donor: the
+   * `TownType` whose records of this type, at EVERY level, replace the
+   * donor's in the list, with that town's slot on the build grid (cells and
+   * all, or none when that town has none). On the whole building's key
+   * (`TB_SPECIAL_1`), never a level's. What their records needed of their
+   * own town they need of ours — the donor's building of the same type and
+   * level, or the copy refuses until `requires` says otherwise. The rest of
+   * the edit applies to the records taken.
+   */
+  from?: string;
   /** Its name on the build screen; the donor's when absent. */
   name?: string;
   description?: string;
@@ -405,16 +441,75 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   // would reach the dropped record through the old list. The grid loses
   // the building's cell here too (and the slot, when it was the last).
   let build = mustRead(read, donorBuildDefinition(donorOrdinal, read));
-  if (spec.buildings) {
-    const donor = seeded.get(source) ?? mustRead(read, source);
+  const edits = buildingEdits(spec);
+  if (edits) {
+    let donor = seeded.get(source) ?? mustRead(read, source);
+    // A building taken from another town goes into the donor's list BEFORE
+    // the walk, by absolute href, so the walk copies their records with the
+    // rest — structure preserved, so what they name of each other (the
+    // hall's second level needs its first) still resolves in the copy. What
+    // they name of THEIR town is repointed at the donor's building of the
+    // same type and level, or refused. The grid takes their slot whole.
+    for (const [key, edit] of Object.entries(edits)) {
+      if (!edit?.from || edit.from === spec.donor) continue;
+      const { type, level } = parseBuildingKey(key);
+      if (level !== 1) throw new Error(`${key}: \`from\` takes the whole building — name ${type}, not a level of it`);
+      const fromSource = donorTown(edit.from, read);
+      const theirs = listedBuildings(mustRead(read, fromSource), fromSource, read).filter((b) => b.type === type);
+      if (!theirs.length) throw new Error(`${edit.from} has no ${type} to take`);
+      const mine = listedBuildings(donor, source, read);
+      for (const b of theirs) {
+        let record = mustRead(read, b.path);
+        for (const dep of dependencyItems(record, b.path)) {
+          const [t, l] = typeAndLevel(mustRead(read, dep.path), dep.path);
+          if (t === type) continue;
+          const on = mine.find((m) => m.type === t && m.level === l);
+          if (!on) throw new Error(`${edit.from}'s ${b.key} needs ${buildingKey(t, l)}, which ${spec.donor} has not — re-parent it (requires)`);
+          record = record.replace(`href="${dep.href}"`, `href="/${on.path}#xpointer(/${BUILDING_RECORD})"`);
+        }
+        seeded.set(b.path, record);
+      }
+      // And the other way round: what needed the donor's building needs the
+      // one taken, at the same level — or the walk would still reach the
+      // donor's record through the dependency, and the copy would hold both.
+      const ours = mine.filter((b) => b.type === type);
+      for (const b of mine) {
+        if (b.type === type) continue;
+        let record = seeded.get(b.path) ?? mustRead(read, b.path);
+        let changed = false;
+        for (const dep of dependencyItems(record, b.path)) {
+          const was = ours.find((o) => o.path === dep.path);
+          if (!was) continue;
+          const now = theirs.find((t) => t.level === was.level);
+          if (!now) throw new Error(`${b.key} needs ${was.key}, and ${edit.from}'s ${type} has no level ${was.level} — re-parent it (requires)`);
+          record = record.replace(`href="${dep.href}"`, `href="/${now.path}#xpointer(/${BUILDING_RECORD})"`);
+          changed = true;
+        }
+        if (changed) seeded.set(b.path, record);
+      }
+      donor = swapListed(donor, ours, theirs.map((b) => `<Item href="/${b.path}#xpointer(/${BUILDING_RECORD})"/>`), `${type} in ${spec.donor}'s list`);
+      const fromOrdinal = SHIPPED_TOWN_ORDINALS[edit.from];
+      if (!fromOrdinal) throw new Error(`${edit.from} is not a shipped town — a building comes from one of ${Object.keys(SHIPPED_TOWN_ORDINALS).join(', ')}`);
+      build = replaceGridSlot(build, type, gridSlotText(mustRead(read, donorBuildDefinition(fromOrdinal, read)), type));
+    }
+    seeded.set(source, donor);
     const listed = listedBuildings(donor, source, read);
     const byKey = new Map(listed.map((b) => [b.key, b]));
     const dropped = new Set<string>();
-    for (const [key, edit] of Object.entries(spec.buildings)) {
+    for (const [key, edit] of Object.entries(edits)) {
       const { type, level } = parseBuildingKey(key);
       if (!byKey.has(key)) throw new Error(`${spec.donor} has no building ${key} — it has ${[...byKey.keys()].join(', ')}`);
       if (edit !== null) continue;
       for (const b of listed) if (b.type === type && b.level >= level) dropped.add(b.path);
+    }
+    // A hall's town has no guild to build: the records stay (stubs, like
+    // Stronghold's) but nothing may need them, exactly as if they were dropped.
+    const unbuildable = new Set(spec.magic === 'warcries' ? listed.filter((b) => b.type === GUILD_BUILDING).map((b) => b.path) : []);
+    if (spec.magic === 'warcries') {
+      const hall = listed.filter((b) => b.type === HALL_BUILDING && !dropped.has(b.path));
+      if (hall.length !== HALL_LEVELS) {
+        throw new Error(`${spec.file}: a hall is ${HALL_BUILDING} with ${HALL_LEVELS} levels — ${spec.donor}'s has ${hall.length}; take ${HALL_DONOR}'s (from) or give it three`);
+      }
     }
     const keyOf = new Map(listed.map((b) => [b.path, b.key]));
     let town = donor;
@@ -424,7 +519,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
         build = dropGridCell(build, b.type, b.level);
         continue;
       }
-      const requires = spec.buildings[b.key]?.requires;
+      const requires = edits[b.key]?.requires;
       if (requires) {
         const items = requires.map((dep) => {
           const on = byKey.get(dep);
@@ -438,8 +533,9 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
         seeded.set(b.path, record.replace(re, block));
         continue;
       }
-      for (const dep of dependenciesOf(mustRead(read, b.path), b.path)) {
+      for (const dep of dependenciesOf(seeded.get(b.path) ?? mustRead(read, b.path), b.path)) {
         if (dropped.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which is dropped — re-parent it (requires) or drop it too`);
+        if (unbuildable.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which a town of warcries never builds — re-parent it (requires)`);
       }
     }
     if (dropped.size) seeded.set(source, town);
@@ -470,6 +566,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     /<messagesFileRef>[\s\S]*?<\/messagesFileRef>/,
     `<messagesFileRef>${EOL}\t\t<Item href="/${p.name}"/>${EOL}\t</messagesFileRef>`,
   );
+  if (spec.magicSchools && spec.magic === 'warcries') throw new Error(`${spec.file}: a town of warcries has no guild to teach ${spec.magicSchools.join(' and ')}`);
   if (spec.magicSchools) {
     for (const [i, school] of spec.magicSchools.entries()) {
       town = town.replace(new RegExp(`<MagicSchool_${i}>[^<]*</MagicSchool_${i}>`), `<MagicSchool_${i}>${school}</MagicSchool_${i}>`);
@@ -510,7 +607,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   }
 
   // The tree's edits: what a record says, and where its cell is on the grid.
-  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+  for (const [key, edit] of Object.entries(edits ?? {})) {
     if (!edit) continue;
     const path = records.get(key);
     if (!path) throw new Error(`${key} is dropped, nothing to edit`);
@@ -540,10 +637,13 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     files.set(path, Buffer.from(text, 'latin1'));
   }
 
+  // After every drop, swap and move: no two buildings on one cell.
+  checkGridCells(build, spec.file);
+
   // Models of ours in the town screen: placed, named, and every level of the
   // building pointed at the name.
   let donorObjects: Map<string, string> | null = null;
-  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+  for (const [key, edit] of Object.entries(edits ?? {})) {
     if (!edit?.model) continue;
     const { type } = parseBuildingKey(key);
     const interiorHref = hrefOf(town, 'Interior');
@@ -577,6 +677,8 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     for (const path of records.values()) {
       const text = files.get(path)!.toString('latin1');
       const [type, level] = typeAndLevel(text, path);
+      // A stub — Stronghold's guild records, never shown — has no icon and keeps none.
+      if (/<Icon\/>/.test(text)) continue;
       const href = put(`${type.slice(3).toLowerCase()}_${level}`, buildingIcon(buildingGlyph(type, level), theme));
       files.set(path, Buffer.from(setHref(text, 'Icon', href, `${path} icon`), 'latin1'));
     }
@@ -591,7 +693,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
 
   // The centre button: one building's, its skins drawn from the theme.
   let button: Omit<TownButton, 'town'> | undefined;
-  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+  for (const [key, edit] of Object.entries(edits ?? {})) {
     if (!edit?.button) continue;
     if (button) throw new Error(`${spec.file}: two buildings want the centre button; the dial has one`);
     if (!spec.icons) throw new Error(`${spec.file}: a button needs the icon theme to draw its skins`);
@@ -746,6 +848,54 @@ function dependenciesOf(text: string, from: string): string[] {
   return [...m[1]!.matchAll(RECORD_ITEM)].map((i) => resolve(from, i[1]!)).filter((x): x is string => x !== null);
 }
 
+/** A record's dependency items: the href as written, and where it points. */
+function dependencyItems(text: string, from: string): { href: string; path: string }[] {
+  const m = /<dependencies>([\s\S]*?)<\/dependencies>/.exec(text);
+  if (!m) return [];
+  const out: { href: string; path: string }[] = [];
+  for (const i of m[1]!.matchAll(RECORD_ITEM)) {
+    const path = resolve(from, i[1]!);
+    if (path) out.push({ href: i[1]!, path });
+  }
+  return out;
+}
+
+/** The record class a building list names. */
+const BUILDING_RECORD = 'TownBuildingSharedStats';
+
+/**
+ * The town document's list with `ours` — the donor's items of one type —
+ * replaced by `lines`, in the first one's place; at the list's end when the
+ * donor had none of the type.
+ */
+function swapListed(town: string, ours: readonly ListedBuilding[], lines: readonly string[], what: string): string {
+  let out = town;
+  if (ours.length) {
+    const first = once(out, ours[0]!.item, what);
+    out = insertAfterLine(out, first, [...lines]);
+    for (const b of ours) out = dropLine(out, once(out, b.item, what));
+    return out;
+  }
+  return insertBeforeLine(out, once(out, '</buildings>', what), [...lines]);
+}
+
+/**
+ * The spec's building edits with what `magic` implies: a town of warcries
+ * takes Stronghold's guild — five stubs and an empty slot — unless the spec
+ * says where its own come from.
+ */
+function buildingEdits(spec: TownSpec): Readonly<Record<BuildingKey, BuildingEdit | null>> | undefined {
+  if (spec.magic !== 'warcries') return spec.buildings;
+  const guild = spec.buildings?.[GUILD_BUILDING];
+  if (guild === null) throw new Error(`${spec.file}: a town of warcries keeps the guild's records as stubs — do not drop ${GUILD_BUILDING}`);
+  // The stubs name texts the game does not ship: nothing shows them.
+  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+    if (parseBuildingKey(key).type !== GUILD_BUILDING || !edit) continue;
+    if (edit.name !== undefined || edit.description !== undefined) throw new Error(`${spec.file}: a town of warcries never shows its guild — ${key} has no name to give`);
+  }
+  return { ...spec.buildings, [GUILD_BUILDING]: { from: HALL_DONOR, ...guild } };
+}
+
 /** The text without the line `at` falls on. */
 function dropLine(text: string, at: number): string {
   const start = text.lastIndexOf('\n', at) + 1;
@@ -796,6 +946,37 @@ export function moveGridCell(build: string, type: string, level: number, to: { x
     .replace(/<XSlotPos>\d+<\/XSlotPos>/, `<XSlotPos>${to.x}</XSlotPos>`)
     .replace(/<YSlotPos>\d+<\/YSlotPos>/, `<YSlotPos>${to.y}</YSlotPos>`);
   return build.slice(0, s) + slot.slice(0, cs) + cell + slot.slice(ce) + build.slice(e);
+}
+
+/** A grid's slot for `type` as text, lines and all; null when it has none. */
+export function gridSlotText(build: string, type: string): string | null {
+  const span = gridSlot(build, type);
+  return span ? build.slice(span[0], span[1]) : null;
+}
+
+/** The grid with its slot for `type` replaced by `slot` — added at the end when it had none, removed when `slot` is null. */
+export function replaceGridSlot(build: string, type: string, slot: string | null): string {
+  const span = gridSlot(build, type);
+  if (span) return build.slice(0, span[0]) + (slot ?? '') + build.slice(span[1]);
+  if (!slot) return build;
+  const end = build.indexOf('\n\t</slots>');
+  if (end < 0) throw new Error('build grid: no </slots>');
+  return build.slice(0, end + 1) + slot + build.slice(end + 1);
+}
+
+/** Every cell on the grid: two buildings on one cell is a grid the screen cannot draw. */
+export function checkGridCells(build: string, what: string): void {
+  const at = new Map<string, string>();
+  const slots = /<BuildingType>(TB_\w+)<\/BuildingType>\s*(?:<buildings\/>|<buildings>([\s\S]*?)<\/buildings>)/g;
+  for (const slot of build.matchAll(slots)) {
+    const type = slot[1]!;
+    for (const cell of (slot[2] ?? '').matchAll(/<XSlotPos>(\d+)<\/XSlotPos>\s*<YSlotPos>(\d+)<\/YSlotPos>/g)) {
+      const pos = `${cell[1]},${cell[2]}`;
+      const other = at.get(pos);
+      if (other && other !== type) throw new Error(`${what}: ${type} and ${other} share grid cell ${pos} — move one (slot)`);
+      at.set(pos, type);
+    }
+  }
 }
 
 /** The palette entry: a link file pointing at our town. */
