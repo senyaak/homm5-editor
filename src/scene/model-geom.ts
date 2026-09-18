@@ -17,6 +17,7 @@ import type { Mesh, MeshOptions } from './geometry.ts';
 import type { MaterialInfo } from './materials.ts';
 import type { ReadXdb } from './xdb.ts';
 import type { GeomData, GeomPart, AlphaMode, CompressedPicture, Picture } from './payload.ts';
+import { round } from './units.ts';
 
 
 /**
@@ -372,9 +373,9 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
   geoms.push({
     // Left in the world units the file is authored in. The renderer builds its
     // world in those units too, so nothing here has to be converted.
-    pos: Array.from(pos, (v) => +v.toFixed(3)),
-    uv: hasUV ? Array.from(uv, (v) => +v.toFixed(4)) : null,
-    nrm: hasNrm ? Array.from(nrm, (v) => +v.toFixed(4)) : null,
+    pos: Array.from(pos, (v) => round(v, 3)),
+    uv: hasUV ? Array.from(uv, (v) => round(v, 4)) : null,
+    nrm: hasNrm ? Array.from(nrm, (v) => round(v, 4)) : null,
     idx: Array.from(idxs),
     parts,
     // The bones themselves are not known here — the model file has the binding,
@@ -382,7 +383,7 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
     // the shared that names it. So the binding is packed now and the resolver
     // fills the rest in (or drops `skin` outright when there is no clip to play).
     ...(skinIndex && skinWeight
-      ? { skin: { index: Array.from(skinIndex), weight: Array.from(skinWeight, (v) => +v.toFixed(4)), bones: [], bind: [], clip: null } }
+      ? { skin: { index: Array.from(skinIndex), weight: Array.from(skinWeight, (v) => round(v, 4)), bones: [], bind: [], clip: null } }
       : {}),
   });
   return idx;

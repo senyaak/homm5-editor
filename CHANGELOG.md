@@ -84,6 +84,9 @@ pre-release.
   the IPC and on the card — and the texels and mips the game itself draws
   with. A file with no mip chain, and the ground tiles, still travel
   decoded.
+- The scene payload's numbers are rounded by arithmetic instead of through
+  `toFixed` strings (a quarter of a second per map), and `view.perf()`
+  reports the scene's draws by what issues them.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

@@ -18,6 +18,7 @@ import type { Assets } from '../game/assets.ts';
 import type { Terrain, TextureLayer } from '../terrain/terrain.ts';
 import type { ReadXdb } from './xdb.ts';
 import type { SplatData, TileInfo } from './payload.ts';
+import { round } from './units.ts';
 
 
 // Per-vertex ground colour: blend each texture layer's representative colour
@@ -48,7 +49,7 @@ export function terrainColors(t: Terrain, readXdb: ReadXdb, cache: Map<string, n
     if (tw > 0) { out[i * 3] = acc[i * 3] / tw; out[i * 3 + 1] = acc[i * 3 + 1] / tw; out[i * 3 + 2] = acc[i * 3 + 2] / tw; }
     else { out[i * 3] = 0.30; out[i * 3 + 1] = 0.33; out[i * 3 + 2] = 0.24; } // bare default
   }
-  return Array.from(out, (v) => +v.toFixed(3));
+  return Array.from(out, (v) => round(v, 3));
 }
 
 // ---- terrain texture splatting -------------------------------------------

@@ -617,6 +617,8 @@ interface ViewApi {
     shadow: { redraws: number; dirty: number };
     /** The bakes since the map opened — idle bone tables, effect tables, effect atlases: how many, and their milliseconds in the workers — and how many are still out. */
     bakes: Record<'idle' | 'fx' | 'atlas', { n: number; ms: number }> & { pending: number };
+    /** The visible scene's draws by what issues them (static batches, idle kinds, effects, terrain…): meshes, draws (a geometry group each), instances. */
+    draws: Record<string, { meshes: number; draws: number; instances: number }>;
     loaf: LongFrame[];
   };
   /** Forget the frames and long frames seen so far — to measure from here. */

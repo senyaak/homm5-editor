@@ -14,7 +14,7 @@
 
 import * as THREE from 'three';
 import { state, activeFloor } from '#core/state.ts';
-import { renderer } from '#viewport/stage.ts';
+import { renderer, scene } from '#viewport/stage.ts';
 import { fxAtlasStats, fxTableStats } from '#viewport/particles.ts';
 import { idleTableStats } from '#viewport/idle.ts';
 import { shadowRedraws } from '#viewport/shadows.ts';
@@ -110,6 +110,33 @@ function fxSummary(): { batches: number; copies: number; alive: number; atlases:
   return out;
 }
 
+/**
+ * The scene's draws by what issues them — a walk of what is visible, a
+ * geometry group being one draw. Not the frame's exact count (culling and
+ * the shadow pass move it) but what each kind of thing costs in calls, which
+ * is the question a draw-call number by itself never answers.
+ */
+function drawBreakdown(): Record<string, { meshes: number; draws: number; instances: number }> {
+  const out: Record<string, { meshes: number; draws: number; instances: number }> = {};
+  const hidden = new Set<THREE.Object3D>();
+  scene.traverse((o) => {
+    if (!o.visible || (o.parent && hidden.has(o.parent))) { hidden.add(o); return; }
+    const m = o as THREE.Mesh & { isInstancedMesh?: boolean; isSkinnedMesh?: boolean; count?: number };
+    if (!m.isMesh) return;
+    const mat = Array.isArray(m.material) ? m.material[0] : m.material;
+    const shader = mat && (mat as THREE.ShaderMaterial).isShaderMaterial ? (mat as THREE.ShaderMaterial) : null;
+    const kind = m.isInstancedMesh
+      ? (m.isSkinnedMesh ? 'idle kinds' : 'static batches')
+      : shader
+        ? (shader.uniforms.uAtlas ? 'effects' : shader.uniforms.uGround ? (shader.uniforms.uMask ? 'terrain splat' : 'projected parts') : `shader ${o.name || 'other'}`)
+        : `${mat?.type ?? 'no material'}${o.name ? ` ${o.name}` : ''}`;
+    const draws = m.geometry.groups.length || 1;
+    const e = out[kind] ??= { meshes: 0, draws: 0, instances: 0 };
+    e.meshes++; e.draws += draws; e.instances += m.isInstancedMesh ? m.count ?? 1 : 1;
+  });
+  return out;
+}
+
 /** Everything `view.perf()` answers — see ViewApi for what each field means. */
 export function perfStats(): {
   frames: number;
@@ -125,6 +152,7 @@ export function perfStats(): {
   /** Shadow-map redraws so far, and how many were asked for by a change (the rest: the view moved, or the periodic refresh). */
   shadow: { redraws: number; dirty: number };
   bakes: ReturnType<typeof bakeStats>;
+  draws: ReturnType<typeof drawBreakdown>;
   loaf: LongFrame[];
 } {
   const it = idleTableStats();
@@ -147,6 +175,7 @@ export function perfStats(): {
     jsHeapBytes: (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory?.usedJSHeapSize ?? 0,
     shadow: shadowRedraws(),
     bakes: bakeStats(),
+    draws: drawBreakdown(),
     loaf: [...loaf],
   };
 }

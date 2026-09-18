@@ -44,3 +44,14 @@ export const UNITS_PER_TILE = 2;
  * renderer.
  */
 export const SEA_LEVEL = 1.5;
+
+/**
+ * A value to `places` decimals, as `+v.toFixed(places)` would give it — but
+ * as arithmetic. The payload's arrays were rounded through `toFixed`, a
+ * string per number, which for a map's million and a half vertex values
+ * was a quarter of a second of the main process's part of opening it.
+ */
+export const round = (v: number, places: number): number => {
+  const k = 10 ** places;
+  return Math.round(v * k) / k;
+};

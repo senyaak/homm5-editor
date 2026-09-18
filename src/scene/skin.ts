@@ -14,6 +14,7 @@ import type { Assets } from '../game/assets.ts';
 import type { ReadXdb } from './xdb.ts';
 import type { Animation, BakedClip, Skeleton } from './animation.ts';
 import type { GeomData } from './payload.ts';
+import { round } from './units.ts';
 
 
 /** Worst bone rotation between consecutive baked samples, in degrees. */
@@ -139,8 +140,8 @@ export function attachAnimation(
     geom.skin.bones = skeleton.bones.map((b) => ({
       name: b.name,
       parent: b.parentIndex,
-      pos: b.rest.position.map((v) => +v.toFixed(5)),
-      quat: b.rest.orientation.map((v) => +v.toFixed(6)),
+      pos: b.rest.position.map((v) => round(v, 5)),
+      quat: b.rest.orientation.map((v) => round(v, 6)),
     }));
     // Handed over element for element, deliberately. Ours are row-vector
     // matrices stored row-major (translation in the last row); three.js wants
@@ -149,7 +150,7 @@ export function attachAnimation(
     // "into three.js's convention" transposes it out of it. Measured, not
     // reasoned: transposing here put the translation in the wrong column and
     // threw vertices 1100 units off a 4-unit model (tools/test-idle.ts).
-    geom.skin.bind = inverseBindMatrices(skeleton).map((m) => m.map((v) => +v.toFixed(6)));
+    geom.skin.bind = inverseBindMatrices(skeleton).map((m) => m.map((v) => round(v, 6)));
     // A fast bone can turn most of the way round between two samples at the
     // default rate — the Air Elemental's vortex does 171° per 15fps step, and
     // slerp between such samples takes the short way each time, which reads as
@@ -161,12 +162,12 @@ export function attachAnimation(
     }
     geom.skin.clip = {
       duration: clip.duration,
-      times: clip.times.map((v) => +v.toFixed(4)),
-      rotations: clip.rotations.map((r) => r.map((v) => +v.toFixed(5))),
-      positions: clip.positions.map((p) => p.map((v) => +v.toFixed(4))),
+      times: clip.times.map((v) => round(v, 4)),
+      rotations: clip.rotations.map((r) => r.map((v) => round(v, 5))),
+      positions: clip.positions.map((p) => p.map((v) => round(v, 4))),
       // Only the clips that leave unit scale carry this at all (bakeClip), so
       // rounding a copy that is not there must not invent one.
-      ...(clip.scales ? { scales: clip.scales.map((s) => s.map((v) => +v.toFixed(4))) } : {}),
+      ...(clip.scales ? { scales: clip.scales.map((s) => s.map((v) => round(v, 4))) } : {}),
     };
   } catch { drop(); }
 }
@@ -220,9 +221,9 @@ export function bakeCharacterClip(
     scale: Number(own.bones[0]?.rest.scaleShear?.[0] ?? 1) || 1,
     bones: skeleton.bones.map((b) => ({
       name: b.name, parent: b.parentIndex,
-      pos: b.rest.position.map((v) => +v.toFixed(5)),
-      quat: b.rest.orientation.map((v) => +v.toFixed(6)),
+      pos: b.rest.position.map((v) => round(v, 5)),
+      quat: b.rest.orientation.map((v) => round(v, 6)),
     })),
-    bind: inverseBindMatrices(skeleton).map((m) => m.map((v) => +v.toFixed(6))),
+    bind: inverseBindMatrices(skeleton).map((m) => m.map((v) => round(v, 6))),
   };
 }
