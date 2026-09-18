@@ -162,6 +162,7 @@ const api = {
   // preload has its own context and survives.
   gpuReport: () => invoke('app:gpu-report'),
   appMetrics: () => invoke('app:metrics'),
+  renderCaps: (caps) => invoke('render:caps', caps),
   openDevTools: () => invoke('app:open-devtools'),
   launchGame: () => invoke('app:launch-game'),
   pandoraGet: (id) => invoke('pandora:get', { id }),

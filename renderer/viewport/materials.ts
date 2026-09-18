@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { drapeThreeShader } from '#viewport/drape.ts';
 import { uSunDir, uSunCol, uAmbCol, uShadeCol, uIncidentCol, uWhiten } from '#viewport/lighting.ts';
 import { renderer } from '#viewport/stage.ts';
-import type { GeomData, GeomPart, Picture } from '#src/scene/payload.ts';
+import type { CompressedPicture, GeomData, GeomPart, Picture } from '#src/scene/payload.ts';
 
 /**
  * The space a diffuse texture is sampled in — RAW, and the same one the probe
@@ -160,25 +160,44 @@ gameLit(greyMat, true);
 const texCache = new Map<string, THREE.Material>();
 
 /** The pictures with no key of their own, numbered as they come, so the material cache can name them. */
-const pictureIds = new WeakMap<Picture, number>();
+const pictureIds = new WeakMap<Picture | CompressedPicture, number>();
 let pictures = 0;
 /** What tells one picture from another in a cache key: its file and cap, or its number. */
-export function pictureKey(p: Picture): string {
+export function pictureKey(p: Picture | CompressedPicture): string {
   if (p.key) return p.key;
   let id = pictureIds.get(p);
   if (id === undefined) { id = pictures++; pictureIds.set(p, id); }
   return `#${id}`;
 }
 
-/** A part's own texture the way the renderer expects it (unflipped, tiling, mipmapped) — straight from its texels. */
-export function partTexture(pic: Picture): THREE.Texture {
-  const tx = new THREE.DataTexture(pic.rgba, pic.width, pic.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+/** Whether this GPU takes S3TC blocks — asked once, told to the main process, which then ships textures as the game does. */
+export const S3TC = renderer.extensions.has('WEBGL_compressed_texture_s3tc');
+const DXT_FORMAT = {
+  // RGBA rather than RGB for DXT1: the c0 <= c1 mode's index 3 is a
+  // transparent texel, which is how the foliage cutouts are authored.
+  DXT1: THREE.RGBA_S3TC_DXT1_Format, DXT3: THREE.RGBA_S3TC_DXT3_Format, DXT5: THREE.RGBA_S3TC_DXT5_Format,
+} as const;
+
+/**
+ * A part's own texture the way the renderer expects it (unflipped, tiling,
+ * mipmapped) — from its texels, or from the file's own blocks and mip
+ * chain, which go to the GPU as they are.
+ */
+export function partTexture(pic: Picture | CompressedPicture): THREE.Texture {
+  let tx: THREE.Texture;
+  if ('levels' in pic) {
+    tx = new THREE.CompressedTexture(pic.levels, pic.width, pic.height, DXT_FORMAT[pic.format], THREE.UnsignedByteType);
+    // The chain is the file's, complete to 1×1 (dds.ts ddsChain); nothing to generate.
+    tx.generateMipmaps = false;
+  } else {
+    tx = new THREE.DataTexture(pic.rgba, pic.width, pic.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+    // A DataTexture is born unfiltered and without mipmaps; a model's skin
+    // wants what an image-loaded texture gets by default.
+    tx.generateMipmaps = true;
+  }
   tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
   // Row 0 is the top, as it lies in the file; the UVs were authored for that.
   tx.flipY = false;
-  // A DataTexture is born unfiltered and without mipmaps; a model's skin wants
-  // what an image-loaded texture gets by default.
-  tx.generateMipmaps = true;
   tx.minFilter = THREE.LinearMipmapLinearFilter;
   tx.magFilter = THREE.LinearFilter;
   tx.needsUpdate = true;

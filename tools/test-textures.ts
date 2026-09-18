@@ -20,7 +20,8 @@ import { dirname, join } from 'node:path';
 import { decodeDDS } from '../src/format/dds.ts';
 import { assets } from '../src/game/assets.ts';
 import { resampleTo, shrinkToFit } from '../src/format/texture.ts';
-import { textureDataUri } from '../src/scene/materials.ts';
+import { setCompressedTextures, textureDataUri } from '../src/scene/materials.ts';
+import type { CompressedPicture, Picture } from '../src/scene/payload.ts';
 import { packTextures, unpackTextures } from '../src/scene/tex-table.ts';
 import type { Image } from '../src/format/gif.ts';
 
@@ -134,7 +135,7 @@ function testAgainstData(): void {
   const big = textureDataUri('', data, 512, '/' + rel);
   check('a 512 skin arrives at 512 under the default cap', big?.picture.width === 512,
     big ? String(big.picture.width) : 'null');
-  check('as its texels, the buffer the size says', !!big && big.picture.rgba.byteLength === 512 * 512 * 4);
+  check('as its texels, the buffer the size says', !!big && 'rgba' in big.picture && big.picture.rgba.byteLength === 512 * 512 * 4);
 
   const again = textureDataUri('', data, 512, '/' + rel);
   check('asked twice, it is decoded once and the same picture comes back',
@@ -142,15 +143,29 @@ function testAgainstData(): void {
 
   const small = textureDataUri('', data, 128, '/' + rel);
   check('a lower cap really does reduce it', small?.picture.width === 128);
+  const bytesOf = (p: Picture | CompressedPicture): number => 'levels' in p ? p.levels.reduce((n, l) => n + l.data.byteLength, 0) : p.rgba.byteLength;
   check('and the reduction is smaller than the original',
-    !!small && small.picture.rgba.byteLength < big!.picture.rgba.byteLength,
-    `${small ? (small.picture.rgba.byteLength / 1024) | 0 : 0} KB vs ${(big!.picture.rgba.byteLength / 1024) | 0} KB`);
+    !!small && bytesOf(small.picture) < bytesOf(big!.picture),
+    `${small ? (bytesOf(small.picture) / 1024) | 0 : 0} KB vs ${(bytesOf(big!.picture) / 1024) | 0} KB`);
   // The file carries a mip chain, and the cap reads the level off it rather
   // than reducing the top one (dds.ts): a 128 from a 512 is the file's third level.
   const raw = decodeDDS(data.path(dirname('/' + rel) + '/' + readFileSync(data.path('/' + rel), 'utf8').match(/<DestName href="([^"]+)"/)![1]!));
   const level2 = decodeDDS(data.path(dirname('/' + rel) + '/' + readFileSync(data.path('/' + rel), 'utf8').match(/<DestName href="([^"]+)"/)![1]!), 128);
   check('the 128 is the file\'s own level, not the top one box-filtered', raw.width === 512 && level2.width === 128
     && !level2.rgba.every((v: number, i: number) => v === shrinkToFit(raw, 128).rgba[i]));
+
+  // With a GPU that takes S3TC, the same ask comes back as the file's blocks
+  // and mip chain, padded to 1×1 with blocks of the average colour.
+  setCompressedTextures(true);
+  const dxt = textureDataUri('', data, 512, '/' + rel);
+  setCompressedTextures(false);
+  const c = dxt && 'levels' in dxt.picture ? dxt.picture : null;
+  check('as blocks, when the window said it can take them', !!c && c.width === 512 && c.format === 'DXT3' && c.levels.length === 10,
+    c ? `${c.format} ${c.levels.length} levels` : 'not compressed');
+  check('the chain runs to 1×1', !!c && c.levels.at(-1)!.width === 1 && c.levels.at(-1)!.height === 1);
+  check('each level is the blocks its size takes', !!c && c.levels.every((l) => l.data.byteLength === Math.ceil(l.width / 4) * Math.ceil(l.height / 4) * 16));
+  check('and a quarter of the texels\' bytes, chain and all', !!c && bytesOf(c) * 2 < bytesOf(big!.picture), c ? `${(bytesOf(c) / 1024) | 0} KB` : '');
+  check('the alpha verdict is the same read off a small level', !!dxt && dxt.hasAlpha === big!.hasAlpha && dxt.opaque === big!.opaque);
 }
 
 testShrink();

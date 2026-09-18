@@ -77,6 +77,13 @@ pre-release.
   ~6 s where it was 11.5. The ground-tile palette reads its thumbnails off
   the tiles' own mip levels (0.85 → 0.13 s), and the object catalogue's
   scan no longer stats every entry it lists (0.8 → 0.5 s).
+- A model's textures go to the GPU as the game ships them: the file's own
+  DXT blocks and mip chain, whole, on a card that takes S3TC (every desktop
+  one does; the window says so once at start). No decode in the main
+  process, no upload of texels, a quarter to a sixth of the bytes across
+  the IPC and on the card — and the texels and mips the game itself draws
+  with. A file with no mip chain, and the ground tiles, still travel
+  decoded.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

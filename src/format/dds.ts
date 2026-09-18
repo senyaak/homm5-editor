@@ -179,3 +179,92 @@ export function decodeDDSBuffer(b: Buffer, cap?: number): Image {
   }
   return { width, height, rgba };
 }
+
+/** A block-compressed texture's mip chain, as the file holds it — for a GPU that takes S3TC. */
+export interface DxtChain {
+  format: 'DXT1' | 'DXT3' | 'DXT5';
+  width: number;
+  height: number;
+  /** Top level first, down to 1×1; each level's blocks in their own buffer. */
+  levels: { width: number; height: number; data: Uint8Array }[];
+}
+
+/**
+ * The file's DXT levels from the largest that fits `cap` down to 1×1, or
+ * null when the file is not block-compressed or carries no chain at all (a
+ * texture with only its top level is decoded and mipmapped by the GPU
+ * instead, like an uncompressed one).
+ *
+ * The shipped chains stop at 8×8 or 4×4 — the compressor's block minimum —
+ * and a GPU asked to filter through a chain that stops short samples black.
+ * The missing tail is made here: each further level is one block of the
+ * average colour (and alpha) of the level above, which at 4, 2 and 1 texel
+ * is what a mip would be to within a rounding.
+ */
+export function ddsChain(b: Buffer, cap?: number): DxtChain | null {
+  if (b.subarray(0, 4).toString() !== 'DDS ') throw new Error('not a DDS');
+  if (!(b.readUInt32LE(80) & 0x4)) return null;
+  const fourCC = b.subarray(84, 88).toString();
+  if (fourCC !== 'DXT1' && fourCC !== 'DXT3' && fourCC !== 'DXT5') return null;
+  const count = b.readUInt32LE(8) & 0x20000 ? Math.max(1, b.readUInt32LE(28)) : 1;
+  if (count < 2) return null;
+  const blockBytes = fourCC === 'DXT1' ? 8 : 16;
+  const bytesOf = (w: number, h: number): number => Math.ceil(w / 4) * Math.ceil(h / 4) * blockBytes;
+  let width = b.readUInt32LE(16), height = b.readUInt32LE(12);
+  let off = 128, level = 0;
+  if (cap) {
+    while (level + 1 < count && (width > cap || height > cap)) {
+      off += bytesOf(width, height);
+      width = Math.max(1, width >> 1); height = Math.max(1, height >> 1);
+      level++;
+    }
+  }
+  const levels: DxtChain['levels'] = [];
+  let w = width, h = height;
+  for (; level < count; level++) {
+    const n = bytesOf(w, h);
+    if (off + n > b.length) break;
+    // A copy, not a view: a view would carry the whole file across the IPC.
+    levels.push({ width: w, height: h, data: new Uint8Array(b.subarray(off, off + n)) });
+    off += n;
+    if (w === 1 && h === 1) break;
+    w = Math.max(1, w >> 1); h = Math.max(1, h >> 1);
+  }
+  if (!levels.length) return null;
+  // The tail the file lacks, one block per level, from the average of the
+  // last level it has.
+  let last = levels[levels.length - 1]!;
+  while (last.width > 1 || last.height > 1) {
+    const avg = averageOf(decodeLevel(b, fourCC, last));
+    w = Math.max(1, last.width >> 1); h = Math.max(1, last.height >> 1);
+    last = { width: w, height: h, data: flatBlock(fourCC, avg) };
+    levels.push(last);
+  }
+  return { format: fourCC, width, height, levels };
+}
+
+/** One level's texels, through the same decoder as the whole. */
+function decodeLevel(b: Buffer, fourCC: string, level: { width: number; height: number; data: Uint8Array }): Image {
+  // A header for the level alone, so the decoder reads it as a file of its own.
+  const head = Buffer.alloc(128);
+  b.copy(head, 0, 0, 128);
+  head.writeUInt32LE(0, 8); // no mip count: this is a single level
+  head.writeUInt32LE(level.height, 12); head.writeUInt32LE(level.width, 16);
+  return decodeDDSBuffer(Buffer.concat([head, Buffer.from(level.data)]));
+}
+
+function averageOf(img: Image): [number, number, number, number] {
+  let r = 0, g = 0, bl = 0, a = 0;
+  const n = img.width * img.height;
+  for (let i = 0; i < n * 4; i += 4) { r += img.rgba[i]!; g += img.rgba[i + 1]!; bl += img.rgba[i + 2]!; a += img.rgba[i + 3]!; }
+  return [Math.round(r / n), Math.round(g / n), Math.round(bl / n), Math.round(a / n)];
+}
+
+/** One block of a flat colour, in the format: every index 0, both endpoints the colour. */
+function flatBlock(fourCC: string, [r, g, b, a]: [number, number, number, number]): Uint8Array {
+  const c = ((r * 31 / 255 | 0) << 11) | ((g * 63 / 255 | 0) << 5) | (b * 31 / 255 | 0);
+  const colour = [c & 0xff, c >> 8, c & 0xff, c >> 8, 0, 0, 0, 0];
+  if (fourCC === 'DXT1') return Uint8Array.from(colour);
+  if (fourCC === 'DXT3') { const nib = (a >> 4) | (a & 0xf0); return Uint8Array.from([nib, nib, nib, nib, nib, nib, nib, nib, ...colour]); }
+  return Uint8Array.from([a, a, 0, 0, 0, 0, 0, 0, ...colour]);
+}

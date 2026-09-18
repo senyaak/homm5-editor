@@ -40,7 +40,7 @@ export interface GeomPart {
    * seconds of a map open between them, for a texture that goes straight
    * into a texture either way.
    */
-  tex: Picture | null;
+  tex: Picture | CompressedPicture | null;
   /** How this part blends, as its material declares. */
   alphaMode: AlphaMode;
   /**
@@ -319,6 +319,23 @@ export interface FxInstancePayload {
  * picture rather than per object that wears it.
  */
 export interface Picture { width: number; height: number; rgba: Uint8Array; key?: string }
+
+/**
+ * A texture as the game ships it: S3TC blocks with the mip chain below,
+ * for a GPU that takes them whole (every desktop one does) — no decode
+ * here, no encode there, a sixth of the bytes across the IPC and on the
+ * card, and the texels and mips the game itself draws with. The main
+ * process makes these once the window has said its GPU can (render caps);
+ * until then, and for a file with no chain, a part gets a `Picture`.
+ */
+export interface CompressedPicture {
+  format: 'DXT1' | 'DXT3' | 'DXT5';
+  width: number;
+  height: number;
+  /** Top level first, down to 1×1. */
+  levels: { width: number; height: number; data: Uint8Array }[];
+  key: string;
+}
 
 /** A tile offset from an object's own tile, in grid axes; may be negative. */
 export interface TileOffset { x: number; y: number }

@@ -16,12 +16,12 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
-import { decodeDDS } from '../format/dds.ts';
+import { ddsChain, decodeDDS, decodeDDSBuffer } from '../format/dds.ts';
 import { resampleTo, shrinkToFit } from '../format/texture.ts';
 import { resolveHref, dirOf } from './xdb.ts';
 import type { Assets } from '../game/assets.ts';
 import type { Mesh } from './geometry.ts';
-import type { AlphaMode, Picture } from './payload.ts';
+import type { AlphaMode, CompressedPicture, Picture } from './payload.ts';
 
 /** A material as the renderer needs it: what to draw and how to blend it. */
 export interface MaterialInfo {
@@ -223,7 +223,15 @@ function meshMaterialIndex(model: string, meshCount: number, materialCount: numb
  */
 export const TEXTURE_CAP = 512;
 
-interface DecodedTexture { picture: Picture; hasAlpha: boolean; opaque: boolean }
+interface DecodedTexture { picture: Picture | CompressedPicture; hasAlpha: boolean; opaque: boolean }
+
+/**
+ * Whether a model's texture may travel as the file's own S3TC blocks
+ * (payload.ts CompressedPicture). Off until the window says its GPU takes
+ * them (`render:caps`); a build before that, or in a tool, decodes as ever.
+ */
+let compressedTextures = false;
+export function setCompressedTextures(on: boolean): void { compressedTextures = on; }
 
 /**
  * Textures already decoded, by file and cap.
@@ -249,13 +257,17 @@ let decodedBytes = 0;
  */
 const byHref = new Map<string, DecodedTexture | null>();
 
+const pictureBytes = (p: Picture | CompressedPicture): number =>
+  'levels' in p ? p.levels.reduce((n, l) => n + l.data.byteLength, 0) : p.rgba.byteLength;
+
 function remember(key: string, value: DecodedTexture | null): DecodedTexture | null {
   decoded.set(key, value);
-  decodedBytes += value ? value.picture.rgba.byteLength : 0;
+  decodedBytes += value ? pictureBytes(value.picture) : 0;
   for (const old of decoded.keys()) {
     if (decodedBytes <= DECODED_BUDGET) break;
     if (old === key) break;                    // never evict what was just asked for
-    decodedBytes -= decoded.get(old)?.picture.rgba.byteLength ?? 0;
+    const gone = decoded.get(old);
+    decodedBytes -= gone ? pictureBytes(gone.picture) : 0;
     decoded.delete(old);
   }
   return value;
@@ -271,17 +283,23 @@ export function textureDataUri(model: string, data: Assets, cap: number, href?: 
   try {
     const t = href ? [href, href] : model.match(/<Texture href="([^"]+?)(?:#[^"]*)?"/); if (!t) return null;
     const docPath = data.path(t[1].split('#')[0]);
-    const hkey = `${docPath}|${cap}`;
+    const hkey = `${docPath}|${cap}|${compressedTextures ? 'dxt' : 'rgba'}`;
     const byDoc = byHref.get(hkey);
     if (byDoc !== undefined && (byDoc === null || decoded.get(byDoc.picture.key!) === byDoc)) return byDoc;
     const tx = data.text(t[1].split('#')[0]!);
     const dest = tx?.match(/<DestName href="([^"]+)"/); if (!dest) return null;
     const ddsPath = data.path(join(dirname(t[1].split('#')[0]), dest[1]));
     if (!existsSync(ddsPath)) return null;
-    const key = `${ddsPath}|${cap}`;
+    const key = `${ddsPath}|${cap}|${compressedTextures ? 'dxt' : 'rgba'}`;
     const known = decoded.get(key);
     if (known !== undefined) { byHref.set(hkey, known); return known; }
-    const img = shrinkToFit(decodeDDS(ddsPath, cap), cap);
+    const file = readFileSync(ddsPath);
+    // The blocks as they are, when the window's GPU takes them and the file
+    // has a mip chain to go with them. What the alpha says about the part is
+    // read off a small level: whether it has soft edges and whether it is
+    // mostly solid are properties of the picture, not of its resolution.
+    const chain = compressedTextures ? ddsChain(file, cap) : null;
+    const img = chain ? decodeDDSBuffer(file, 64) : shrinkToFit(decodeDDSBuffer(file, cap), cap);
     let hasAlpha = false, solidTexels = 0;
     for (let i = 3; i < img.rgba.length; i += 4) {
       const a = img.rgba[i]!;
@@ -292,7 +310,9 @@ export function textureDataUri(model: string, data: Assets, cap: number, href?: 
     // skin sits at 96%, a feathered overlay at 11%), so where the line lands
     // between them does not matter.
     const made = remember(key, {
-      picture: { width: img.width, height: img.height, rgba: img.rgba, key },
+      picture: chain
+        ? { format: chain.format, width: chain.width, height: chain.height, levels: chain.levels, key }
+        : { width: img.width, height: img.height, rgba: img.rgba, key },
       hasAlpha,
       opaque: solidTexels > img.width * img.height * 0.5,
     });

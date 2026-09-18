@@ -25,7 +25,7 @@ import { state, activeFloor } from '#core/state.ts';
 import { tileCenter, heightOn, groundAt } from '#core/coords.ts';
 import { renderer, scene, camera, controls, topCamera, cam, keys, isTyping, raycaster, ptr, syncTopCamera, setTopView, keyPan, DEFAULT_BG } from '#viewport/stage.ts';
 import { worldGeos, worldMats, geomParts, geomScale, geomFootprint, geomSkin, geomFx, registerGeom, buildGeos } from '#viewport/geoms.ts';
-import { materialFor, partTexture, shadeProbe } from '#viewport/materials.ts';
+import { materialFor, partTexture, shadeProbe, S3TC } from '#viewport/materials.ts';
 import { terrainColor, asTileSpace, terrainGeometry, waterCells, waterGeometry, makeWaterMesh, WATER_ORDER, remeshFloor, sea } from '#viewport/terrain-mesh.ts';
 import { refreshBlocked, refreshFootprints, syncFootprints, setShowBlocked, showBlocked } from '#viewport/overlays.ts';
 import { advanceIdle, clearIdle, removeIdle, addIdle, idleMode, setIdleMode, idleTime } from '#viewport/idle.ts';
@@ -1119,6 +1119,11 @@ for (const btn of document.querySelectorAll<HTMLButtonElement>('#bar .menubtn'))
     mine.showPopover();
   });
 }
+
+// What this GPU takes, told to the main process before any map is asked for:
+// with S3TC a model's textures come as the file's own blocks (materials.ts).
+// A map opened before the answer lands is only decoded the slower way.
+void api.renderCaps({ s3tc: S3TC });
 
 // Say so while the editor is drawing in software, and offer the way back. The
 // mode survives restarts, so without this a machine that had one bad driver day

@@ -4,7 +4,8 @@
 
 import { app, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
-import type { AppMetric, LaunchGameResult } from '#electron/ipc.ts';
+import type { AppMetric, LaunchGameResult, RenderCaps } from '#electron/ipc.ts';
+import { setCompressedTextures } from '#src/scene/materials.ts';
 import { gameRoot, readSettings, saveSettings } from '#electron/paths.ts';
 import { state } from '#electron/state.ts';
 import { spawn } from 'node:child_process';
@@ -89,6 +90,10 @@ export function registerApp(): void {
   })));
 
   ipcMain.handle('app:open-devtools', () => { state.win?.webContents.openDevTools({ mode: 'detach' }); });
+
+  // The window's GPU, once it exists: a texture is built for the card that
+  // will draw it (src/scene/materials.ts textureDataUri).
+  ipcMain.handle('render:caps', (_e: IpcMainInvokeEvent, caps: RenderCaps) => { setCompressedTextures(!!caps.s3tc); });
 
   ipcMain.handle('app:gpu-software', (): boolean => !!readSettings().softwareRendering);
 

@@ -49,6 +49,9 @@ export interface MapListEntry {
  */
 export interface OpenArchivePayload { path: string; inner?: string; stock?: boolean }
 
+/** What the window's GPU takes — see EditorApi.renderCaps. */
+export interface RenderCaps { s3tc: boolean }
+
 /** One process of the app, from `app:metrics` — see EditorApi.appMetrics. */
 export interface AppMetric {
   /** Chromium's process type: Browser, GPU, Tab, Utility… */
@@ -2223,6 +2226,12 @@ export interface EditorApi {
   appMetrics(): Promise<AppMetric[]>;
   /** Open DevTools on the editor window (the fatal screen's escape hatch). */
   openDevTools(): Promise<void>;
+  /**
+   * What the window's GPU can take, told once at start: with `s3tc` the main
+   * process ships a model's textures as the file's own DXT blocks and mip
+   * chain (payload.ts CompressedPicture) instead of decoding them.
+   */
+  renderCaps(caps: RenderCaps): Promise<void>;
   /**
    * Start the game — our copy, the one that reads `H5E/`.
    *

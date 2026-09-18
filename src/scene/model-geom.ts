@@ -16,7 +16,7 @@ import type { Assets } from '../game/assets.ts';
 import type { Mesh, MeshOptions } from './geometry.ts';
 import type { MaterialInfo } from './materials.ts';
 import type { ReadXdb } from './xdb.ts';
-import type { GeomData, GeomPart, AlphaMode, Picture } from './payload.ts';
+import type { GeomData, GeomPart, AlphaMode, CompressedPicture, Picture } from './payload.ts';
 
 
 /**
@@ -262,8 +262,8 @@ export function addGeom(geoms: GeomData[], meshes: Mesh[], model: string, modelH
   // a body, so its SubTerrain base survives), and the parts loop needs the same
   // images afterwards. Opacity is a property of the texture, not the UVs, so it
   // is read here whether or not the mesh ends up with usable UVs.
-  const texInfo = new Map<number, { picture: Picture; hasAlpha: boolean; opaque: boolean } | null>();
-  const infoFor = (mi: number): { picture: Picture; hasAlpha: boolean; opaque: boolean } | null => {
+  const texInfo = new Map<number, { picture: Picture | CompressedPicture; hasAlpha: boolean; opaque: boolean } | null>();
+  const infoFor = (mi: number): { picture: Picture | CompressedPicture; hasAlpha: boolean; opaque: boolean } | null => {
     if (!texInfo.has(mi)) {
       const href = allMats[mi]?.tex;
       texInfo.set(mi, href ? textureDataUri(model, data, texSize, href) : null);

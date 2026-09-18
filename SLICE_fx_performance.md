@@ -372,6 +372,17 @@ What it says, in the order it matters:
   by a palette left open) was ahead of it in the single-threaded main
   process — the scan stats every entry it lists on top of the directory
   listing that already says what each is, and stops (0.5 s).
+* **Textures as the game ships them** (2026-09-18): the DXT blocks and the
+  mip chain go to the GPU whole (`CompressedPicture`, `ddsChain`, three's
+  `CompressedTexture` with `RGBA_S3TC_DXT1/3/5`), once the window has told
+  the main process its GPU takes S3TC (`render:caps`). The shipped chains
+  stop at 8×8 or 4×4 and a GPU filtering through a chain that stops short
+  samples black, so the tail to 1×1 is made — one block of the level
+  above's average colour per level. The alpha verdicts (`hasAlpha`,
+  `opaque`) are read off the 64-px level. `loadMap` 3.3 → 2.8 s on
+  A2C1M1 (the IPC's share 0.9 → 0.7); the map is on screen at ~4.5 s from
+  11.5 this morning. The texels never touch the renderer's heap now, and
+  the GPU holds a quarter (DXT3/5) to a sixth (DXT1) of what it did.
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,
