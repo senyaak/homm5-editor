@@ -42,7 +42,11 @@ pre-release.
   the picker's clamp) and writes the extension's races, buildings and magic
   files whole; removing the last faction puts all of them back. The town
   copier no longer refuses Necropolis as a donor (its Ruined Tower depends on
-  Sylvan's fort in the shipped data). `tools/test-faction-mod.ts`,
+  Sylvan's fort in the shipped data). A building's model can be a file of
+  your own on disk ("file…" beside the field): its folder is read as a data
+  root — the geometry document beside it, the binaries under `bin/` as the
+  game keys them — and copied exactly as a shipped model is.
+  `tools/test-faction-mod.ts`,
   `tools/test-faction-limit.ts`, e2e 014.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,

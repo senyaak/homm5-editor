@@ -151,6 +151,7 @@ const api = {
   heroArtOf: (hero) => invoke('mods:hero-art', { hero }),
   pickHeroFile: (p) => invoke('mods:pick-hero-file', p),
   pickPicture: () => invoke('mods:pick-picture'),
+  pickModelFile: () => invoke('mods:pick-model-file'),
   updateArtifact: (p) => invoke('mods:update-artifact', p),
   updateArtifactSet: (p) => invoke('mods:update-set', p),
   creatureUses: (p) => invoke('mods:creature-uses', p),

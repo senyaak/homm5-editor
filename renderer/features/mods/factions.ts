@@ -717,7 +717,77 @@ function drawCellEditor(): void {
       row.append(l, sel);
       box.appendChild(row);
     }
-    textRow('Model', edit.model?.source, 'the donor\'s model', (v) => put({ model: v ? { source: v, ...(edit.model?.place ? { place: edit.model.place } : {}) } : undefined }));
+    {
+      // The model: a path in the game's data, or a file of our own on disk —
+      // the same field, the same copy; only where it is read from differs.
+      const sel = document.createElement('select');
+      const coords: HTMLInputElement[] = [];
+      const setModel = (v: string): void => {
+        const was = edits[current.key]?.model;
+        put({ model: v ? { source: v, ...(was?.place ? { place: was.place } : was?.at ? { at: was.at } : {}) } : undefined });
+        sel.disabled = !v;
+        for (const c of coords) c.disabled = !v || !!sel.value;
+      };
+      const row = document.createElement('label');
+      row.className = 'on-row';
+      const l = document.createElement('span');
+      l.textContent = 'Model';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.spellcheck = false;
+      input.className = 'fc-model';
+      input.placeholder = "the donor's model";
+      input.title = "a Model document: a path in the game's data (Arenas/Town/…/X.xdb), or a file of your own on disk — blank keeps the donor's";
+      input.value = edit.model?.source ?? '';
+      input.oninput = () => setModel(input.value);
+      const pick = document.createElement('button');
+      pick.className = 'ghost he-file';
+      pick.textContent = 'file…';
+      pick.title = 'a Model document of your own on disk; its folder is read as a data root (geometry beside it, binaries under bin/)';
+      pick.onclick = (ev) => {
+        ev.preventDefault();
+        void api.pickModelFile().then((path) => { if (path) { input.value = path; setModel(path); } });
+      };
+      row.append(l, input, pick);
+      box.appendChild(row);
+      // Where it stands: on a dropped building's spot (its camera and pick
+      // hull reused), or at a point of the scene outright. Drawn with the
+      // model row and enabled by it, so typing a model never redraws the
+      // editor under the typing.
+      {
+        const where = document.createElement('div');
+        where.className = 'on-row';
+        const wl = document.createElement('span');
+        wl.textContent = 'Stands';
+        sel.className = 'fc-model-place';
+        const droppedTypes = [...new Set(all.filter((b) => b.level === 1 && isDropped(b.key)).map((b) => b.type))];
+        fillSelect(sel, [{ id: '', label: 'at a point (x, y, z)' }, ...droppedTypes.map((t) => ({ id: t, label: `where ${t} stood` }))], edit.model?.place ?? '');
+        sel.disabled = !edit.model;
+        sel.title = "a dropped building leaves its spot, camera and pick hull; a point is in the scene's own units";
+        for (const axis of ['x', 'y', 'z'] as const) {
+          const c = document.createElement('input');
+          c.type = 'number';
+          c.className = 'narrow fc-model-at';
+          c.placeholder = axis;
+          c.value = edit.model?.at ? String(edit.model.at[axis]) : '';
+          coords.push(c);
+        }
+        const place = (): void => {
+          const source = edits[current.key]?.model?.source;
+          if (!source) return;
+          if (sel.value) put({ model: { source, place: sel.value } });
+          else {
+            const [x, y, z] = coords.map((c) => Number(c.value) || 0) as [number, number, number];
+            put({ model: { source, at: { x, y, z } } });
+          }
+          for (const c of coords) c.disabled = !!sel.value;
+        };
+        sel.onchange = () => { place(); drawCellEditor(); };
+        for (const c of coords) { c.oninput = place; c.disabled = !edit.model || !!sel.value; }
+        where.append(wl, sel, ...coords);
+        box.appendChild(where);
+      }
+    }
     textRow('Button → Lua', edit.button?.lua, 'no button', (v) => put({ button: v ? { lua: v } : undefined }));
   }
   const violated = (edit.requires ?? current.requires).filter((k) => !dependableFrom(x, y, current.type).includes(k) && !all.some((b) => b.type === current.type && b.key === k));

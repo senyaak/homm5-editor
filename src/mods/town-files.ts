@@ -36,6 +36,7 @@ import { copyArt, dataPath, resolve, uidFor } from './mod-art.ts';
 import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
 import { donorObjectsOf, placeBuildingModel } from './town-screen.ts';
+import { isOwnFile, mountOwn } from './own-files.ts';
 import type { BuildingModel } from './town-screen.ts';
 import { EOL, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
 import { TOWN_GROUP } from './shared-groups.ts';
@@ -673,8 +674,12 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     const ofType = [...records].filter(([k]) => parseBuildingKey(k).type === type).map(([, path]) => path);
     const name = `${spec.file}_${type.slice(3).toLowerCase()}`;
     donorObjects ??= donorObjectsOf(mustRead(read, source), source, read);
+    // A model of our own on disk is the same thing from another root: its
+    // folder is mounted and the copier reads it as it reads the game's.
+    const own = isOwnFile(edit.model.source) ? mountOwn(read, edit.model.source) : null;
     const placed = placeBuildingModel({
-      name, levels: ofType.length, model: edit.model, interior: dataPath(interiorHref), files, read,
+      name, levels: ofType.length, model: own ? { ...edit.model, source: own.rel } : edit.model,
+      interior: dataPath(interiorHref), files, read: own?.read ?? read,
       dir: `${p.dir}/buildings/${name}`,
       donorObject: /<ModObjectName>([^<]*)<\/ModObjectName>/.exec(files.get(records.get(key)!)!.toString('latin1'))?.[1] ?? '',
       donorObjects,

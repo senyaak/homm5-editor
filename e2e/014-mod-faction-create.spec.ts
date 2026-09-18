@@ -18,9 +18,9 @@
 
 import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { closeEditor, launchEditor } from './launch.ts';
+import { DATA, REPO_ROOT, closeEditor, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
 import { modGameRoot, readInstalledMod } from './mods.ts';
 import { readEntries } from '../src/format/pak.ts';
@@ -51,6 +51,29 @@ async function press(page: Page, target: Locator, allow?: RegExp): Promise<void>
     if (allow) await expect(line, `${id} says only what was expected`).toHaveText(allow);
     else await expect(line, `${id} stayed empty`).toHaveText('');
   }
+}
+
+/**
+ * The Necropolis graves as a folder of our own under _tmp: the four documents
+ * and the two binaries, laid out as a model of ours is authored. Returns the
+ * Model document's path.
+ */
+function ownGraves(): string {
+  const dir = join(REPO_ROOT, '_tmp', 'e2e-own-model', 'graves');
+  rmSync(join(dir, '..'), { recursive: true, force: true });
+  mkdirSync(join(dir, 'bin', 'Geometries'), { recursive: true });
+  mkdirSync(join(dir, 'bin', 'AIGeometries'), { recursive: true });
+  const stem = 'UneartheGrave_u1r0';
+  const src = join(DATA, 'Arenas', 'Town', 'Necropolis');
+  for (const f of [`${stem}.xdb`, `${stem}-geom.xdb`, `${stem}-geom-AI.xdb`, `${stem}-UnearthedGraves_M.(Material).xdb`]) {
+    writeFileSync(join(dir, f), readFileSync(join(src, f)));
+  }
+  const uidIn = (f: string): string => /<uid>([0-9A-F-]{36})<\/uid>/i.exec(readFileSync(join(src, f), 'latin1'))![1]!.toUpperCase();
+  const geom = uidIn(`${stem}-geom.xdb`);
+  writeFileSync(join(dir, 'bin', 'Geometries', geom), readFileSync(join(DATA, 'bin', 'Geometries', geom)));
+  const ai = uidIn(`${stem}-geom-AI.xdb`);
+  writeFileSync(join(dir, 'bin', 'AIGeometries', ai), readFileSync(join(DATA, 'bin', 'AIGeometries', ai)));
+  return join(dir, `${stem}.xdb`);
 }
 
 const cell = (page: Page, x: number, y: number): Locator => page.locator(`#fac-grid .fc-cell[data-x="${x}"][data-y="${y}"]`);
@@ -234,6 +257,21 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await expect(cell(page, 5, 3)).toContainText('Bone Pit');
   await expect(page.locator('#fac-towns .town-name')).toHaveValue('The Ossuary');
 
+  // A model of OUR OWN for the pit: the Necropolis graves as a folder on
+  // disk — the documents beside each other, the binaries under bin/ as the
+  // game keys them — named by its path in the same field a data path goes in,
+  // and stood at a point of the scene.
+  const own = ownGraves();
+  await press(page, cell(page, 5, 3));
+  await expect(page.locator('#fac-cell')).toContainText('TB_SPECIAL_1');
+  await expect(page.locator('#fac-cell .fc-model-place')).toBeDisabled();
+  await page.locator('#fac-cell .fc-model').fill(own);
+  await expect(page.locator('#fac-cell .fc-model-place')).toBeEnabled();
+  const at = page.locator('#fac-cell .fc-model-at');
+  await at.nth(0).fill('250');
+  await at.nth(1).fill('340');
+  await at.nth(2).fill('10');
+
   // One more named town, and the shipyard is kept after all.
   await press(page, page.locator('#fac-town-add'));
   await page.locator('#fac-towns .town-file').nth(1).fill('Charnel');
@@ -249,6 +287,11 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(f?.number).toBe(11);
   expect(f?.towns.length).toBe(2);
   expect(f?.buildings?.TB_SHIPYARD, 'kept: no edit at all').toBeUndefined();
+  expect(f?.buildings?.TB_SPECIAL_1?.model).toEqual({ source: own, at: { x: 250, y: 340, z: 10 } });
+  const names = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM))).map((e) => e.name.split(String.fromCharCode(92)).join('/'));
+  expect(names).toContain(`Factions/${FILE}/buildings/${FILE}_special_1/own/graves/UneartheGrave_u1r0.xdb`);
+  expect(names).toContain(`Factions/${FILE}/buildings/${FILE}_special_1/own/graves/UneartheGrave_u1r0-geom.xdb`);
+  rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-model'), { recursive: true, force: true });
   expect(exeNumbers()).toEqual({ towns: 12, specs: 257, clamp: 8 });
   expect(ed.errors).toEqual([]);
 });

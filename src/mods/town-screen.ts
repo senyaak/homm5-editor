@@ -28,7 +28,13 @@ import type { DataReader } from './mod-files.ts';
 import { EOL, hrefOf, insertBeforeLine, once } from './xml-edit.ts';
 
 export interface BuildingModel {
-  /** A `Model` document's data path — a building of another town's screen, an adventure-map object, anything with a Geometry. */
+  /**
+   * A `Model` document: a data path — a building of another town's screen, an
+   * adventure-map object, anything with a Geometry — or a file of our own on
+   * disk (`C:\…\Pit.xdb`), whose folder is then read as a data root of its
+   * own: the geometry document beside it, the binaries under `bin/…` as the
+   * game keys them (own-files.ts).
+   */
   source: string;
   /**
    * Where the dropped donor building stood, by its type: the model goes where

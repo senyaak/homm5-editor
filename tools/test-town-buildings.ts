@@ -12,7 +12,7 @@
 //   node tools/test-town-buildings.ts [dataRoot]
 
 // needs: data
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dataReader } from '../src/mods/mod-files.ts';
 import { buildTown, dropGridCell, moveGridCell, parseBuildingKey } from '../src/mods/town-files.ts';
@@ -126,6 +126,43 @@ check('an empty requires is an empty element', text(edited, edited.records.get('
 check('the other records are the donor\'s', text(edited, edited.records.get('TB_FORT')!) === text(plain, plain.records.get('TB_FORT')!));
 throws('a resource that is not one', () => build({ 'TB_TAVERN': { cost: { Iron: 1 } as never } }), 'Iron');
 throws('a cell for a level the slot has not', () => build({ 'TB_TAVERN': { slot: { x: 1, y: 1 } }, 'TB_TAVERN/2': { slot: { x: 1, y: 1 } } }), 'TB_TAVERN/2');
+
+console.log('a model of our own, on disk');
+{
+  // The graves again, but as a folder of ours: the three documents beside
+  // each other and the geometry's binary under bin/Geometries — the layout a
+  // model of ours is authored in — and the copier reading it as it reads the
+  // data. What lands under the faction is the same set of files, under the
+  // mounted folder's name, with fresh uids of its own.
+  const dir = join(import.meta.dirname, '..', '_tmp', 'own-model-test', 'graves');
+  rmSync(join(dir, '..'), { recursive: true, force: true });
+  mkdirSync(join(dir, 'bin', 'Geometries'), { recursive: true });
+  const stem = 'UneartheGrave_u1r0';
+  mkdirSync(join(dir, 'bin', 'AIGeometries'), { recursive: true });
+  for (const f of [`${stem}.xdb`, `${stem}-geom.xdb`, `${stem}-geom-AI.xdb`, `${stem}-UnearthedGraves_M.(Material).xdb`]) {
+    writeFileSync(join(dir, f), read(`Arenas/Town/Necropolis/${f}`)!);
+  }
+  const uid = /<uid>([0-9A-F-]{36})<\/uid>/i.exec(read(`Arenas/Town/Necropolis/${stem}-geom.xdb`)!.toString('latin1'))![1]!.toUpperCase();
+  writeFileSync(join(dir, 'bin', 'Geometries', uid), read(`bin/Geometries/${uid}`)!);
+  const aiUid = /<uid>([0-9A-F-]{36})<\/uid>/i.exec(read(`Arenas/Town/Necropolis/${stem}-geom-AI.xdb`)!.toString('latin1'))![1]!.toUpperCase();
+  writeFileSync(join(dir, 'bin', 'AIGeometries', aiUid), read(`bin/AIGeometries/${aiUid}`)!);
+  const own = join(dir, `${stem}.xdb`);
+  const t = build({ 'TB_SHIPYARD': null, 'TB_SPECIAL_1': { model: { source: own, place: 'TB_SHIPYARD' } } });
+  const interior = /<Interior href="\/([^"#]+)/.exec(text(t, t.paths.shared))![1]!;
+  const sceneDir = interior.slice(0, interior.lastIndexOf('/'));
+  const object = text(t, `${sceneDir}/Test_special_1.(ArenaModObject).xdb`);
+  const modelPath = /<Model href="\/([^"#]+)/.exec(object)![1]!;
+  check('the model is copied under the faction, under the mounted folder', modelPath === `Factions/Test/buildings/Test_special_1/own/graves/${stem}.xdb`, modelPath);
+  const geomDoc = text(t, modelPath.replace(/[^/]+$/, '') + /<Geometry href="([^"#]+)/.exec(text(t, modelPath))![1]!);
+  const ours = /<uid>([0-9A-F-]{36})<\/uid>/i.exec(geomDoc)![1]!.toUpperCase();
+  check('the geometry has a uid of its own', ours !== uid);
+  // The binary is the folder's, moved to its spot — so the same size, not the same bytes.
+  check('and its binary came from the folder', t.files.some((f) => f.path === `bin/Geometries/${ours}` && f.data.length === read(`bin/Geometries/${uid}`)!.length));
+  check('the material and its texture are reached', t.files.some((f) => f.path.endsWith(`own/graves/${stem}-UnearthedGraves_M.(Material).xdb`)) && t.files.some((f) => /UnerarthedGraves\.tga\.xdb$/.test(f.path)));
+  check("the shipyard's pick hull serves, as for a model from the data", geomDoc.includes('<AIGeometry href="/Factions/Test/town/Arenas/Town/NewHaven/Shipyard_u1r0-geom-AI.xdb#xpointer(/AIGeometry)"/>'));
+  throws('a file that is not there', () => build({ 'TB_SPECIAL_1': { model: { source: join(dir, 'nothing.xdb'), at: { x: 0, y: 0, z: 0 } } } }), 'no such file');
+  rmSync(join(dir, '..'), { recursive: true, force: true });
+}
 
 console.log('a model of ours in the screen');
 {

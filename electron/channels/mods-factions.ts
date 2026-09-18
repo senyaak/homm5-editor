@@ -6,7 +6,7 @@
 // same rebuild-pack-install tail the other kinds use (mod-install.ts), and
 // the tail sets the numbers from the whole mod.
 
-import { ipcMain } from 'electron';
+import { dialog, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import type {
   FactionDonorDTO, FactionTreeDTO, ModsFactionDataResult, ModsFactionPayload, ModsFactionResult,
@@ -14,6 +14,7 @@ import type {
 } from '#electron/ipc.ts';
 import { buildAndInstall, ourMod } from '#electron/mod-install.ts';
 import { gameData, gameRoot, isConfigured } from '#electron/paths.ts';
+import { state } from '#electron/state.ts';
 import { enumValues } from '#electron/spec.ts';
 import { dataReader } from '#src/mods/mod-files.ts';
 import { addFaction, removeFaction, updateFaction } from '#src/mods/mod-model.ts';
@@ -96,6 +97,20 @@ export function registerModFactions(): void {
       creatures: (mod?.creatures ?? []).map((c) => ({ id: c.id, name: c.name })),
       exteriorStages: [...EXTERIOR_STAGES],
     };
+  });
+
+  // A Model document of our own, kept as a PATH: its folder is read as a data
+  // root of its own when the faction is built (src/mods/own-files.ts), so a
+  // cancelled form leaves nothing behind and the model can be edited in place.
+  ipcMain.handle('mods:pick-model-file', async (): Promise<string> => {
+    const opts = {
+      title: 'Choose a Model document of your own',
+      properties: ['openFile' as const],
+      filters: [{ name: 'Model documents', extensions: ['xdb'] }, { name: 'All files', extensions: ['*'] }],
+    };
+    const w = state.win;
+    const r = await (w ? dialog.showOpenDialog(w, opts) : dialog.showOpenDialog(opts));
+    return r.canceled ? '' : r.filePaths[0] ?? '';
   });
 
   ipcMain.handle('mods:faction-tree', async (_e: IpcMainInvokeEvent, { donor }: ModsFactionTreePayload): Promise<FactionTreeDTO> => {
