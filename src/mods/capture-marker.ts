@@ -23,7 +23,7 @@ import { decodeDDSBuffer } from '../format/dds.ts';
 import type { Image } from '../format/dds.ts';
 import { Painter, pt } from '../format/paint.ts';
 import type { Color } from '../format/paint.ts';
-import { raceGlyph, textureFiles } from './faction-icons.ts';
+import { pictureIcon, raceGlyph, textureFiles } from './faction-icons.ts';
 import type { IconTheme } from './faction-icons.ts';
 import { mustRead } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
@@ -108,8 +108,17 @@ export function captureFlag(colour: Color, theme: IconTheme, size = 55): Image {
   return p.image(size);
 }
 
+/** Pictures of ours for the marker: one pair for every colour, or a pair per colour over it. */
+export interface CapturePictures {
+  /** The crest on the sign, 128×128 — for every colour unless `byColour` says otherwise. */
+  sign?: string;
+  /** The flag beside the town's name, 55×55. */
+  flag?: string;
+  byColour?: Partial<Record<CaptureColour, { sign?: string; flag?: string }>>;
+}
+
 /** The five documents and two pictures of one colour's item. */
-function colourFiles(dir: string, colour: CaptureColour, paint: Color, theme: IconTheme): { files: ModFile[]; flag: string; marker: string } {
+function colourFiles(dir: string, colour: CaptureColour, signImage: Image, flagImage: Image): { files: ModFile[]; flag: string; marker: string } {
   const at = `${dir}/${colour}`;
   const sign = `${at}/Sign.(Texture).xdb`;
   const flag = `${at}/Flag.(Texture).xdb`;
@@ -121,8 +130,8 @@ function colourFiles(dir: string, colour: CaptureColour, paint: Color, theme: Ic
   const doc = (root: string, body: string[]): Buffer =>
     Buffer.from(['<?xml version="1.0" encoding="UTF-8"?>', `<${root} ObjectRecordID="1">`, ...body, `</${root}>`, ''].join(EOL), 'latin1');
   const files: ModFile[] = [
-    ...textureFiles(sign, captureSign(paint)),
-    ...textureFiles(flag, captureFlag(paint, theme)),
+    ...textureFiles(sign, signImage),
+    ...textureFiles(flag, flagImage),
     { path: material, data: doc('Material', [
       `\t<Texture href="/${sign}#xpointer(/Texture)"/>`,
       '\t<Bump/>', '\t<SpecFactor>0</SpecFactor>',
@@ -174,13 +183,24 @@ function colourFiles(dir: string, colour: CaptureColour, paint: Color, theme: Ic
   return { files, flag: `/${flag}#xpointer(/Texture)`, marker: `/${effect}#xpointer(/Effect)` };
 }
 
-/** The faction's sign and flag in all eight colours. */
-export function captureMarkerFiles(faction: { file: string }, theme: IconTheme, read: DataReader): CaptureMarkerBuild {
+/**
+ * The faction's sign and flag in all eight colours: pictures of ours where
+ * given (a colour's own first, then the one for every colour), drawn from
+ * the theme otherwise. A colour with neither for one of the two is a
+ * refusal — a marker is both, and the table's item names both.
+ */
+export function captureMarkerFiles(faction: { file: string }, theme: IconTheme | null, read: DataReader, own: CapturePictures = {}): CaptureMarkerBuild {
   const dir = captureMarkerDir(faction);
   const files: ModFile[] = [];
   const items = {} as CaptureMarkerBuild['items'];
   for (const colour of CAPTURE_COLOURS) {
-    const one = colourFiles(dir, colour, signColour(read, colour), theme);
+    const signFile = own.byColour?.[colour]?.sign ?? own.sign;
+    const flagFile = own.byColour?.[colour]?.flag ?? own.flag;
+    const paint = signFile && flagFile ? null : signColour(read, colour);
+    const sign = signFile ? pictureIcon(signFile, 128) : theme ? captureSign(paint!) : null;
+    const flag = flagFile ? pictureIcon(flagFile, 55) : theme ? captureFlag(paint!, theme) : null;
+    if (!sign || !flag) throw new Error(`${faction.file}: the capture marker in ${colour} needs both a sign and a flag — pictures of yours, or the icon theme to draw them`);
+    const one = colourFiles(dir, colour, sign, flag);
     files.push(...one.files);
     items[colour] = { flag: one.flag, marker: one.marker };
   }

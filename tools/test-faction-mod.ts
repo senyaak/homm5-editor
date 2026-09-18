@@ -170,6 +170,7 @@ console.log('pictures of our own for the icons');
       town: pic('town'), race: pic('race'), tower: pic('tower'),
       kingdom: [pic('k1'), pic('k2'), pic('k3'), pic('k4')],
       button: { normal: pic('bn'), pushed: pic('bp'), disabled: pic('bd') },
+      capture: { sign: pic('sign'), flag: pic('flag'), byColour: { '03Orange': { flag: pic('orange') } } },
     },
     buildings: { 'TB_SPECIAL_1': { button: { lua: 'Pit' } } },
   }));
@@ -191,7 +192,8 @@ console.log('pictures of our own for the icons');
   check('the race tile and the tower', magenta('Factions/Pix/icons/race.dds') && magenta('Factions/Pix/icons/tower.dds'));
   check('the four kingdom icons', [1, 2, 3, 4].every((l) => magenta(`Factions/Pix/icons/kingdom_${l}.dds`)));
   check("the button's three skins", r.factions?.buttons.length === 1 && r.files.some((f) => /Factions\/Pix\/icons\/.*special.*\.dds$/i.test(f.path)));
-  check('no theme, no capture marker of ours', !r.files.some((f) => f.path.includes('/capture/')));
+  check('the capture marker from pictures, no theme: eight colours, the sign and the flag ours', magenta('Factions/Pix/capture/01Brown/Sign.(Texture).dds') && magenta('Factions/Pix/capture/08Violet/Flag.(Texture).dds') && magenta('Factions/Pix/capture/03Orange/Flag.(Texture).dds') && r.files.filter((f) => /\/capture\/\d\d\w+\/Marker\.\(Effect\)\.xdb$/.test(f.path)).length === 8);
+  throws('a sign without a flag and no theme', () => buildCreatureMod((() => { const m = newCreatureMod(); addFaction(m, spec('HalfMark', { pictures: { capture: { sign: pic('s2') } } })); return m; })(), read), 'both a sign and a flag');
   throws('a button with neither pictures nor a theme', () => buildCreatureMod((() => { const m = newCreatureMod(); addFaction(m, spec('NoSkin', { buildings: { 'TB_SPECIAL_1': { button: { lua: 'X' } } } })); return m; })(), read), 'three skins');
   rmSync(dir, { recursive: true, force: true });
 }

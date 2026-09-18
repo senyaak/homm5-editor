@@ -341,12 +341,13 @@ ours. Done: a building's screen model, an exterior stage's model
 the picker's tooltip and a named town's bonus text, the siege parts
 (siege-parts.ts: an object of ours shaped as the donor's, per ruin level).
 the race's tracks (`RaceSpec.tracks`, loose .ogg files under Music/H5E/).
+the gate hull (`ExteriorMix.gates` as an AIGeometry file), the capture sign
+and flag (`pictures.capture`, per colour or for all).
 Not done, said
 honestly: the town SCREEN itself (the ArenaDesc scene — background, lightmap,
 cameras — stays the donor's; ours replace its buildings one by one; a whole
 scene of ours is the asset editor's business), the town's ambient sound set
-and the UI sounds (the set's), the gate geometry, the capture marker (drawn
-from the theme).
+and the UI sounds (the set's).
 
 When 1–4 have stopped changing the list above: `FactionSpec` in the mod
 model, `faction-files.ts` writing every registry in the table, the races

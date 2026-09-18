@@ -154,6 +154,7 @@ const PICTURE_SLOTS: ReadonlyArray<{ id: string; label: string; size: number }> 
   { id: 'kingdom.2', label: 'Overview: city', size: 128 }, { id: 'kingdom.3', label: 'Overview: capital', size: 128 },
   { id: 'button.normal', label: 'Button, 82', size: 82 }, { id: 'button.pushed', label: 'Button pushed', size: 82 },
   { id: 'button.disabled', label: 'Button disabled', size: 82 },
+  { id: 'capture.sign', label: 'Capture sign, 128', size: 128 }, { id: 'capture.flag', label: 'Capture flag, 55', size: 55 },
 ];
 
 /** A path box with a file picker beside it — the shape every file of ours is given in. */
@@ -209,6 +210,16 @@ function readPictures(): IconPictures | undefined {
       const four = ['0', '1', '2', '3'].map((i) => g[i]);
       // Four or none: the overview has four levels and reads them by index.
       if (four.every((x) => x)) out.kingdom = four; else if (four.some((x) => x)) out.kingdom = four.map((x) => x ?? four.find((y) => y)!);
+      continue;
+    }
+    if (k === 'capture') {
+      const g = v as Record<string, string>;
+      if (g.sign && g.flag) out.capture = { sign: g.sign, flag: g.flag };
+      else if (g.sign || g.flag) {
+        // Both or the marker is refused; one given serves as the other too.
+        const one = g.sign ?? g.flag!;
+        out.capture = { sign: g.sign ?? one, flag: g.flag ?? one };
+      }
       continue;
     }
     if (k === 'button') {
@@ -296,6 +307,7 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
     if (p?.tower) pictures.tower = p.tower;
     if (p?.kingdom) pictures.kingdom = { 0: p.kingdom[0], 1: p.kingdom[1], 2: p.kingdom[2], 3: p.kingdom[3] };
     if (p?.button) pictures.button = { ...p.button };
+    if (p?.capture) pictures.capture = { ...(p.capture.sign ? { sign: p.capture.sign } : {}), ...(p.capture.flag ? { flag: p.capture.flag } : {}) };
   }
 
   $('facedit-title').textContent = existing ? 'Edit faction' : 'New faction';
@@ -329,7 +341,13 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   drawSiegeOwn();
   const exterior: ExteriorMix = typeof existing?.exterior === 'string' ? { stages: {} } : (existing?.exterior ?? { stages: {} });
   fillSelect($select('fac-exterior'), townOptions(data, 'the donor\'s'), typeof existing?.exterior === 'string' ? existing.exterior : '');
-  fillSelect($select('fac-exterior-gates'), townOptions(data, 'the donor\'s'), exterior.gates ?? '');
+  {
+    const gates = exterior.gates ?? '';
+    const own = /^[A-Za-z]:[\\/]|^[\\/]{2}/.test(gates);
+    fillSelect($select('fac-exterior-gates'), townOptions(data, 'the donor\'s'), own ? '' : gates);
+    $input('fac-exterior-gates-file').value = own ? gates : '';
+    $select('fac-exterior-gates').disabled = own;
+  }
   drawStages(data, exterior.stages);
 
   fillSelect($select('fac-machine'), [{ id: '', label: 'the donor\'s' }, ...data.warMachines.map((m) => ({ id: m, label: m.replace('WAR_MACHINE_', '').toLowerCase() }))], existing?.race?.warMachine ?? '');
@@ -454,7 +472,7 @@ function drawStages(data: ModsFactionDataResult, current: ExteriorMix['stages'])
 
 function readExterior(): ModsFactionPayload['exterior'] {
   const whole = $select('fac-exterior').value;
-  const gates = $select('fac-exterior-gates').value;
+  const gates = $input('fac-exterior-gates-file').value.trim() || $select('fac-exterior-gates').value;
   const stages: Record<string, string> = {};
   for (const el of document.querySelectorAll<HTMLSelectElement>('.fc-stage')) {
     const v = el.dataset.file || el.value;
@@ -1181,5 +1199,18 @@ export function initFactionsMod(): void {
   // watches (form-gate.ts), and the identifier is one of them.
   $('fac-file').addEventListener('input', () => { $input('fac-type').value = $input('fac-file').value.trim() ? townTypeFor($input('fac-file').value) : ''; });
   $('fac-town-add').onclick = () => { if (facData) addTownRow(facData); };
+  $('fac-exterior-gates-file').addEventListener('input', () => {
+    const own = !!$input('fac-exterior-gates-file').value.trim();
+    $select('fac-exterior-gates').disabled = own;
+    if (own) $select('fac-exterior-gates').value = '';
+  });
+  $('fac-exterior-gates-pick').onclick = (ev) => {
+    ev.preventDefault();
+    void api.pickFactionFile('model').then((path) => {
+      if (!path) return;
+      $input('fac-exterior-gates-file').value = path;
+      $input('fac-exterior-gates-file').dispatchEvent(new Event('input'));
+    });
+  };
   $('fac-moat-add').onclick = () => { if (facData) addMoatSpellRow(facData); };
 }

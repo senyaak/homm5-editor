@@ -55,7 +55,9 @@ pre-release.
   any slot of the set — town, tavern, dwellings, the battle themes, siege,
   victory, defeat, retreat, the AI's turn — as an .ogg of your own, copied
   under `Music/H5E/<faction>/` on install (the game plays music from loose
-  files, not from an archive) and removed with the faction. A model of yours that
+  files, not from an archive) and removed with the faction. The gate the hero walks
+  into as an AIGeometry document of your own, and the capture sign and flag as
+  pictures — one pair for every player colour, or a pair per colour. A model of yours that
   names a document its folder has not is refused by name, not shipped without
   it.
   A building's model can be a file of

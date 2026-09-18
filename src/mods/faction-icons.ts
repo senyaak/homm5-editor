@@ -21,6 +21,7 @@ import { basename } from 'node:path';
 import { readPicture } from '../format/png.ts';
 import { fitSquare, magnify } from '../format/texture.ts';
 import type { BuildingKey } from './town-files.ts';
+import type { CapturePictures } from './capture-marker.ts';
 
 /**
  * Pictures of our own for the icons a theme would draw — PNG or GIF files on
@@ -43,6 +44,8 @@ export interface IconPictures {
   kingdom?: readonly [string, string, string, string];
   /** The dial's centre button, 82×82: normal, pushed, disabled. */
   button?: { normal: string; pushed: string; disabled: string };
+  /** The sign over a captured town and the flag by its name — for every player colour, or per colour (capture-marker.ts). */
+  capture?: CapturePictures;
 }
 
 /** A picture file as an icon of `size`: read, grown by whole pixels when smaller, fitted square. */

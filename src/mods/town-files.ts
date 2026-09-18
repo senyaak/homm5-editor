@@ -283,6 +283,7 @@ export type ExteriorStage = typeof EXTERIOR_STAGES[number];
  */
 export interface ExteriorMix {
   stages: Partial<Record<ExteriorStage, string>>;
+  /** Whose gate the AI walks through — a shipped town's, or an `AIGeometry` document of ours on disk. */
   gates?: string;
 }
 
@@ -464,7 +465,15 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       exterior = exterior.replace(ours[i]!, stagesOf(exteriorFrom(from), from)[i]!);
     }
     if (mix.gates && mix.gates !== spec.donor) {
-      exterior = exterior.replace(gatesOf(exterior, spec.donor), gatesOf(exteriorFrom(mix.gates), mix.gates));
+      if (isOwnFile(mix.gates)) {
+        // An AIGeometry document of ours — the hull the hero walks into — mounted
+        // like a stage model, copied by the walk with its binary.
+        const own = mountOwn(read, mix.gates);
+        owns.push(own.local);
+        exterior = exterior.replace(gatesOf(exterior, spec.donor), `<Gates href="/${own.rel}#xpointer(/AIGeometry)"/>`);
+      } else {
+        exterior = exterior.replace(gatesOf(exterior, spec.donor), gatesOf(exteriorFrom(mix.gates), mix.gates));
+      }
     }
     const donor = seeded.get(source) ?? mustRead(read, source);
     const [es, ee] = exteriorSpan(donor, spec.donor);
@@ -776,8 +785,8 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     if (raceTile) race = put('race', raceTile).replace(/#.*$/, '').slice(1);
     const towerTile = icon(pictures.tower, 128, () => towerIcon(theme!));
     if (towerTile) tower = put('tower', towerTile).replace(/#.*$/, '').slice(1);
-    if (theme) {
-      captureMarker = captureMarkerFiles(spec, theme, read);
+    if (theme || pictures.capture) {
+      captureMarker = captureMarkerFiles(spec, theme ?? null, read, pictures.capture);
       for (const f of captureMarker.files) files.set(f.path, f.data);
     }
   }

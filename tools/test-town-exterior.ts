@@ -115,6 +115,11 @@ console.log('the exterior');
   check('with a uid of its own and the binary from the folder', ownUid !== uidIn('Necromancy-town-geom.xdb') && own.files.some((f) => f.path === `bin/Geometries/${ownUid}` && f.data.equals(read(`bin/Geometries/${uidIn('Necromancy-town-geom.xdb')}`)!)));
   const firstItem = /<upgrades>\s*<Item>([\s\S]*?)<\/Item>/.exec(ownDoc)![1]!;
   check("the stage keeps the donor's effect", firstItem.includes('/TownsGlobalMap/Haven/'));
+  // The gate as an AIGeometry of ours: Necropolis's, from the same folder.
+  const gated = build({ stages: {}, gates: join(dir, 'Necromancy-town_AI.xdb') });
+  const gatedDoc = shared(gated);
+  check('the gate is the document of ours, copied with its binary', gates(gatedDoc).includes('/Factions/Test/town/own/necro/Necromancy-town_AI.xdb#xpointer(/AIGeometry)') && gated.files.some((f) => f.path.endsWith('own/necro/Necromancy-town_AI.xdb')) && gated.files.some((f) => f.path.startsWith('bin/AIGeometries/')));
+  check("the stages stay the donor's", models(gatedDoc).every((m, i) => m === `Heaven-${EXTERIOR_STAGES[i]}`));
   throws('a file that is not there', () => build({ stages: { town: join(dir, 'nothing.xdb') } }), 'no such file');
   rmSync(join(dir, '..'), { recursive: true, force: true });
 

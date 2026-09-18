@@ -330,6 +330,13 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await press(page, page.locator('#facedit summary', { hasText: 'stage by stage' }));
   await page.locator('#fac-stages .fc-stage-file').first().fill(necro);
   await expect(page.locator('#fac-stages .fc-stage').first()).toBeDisabled();
+  // The gate hull as an AIGeometry of ours (the same folder holds Necropolis's),
+  // and the capture sign and flag as pictures.
+  await page.locator('#fac-exterior-gates-file').fill(join(necro, '..', 'Necromancy-town_AI.xdb'));
+  await expect(page.locator('#fac-exterior-gates')).toBeDisabled();
+  const signPic = ownPicture('sign');
+  await page.locator('#fac-pictures .fc-file').nth(11).fill(signPic);
+  await page.locator('#fac-pictures .fc-file').nth(12).fill(signPic);
   // And the siege gate as a model of ours — the same Necropolis model will
   // do: what is under test is the part standing where the donor's stands.
   await press(page, page.locator('#facedit summary', { hasText: 'Siege parts of your own' }));
@@ -362,9 +369,10 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(names).toContain(`Factions/${FILE}/buildings/${FILE}_special_1/own/graves/UneartheGrave_u1r0.xdb`);
   expect(names).toContain(`Factions/${FILE}/buildings/${FILE}_special_1/own/graves/UneartheGrave_u1r0-geom.xdb`);
   // The pictures, the stage, the words.
-  expect(f?.pictures).toEqual({ buildings: { TB_SPECIAL_1: pitIcon }, tower: towerPic });
+  expect(f?.pictures).toEqual({ buildings: { TB_SPECIAL_1: pitIcon }, tower: towerPic, capture: { sign: signPic, flag: signPic } });
   expect(f?.race?.tooltip).toBe('The dead of the Bone Court');
-  expect(f?.exterior).toEqual({ stages: { town: necro } });
+  expect(f?.exterior).toEqual({ stages: { town: necro }, gates: join(necro, '..', 'Necromancy-town_AI.xdb') });
+  expect(names).toContain(`Factions/${FILE}/town/own/necro/Necromancy-town_AI.xdb`);
   expect(f?.siege).toEqual({ arena: 'TOWN_HEAVEN', gate: { models: [necro] } });
   expect(f?.race?.tracks).toEqual({ town: ogg });
   expect(existsSync(join(GAME, 'Music', 'H5E', FILE, 'town.ogg')), 'the track is copied loose under the game').toBe(true);
@@ -374,6 +382,7 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   expect(centreIsMagenta(names, entries, `Factions/${FILE}/icons/special_1_1.dds`), "the pit's icon is the picture").toBe(true);
   expect(centreIsMagenta(names, entries, `Factions/${FILE}/icons/tower.dds`), "the tower's portrait is the picture").toBe(true);
+  expect(centreIsMagenta(names, entries, `Factions/${FILE}/capture/02Red/Flag.(Texture).dds`), 'the flag is the picture, in every colour').toBe(true);
   expect(names).toContain(`Factions/${FILE}/town/own/necro/Necromancy-town.xdb`);
   expect(names).toContain(`Factions/${FILE}/towns/Charnel_Bonus.txt`);
   const tooltip = entries.find((e) => e.name.split(String.fromCharCode(92)).join('/') === 'UI/MPWait/PlayersList/Item/race_tooltip_e2ebone.txt')!;
