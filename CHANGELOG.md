@@ -115,6 +115,13 @@ pre-release.
   the flag in the eight player colours and puts the faction's item into every
   record of `UI/RefTables/PlayerColourSchemes.xdb`, ninth, before the grey
   one that mines and dwellings index (`test-capture-marker`).
+- A faction is a race in the game's own words: `TownSpec.race` names it
+  ("Race:" in the town window, the overview, the reports), gives the
+  resource silo's income, the native war machine, the moat and whose music
+  it plays — the type's record in `TownTypesInfo` and a row in the race
+  music table, both the donor's copied and made ours (town-type-info.ts).
+- A recoloured creature wears its own face everywhere: the creature copy
+  takes all four icon sizes, not only the 128 the hire screen shows.
 - The extension no longer speaks into a dead battle: the host it mirrors the
   log into is forgotten when the engine closes the combat, and checked for
   life before every line — opening the town screen after a fight crashed on

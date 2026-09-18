@@ -222,10 +222,19 @@ fully, in the probe, one launch per question.
   Necropolis stages only — not looked into. **Found on the way:** the sign
   over an owned town (`PlayerColourSchemes.xdb`, capture-marker.ts) — done,
   the red skull stands over the town.
-- **1f. Texts.** Building names and descriptions, the town name, the
-  race's own name — written by the copy from the spec, the way the named
-  towns already are. **To find:** the text the town window's "Race:" line
-  reads, now that the type's name is honest.
+- **1f. Texts — DONE (2026-09-18, launches 33–34).** Building names and
+  descriptions were already `BuildingEdit`; the race as such is
+  `TownSpec.race` (town-type-info.ts): the type's record in
+  `TownTypesInfo` copied from the donor and made ours — `textType` is
+  the "Race:" line and every place a type is written out
+  (`TownTypeFormats.xdb` is dead data, unread by the exe), the walls'
+  names out of the copy, four kingdom-overview icons drawn, the neutral
+  creature (the tier-2 base everywhere), silo income, native war machine,
+  moat damage and spells. **Music** is a row per `<race>` in
+  `Sounds/_(Music)/TableRaceMusic.xdb` — a type without one is silent
+  everywhere (launch 33); `race.music` names whose set to take. A
+  creature has FOUR icon sizes; the creature copy took only the 128 (the
+  hero window drew the donor's face over a recoloured creature).
 
 ### 2. Heroes
 

@@ -28,6 +28,7 @@ import { buildingGlyph, buildingIcon, raceIcon, specialButtonSkins, textureFiles
 import { captureMarkerFiles } from './capture-marker.ts';
 import type { CaptureMarkerBuild } from './capture-marker.ts';
 import type { TownButton } from './town-button.ts';
+import type { RaceSpec } from './town-type-info.ts';
 import type { IconTheme } from './faction-icons.ts';
 import { copyArt, dataPath, resolve, uidFor } from './mod-art.ts';
 import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
@@ -127,6 +128,12 @@ export interface TownSpec {
    * re-parented (`requires`) or dropped too; the copy refuses otherwise.
    */
   buildings?: Readonly<Record<BuildingKey, BuildingEdit | null>>;
+  /**
+   * The race as such — its name, the silo's income, the native war machine,
+   * the moat: the type's record in `TownTypesInfo` (town-type-info.ts). The
+   * donor's record under our type when absent, its name included.
+   */
+  race?: RaceSpec;
   /**
    * The faction's adventure-map Lua, run on every map: where a building's
    * button function (`BuildingEdit.button.lua`) is defined. Loaded through

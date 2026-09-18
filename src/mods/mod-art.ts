@@ -28,7 +28,7 @@ import type { DataReader } from './mod-files.ts';
  * in the game's data that we copy into the mod, so each can be swapped later
  * without the mod's shape changing.
  */
-export type ArtSlot = 'character' | 'model' | 'animSet' | 'icon';
+export type ArtSlot = 'character' | 'model' | 'animSet' | 'icon' | 'iconPlain' | 'icon32' | 'icon64';
 
 /** Which field of which of our two documents each slot fills. */
 export const ART_FIELD: Record<ArtSlot, { doc: 'visual' | 'monster'; field: string; type: string }> = {
@@ -40,6 +40,13 @@ export const ART_FIELD: Record<ArtSlot, { doc: 'visual' | 'monster'; field: stri
   // The hire and army icon. A creature without one stops the game at startup,
   // which is how we learned that None.xdb's empty icons are a privilege of id 0.
   icon: { doc: 'visual', field: 'Icon128', type: 'Texture' },
+  // The same face at the three other sizes the screens ask for: the hero
+  // window's army slots draw the 64, the initiative bar the 32. Left as the
+  // donor's, a recoloured creature wore its own face in battle and the
+  // donor's in the hero window (2026-09-18).
+  iconPlain: { doc: 'visual', field: 'Icon', type: 'Texture' },
+  icon32: { doc: 'visual', field: 'Icon32', type: 'Texture' },
+  icon64: { doc: 'visual', field: 'Icon64', type: 'Texture' },
 };
 
 export const ART_SLOTS = Object.keys(ART_FIELD) as ArtSlot[];
