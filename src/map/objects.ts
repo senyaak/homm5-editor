@@ -20,7 +20,8 @@
 // original behaves, not a rule of the format, and copying it would hide exactly
 // the objects a mod author most wants to place.
 
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import type { Dirent } from 'node:fs';
 import { join, dirname, relative, sep } from 'node:path';
 import { toAssets } from '../game/assets.ts';
 import type { Assets } from '../game/assets.ts';
@@ -200,14 +201,15 @@ export function listPlaceable(root: string | Assets, editorRoot: string): {
   const nameOf = sharedLabeller(data);
 
   let base = bases[0]!;
+  // The directory listing says what each entry is; a stat per entry on top
+  // of it was a third of the scan.
   const walk = (dir: string): void => {
-    let ents: string[];
-    try { ents = readdirSync(dir); } catch { return; }
-    for (const e of ents) {
+    let ents: Dirent[];
+    try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of ents) {
+      const e = ent.name;
       const full = join(dir, e);
-      let st;
-      try { st = statSync(full); } catch { continue; }
-      if (st.isDirectory()) { walk(full); continue; }
+      if (ent.isDirectory()) { walk(full); continue; }
       if (!e.toLowerCase().endsWith('.xdb')) continue;
       let xml: string;
       try { xml = readFileSync(full, 'utf8'); } catch { continue; }
@@ -337,14 +339,13 @@ function unlinkedShared(
   const seen = new Set<string>();
   let root = roots[0]!;
   const walk = (dir: string): void => {
-    let ents: string[];
-    try { ents = readdirSync(dir); } catch { return; }
-    for (const e of ents) {
+    let ents: Dirent[];
+    try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of ents) {
+      const e = ent.name;
       const full = join(dir, e);
-      let st;
-      try { st = statSync(full); } catch { continue; }
       // The link and group folders hold references, not definitions.
-      if (st.isDirectory()) { if (!e.startsWith('_(')) walk(full); continue; }
+      if (ent.isDirectory()) { if (!e.startsWith('_(')) walk(full); continue; }
       const m = /^(.*)\.\((AdvMap\w+Shared)\)\.xdb$/i.exec(e);
       if (!m) continue;
       const rel = `MapObjects/${relative(root, full).split(sep).join('/')}`;

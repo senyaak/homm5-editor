@@ -105,7 +105,11 @@ export function registerTerrain(): void {
     const root = session?.assetRoot
       || (existsSync(join(gameData(), 'MapObjects')) ? gameData() : null);
     if (!root) return { tiles: [], inMap: [] };
-    if (!tileCache || tileCache.root !== root) tileCache = { root, tiles: listTiles(session?.assets ?? mountedAssets(root)) };
+    if (!tileCache || tileCache.root !== root) {
+      const t0 = performance.now();
+      tileCache = { root, tiles: listTiles(session?.assets ?? mountedAssets(root)) };
+      console.log(`[perf] terrain:tiles ${(performance.now() - t0) | 0}ms · ${tileCache.tiles.length} tiles`);
+    }
     const inMap = session?.layerPaths || [];
     return { tiles: tileCache.tiles, inMap };
   });

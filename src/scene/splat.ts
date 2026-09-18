@@ -89,7 +89,10 @@ function tileTexture(tilePath: string, readXdb: ReadXdb, data: Assets, size: num
   const dest = tx.match(/<DestName href="([^"]+)"/); if (!dest) return null;
   const ddsPath = data.path(join(dirname(texXdb), dest[1]));
   if (!existsSync(ddsPath)) return null;
-  const img = decodeDDS(ddsPath);
+  // The file's own mip level at `size` when it has one (dds.ts): a 1024² tile
+  // at 64 for a thumbnail is a sixteenth of the blocks, and the box filter
+  // below then has nothing left to average.
+  const img = decodeDDS(ddsPath, size);
   const out = new Uint8Array(size * size * 4);
   // Box filter, not point sampling: these are 1024² textures shrunk to 256², so
   // taking every 4th texel would throw away 15/16 of the image and turn grass

@@ -363,7 +363,15 @@ What it says, in the order it matters:
   faster — **2.2 s**. The profile is flat now: colour blocks 0.2 s, Oodle
   0.2, first reads 0.3, the clip bakes 0.2, the geometry itself 0.3. The
   scene is on screen at ~6 s where it was 11.5; what is left of that is the
-  IPC's clone of the payload, the first render's uploads, and buildWorld.
+  IPC's clone of the payload (~0.8 s between the handler returning and the
+  renderer holding the scene), the first render's uploads, and buildWorld.
+  The open's TAIL is timed too now (`[perf] map open tail`): `listTiles`
+  was 0.85 s of decoding 82 tiles at 1024² for 64-px thumbnails, and is
+  0.13 with the mip level; but the renderer still waited ~0.9 s for it,
+  because the object catalogue's scan (`objects:list`, 0.8 s, kicked off
+  by a palette left open) was ahead of it in the single-threaded main
+  process — the scan stats every entry it lists on top of the directory
+  listing that already says what each is, and stops (0.5 s).
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,

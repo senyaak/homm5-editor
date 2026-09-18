@@ -81,6 +81,7 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     console.log(`[perf] loadMap ${(tLoad - tReq) | 0}ms · unpack ${(tUnpacked - tLoad) | 0}ms · buildWorld ${(performance.now() - tBuild) | 0}ms · ${S.geoms.length} geoms`);
     // A history kept from a previous run is adopted when the files still hash
     // the same, so opening a map is not always a blank slate.
+    const tWorld = performance.now();
     updateHistoryUI(history.canUndo, history.canRedo, history.undoLabel, history.redoLabel);
     $('empty').style.display = 'none';
     $('title').textContent = `homm5-editor — ${info.name} (${info.tileX}×${info.tileY})`;
@@ -122,8 +123,11 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     setShowBlocked(showBlocked);
     $('help').style.display = '';
     // A newly loaded map has its own layer set; refresh the "used" markers.
+    const tTiles = performance.now();
     tiles.inMap = new Set((await api.listTiles()).inMap);
+    const tListed = performance.now();
     if (allTiles.length) renderPalette();
+    const tPalette = performance.now();
     // Restore the panels the way they were left rather than forcing them open —
     // that is the whole point of persisting the toggles.
     setExplorer(explorerOpen);
@@ -159,6 +163,9 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     // instant rather than a disk scan on the first click. Kicked off only once
     // the map itself is on screen and the loading overlay is down, so it never
     // competes with the work the user is actually waiting for. Not awaited.
+    // The tail, in the same [perf] spirit as the head: what the window does
+    // between the world standing and the overlay coming down.
+    console.log(`[perf] map open tail: settings ${(tTiles - tWorld) | 0}ms · listTiles ${(tListed - tTiles) | 0}ms · palette ${(tPalette - tListed) | 0}ms · panels ${(performance.now() - tPalette) | 0}ms`);
     void initObjectPalette();
   } catch (e) {
     $('hud').textContent = 'error: ' + (e instanceof Error ? e.message : String(e));

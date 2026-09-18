@@ -74,7 +74,9 @@ pre-release.
   document said, and the DXT block decoders run without allocating (the
   same bytes out, checked over every shipped texture; 3.4× faster). Opening
   A2C1M1: the main process's part 6.2 → 2.2 s, the scene on screen at
-  ~6 s where it was 11.5.
+  ~6 s where it was 11.5. The ground-tile palette reads its thumbnails off
+  the tiles' own mip levels (0.85 → 0.13 s), and the object catalogue's
+  scan no longer stats every entry it lists (0.8 → 0.5 s).
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive
