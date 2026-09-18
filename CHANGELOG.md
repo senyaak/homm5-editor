@@ -110,6 +110,15 @@ pre-release.
   drew its 528 effect batches as 528 calls and wears 203 atlases: 994 →
   683 calls, JavaScript 8.5 → 6.3 ms, render 8.1 → 5.8; A2C1M1's 112
   effect draws are 58. The picture is unchanged.
+- A blended two-sided part is drawn once, as the game draws it. three drew
+  such a material twice a frame (back faces, then front) and re-resolved
+  its shader program before each pass — 30 re-resolves and 15 extra draw
+  calls a frame on the stress map, all of it in `getParameters`.
+- A particle whose rotation runs to millions of radians (the Storm Lord's
+  Flow_Initial) no longer prints 4900 `toHalfFloat(): Value out of range`
+  warnings per map open: the angle is stored wrapped to (−π, π], which its
+  cos and sin cannot tell apart. Opening the stress map: 12.4 → 11.4 s.
+  `npm run test-fx-table` covers the bake.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

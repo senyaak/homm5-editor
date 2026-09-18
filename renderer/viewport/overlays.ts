@@ -150,8 +150,10 @@ export function refreshBlocked(fl: Floor3D): void {
     fl.group.add(mesh);
   };
 
+  // Single pass: a flat sheet shows one face, and three would otherwise draw a
+  // blended two-sided material twice (materials.ts on the cost).
   const fill = (c: number, o: number): THREE.MeshBasicMaterial => new THREE.MeshBasicMaterial({
-    color: c, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false,
+    color: c, transparent: true, opacity: o, side: THREE.DoubleSide, depthWrite: false, forceSinglePass: true,
   });
   // Bright and fairly opaque: this wash sits on ground that is already dark
   // rock or dirt half the time, and at 0.45 of a muted red it vanished into it.
@@ -253,7 +255,7 @@ export function refreshFootprints(fl: Floor3D): void {
     const g = footprintQuads(fl, role);
     if (!g.getAttribute('position')?.count) { g.dispose(); continue; }
     const mesh = asTileSpace(new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity, side: THREE.DoubleSide,
+      color, transparent: true, opacity, side: THREE.DoubleSide, forceSinglePass: true,
       depthWrite: false, depthTest: false,
     })));
     mesh.renderOrder = 900;

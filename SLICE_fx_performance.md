@@ -361,14 +361,30 @@ view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
   creatures' glued effects, to the phase of the run. A first cut had the
   segment texture 512 wide and re-uploaded every frame: 203 × 16 KB, and
   `texSubImage2D` was 7% of the profile — the width is 16 now and the
-  upload waits for a change. Two things the profile names next: three
-  calling `getParameters` (a program re-resolve) for 144 ms self of a
-  4.4 s mix-map profile — some material is re-resolving its program every frame,
-  not attributed yet (program-cache `usedTimes` does not see a same-key
-  re-resolve, so that metric was tried and dropped); and the 4900
-  `THREE.DataUtils.toHalfFloat(): Value out of range` warnings a load
-  prints from the table bake — present before this step, a recording
-  value past ±65504 clamps in the table.
+  upload waits for a change.
+* **Done** (2026-09-18, later): two things the profile named after the
+  pools. (1) `getParameters` at 144 ms self of a 4.4 s mix-map profile — a
+  program re-resolve per draw for SOME material. Attributed by patching a
+  counter into the built bundle's `getProgram` (`_tmp/getprogram-probe.ts`;
+  program-cache `usedTimes` does not see a same-key re-resolve, so that
+  metric was tried and dropped): 32 calls a frame, all but two from
+  `MeshBasicMaterial`s whose `version` rose every frame — three's
+  `renderObject` draws a `transparent` + `DoubleSide` material TWICE (back
+  faces, then front) and sets `needsUpdate` before each pass, unless
+  `forceSinglePass`. The game submits a part once with its cull mode; so do
+  we now (materials.ts, the overlay fills, the water sheet): 682 → 667
+  calls, 32 → 2 re-resolves a frame; the frame time within run noise
+  (A/B on the same map: 7.4/6.9 and 6.9/6.2 off, 7.1/6.5, 7.0/6.4, 6.9/6.3
+  on). The two left: one `MeshBasicMaterial` shared between a static batch
+  and an idle kind flips its `instancing`/`batching` parameters every frame
+  (a program acquire + release each time) — cheap, noted, not chased. (2)
+  The 4900 `toHalfFloat(): Value out of range` warnings per map open: one
+  recording (the Storm Lord's `Flow_Initial.(Particle)`) spins its
+  particles to 28 million radians, past the half float's 65504. The angle
+  is written wrapped to (−π, π] now (fx-table.ts `wrapAngle`; cos/sin see
+  no difference; `tools/test-fx-table.ts` covers it and fails without the
+  wrap): opening the mix map under the harness 12.4 → 11.4 s — a worker's
+  `console.warn` is forwarded to the page, and 4900 of them cost a second.
 * `map:load` is 11.6 s. The worst number on the page, and not in a frame.
 
 ### 7a. Under a map no designer would make (`tools/perf-stress.ts`, 2026-09-17)

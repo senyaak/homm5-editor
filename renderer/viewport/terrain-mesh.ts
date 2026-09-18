@@ -111,6 +111,8 @@ export function makeWaterMesh(V: number, cells: number[], level: number, tex: st
   const wmat = new THREE.MeshPhongMaterial({
     color: 0xffffff, transparent: true, opacity: 0.88,
     shininess: 90, specular: 0x5f7f95, side: THREE.DoubleSide, depthWrite: false,
+    // One pass: three draws a blended two-sided material twice otherwise (materials.ts on the cost).
+    forceSinglePass: true,
   });
   if (tex) {
     const wt = new THREE.TextureLoader().load(tex);

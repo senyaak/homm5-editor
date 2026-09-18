@@ -79,7 +79,11 @@ export function bakeTableData(baked: FxTransfer): FxTableData {
       ch('pos', p.pos, true);
       data[o] = half(v[0]!); data[o + 1] = half(v[1]!); data[o + 2] = half(v[2]!);
       ch('rot', p.rot, true);
-      data[o + 3] = half(v[0]!);
+      // An angle, so it is written wrapped to (−π, π]: the shader takes its
+      // cos and sin, which see no difference, and a half float holds 65504 at
+      // most — the Storm Lord's Flow_Initial spins its particles to 28 million
+      // radians, which clamped to that and warned 4900 times per map load.
+      data[o + 3] = half(wrapAngle(v[0]!));
       ch('size', p.size, true);
       data[o + 4] = half(Math.abs(v[0]!)); data[o + 5] = half(Math.abs(v[1]!));
       ch('color', p.color, true);
@@ -89,6 +93,13 @@ export function bakeTableData(baked: FxTransfer): FxTableData {
     }
   }
   return { data, rows, base, count, frames, entries };
+}
+
+const TAU = Math.PI * 2;
+/** `a` brought into (−π, π]. */
+function wrapAngle(a: number): number {
+  const r = a - TAU * Math.round(a / TAU);
+  return r <= -Math.PI ? r + TAU : r;
 }
 
 /** The tex channel's value at frame f: stepped, so the last key at or before f. */

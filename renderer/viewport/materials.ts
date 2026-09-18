@@ -264,6 +264,13 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
   const m: THREE.MeshBasicMaterial | THREE.MeshLambertMaterial = part.selfIllum
     ? new THREE.MeshBasicMaterial({ map: tx, side })
     : new THREE.MeshLambertMaterial({ map: tx, side });
+  // One pass, as the game draws it. Left to itself three draws a blended
+  // two-sided material TWICE — back faces, then front — and sets the
+  // material's `needsUpdate` before each, so every such part was two draw
+  // calls and two program re-resolves a frame (`getParameters` was 3% of a
+  // stress map's profile, all of it this). The game's renderer submits a
+  // part once with its cull mode; so do we.
+  m.forceSinglePass = true;
   // Lambert for the lit parts only because its fragment shader is the one that
   // brings a normal along; the lighting it computes with it is thrown away.
   // A <ProjectOnTerrain> part is draped over the ground under it (drape.ts),
