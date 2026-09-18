@@ -70,8 +70,11 @@ pre-release.
 - A model's textures reach the renderer as texels, not as PNGs encoded in
   the main process and decoded again in the window, and a texture over the
   cap is read from the file's own mip level instead of decoded whole and
-  reduced. Opening A2C1M1: the main process's part 6.2 → 3.6 s, the scene
-  on screen at 7.4 s where it was 11.5.
+  reduced. The asset chain remembers where a file was found and what a
+  document said, and the DXT block decoders run without allocating (the
+  same bytes out, checked over every shipped texture; 3.4× faster). Opening
+  A2C1M1: the main process's part 6.2 → 2.2 s, the scene on screen at
+  ~6 s where it was 11.5.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

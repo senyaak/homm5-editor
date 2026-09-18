@@ -4,8 +4,6 @@
 
 import { readFileSync } from 'node:fs';
 
-type RGB = [number, number, number];
-
 /** Decoded surface: straight (non-premultiplied) RGBA8, row-major from the top. */
 export interface Image {
   width: number;
@@ -13,53 +11,86 @@ export interface Image {
   rgba: Uint8Array;
 }
 
-/** RGB565 -> [r,g,b] 0..255 */
-function rgb565(c: number): RGB {
-  return [((c >> 11) & 0x1f) * 255 / 31 | 0, ((c >> 5) & 0x3f) * 255 / 63 | 0, (c & 0x1f) * 255 / 31 | 0];
-}
+// The 5- and 6-bit channels of an RGB565 colour, widened to 8 bits the way
+// the arithmetic always did it (`v * 255 / 31 | 0`), as tables: the block
+// decoders below run over every texel of every skin a map opens with, and
+// what they used to allocate per block — a tuple per palette entry, a
+// closure per channel — was most of their time.
+const R5 = new Uint8Array(32), G6 = new Uint8Array(64);
+for (let i = 0; i < 32; i++) R5[i] = i * 255 / 31 | 0;
+for (let i = 0; i < 64; i++) G6[i] = i * 255 / 63 | 0;
 
-/** Decode one DXT color block (4×4) into the rgba buffer at (bx,by).
- * `alpha` is a per-texel Uint8Array(16) for DXT3/5, or null. For DXT1 (no alpha
- * block) the c0<=c1 mode encodes 1-bit punch-through: colour index 3 = fully
- * transparent, which we honour so foliage cutouts don't render as black cards. */
+/** The block's four colours, RGB each, and the alpha of its sixteen texels — scratch shared by every block. */
+const pal = new Uint8Array(12);
+const blockAlpha = new Uint8Array(16);
+/** DXT5's eight interpolated alphas. */
+const alphaRamp = new Uint8Array(8);
+
+/**
+ * Decode one DXT colour block (4×4) into the rgba buffer at (bx,by).
+ * `alpha` is the texels' alpha (`blockAlpha`) for DXT3/5, or null. For DXT1
+ * (no alpha block) the c0<=c1 mode encodes 1-bit punch-through: colour
+ * index 3 = fully transparent, which we honour so foliage cutouts don't
+ * render as black cards.
+ */
 function colorBlock(
   b: Buffer, off: number, out: Uint8Array, W: number, H: number,
   bx: number, by: number, alpha: Uint8Array | null, dxt1: boolean,
 ): void {
-  const c0 = b.readUInt16LE(off), c1 = b.readUInt16LE(off + 2);
-  const p0 = rgb565(c0), p1 = rgb565(c1);
-  const pal: RGB[] = [p0, p1, [0, 0, 0], [0, 0, 0]];
+  const c0 = b[off]! | (b[off + 1]! << 8), c1 = b[off + 2]! | (b[off + 3]! << 8);
+  const r0 = R5[c0 >> 11]!, g0 = G6[(c0 >> 5) & 0x3f]!, b0 = R5[c0 & 0x1f]!;
+  const r1 = R5[c1 >> 11]!, g1 = G6[(c1 >> 5) & 0x3f]!, b1 = R5[c1 & 0x1f]!;
+  pal[0] = r0; pal[1] = g0; pal[2] = b0;
+  pal[3] = r1; pal[4] = g1; pal[5] = b1;
   const punchThrough = dxt1 && c0 <= c1; // 3-colour + transparent mode
   if (c0 > c1) {
-    pal[2] = [(2 * p0[0] + p1[0]) / 3 | 0, (2 * p0[1] + p1[1]) / 3 | 0, (2 * p0[2] + p1[2]) / 3 | 0];
-    pal[3] = [(p0[0] + 2 * p1[0]) / 3 | 0, (p0[1] + 2 * p1[1]) / 3 | 0, (p0[2] + 2 * p1[2]) / 3 | 0];
+    pal[6] = (2 * r0 + r1) / 3 | 0; pal[7] = (2 * g0 + g1) / 3 | 0; pal[8] = (2 * b0 + b1) / 3 | 0;
+    pal[9] = (r0 + 2 * r1) / 3 | 0; pal[10] = (g0 + 2 * g1) / 3 | 0; pal[11] = (b0 + 2 * b1) / 3 | 0;
   } else {
-    pal[2] = [(p0[0] + p1[0]) / 2 | 0, (p0[1] + p1[1]) / 2 | 0, (p0[2] + p1[2]) / 2 | 0];
-    // pal[3] stays black; in punch-through mode it is also transparent (below)
+    pal[6] = (r0 + r1) / 2 | 0; pal[7] = (g0 + g1) / 2 | 0; pal[8] = (b0 + b1) / 2 | 0;
+    pal[9] = 0; pal[10] = 0; pal[11] = 0; // black; in punch-through mode also transparent (below)
   }
-  const bits = b.readUInt32LE(off + 4);
-  for (let py = 0; py < 4; py++) for (let px = 0; px < 4; px++) {
-    const idx = (bits >> (2 * (py * 4 + px))) & 3;
-    const x = bx * 4 + px, y = by * 4 + py;
-    if (x >= W || y >= H) continue;
-    const o = (y * W + x) * 4, c = pal[idx]!;
-    out[o] = c[0]; out[o + 1] = c[1]; out[o + 2] = c[2];
-    out[o + 3] = alpha ? alpha[py * 4 + px] : (punchThrough && idx === 3 ? 0 : 255);
+  const bits = (b[off + 4]! | (b[off + 5]! << 8) | (b[off + 6]! << 16) | (b[off + 7]! << 24)) >>> 0;
+  const x0 = bx * 4, y0 = by * 4;
+  const xn = Math.min(4, W - x0), yn = Math.min(4, H - y0);
+  for (let py = 0; py < yn; py++) {
+    let o = ((y0 + py) * W + x0) * 4;
+    for (let px = 0; px < xn; px++, o += 4) {
+      const t = py * 4 + px;
+      const idx = (bits >>> (2 * t)) & 3, c = idx * 3;
+      out[o] = pal[c]!; out[o + 1] = pal[c + 1]!; out[o + 2] = pal[c + 2]!;
+      out[o + 3] = alpha ? alpha[t]! : (punchThrough && idx === 3 ? 0 : 255);
+    }
   }
 }
 
-/** Decode a DXT5 alpha block (8 bytes) -> Uint8Array(16) of alpha values. */
+/** Decode a DXT3 alpha block (8 bytes: sixteen 4-bit alphas) into `blockAlpha`. */
+function dxt3Alpha(b: Buffer, off: number): Uint8Array {
+  for (let row = 0; row < 4; row++) {
+    const v = b[off + row * 2]! | (b[off + row * 2 + 1]! << 8);
+    blockAlpha[row * 4] = (v & 0xf) * 17;
+    blockAlpha[row * 4 + 1] = ((v >> 4) & 0xf) * 17;
+    blockAlpha[row * 4 + 2] = ((v >> 8) & 0xf) * 17;
+    blockAlpha[row * 4 + 3] = ((v >> 12) & 0xf) * 17;
+  }
+  return blockAlpha;
+}
+
+/** Decode a DXT5 alpha block (8 bytes: two endpoints, sixteen 3-bit indices) into `blockAlpha`. */
 function dxt5Alpha(b: Buffer, off: number): Uint8Array {
-  const a0 = b[off], a1 = b[off + 1];
-  const t: number[] = new Array(8);
-  t[0] = a0; t[1] = a1;
-  if (a0 > a1) for (let i = 1; i <= 6; i++) t[i + 1] = ((7 - i) * a0 + i * a1) / 7 | 0;
-  else { for (let i = 1; i <= 4; i++) t[i + 1] = ((5 - i) * a0 + i * a1) / 5 | 0; t[6] = 0; t[7] = 255; }
-  let bits = 0n;
-  for (let i = 0; i < 6; i++) bits |= BigInt(b[off + 2 + i]) << BigInt(8 * i);
-  const out = new Uint8Array(16);
-  for (let i = 0; i < 16; i++) out[i] = t[Number((bits >> BigInt(3 * i)) & 7n)]!;
-  return out;
+  const a0 = b[off]!, a1 = b[off + 1]!;
+  alphaRamp[0] = a0; alphaRamp[1] = a1;
+  if (a0 > a1) for (let i = 1; i <= 6; i++) alphaRamp[i + 1] = ((7 - i) * a0 + i * a1) / 7 | 0;
+  else { for (let i = 1; i <= 4; i++) alphaRamp[i + 1] = ((5 - i) * a0 + i * a1) / 5 | 0; alphaRamp[6] = 0; alphaRamp[7] = 255; }
+  // 48 bits of indices, as two 24-bit halves — eight texels each — so no
+  // BigInt is made per block.
+  const lo = b[off + 2]! | (b[off + 3]! << 8) | (b[off + 4]! << 16);
+  const hi = b[off + 5]! | (b[off + 6]! << 8) | (b[off + 7]! << 16);
+  for (let i = 0; i < 8; i++) {
+    blockAlpha[i] = alphaRamp[(lo >> (3 * i)) & 7]!;
+    blockAlpha[i + 8] = alphaRamp[(hi >> (3 * i)) & 7]!;
+  }
+  return blockAlpha;
 }
 
 /** Channel extractor for a DDS pixel-format bit mask (e.g. 0x00ff0000 -> red). */
@@ -138,17 +169,11 @@ export function decodeDDSBuffer(b: Buffer, cap?: number): Image {
   }
   const bw = Math.ceil(width / 4), bh = Math.ceil(height / 4);
   const dxt1 = fourCC === 'DXT1';
+  const dxt3 = fourCC === 'DXT3', dxt5 = fourCC === 'DXT5';
   for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
     let alpha: Uint8Array | null = null, colorOff = off;
-    if (fourCC === 'DXT3') {
-      alpha = new Uint8Array(16);
-      const a = b.readBigUInt64LE(off);
-      for (let i = 0; i < 16; i++) alpha[i] = Number((a >> BigInt(4 * i)) & 0xfn) * 17;
-      colorOff = off + 8;
-    } else if (fourCC === 'DXT5') {
-      alpha = dxt5Alpha(b, off);
-      colorOff = off + 8;
-    }
+    if (dxt3) { alpha = dxt3Alpha(b, off); colorOff = off + 8; }
+    else if (dxt5) { alpha = dxt5Alpha(b, off); colorOff = off + 8; }
     colorBlock(b, colorOff, rgba, width, height, bx, by, alpha, dxt1);
     off += blockBytes;
   }

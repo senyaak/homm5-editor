@@ -150,7 +150,7 @@ function testAgainstData(): void {
   const raw = decodeDDS(data.path(dirname('/' + rel) + '/' + readFileSync(data.path('/' + rel), 'utf8').match(/<DestName href="([^"]+)"/)![1]!));
   const level2 = decodeDDS(data.path(dirname('/' + rel) + '/' + readFileSync(data.path('/' + rel), 'utf8').match(/<DestName href="([^"]+)"/)![1]!), 128);
   check('the 128 is the file\'s own level, not the top one box-filtered', raw.width === 512 && level2.width === 128
-    && !level2.rgba.every((v, i) => v === shrinkToFit(raw, 128).rgba[i]));
+    && !level2.rgba.every((v: number, i: number) => v === shrinkToFit(raw, 128).rgba[i]));
 }
 
 testShrink();

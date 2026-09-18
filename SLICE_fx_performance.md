@@ -356,10 +356,14 @@ What it says, in the order it matters:
   `decodeDDS(path, cap)`: 5× fewer blocks, no box filter after; 1946 of the
   3986 shipped textures carry chains, and the level differs from our box
   filter by 2.9/255 on average — it is what the game draws with). 6.2 →
-  **3.6 s**; the scene is on screen at 7.4 s where it was 11.5. Left in
-  the main process: the href resolution (a cache of `Assets.path` over the
-  mounts, ~0.8 s), the clip bakes (0.6 s), the DXT decode of what remains
-  (~1 s, a native decoder or a worker pool).
+  **3.6 s**; then the asset chain caching `found` and `text` (the same few
+  hundred documents were read thousands of times; 3.0 s), then the DXT
+  block decoders rewritten without a tuple per palette entry and a BigInt
+  per alpha block — byte-identical over all 3986 shipped textures, 3.4×
+  faster — **2.2 s**. The profile is flat now: colour blocks 0.2 s, Oodle
+  0.2, first reads 0.3, the clip bakes 0.2, the geometry itself 0.3. The
+  scene is on screen at ~6 s where it was 11.5; what is left of that is the
+  IPC's clone of the payload, the first render's uploads, and buildWorld.
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,
