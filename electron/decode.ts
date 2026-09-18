@@ -8,14 +8,20 @@
 // parallel and read back. What fails to decode is reported and left to the
 // build, which decodes it in this process or skips the object, as it always
 // has.
+//
+// "Read back" is the entry's HEADER: the geoms handed on carry their arrays
+// as file references (blob-table.ts `FileRef`), which the map's blob serves
+// off the disk when the window fetches them. This process never holds a
+// cached map's bytes; a channel that wants a cached model's numbers here —
+// none does today — reads them with `readCachedArrays`.
 
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { Assets } from '#src/game/assets.ts';
+import { statOf } from '#src/game/assets.ts';
+import type { Assets, FileStat } from '#src/game/assets.ts';
 import type { GeomData } from '#src/scene/payload.ts';
-import { entryPath, loadGeomEntry, pruneGeomCache, sharedLoader } from '#src/scene/geom-cache.ts';
+import { depValid, entryPath, loadGeomEntry, pruneGeomCache, sharedLoader } from '#src/scene/geom-cache.ts';
 import type { DecodeParams, Dep } from '#src/scene/geom-cache.ts';
-import { statSync } from 'node:fs';
 import type { DecodeJob } from '#src/scene/decode-job.ts';
 import { decodeAll, jobMs, spawned } from '#electron/geom-jobs.ts';
 import { tmpRoot } from '#electron/paths.ts';
@@ -40,8 +46,10 @@ export interface DecodeReport {
   decoded: number;
   /** Hrefs whose decode failed, with why — the build decodes them itself. */
   failed: { href: string; error: string }[];
-  /** Milliseconds: reading the cache, and waiting on the decodes. */
+  /** Milliseconds: reading the cache — of which its entries' headers, and the stats that validate them — and waiting on the decodes. */
   cacheMs: number;
+  headMs: number;
+  statMs: number;
   decodeMs: number;
   /** Decoder processes at work, and the milliseconds they spent between them — against decodeMs, the pool's use. */
   workers: number;
@@ -60,29 +68,30 @@ export async function decodedGeoms(
   const dir = geomCacheDir();
   const session = randomUUID();
   const geoms = new Map<string, GeomData | null>();
-  const report: DecodeReport = { hits: 0, decoded: 0, failed: [], cacheMs: 0, decodeMs: 0, workers: 0, workMs: 0, stats: 0 };
+  const report: DecodeReport = { hits: 0, decoded: 0, failed: [], cacheMs: 0, headMs: 0, statMs: 0, decodeMs: 0, workers: 0, workMs: 0, stats: 0 };
   // A texture's document is a dependency of every model wearing it: each
   // file is resolved and statted once per open, not once per entry.
-  const memo = new Map<string, { path: string | null; size: number; mtime: number }>();
-  const stat = (rel: string): { path: string | null; size: number; mtime: number } => {
+  const memo = new Map<string, FileStat | null>();
+  const stat = (rel: string): FileStat | null => {
     let m = memo.get(rel);
-    if (!m) {
+    if (m === undefined) {
+      const t = performance.now();
       report.stats++;
-      const path = data.exists(rel) ? data.path(rel) : null;
-      let size = -1, mtime = -1;
-      if (path) { try { const s = statSync(path); size = s.size; mtime = s.mtimeMs; } catch { /* gone: recorded as missing */ } }
-      m = { path, size, mtime };
+      m = statOf(data, rel);
       memo.set(rel, m);
+      report.statMs += performance.now() - t;
     }
     return m;
   };
-  const valid = (deps: Dep[]): boolean => deps.every((d) => { const m = stat(d.rel); return m.path === d.path && (!d.path || (m.size === d.size && m.mtime === d.mtime)); });
+  const valid = (deps: Dep[]): boolean => deps.every((d) => depValid(d, stat(d.rel)));
   const jobs: DecodeJob[] = [];
   const shared = sharedLoader();
   const t0 = performance.now();
   for (const href of new Set(hrefs)) {
     const file = entryPath(dir, href, params);
-    const have = loadGeomEntry(file, shared);
+    const tr = performance.now();
+    const have = loadGeomEntry(file, shared, false);
+    report.headMs += performance.now() - tr;
     if (have && valid(have.entry.deps)) {
       geoms.set(href, have.geom);
       report.hits++;
@@ -99,7 +108,7 @@ export async function decodedGeoms(
   for (const job of jobs) {
     const err = results.get(job);
     if (err) { report.failed.push({ href: job.href, error: err.message }); continue; }
-    const have = loadGeomEntry(job.file, shared);
+    const have = loadGeomEntry(job.file, shared, false);
     if (!have) { report.failed.push({ href: job.href, error: 'the entry was not written' }); continue; }
     geoms.set(job.href, have.geom);
     report.decoded++;

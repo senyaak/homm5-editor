@@ -13,6 +13,14 @@
 // The walk is generic for the same reason tex-table's is — the list of fields
 // that hold bytes has grown every time the payload has — and it assumes the
 // payload is acyclic, which it is.
+//
+// An array need not be in memory to be packed. A model read off the geom
+// cache (geom-cache.ts) may carry its arrays as FILE REFERENCES — the entry
+// file and the byte range in it — and the packer takes one of those as it
+// takes a typed array: the blob's sink is told the file and the range, and
+// serves the bytes off the disk when the window fetches them. The main
+// process then never holds a cached map's bytes at all; what it holds is
+// where they are.
 
 /** A typed array that left the payload: which blob, where in it, and what to rebuild. */
 export interface BlobHandle {
@@ -34,6 +42,81 @@ function isHandle(v: unknown): v is BlobHandle {
 }
 
 /**
+ * A typed array that is on disk: which file, where in it, and what it is.
+ *
+ * Stands where the array would in a payload the main process holds (a geom
+ * off the cache), and is packed into a blob like one. It carries the array's
+ * `length` and `byteLength` so what only asks for a size — how many vertices
+ * a model has — is answered without a read. Anything that wants the numbers
+ * goes through `readFileRefs`.
+ */
+export interface FileRef {
+  '\0file': string;
+  /** Byte offset in the file. */
+  at: number;
+  kind: TypedKind;
+  length: number;
+  byteLength: number;
+}
+
+export function isFileRef(v: unknown): v is FileRef {
+  return !!v && typeof v === 'object' && typeof (v as FileRef)['\0file'] === 'string';
+}
+
+export function fileRef(path: string, at: number, kind: TypedKind, length: number): FileRef {
+  return { '\0file': path, at, kind, length, byteLength: length * KINDS[kind].BYTES_PER_ELEMENT };
+}
+
+/**
+ * `payload` with every file reference replaced, in place, by the array it
+ * names — `read(path, at, byteLength)` answers the bytes. For the few places
+ * that want a cached geom's numbers in this process rather than in the window.
+ */
+export function readFileRefs<T>(payload: T, read: (path: string, at: number, byteLength: number) => Uint8Array): T {
+  replace(payload, isFileRef, (v) => {
+    const bytes = read(v['\0file'], v.at, v.byteLength);
+    if (bytes.byteLength !== v.byteLength) throw new Error(`${v['\0file']}: ${v.byteLength} bytes at ${v.at} read as ${bytes.byteLength}`);
+    // Its own buffer, aligned for the kind — what was read may be a view at any offset.
+    const own = bytes.byteOffset % KINDS[v.kind].BYTES_PER_ELEMENT === 0 ? bytes : new Uint8Array(bytes);
+    return new KINDS[v.kind](own.buffer as ArrayBuffer, own.byteOffset, v.length);
+  });
+  return payload;
+}
+
+/**
+ * Every value in `payload` that `is` picks out, replaced in place by
+ * `to(value)` — computed once per picked OBJECT, however many fields share
+ * it, so what was one array stays one. Returns how many were replaced.
+ */
+function replace<X extends object>(payload: unknown, is: (v: unknown) => v is X, to: (x: X) => unknown): number {
+  const seen = new Set<object>();
+  const made = new Map<X, unknown>();
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== 'object' || ArrayBuffer.isView(node) || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      if (typeof node[0] === 'number') return;
+      for (let i = 0; i < node.length; i++) visit(node, i, node[i]);
+    } else {
+      const from = node as Record<string, unknown>;
+      for (const key of Object.keys(from)) visit(from, key, from[key]);
+    }
+  };
+  const visit = (holder: Record<string, unknown> | unknown[], key: string | number, v: unknown): void => {
+    if (!is(v)) { walk(v); return; }
+    if (!made.has(v)) made.set(v, to(v));
+    (holder as Record<string | number, unknown>)[key] = made.get(v);
+  };
+  walk(payload);
+  return made.size;
+}
+
+/** Every blob handle in `payload` replaced, in place, by `to(handle)` — once per handle object. Returns how many. */
+export function mapHandles(payload: unknown, to: (h: BlobHandle) => unknown): number {
+  return replace(payload, isHandle, to);
+}
+
+/**
  * Below this a view stays in the payload: a handle is an object of four
  * fields, and a few dozen bytes of bone weights are cheaper as themselves.
  * (A cache entry on disk passes 0: its header is JSON, which holds no typed
@@ -44,8 +127,17 @@ const MIN_BYTES = 256;
 /** Every array in a blob starts on a multiple of this — Float64Array is the widest element the payload holds. */
 export const BLOB_ALIGN = 8;
 
-/** Where the packer puts bytes: one blob, its URL, and the offset each addition lands at. */
-export interface BlobSink { url: string; add(bytes: Uint8Array): number }
+/**
+ * Where the packer puts bytes: one blob, its URL, and the offset each addition
+ * lands at — bytes in hand, or a range of a file the blob will read when it is
+ * served. A sink without `addFile` cannot take a payload that holds file
+ * references (an entry file is written from arrays, never from references).
+ */
+export interface BlobSink {
+  url: string;
+  add(bytes: Uint8Array): number;
+  addFile?(path: string, at: number, byteLength: number): number;
+}
 
 /**
  * The payload with every typed array of MIN_BYTES or more replaced by a
@@ -73,6 +165,13 @@ export function packBlobs<T>(payload: T, sink: BlobSink, minBytes = MIN_BYTES): 
         count++; bytes += view.byteLength;
         out = handle;
       }
+    } else if (isFileRef(node)) {
+      // On disk already: the blob reads it from there. Always packed, whatever
+      // its size — there is no array here to leave in the payload.
+      if (!sink.addFile) throw new Error(`a file reference (${node['\0file']}) in a payload whose blob takes only bytes`);
+      const handle: BlobHandle = { '\0blob': sink.url, at: sink.addFile(node['\0file'], node.at, node.byteLength), kind: node.kind, length: node.length };
+      count++; bytes += node.byteLength;
+      out = handle;
     } else if (Array.isArray(node)) {
       if (typeof node[0] !== 'number') {
         let copy: unknown[] | null = null;
@@ -165,8 +264,6 @@ function bytesPer(kind: TypedKind): number {
  * the buffer is nobody else's and a copy would only double it.
  */
 export function unpackBlobsSync(payload: unknown, buffer: (url: string) => ArrayBuffer): { count: number; bytes: number } {
-  const seen = new Set<object>();
-  const views = new Map<BlobHandle, Typed>();
   const buffers = new Map<string, ArrayBuffer>();
   let bytes = 0;
   const bufferFor = (url: string): ArrayBuffer => {
@@ -174,28 +271,10 @@ export function unpackBlobsSync(payload: unknown, buffer: (url: string) => Array
     if (!b) { b = buffer(url); buffers.set(url, b); bytes += b.byteLength; }
     return b;
   };
-  const walk = (node: unknown): void => {
-    if (!node || typeof node !== 'object' || ArrayBuffer.isView(node) || seen.has(node)) return;
-    seen.add(node);
-    if (Array.isArray(node)) {
-      if (typeof node[0] === 'number') return;
-      for (let i = 0; i < node.length; i++) visit(node, i, node[i]);
-    } else {
-      const from = node as Record<string, unknown>;
-      for (const key of Object.keys(from)) visit(from, key, from[key]);
-    }
-  };
-  const visit = (holder: Record<string, unknown> | unknown[], key: string | number, v: unknown): void => {
-    if (!isHandle(v)) { walk(v); return; }
-    let view = views.get(v);
-    if (!view) {
-      const buf = bufferFor(v[' blob']);
-      if (v.at + v.length * bytesPer(v.kind) > buf.byteLength) throw new Error(`blob ${v[' blob']}: ${v.length} ${v.kind} at ${v.at} is past its ${buf.byteLength} bytes`);
-      view = new KINDS[v.kind](buf, v.at, v.length);
-      views.set(v, view);
-    }
-    (holder as Record<string | number, unknown>)[key] = view;
-  };
-  walk(payload);
-  return { count: views.size, bytes };
+  const count = mapHandles(payload, (h) => {
+    const buf = bufferFor(h['\0blob']);
+    if (h.at + h.length * bytesPer(h.kind) > buf.byteLength) throw new Error(`blob ${h['\0blob']}: ${h.length} ${h.kind} at ${h.at} is past its ${buf.byteLength} bytes`);
+    return new KINDS[h.kind](buf, h.at, h.length);
+  });
+  return { count, bytes };
 }

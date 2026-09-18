@@ -12,7 +12,7 @@
 
 import type { Assets } from '../game/assets.ts';
 import { buildScene } from '../scene/scene.ts';
-import type { AmbientData, FxInstancePayload, GeomData, Scene } from '../scene/payload.ts';
+import type { AmbientData, DecodedAhead, FxInstancePayload, GeomData, Scene } from '../scene/payload.ts';
 import { loadAmbient } from '../scene/ambient.ts';
 import { TEXTURE_CAP } from '../scene/materials.ts';
 import { effectDuration, modelsOfEffect, particlesOfEffect } from '../scene/object-effects.ts';
@@ -170,6 +170,8 @@ export interface PlayOptions {
   texSize?: number;
   /** Samples per second for the baked clips. */
   fps?: number;
+  /** The stage's models decoded ahead (the geom cache) — see BuildSceneOptions. */
+  decoded?: DecodedAhead;
 }
 
 /** Follow a camera-set href to the two poses at its ends. */
@@ -209,6 +211,7 @@ export function buildScenePlay(data: Assets, scenePath: string, options: PlayOpt
     animate: true,
     ...(options.fps ? { animationFps: options.fps } : {}),
     ...(options.texSize ? { texSize: options.texSize } : {}),
+    ...(options.decoded ? { decoded: options.decoded } : {}),
   });
 
   // An actor is on the stage twice at this point: the scene builder placed

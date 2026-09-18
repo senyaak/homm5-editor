@@ -417,7 +417,7 @@ export function registerMaps(): void {
     // to what they hashed when it was written.
     loadHistory(session);
     const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
-    console.log(`[perf] map:load models ${(tDecoded - tStart) | 0}ms (cache ${report.hits} in ${report.cacheMs | 0}ms with ${report.stats} stats, decoded ${report.decoded} in ${report.decodeMs | 0}ms by ${report.workers} decoders working ${report.workMs | 0}ms, failed ${report.failed.length}) · buildScene ${(tScene - tDecoded) | 0}ms · total ${(performance.now() - tStart) | 0}ms · geoms ${scene.geoms.length}, placed ${placed}, skipped ${skipped.length}`);
+    console.log(`[perf] map:load models ${(tDecoded - tStart) | 0}ms (cache ${report.hits} in ${report.cacheMs | 0}ms: headers ${report.headMs | 0}, ${report.stats} stats ${report.statMs | 0}; decoded ${report.decoded} in ${report.decodeMs | 0}ms by ${report.workers} decoders working ${report.workMs | 0}ms, failed ${report.failed.length}) · buildScene ${(tScene - tDecoded) | 0}ms · total ${(performance.now() - tStart) | 0}ms · geoms ${scene.geoms.length}, placed ${placed}, skipped ${skipped.length}`);
     // Named, one per line: an object that is on the map and not on the screen
     // is a bug hunt, and the href is most of the answer to it.
     for (const href of skipped) console.log(`[load] no model for ${href} — the object is on the map and not on the screen`);

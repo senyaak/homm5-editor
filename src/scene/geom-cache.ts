@@ -31,13 +31,14 @@
 // one object again. A shared entry has no dependencies of its own: every
 // model entry that names it depends on the file it was made from.
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import type { Assets } from '../game/assets.ts';
+import { statOf } from '../game/assets.ts';
+import type { Assets, FileStat } from '../game/assets.ts';
 import type { CompressedPicture, FxInstancePayload, GeomData, GeomPart, Picture } from './payload.ts';
 import type { FxBaked } from './fx-bake.ts';
-import { packBlobs, unpackBlobsSync, BLOB_ALIGN } from './blob-table.ts';
+import { fileRef, mapHandles, packBlobs, readFileRefs, unpackBlobsSync, BLOB_ALIGN } from './blob-table.ts';
 
 /** Bumped whenever what a decode or a bake writes changes shape or value. */
 export const DECODER_VERSION = 1;
@@ -59,16 +60,14 @@ export function recordingAssets(chain: Assets): { assets: Assets; deps: () => De
   const seen = new Map<string, Dep>();
   const note = (rel: string): void => {
     if (seen.has(rel)) return;
-    const path = chain.exists(rel) ? chain.path(rel) : null;
-    let size = -1, mtime = -1;
-    if (path) { try { const s = statSync(path); size = s.size; mtime = s.mtimeMs; } catch { /* vanished between exists and stat: recorded as missing */ }
-    }
-    seen.set(rel, { rel, path, size, mtime });
+    const s = statOf(chain, rel);
+    seen.set(rel, s ? { rel, path: s.path, size: s.size, mtime: s.mtime } : { rel, path: null, size: -1, mtime: -1 });
   };
   const assets: Assets = {
     roots: chain.roots,
     path: (rel) => { note(rel); return chain.path(rel); },
     exists: (rel) => { note(rel); return chain.exists(rel); },
+    ...(chain.stat ? { stat: (rel: string) => { note(rel); return chain.stat!(rel); } } : {}),
     text: (rel, enc) => { note(rel); return chain.text(rel, enc); },
     bytes: (rel) => { note(rel); return chain.bytes(rel); },
     // Scans are not recorded: a decode does not list folders, and an entry
@@ -81,16 +80,13 @@ export function recordingAssets(chain: Assets): { assets: Assets; deps: () => De
 
 /** Whether every dependency still resolves to the same file with the same size and date. */
 export function depsValid(chain: Assets, deps: Dep[]): boolean {
-  for (const d of deps) {
-    const path = chain.exists(d.rel) ? chain.path(d.rel) : null;
-    if (path !== d.path) return false;
-    if (!path) continue;
-    try {
-      const s = statSync(path);
-      if (s.size !== d.size || s.mtimeMs !== d.mtime) return false;
-    } catch { return false; }
-  }
-  return true;
+  return deps.every((d) => depValid(d, statOf(chain, d.rel)));
+}
+
+/** One dependency against the file as it is now (null: no root has it). */
+export function depValid(d: Dep, now: FileStat | null): boolean {
+  if (!now) return d.path === null;
+  return now.path === d.path && now.size === d.size && now.mtime === d.mtime;
 }
 
 /** What a decode was asked to do — part of the entry's key with the href. */
@@ -147,7 +143,7 @@ function writeBlobFile(file: string, header: object, object: unknown): void {
   };
   const packed = object === null ? null : packBlobs(object, sink, 0).payload;
   const json = Buffer.from(JSON.stringify({ ...header, object: packed }), 'utf8');
-  const arraysAt = 4 + json.byteLength + (BLOB_ALIGN - ((4 + json.byteLength) % BLOB_ALIGN)) % BLOB_ALIGN;
+  const arraysAt = arraysStart(json.byteLength);
   const out = Buffer.alloc(arraysAt + bytes);
   out.writeUInt32LE(json.byteLength, 0);
   json.copy(out, 4);
@@ -169,21 +165,76 @@ function writeBlobFile(file: string, header: object, object: unknown): void {
   }
 }
 
-/** A blob file read back: its header, and its object with the arrays as views over the one read. */
-function readBlobFile<H>(file: string): { header: H; object: unknown } | null {
+/**
+ * A blob file read back: its header, and its object with its arrays.
+ *
+ * `whole` reads the file in one go and the arrays are views over that read —
+ * for a process that wants the numbers. Otherwise only the HEAD is read — the
+ * length word and the JSON, a few kilobytes of a file that may be forty
+ * megabytes — and every array comes back as a FileRef into this file: the
+ * main process passes those into the map's blob, and the bytes go from the
+ * disk to the window without ever being in its memory. A header whose
+ * arrays would run past the file's end is a torn file, and null.
+ */
+function readBlobFile<H>(file: string, whole: boolean): { header: H; object: unknown } | null {
   if (!existsSync(file)) return null;
   try {
-    const buf = readFileSync(file);
-    const len = buf.readUInt32LE(0);
-    const header = JSON.parse(buf.subarray(4, 4 + len).toString('utf8')) as H & { object: unknown };
-    const arraysAt = 4 + len + (BLOB_ALIGN - ((4 + len) % BLOB_ALIGN)) % BLOB_ALIGN;
-    const { object, ...rest } = header;
+    const { object, rest, arrays } = whole ? readWhole<H>(file) : readHead<H>(file);
     if (object !== null) {
-      const arrays = buf.buffer.slice(buf.byteOffset + arraysAt, buf.byteOffset + buf.byteLength);
-      unpackBlobsSync(object, (url) => { if (url !== ENTRY_URL) throw new Error(`${file}: a handle into ${url}`); return arrays; });
+      if (arrays.buffer) {
+        const bytes = arrays.buffer;
+        unpackBlobsSync(object, (url) => { if (url !== ENTRY_URL) throw new Error(`${file}: a handle into ${url}`); return bytes; });
+      } else {
+        const { at: base, size } = arrays;
+        mapHandles(object, (h) => {
+          if (h['\0blob'] !== ENTRY_URL) throw new Error(`${file}: a handle into ${h['\0blob']}`);
+          const r = fileRef(file, base + h.at, h.kind, h.length);
+          if (r.at + r.byteLength > size) throw new Error(`${file}: ${r.byteLength} bytes at ${r.at} past the file's ${size}`);
+          return r;
+        });
+      }
     }
     return { header: rest as unknown as H, object };
   } catch { return null; }
+}
+
+type Head<H> = { object: unknown; rest: Omit<H, 'object'>; arrays: { buffer: ArrayBuffer; at?: undefined; size?: undefined } | { buffer?: undefined; at: number; size: number } };
+
+/** The arrays section starts after the length word and the JSON, aligned. */
+const arraysStart = (jsonBytes: number): number => 4 + jsonBytes + (BLOB_ALIGN - ((4 + jsonBytes) % BLOB_ALIGN)) % BLOB_ALIGN;
+
+function parseHead<H>(json: Buffer): { object: unknown; rest: Omit<H, 'object'> } {
+  const { object, ...rest } = JSON.parse(json.toString('utf8')) as H & { object: unknown };
+  return { object, rest };
+}
+
+function readWhole<H>(file: string): Head<H> {
+  const buf = readFileSync(file);
+  const len = buf.readUInt32LE(0);
+  const arraysAt = arraysStart(len);
+  return { ...parseHead<H>(buf.subarray(4, 4 + len)), arrays: { buffer: buf.buffer.slice(buf.byteOffset + arraysAt, buf.byteOffset + buf.byteLength) } };
+}
+
+/** A first read this long holds the length word and the header of nearly every entry; a longer header costs a second read. */
+const HEAD_GUESS = 16 * 1024;
+
+function readHead<H>(file: string): Head<H> {
+  const fd = openSync(file, 'r');
+  try {
+    const size = fstatSync(fd).size;
+    let buf = Buffer.allocUnsafe(Math.min(HEAD_GUESS, size));
+    let got = readSync(fd, buf, 0, buf.byteLength, 0);
+    if (got < 4) throw new Error(`${file}: no length word`);
+    const len = buf.readUInt32LE(0);
+    if (4 + len > got) {
+      const more = Buffer.allocUnsafe(4 + len);
+      buf.copy(more, 0, 0, got);
+      got += readSync(fd, more, got, 4 + len - got, got);
+      if (got < 4 + len) throw new Error(`${file}: the header is short`);
+      buf = more;
+    }
+    return { ...parseHead<H>(buf.subarray(4, 4 + len)), arrays: { at: arraysStart(len), size } };
+  } finally { closeSync(fd); }
 }
 
 /**
@@ -219,14 +270,20 @@ export type SharedLoader = Map<string, unknown>;
 export const sharedLoader = (): SharedLoader => new Map();
 
 /**
- * A model's entry read back: its header, and its geom with real arrays and
- * its shared objects resolved. Null when there is no readable entry at `file`,
- * it was written by another decoder version, or a shared entry it names is
- * gone — the caller decodes afresh then. Whether it is still VALID against the
- * files it was made from is the caller's question (depsValid).
+ * A model's entry read back: its header, and its geom with its shared objects
+ * resolved. Null when there is no readable entry at `file`, it was written by
+ * another decoder version, or a shared entry it names is gone — the caller
+ * decodes afresh then. Whether it is still VALID against the files it was
+ * made from is the caller's question (depsValid).
+ *
+ * `whole` reads the arrays and the geom is a GeomData as decoded. Without it
+ * the geom's arrays are FileRefs (blob-table.ts) — the shape a process that
+ * only hands the geom on wants: a few kilobytes read per entry, the bytes
+ * served off the disk to the window by the blob. A caller that wants the
+ * numbers of such a geom in this process reads them with `readFileRefs`.
  */
-export function loadGeomEntry(file: string, shared: SharedLoader): { entry: GeomEntry; geom: GeomData | null } | null {
-  const read = readBlobFile<Omit<GeomEntry, 'geom'>>(file);
+export function loadGeomEntry(file: string, shared: SharedLoader, whole = true): { entry: GeomEntry; geom: GeomData | null } | null {
+  const read = readBlobFile<Omit<GeomEntry, 'geom'>>(file, whole);
   if (!read || read.header.v !== DECODER_VERSION) return null;
   const geom = read.object as GeomData | null;
   const dir = sharedDir(file);
@@ -235,7 +292,7 @@ export function loadGeomEntry(file: string, shared: SharedLoader): { entry: Geom
     const id = v['\0ref'];
     let obj = shared.get(id);
     if (obj === undefined) {
-      const got = readBlobFile<{ v: number; id: string }>(sharedPath(dir, id));
+      const got = readBlobFile<{ v: number; id: string }>(sharedPath(dir, id), whole);
       if (!got || got.header.v !== DECODER_VERSION || got.object === null) throw new Error(`shared entry ${id} is missing`);
       obj = got.object;
       shared.set(id, obj);
@@ -252,6 +309,26 @@ export function loadGeomEntry(file: string, shared: SharedLoader): { entry: Geom
     }
   } catch { return null; }
   return { entry: { ...read.header, geom }, geom };
+}
+
+/**
+ * A geom loaded without its arrays (`loadGeomEntry(…, false)`), with them
+ * read in — in place, one open per entry file it points into. For the few
+ * places that want a cached model's numbers in this process rather than in
+ * the window; the map open never does.
+ */
+export function readCachedArrays<T>(geom: T): T {
+  const fds = new Map<string, number>();
+  try {
+    return readFileRefs(geom, (path, at, n) => {
+      let fd = fds.get(path);
+      if (fd === undefined) { fd = openSync(path, 'r'); fds.set(path, fd); }
+      // Buffer.alloc is its own allocation (never the pool), so it starts aligned.
+      const buf = Buffer.alloc(n);
+      if (readSync(fd, buf, 0, n, at) !== n) throw new Error(`${path}: short read of ${n} bytes at ${at}`);
+      return buf;
+    });
+  } finally { for (const fd of fds.values()) closeSync(fd); }
 }
 
 /**

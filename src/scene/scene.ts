@@ -58,7 +58,7 @@ import type { HommMap } from '../map/map.ts';
 import type { Terrain } from '../terrain/terrain.ts';
 import type { ReadXdb } from './xdb.ts';
 import type {
-  BuildSceneOptions, Floor, Footprint, GeomData, Instance, Scene, SceneAnimationOptions,
+  BuildSceneOptions, DecodedAhead, Floor, Footprint, GeomData, Instance, Scene, SceneAnimationOptions,
   SplatData, TileOffset, WaterData,
 } from './payload.ts';
 
@@ -159,7 +159,7 @@ export function parseFootprint(sharedXml: string): Footprint | null {
 }
 
 export function createGeomResolver(
-  root: string | Assets, texSize = TEXTURE_CAP, options: SceneAnimationOptions = {}, decoded?: ReadonlyMap<string, GeomData | null>,
+  root: string | Assets, texSize = TEXTURE_CAP, options: SceneAnimationOptions = {}, decoded?: DecodedAhead,
 ): GeomResolver {
   const data = toAssets(root);
   const readXdb: ReadXdb = (href) => data.text(href.split('#')[0]!);
@@ -169,7 +169,7 @@ export function createGeomResolver(
     const hit = geomIndex.get(sharedHref);
     if (hit !== undefined) return hit;
     // Decoded ahead (the cache, the decode processes): placed, not decoded again.
-    const ahead = decoded?.get(sharedHref);
+    const ahead = typeof decoded === 'function' ? decoded(sharedHref) : decoded?.get(sharedHref);
     if (ahead !== undefined) {
       const at = ahead ? geoms.push(ahead) - 1 : -1;
       geomIndex.set(sharedHref, at);

@@ -42,7 +42,18 @@ export interface Assets {
    * topmost wins — one entry at a time.
    */
   dirs(rel: string): string[];
+  /**
+   * Where `rel` resolves and how big and how old that file is, or null when
+   * no root has it — the one stat the resolution itself made, for a caller
+   * that would otherwise search every root and then stat again (the geom
+   * cache checks ~1800 files this way per map open). Optional: a chain
+   * without it is asked through `exists` and `path` and statted after.
+   */
+  stat?(rel: string): FileStat | null;
 }
+
+/** A resolved file: its path, size and modification time. */
+export interface FileStat { path: string; size: number; mtime: number }
 
 /** A chain over `roots`. The last is the base — the shipped data. */
 export function assets(roots: readonly string[]): Assets {
@@ -56,19 +67,34 @@ export function assets(roots: readonly string[]): Assets {
   // stat per root per ask — a thrown exception per root that lacks it — was
   // a fifth of opening a map. The chain describes its roots as they were when
   // it was made: mods are mounted into a new chain, not into this one.
+  //
+  // Asked without throwing: a root that lacks the file is the common case
+  // with mods mounted, and an exception per miss cost more than the stat.
+  // What is kept is WHERE the file is, not what it was: `stat` on a path
+  // already known stats it again, so a file edited under a live chain
+  // reports its new size and date — one stat, no search. On a first ask the
+  // search's own stat of the hit is the answer, so a fresh chain (one per
+  // map open) stats each file once.
   const where = new Map<string, string | null>();
-  const found = (rel: string): string | null => {
-    const known = where.get(rel);
-    if (known !== undefined) return known;
-    let hit: string | null = null;
+  const search = (rel: string): FileStat | null => {
+    let hit: FileStat | null = null;
     for (const root of chain) {
       const p = join(root, rel);
-      try {
-        if (statSync(p).isFile()) { hit = p; break; }
-      } catch { /* not in this root */ }
+      const s = statSync(p, { throwIfNoEntry: false });
+      if (s?.isFile()) { hit = { path: p, size: s.size, mtime: s.mtimeMs }; break; }
     }
-    where.set(rel, hit);
+    where.set(rel, hit?.path ?? null);
     return hit;
+  };
+  const found = (rel: string): string | null => {
+    const known = where.get(rel);
+    return known !== undefined ? known : search(rel)?.path ?? null;
+  };
+  const stat = (rel: string): FileStat | null => {
+    const known = where.get(rel);
+    if (known === undefined) return search(rel);
+    const s = known ? statSync(known, { throwIfNoEntry: false }) : undefined;
+    return s ? { path: known!, size: s.size, mtime: s.mtimeMs } : null;
   };
 
   // Documents read through `text` are kept: a scene build opens a material's
@@ -84,6 +110,7 @@ export function assets(roots: readonly string[]): Assets {
     roots: chain,
     path: (rel) => found(rel) ?? join(base, rel),
     exists: (rel) => found(rel) !== null,
+    stat,
     text: (rel, encoding = 'utf8') => {
       const p = found(rel);
       if (!p) return null;
@@ -142,11 +169,25 @@ export function inFront(front: string, chain: Assets): Assets {
     roots: [front, ...chain.roots],
     path: (rel) => own.exists(rel) ? own.path(rel) : chain.path(rel),
     exists: (rel) => own.exists(rel) || chain.exists(rel),
+    stat: (rel) => own.stat!(rel) ?? statOf(chain, rel),
     text: (rel, encoding) => own.text(rel, encoding) ?? chain.text(rel, encoding),
     bytes: (rel) => own.bytes(rel) ?? chain.bytes(rel),
     all: (rel) => [...own.all(rel), ...chain.all(rel)],
     dirs: (rel) => [...own.dirs(rel), ...chain.dirs(rel)],
   };
+}
+
+/**
+ * `rel` resolved through `a` with its size and date: the chain's own stat
+ * when it keeps one, otherwise resolved and statted here. Null when no root
+ * has it (or it vanished between the two).
+ */
+export function statOf(a: Assets, rel: string): FileStat | null {
+  if (a.stat) return a.stat(rel);
+  if (!a.exists(rel)) return null;
+  const path = a.path(rel);
+  const s = statSync(path, { throwIfNoEntry: false });
+  return s ? { path, size: s.size, mtime: s.mtimeMs } : null;
 }
 
 /** The base root — the shipped data, under everything mounted over it. */

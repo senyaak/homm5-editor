@@ -20,7 +20,9 @@ pre-release.
   in 667 calls where it took 2990, and reopening maps no longer grows the
   editor; a map's models are decoded once and kept in a cache under the
   editor's temp folder, so the second open of a map skips the decode (the
-  first costs what it did). Every step, with its numbers and what it fixed on the way, is in
+  first costs what it did), and a cached map's bytes go from that folder to
+  the window without passing through the main process — dialog scenes take
+  their stage from the same cache. Every step, with its numbers and what it fixed on the way, is in
   [docs/PERFORMANCE.md](docs/PERFORMANCE.md). three.js is 0.186 now — run
   `npm install` after updating a checkout.
 - Groundwork for a ninth faction: the town type table's executable ceiling

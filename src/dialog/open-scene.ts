@@ -19,6 +19,8 @@ import { extractMapFolder } from '../map/map-source.ts';
 import { mountCreatureMods } from '../mods/mod-archive.ts';
 import { packTextures } from '../scene/tex-table.ts';
 import type { Scene } from '../scene/payload.ts';
+import { cachedGeoms } from '../scene/decode-job.ts';
+import { setCompressedTextures, TEXTURE_CAP } from '../scene/materials.ts';
 import { buildScenePlay } from './play.ts';
 import type { ActorView, ShotView } from './play.ts';
 import { isArchive, sceneArchives, SCENE_FILE } from './scene-source.ts';
@@ -38,6 +40,16 @@ export interface OpenSceneJob {
   file?: string;
   /** An asset root to put in FRONT of the data root — a scene folder's parent. */
   root?: string;
+  /** Whether the window's GPU takes DXT textures — the map's answer (`render:caps`), so a scene's models decode as the map's do. */
+  compressed: boolean;
+  /**
+   * The geom cache's folder (electron/decode.ts `geomCacheDir`), when the
+   * stage's models are to come from it: a scene is staged on a map, and the
+   * map's models are in the cache already — as file references, which the
+   * main process serves to the window off the disk. Without it every model
+   * is decoded here, as before the cache.
+   */
+  cache?: string;
 }
 
 /**
@@ -117,7 +129,9 @@ export function openScenePayload(job: OpenSceneJob): OpenSceneOut {
     catch (e) { console.warn('[mods] not mounted:', e instanceof Error ? e.message : String(e)); }
   }
   const chain = assets([...roots.slice(0, -1), ...over, job.data]);
-  const play = buildScenePlay(chain, scenePath);
+  setCompressedTextures(job.compressed);
+  const cache = job.cache ? cachedGeoms(chain, job.cache, { texSize: TEXTURE_CAP, animate: true, animationFps: 15, compressed: job.compressed }) : null;
+  const play = buildScenePlay(chain, scenePath, cache ? { decoded: cache.lookup } : {});
   // One picture per texture on the wire, not one per mesh wearing it — the
   // difference is 85 MB against 21 for this scene.
   const packed = packTextures([play.stage, play.shots, play.actors] as const);
@@ -126,8 +140,9 @@ export function openScenePayload(job: OpenSceneJob): OpenSceneOut {
   const ms = performance.now() - t0;
   return {
     ms,
-    note: `${ms | 0}ms · ${inner} · ${play.shots.length} shots, ${play.stage.geoms.length} meshes, `
-      + `${placed} placed, ${play.actors.length} actors, ${clips} clips`,
+    note: `${ms | 0}ms · ${inner} · ${play.shots.length} shots, ${play.stage.geoms.length} meshes`
+      + (cache ? ` (${cache.hits} from the cache, ${cache.misses} decoded into it)` : '')
+      + `, ${placed} placed, ${play.actors.length} actors, ${clips} clips`,
     payload: {
       stage: packed.payload[0],
       shots: packed.payload[1],

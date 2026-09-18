@@ -18,6 +18,10 @@ import type { SceneOpenPayload, SceneOpenResult, ScenesInFileResult } from '#ele
 import { gameData, gameRoot, tmpRoot } from '#electron/paths.ts';
 import { buildSceneOffThread, ensureChild } from '#electron/scene-jobs.ts';
 import { state } from '#electron/state.ts';
+import { closeBlob, openBlob } from '#electron/blobs.ts';
+import { geomCacheDir } from '#electron/decode.ts';
+import { packBlobs } from '#src/scene/blob-table.ts';
+import { compressedTexturesOn } from '#src/scene/materials.ts';
 
 /** Slashes forward, no trailing one — how a scene folder is written everywhere here. */
 const clean = (p: string): string => p.replace(/\\/g, '/').replace(/\/+$/, '');
@@ -84,6 +88,8 @@ export function registerDialogScenes(): void {
     return { file, archive: '', anim: [], scenes: [{ inner, name: inner.split('/').slice(-3).join('/') }] };
   });
 
+  /** The open scene's blob, let go when the next scene is opened over it. */
+  let sceneBlob: string | null = null;
   // Assembled somewhere else — this handler only says WHERE things are and
   // waits. Seven seconds of meshing in the main process is seven seconds in
   // which no other channel answers; see electron/scene-jobs.ts.
@@ -93,13 +99,25 @@ export function registerDialogScenes(): void {
     // A scene picked as a FILE brings its own root: the folder it was found in,
     // which is not necessarily anywhere the install can see.
     const onDisk = p.file && !isArchive(p.file) ? sceneOnDisk(p.file, data) : null;
-    return await buildSceneOffThread({
+    const built = await buildSceneOffThread({
       inner: clean(onDisk?.inner ?? p.inner),
       data,
       game: gameRoot(),
       tmp: tmpRoot(),
+      compressed: compressedTexturesOn(),
+      cache: geomCacheDir(),
       ...(p.file ? { file: p.file } : {}),
       ...(onDisk?.root ? { root: onDisk.root } : {}),
-    }) as SceneOpenResult;
+    });
+    // The typed arrays go out of band, as a map's do (electron/blobs.ts): the
+    // stage's models are file references into the geom cache, served off the
+    // disk; the actors' skins and the shots' effects are bytes the child
+    // handed over. One blob per scene, the previous scene's let go.
+    if (sceneBlob) closeBlob(sceneBlob);
+    const blob = openBlob();
+    sceneBlob = blob.url;
+    const packed = packBlobs([built.stage, built.shots, built.actors] as const, blob);
+    console.log(`[perf] scene:open blobs: ${packed.count} typed arrays = ${(packed.bytes / 1048576).toFixed(1)} MB for the window to fetch`);
+    return { ...built, stage: packed.payload[0], shots: packed.payload[1], actors: packed.payload[2] } as SceneOpenResult;
   });
 }

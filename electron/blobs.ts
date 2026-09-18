@@ -16,11 +16,21 @@
 // where one big one runs at ~450). Nothing is copied here: the response body
 // is a stream that yields the arrays as they are held.
 //
+// A piece need not be in memory. A model off the geom cache comes as file
+// references (blob-table.ts `FileRef`), and its piece is the file and the
+// range: the handler reads it when the window pulls, in the thread pool, in
+// chunks — so a cached map's bytes go disk → window and the main process
+// holds a few kilobytes of header per model where it held the map. Ranges
+// that follow one another in one file are one piece, because an entry file
+// IS its arrays back to back.
+//
 // The scheme has to be declared privileged before the app is ready to be
 // fetchable from a page at all, and the handler installed before the window
 // loads — the renderer binds its loader for the scheme at navigation.
 
 import { protocol } from 'electron';
+import { open } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { BLOB_ALIGN as ALIGN } from '#src/scene/blob-table.ts';
 
 export const BLOB_SCHEME = 'h5e-blob';
@@ -33,9 +43,15 @@ export const BLOB_SCHEME = 'h5e-blob';
  * megabyte pieces, because the stream hands the renderer one piece per
  * pull and forty thousand pulls were most of the fetch.
  */
-interface Blob { parts: Uint8Array[]; bytes: number; staging: Uint8Array | null; staged: number }
+/** A range of a file, read when served; `len` is padded to `ALIGN` (the file is, past each array). */
+interface FilePart { path: string; at: number; len: number }
+type Part = Uint8Array | FilePart;
+const isFilePart = (p: Part): p is FilePart => !(p instanceof Uint8Array);
+interface Blob { parts: Part[]; bytes: number; staging: Uint8Array | null; staged: number }
 const SMALL = 64 * 1024;
 const STAGING = 1024 * 1024;
+/** A file piece is served in reads of at most this — one read's worth of memory in flight, not the piece's. */
+const CHUNK = 4 * 1024 * 1024;
 const blobs = new Map<string, Blob>();
 let next = 1;
 
@@ -57,11 +73,36 @@ export function serveBlobs(): void {
     if (!b) return new Response(null, { status: 404 });
     flush(b);
     let i = 0;
+    // Within a file piece: how far it has been served.
+    let served = 0;
+    const files = new Map<string, Promise<FileHandle>>();
+    const fileFor = (path: string): Promise<FileHandle> => {
+      let h = files.get(path);
+      if (!h) { h = open(path, 'r'); files.set(path, h); }
+      return h;
+    };
+    const release = async (): Promise<void> => {
+      const open = [...files.values()];
+      files.clear();
+      await Promise.all(open.map((h) => h.then((f) => f.close(), () => undefined)));
+    };
     const body = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        if (i < b.parts.length) controller.enqueue(b.parts[i++]!);
-        else controller.close();
+      async pull(controller) {
+        if (i >= b.parts.length) { await release(); controller.close(); return; }
+        const part = b.parts[i]!;
+        if (!isFilePart(part)) { controller.enqueue(part); i++; return; }
+        const n = Math.min(CHUNK, part.len - served);
+        const f = await fileFor(part.path);
+        // Buffer.alloc rather than allocUnsafe: the tail of a chunk never
+        // touches the pool, and a torn read below is an error, not garbage.
+        const buf = Buffer.alloc(n);
+        const { bytesRead } = await f.read(buf, 0, n, part.at + served);
+        if (bytesRead !== n) throw new Error(`${part.path}: ${n} bytes at ${part.at + served} read as ${bytesRead}`);
+        controller.enqueue(buf);
+        served += n;
+        if (served === part.len) { served = 0; i++; }
       },
+      cancel: release,
     });
     return new Response(body, {
       headers: {
@@ -81,12 +122,25 @@ export function serveBlobs(): void {
  * whole thing is fetched from. The bytes are kept until `clearBlobs`, so a
  * fetch that is retried, or a window that reloads, still finds them.
  */
-export function openBlob(): { url: string; add(bytes: Uint8Array): number } {
+export function openBlob(): { url: string; add(bytes: Uint8Array): number; addFile(path: string, at: number, byteLength: number): number } {
   const id = String(next++);
   const b: Blob = { parts: [], bytes: 0, staging: null, staged: 0 };
   blobs.set(id, b);
   return {
     url: `${BLOB_SCHEME}://b/${id}`,
+    // A range of a file: served off the disk. The padding to ALIGN is read
+    // from the file too — an entry file pads every array it holds — and a
+    // range that starts where the previous one ended extends that piece.
+    addFile(path, at, byteLength) {
+      const start = b.bytes;
+      const len = byteLength + (ALIGN - (byteLength % ALIGN)) % ALIGN;
+      flush(b);
+      const last = b.parts[b.parts.length - 1];
+      if (last && isFilePart(last) && last.path === path && last.at + last.len === at) last.len += len;
+      else b.parts.push({ path, at, len });
+      b.bytes += len;
+      return start;
+    },
     add(bytes) {
       const at = b.bytes;
       const padded = bytes.byteLength + (ALIGN - (bytes.byteLength % ALIGN)) % ALIGN;
@@ -121,9 +175,18 @@ export function clearBlobs(): void {
   blobs.clear();
 }
 
-/** What the registry holds — for a memory reading. */
-export function blobStats(): { count: number; bytes: number } {
-  let bytes = 0;
-  for (const b of blobs.values()) bytes += b.bytes;
-  return { count: blobs.size, bytes };
+/** Forget one blob by its URL — a scene's, when the next scene replaces it. */
+export function closeBlob(url: string): void {
+  blobs.delete(url.slice(url.lastIndexOf('/') + 1));
+}
+
+/** What the registry holds — for a memory reading: everything offered, and how much of it is held in memory rather than on disk. */
+export function blobStats(): { count: number; bytes: number; held: number } {
+  let bytes = 0, held = 0;
+  for (const b of blobs.values()) {
+    bytes += b.bytes;
+    for (const p of b.parts) if (!isFilePart(p)) held += p.byteLength;
+    held += b.staged;
+  }
+  return { count: blobs.size, bytes, held };
 }

@@ -585,10 +585,36 @@ What it says, in the order it matters:
   oldest-written first, after the open. `tools/test-geom-cache.ts` covers
   the round trip, the sharing, the dependency record and the trim. The
   picture from the cache matches the previous build's (masks, grass,
-  statics). Left: the warm cache read is stats plus reading every entry
+  statics). ~~Left: the warm cache read is stats plus reading every entry
   whole — a header-first read would skip the bodies of invalid ones, and
   the payload's blob could be composed from the entry files' array
-  sections without passing through main's memory at all.
+  sections without passing through main's memory at all.~~ **Done**
+  (2026-09-19): `loadGeomEntry(…, whole = false)` reads the head of the file
+  (one 16 KB read holds nearly every header) and answers the geom with its
+  arrays as `FileRef`s (blob-table.ts) — file, offset, kind, length; the
+  packer hands those to the blob as ranges (`addFile`, contiguous ranges of
+  one file coalesced — an entry file IS its arrays back to back) and the
+  scheme handler reads them in 4 MB chunks as the window pulls. Main's
+  RSS over four opens of the mix map 288 → 391 MB and level (it was ~720),
+  `arrayBuffers` 0; A2C1M1 warm main 0.64 → 0.44 s. Of the 0.44: headers
+  ~115 ms (1860 files in the cache, 0.09 ms of open/read/close each on
+  Windows plus 57 ms of JSON.parse over 10 MB of headers — tried a single
+  read per file, no change; async reads in parallel would take the I/O
+  half down, not done), stats ~120 ms (1766 at 0.07 ms — one per file now:
+  the chain's `stat` answers from the search's own stat on a first ask, and
+  re-stats a known path after, where it was a search and then a stat, 212
+  ms), buildScene ~150. The picture: `_tmp/diff-off.ts` over `cached/` vs
+  `fileref/` differs only in the idle bodies' cells, as the previous pair
+  did; the grass crop 0 pixels. The dialog scenes: the builder child gets
+  `cache` and `compressed` in its job and resolves the stage's models
+  through `cachedGeoms` (decode-job.ts — an entry that is there and valid,
+  else a decode into the cache in the child itself), the handler packs the
+  payload into a blob of its own (`closeBlob` drops the previous scene's),
+  the window unpacks it after the textures. A2C1/M1/S1: 2.1 s → 0.8 s on
+  the second open, the builder 1229 → 381 ms (89 of 89 from the cache);
+  the child had never been told the GPU takes DXT, so scenes decoded RGBA
+  — they take `compressed` now, and share the map's entries when the map
+  was opened with idles on (a scene's entries are always `animate`).
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,

@@ -18,13 +18,14 @@ import { refreshLighting, uFxTint } from '#viewport/lighting.ts';
 import { activeFloor, state } from '#core/state.ts';
 import type { AmbientData, GeomData } from '#src/scene/payload.ts';
 import type { SceneInfo, ScenesInFileResult } from '#electron/ipc.ts';
-import { api } from '#core/ipc.ts';
+import { api, fetchBlob } from '#core/ipc.ts';
 import { $, $button, $input } from '#core/dom.ts';
 import { markShadowRoles } from '#viewport/shadows.ts';
 import { buildWorld, clearWorld } from '#viewport/world.ts';
 import { idleMode, setIdleMode } from '#viewport/idle.ts';
 import type { IdleMode } from '#viewport/idle.ts';
 import { unpackTextures } from '#src/scene/tex-table.ts';
+import { unpackBlobs } from '#src/scene/blob-table.ts';
 import { materialFor } from '#viewport/materials.ts';
 import { makeIdle, poseIdle } from '#viewport/skinning.ts';
 import type { IdleObject } from '#viewport/skinning.ts';
@@ -401,7 +402,11 @@ export async function openScene(inner: string, file?: string): Promise<SceneInfo
   // table; nothing below this line should ever meet one. See
   // src/scene/tex-table.ts.
   unpackTextures([payload, shots, actors], textures);
-  took('textures');
+  // And the typed arrays did not come in the reply at all: the main process
+  // serves them over its blob scheme (electron/blobs.ts) — the stage's models
+  // straight off the geom cache on disk.
+  await unpackBlobs([payload, shots, actors], fetchBlob);
+  took('textures+blobs');
   clearActors();
   await breathe();
   // The stage arrives with its creatures' bones (src/dialog/play.ts asks for

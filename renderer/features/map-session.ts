@@ -7,7 +7,7 @@ import { FLOOR_LABEL, explorerOpen, hideExternalChange, setCliffs, setExplorer, 
 import { buildWorld } from '#viewport/world.ts';
 import { markDirty } from '#core/dirty.ts';
 import { $, $button, $input } from '#core/dom.ts';
-import { api } from '#core/ipc.ts';
+import { api, fetchBlob } from '#core/ipc.ts';
 import { uiPrefs } from '#core/prefs.ts';
 import { state } from '#core/state.ts';
 import { unpackTextures } from '#src/scene/tex-table.ts';
@@ -43,17 +43,6 @@ interface OpenedMap {
  */
 /** What is open, as paths, for anything that has to know where the map went. */
 export const session = { openedMap: null as OpenedMap | null };
-
-/** One blob of the open map, over the scheme the main process serves them on (electron/blobs.ts). */
-async function fetchBlob(url: string): Promise<ArrayBuffer> {
-  const t0 = performance.now();
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url}: ${res.status} — the main process no longer holds this map's bytes (another map opened over it?)`);
-  const t1 = performance.now();
-  const buf = await res.arrayBuffer();
-  console.log(`[perf] blob fetch: headers ${(t1 - t0) | 0}ms · body ${(performance.now() - t1) | 0}ms · ${(buf.byteLength / 1048576).toFixed(1)} MB`);
-  return buf;
-}
 
 export async function loadMapPath(path: string | null, archive: string | null = null): Promise<void> {
   if (!path) return;

@@ -149,3 +149,19 @@ tried and dropped, and what is left is in [SLICE_fx_performance.md](../SLICE_fx_
   main process no longer decodes a map at all on the second open: A2C1M1's
   main-side time 1.2–1.5 s → 0.65 s, the stress map's 3.4–4.3 s → 1.4 s; the
   first open of a map costs what it did. The cache trims itself to 4 GB.
+- A cached map's bytes never enter the main process. It reads each entry's
+  header only (a few kilobytes of a file that may be forty megabytes), the
+  models' arrays stay file references, and the map's blob serves those
+  ranges off the disk when the window fetches — so the main process holds
+  where a map's bytes are, not the bytes: its RSS over four opens of the
+  stress map ~720 → ~390 MB, with no array buffers at all, and A2C1M1's
+  main-side time 0.65 → 0.44 s. Of what is left, half is the ~1800 stats
+  that validate the entries (one stat per file now — the asset chain keeps
+  the stat its own search made — where it was a search plus a stat) and
+  half the header reads. The dialog scenes go the same way: the builder
+  child takes the stage's models from the cache (decoding into it what is
+  missing), and the scene's arrays reach the window by blob rather than
+  by two structured clones — A2C1/M1/S1's second open is 0.8 s against
+  2.1 for the first, which still decoded 43 of its 89 models — and the
+  scenes decode DXT textures like the map now (the child was never told
+  the GPU takes them).

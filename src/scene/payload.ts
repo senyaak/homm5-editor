@@ -23,6 +23,9 @@ export type AlphaMode =
   | 'AM_OPAQUE' | 'AM_ALPHA_TEST' | 'AM_TRANSPARENT'
   | 'AM_OVERLAY' | 'AM_OVERLAY_ZWRITE' | 'AM_DECAL';
 
+/** Models decoded ahead of a build, by shared href — see `BuildSceneOptions.decoded`. */
+export type DecodedAhead = ReadonlyMap<string, GeomData | null> | ((sharedHref: string) => GeomData | null | undefined);
+
 /**
  * One submesh of a model, with the material it uses.
  *
@@ -522,9 +525,12 @@ export interface BuildSceneOptions extends SceneAnimationOptions {
    * Models decoded ahead, by shared href — from the geom cache and the decode
    * processes (electron/decode.ts) — so the build places them instead of
    * decoding each in turn. Null marks an href known not to decode. An href not
-   * in here is decoded here, as always.
+   * in here is decoded here, as always. A map when the caller resolved them
+   * all before the build; a function when they are looked up as the build
+   * meets them (the geom cache, one href at a time — decode-job.ts
+   * `cachedGeoms`), which answers undefined for an href it has nothing for.
    */
-  decoded?: ReadonlyMap<string, GeomData | null>;
+  decoded?: DecodedAhead;
   /** The map already parsed, when the caller has it (it read the hrefs off it first). */
   map?: HommMap;
 }
