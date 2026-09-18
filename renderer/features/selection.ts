@@ -99,11 +99,9 @@ const exInstances = () => (state.world ? activeFloor().instances : []);
 
 /**
  * Rebuild the explorer — on the next animation frame, once, however many
- * times it is asked before then. The rebuild sorts every instance and makes
- * a row for each (up to 2000), ~50 ms on a map of 1500 objects, and the
- * callers ask per placed object: a tool placing a few hundred in a burst was
- * paying that for every one of them (tools/perf-stress.ts: the 1500th
- * placement took four times the first).
+ * times it is asked before then. The callers ask per placed object, and a
+ * tool placing a few hundred in a burst was paying a rebuild for every one
+ * (tools/perf-stress.ts: the 1500th placement took four times the first).
  */
 export function renderExplorer(): void {
   if (explorerDue) return;
@@ -129,6 +127,25 @@ function renderExCats(): void {
   for (const [c, n] of [...counts].sort((a, b) => b[1] - a[1])) chip(c, n, c);
 }
 
+/**
+ * The list is VIRTUAL: every object is in `exRows`, sorted, and only the rows
+ * the scroll box shows — plus a screen either side — are in the DOM, padded
+ * to the list's full height so the scrollbar is honest. The rows all share
+ * one height (explorer.css), which is what makes the arithmetic a division.
+ *
+ * It was a row per object, capped at 2000, and the whole list rebuilt on
+ * every placement: 35 ms of rows and 55 more of laying them out, per object
+ * placed, on a map of 2700 — the palette's drop lag on a big map was mostly
+ * this, and so was the stress tool's fourth-placement-costs-four-times.
+ */
+let exRows: Instance[] = [];
+/** Which rows the DOM holds, `first` … `last` exclusive; -1 = none. */
+let exFirst = -1, exLast = -1;
+/** A row's height in pixels, read off the first one made; the CSS decides it. */
+let exRowH = 0;
+/** Rows kept beyond the visible ones on each side, so a wheel tick shows no gap. */
+const EX_MARGIN = 20;
+
 export function renderExList(): void {
   const list = $('ex-list');
   const f = $input('ex-search').value.trim().toLowerCase();
@@ -136,40 +153,81 @@ export function renderExList(): void {
   if (exCat !== ALL) shown = shown.filter((it) => objCategory(it) === exCat);
   if (f) shown = shown.filter((it) => (objName(it) + ' ' + it.type + ' ' + it.x + ',' + it.y).toLowerCase().includes(f));
   $('ex-count').textContent = `${shown.length} / ${exInstances().length}`;
-  shown = shown.slice().sort((a, b) => objName(a).localeCompare(objName(b)) || a.x - b.x || a.y - b.y);
+  // Names are compared thousands of times in a sort; taken once each.
+  const names = new Map<Instance, string>();
+  for (const it of shown) names.set(it, objName(it));
+  exRows = shown.slice().sort((a, b) => names.get(a)!.localeCompare(names.get(b)!) || a.x - b.x || a.y - b.y);
+  exFirst = exLast = -1;
   list.innerHTML = '';
-  if (!shown.length) { list.innerHTML = '<div class="empty">no objects</div>'; return; }
-  const frag = document.createDocumentFragment();
-  for (const it of shown.slice(0, 2000)) {
-    const div = document.createElement('div');
-    div.className = 'exrow' + (state.selected && state.selected.id === it.id ? ' sel' : '');
-    div.dataset.id = it.id ?? undefined;
-    div.innerHTML = `<span class="nm"></span><span class="co"></span>`;
-    setChild(div, '.nm', objName(it));
-    setChild(div, '.co', `${it.x},${it.y}`);
-    div.onclick = () => {
-      const id = it.id;
-      if (!id) return;
-      selectById(id);
-      const m = meshById(id);
-      if (m) frameObject(m);
-    };
-    frag.appendChild(div);
+  if (!exRows.length) { list.innerHTML = '<div class="empty">no objects</div>'; return; }
+  const body = document.createElement('div');
+  body.className = 'exbody';
+  list.appendChild(body);
+  if (!list.onscroll) {
+    list.onscroll = () => fillExList();
+    // The list is filled for the height it has, and it has none while the
+    // sidebar is hidden — a map opens with the explorer folded away, and the
+    // rows for a folded list are the margin's twenty. Its size changing, by
+    // unfolding or by the window, fills it for the size it now has.
+    new ResizeObserver(() => fillExList()).observe(list);
   }
-  list.appendChild(frag);
-  if (shown.length > 2000) list.insertAdjacentHTML('beforeend', '<div class="empty">…first 2000 shown</div>');
+  fillExList();
+}
+
+/** Put the rows the scroll position calls for into the DOM, if they are not there already. */
+function fillExList(): void {
+  const list = $('ex-list');
+  const body = list.querySelector<HTMLElement>('.exbody');
+  if (!body || !exRows.length) return;
+  if (!exRowH) {
+    // The first row measures the rest: made alone, read, and kept.
+    body.appendChild(exRow(exRows[0]!));
+    exRowH = body.firstElementChild!.getBoundingClientRect().height || 26;
+    body.innerHTML = '';
+  }
+  const first = Math.max(0, Math.floor(list.scrollTop / exRowH) - EX_MARGIN);
+  const last = Math.min(exRows.length, Math.ceil((list.scrollTop + list.clientHeight) / exRowH) + EX_MARGIN);
+  if (first === exFirst && last === exLast) return;
+  exFirst = first; exLast = last;
+  const frag = document.createDocumentFragment();
+  for (let i = first; i < last; i++) frag.appendChild(exRow(exRows[i]!));
+  body.innerHTML = '';
+  body.appendChild(frag);
+  body.style.paddingTop = `${first * exRowH}px`;
+  body.style.paddingBottom = `${(exRows.length - last) * exRowH}px`;
+}
+
+function exRow(it: Instance): HTMLElement {
+  const div = document.createElement('div');
+  div.className = 'exrow' + (state.selected && state.selected.id === it.id ? ' sel' : '');
+  div.dataset.id = it.id ?? undefined;
+  div.innerHTML = `<span class="nm"></span><span class="co"></span>`;
+  setChild(div, '.nm', objName(it));
+  setChild(div, '.co', `${it.x},${it.y}`);
+  div.onclick = () => {
+    const id = it.id;
+    if (!id) return;
+    selectById(id);
+    const m = meshById(id);
+    if (m) frameObject(m);
+  };
+  return div;
 }
 
 // Highlight the selected object's row (and scroll it into view when off-screen).
 export function syncExplorerSel(): void {
   const list = $('ex-list'); if (!list) return;
-  let selRow = null;
-  for (const r of list.querySelectorAll<HTMLElement>('.exrow')) {
-    const on = state.selected !== null && r.dataset.id === state.selected.id;
-    r.classList.toggle('sel', on);
-    if (on) selRow = r;
+  const id = state.selected?.id ?? null;
+  const at = id === null ? -1 : exRows.findIndex((it) => it.id === id);
+  if (at >= 0 && exRowH) {
+    // Nearest edge: scrolled up to if above the box, down to if below, left
+    // alone if in it — then the rows for that position are made.
+    const top = at * exRowH, bottom = top + exRowH;
+    if (top < list.scrollTop) list.scrollTop = top;
+    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
+    fillExList();
   }
-  if (selRow) selRow.scrollIntoView({ block: 'nearest' });
+  for (const r of list.querySelectorAll<HTMLElement>('.exrow')) r.classList.toggle('sel', id !== null && r.dataset.id === id);
 }
 
 export function updatePanel(): void {

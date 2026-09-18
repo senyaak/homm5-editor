@@ -334,11 +334,21 @@ What it says, in the order it matters:
   for up to 3 s at a time: the idle tables bake at ~21 ms a kind on the main
   thread (4 s for 182 kinds), the effect tables up to 280 ms each. A worker,
   or a bake that yields.
-* **Placing an object costs what the map weighs.** Every edit is recorded
+* ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,
-  the first a few. Not a frame problem, but the drop-from-palette lag on a
-  big map is this.
+  the first a few.~~ **Measured and fixed** (2026-09-18) — and the diagnosis
+  above was mostly wrong. Timed in the page on A2C1M1 (2700 objects): the
+  IPC with the model and the recorder is ~15 ms of a placement; the other
+  ~95 was the object explorer, rebuilding 2000 rows on the next frame
+  (35 ms of rows, 55 of laying them out) — the long frame landed on
+  whatever awaited next, which is how it read as the IPC's. The explorer
+  is a virtual list now (selection.ts `fillExList`): 14 ms a placement, no
+  long frames. In the recorder, `save()` is 5–12 ms twice and the byte
+  diff was 3 ms; the diff skips equal 4 KB blocks with the native compare
+  (0.2 ms), the two serialisations stay — a cached "before" would need
+  every mutation of the map model to say so, and one that forgot would
+  corrupt undo silently.
 * ~~3.6 — atlases as RGBA typed arrays instead of PNG data-URIs — would halve
   the 146 MB and the 3338 image decodes on load; never in this slice's three
   steps, still worth its half day.~~ **Done** (2026-09-18). A frame travels

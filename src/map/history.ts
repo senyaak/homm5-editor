@@ -42,6 +42,17 @@ export interface DocPatch {
 const COALESCE = 64;
 
 /**
+ * Equal stretches are skipped a block at a time, by the native compare,
+ * before a byte is looked at: a map document is over a megabyte and an edit
+ * touches a few hundred bytes of it, so a byte loop in JavaScript spent its
+ * 15 ms almost entirely agreeing. The block is small enough that the byte
+ * loop inside a differing one costs nothing to speak of.
+ */
+const BLOCK = 4096;
+const sameAt = (a: Uint8Array, b: Uint8Array, at: number, n: number): boolean =>
+  Buffer.compare(a.subarray(at, at + n), b.subarray(at, at + n)) === 0;
+
+/**
  * Byte difference between two states of one document, or null when identical.
  *
  * Two shapes, because two things happen. A terrain edit rewrites values in
@@ -57,8 +68,12 @@ export function diff(before: Uint8Array, after: Uint8Array): DocPatch | null {
   if (lenBefore !== lenAfter) {
     let head = 0;
     const max = Math.min(lenBefore, lenAfter);
+    while (head + BLOCK <= max && sameAt(before, after, head, BLOCK)) head += BLOCK;
     while (head < max && before[head] === after[head]) head++;
     let tail = 0;
+    // The suffix, compared as blocks ending at the two ends.
+    while (tail + BLOCK <= max - head
+      && Buffer.compare(before.subarray(lenBefore - tail - BLOCK, lenBefore - tail), after.subarray(lenAfter - tail - BLOCK, lenAfter - tail)) === 0) tail += BLOCK;
     while (tail < max - head && before[lenBefore - 1 - tail] === after[lenAfter - 1 - tail]) tail++;
     return {
       spans: [{
@@ -72,8 +87,18 @@ export function diff(before: Uint8Array, after: Uint8Array): DocPatch | null {
 
   const spans: Span[] = [];
   let i = 0;
+  /** Below this the bytes are known to differ somewhere: no block is re-asked. */
+  let known = 0;
   while (i < lenBefore) {
-    if (before[i] === after[i]) { i++; continue; }
+    if (before[i] === after[i]) {
+      if (i >= known) {
+        const n = Math.min(BLOCK, lenBefore - i);
+        if (sameAt(before, after, i, n)) { i += n; continue; }
+        known = i + n;
+      }
+      i++;
+      continue;
+    }
     const start = i;
     let lastDiff = i;
     // Extend while differences keep coming within COALESCE of the last one.

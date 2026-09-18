@@ -13,8 +13,10 @@
   background: #0d1014; color: #8b949e; cursor: pointer; font-size: 11px; white-space: nowrap; }
 #ex-cats .chip.on { background: #1f6feb33; border-color: #1f6feb; color: #cbe0ff; }
 #ex-list { flex: 1; overflow-y: auto; }
-#ex-list .exrow { padding: 5px 10px; cursor: pointer; display: flex; justify-content: space-between;
-  gap: 8px; border-bottom: 1px solid #161b22; font-size: 12px; }
+/* One fixed height per row: the list is virtual (selection.ts fillExList)
+   and finds a row by dividing the scroll position by it. */
+#ex-list .exrow { height: 26px; box-sizing: border-box; padding: 0 10px; cursor: pointer; display: flex;
+  align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid #161b22; font-size: 12px; }
 #ex-list .exrow:hover { background: #1b2230; }
 #ex-list .exrow.sel { background: #1f6feb44; }
 #ex-list .exrow .nm { color: #e6edf3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

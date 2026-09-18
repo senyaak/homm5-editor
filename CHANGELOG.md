@@ -54,6 +54,12 @@ pre-release.
   On A2C1M1 the atlases are 38 MB where they were 146 (224 textures → 58),
   and the frame's texels are in the main process once per file, not once
   per effect that names it.
+- Placing an object on a big map no longer stalls: the object explorer is a
+  virtual list — every object is in it now (the 2000-row cap is gone), only
+  the rows on screen are in the DOM — where it rebuilt all its rows and laid
+  them out again on every placement (~95 ms of the ~110 a placement cost on
+  a 2700-object map; 14 ms now). The undo recorder's document diff skips
+  unchanged blocks natively (3 ms → 0.2 on a megabyte map).
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive
