@@ -150,6 +150,8 @@ async function arrayTexture(uris: string[], size: number): Promise<THREE.DataArr
 let texScale = uiPrefs.texScale;
 let cliffAmount = uiPrefs.cliffs ? 1 : 0;
 const splatMats: THREE.ShaderMaterial[] = [];
+/** The ground-projected parts' materials made for the live world, each with an overlay texture of its own (projectedMaterial). */
+const projectedMats: THREE.ShaderMaterial[] = [];
 
 /** Re-tile the ground (and the rock on cliff faces) at `repeats` per tile. */
 export function setGroundScale(repeats: number): void {
@@ -172,7 +174,14 @@ export const cliffsOn = (): boolean => cliffAmount > 0;
 /** Drop every live splat material and its textures (a map is being put down). */
 export function disposeSplats(): void {
   for (const m of splatMats.splice(0)) {
-    m.uniforms.uGround!.value?.dispose?.(); m.uniforms.uMask!.value?.dispose?.(); m.dispose();
+    m.uniforms.uGround!.value?.dispose?.(); m.uniforms.uMask!.value?.dispose?.(); m.uniforms.uRock!.value?.dispose?.(); m.dispose();
+  }
+  // The projected parts' materials are on the batches, which are disposed as
+  // meshes; their overlay textures are nobody else's (partTexture, not the
+  // material cache) and survived every reopen until named here.
+  for (const m of projectedMats.splice(0)) {
+    (m.uniforms.uOverlay!.value as THREE.Texture | null)?.dispose();
+    m.dispose();
   }
 }
 
@@ -354,7 +363,7 @@ function projectMaterialBatch(fl: Floor3D, b: MaterialBatch): void {
 /** The ground-sampling material for one ground-projected part on one floor. */
 function projectedMaterial(fl: Floor3D, p: GeomPart, s: SplatData, splatMat: THREE.ShaderMaterial): THREE.ShaderMaterial {
   const overlay = p.tex ? partTexture(p.tex) : null;
-  return new THREE.ShaderMaterial({
+  const m = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
     vertexShader: PROJ_VERT,
     fragmentShader: projFrag(s.maskGroups.length, s.layerCount),
@@ -386,6 +395,8 @@ function projectedMaterial(fl: Floor3D, p: GeomPart, s: SplatData, splatMat: THR
     polygonOffsetFactor: 1,
     polygonOffsetUnits: 1,
   });
+  projectedMats.push(m);
+  return m;
 }
 
 /**

@@ -509,11 +509,34 @@ What it says, in the order it matters:
   stands the loop still from the request to `buildWorld`. The picture:
   masks and the grass crop against the previous build agree; the scattered
   sub-threshold differences are the vertices and normals no longer rounded
-  to 3–4 decimals. **Found, not fixed:** the renderer grows ~700 MB per
-  reopen of the mix map (Tab 103 → 1605 → 2348 → 2620 MB on the base
-  build, 966 → 1676 → 1743 after) — something of the old world survives
-  `clearWorld`; outside the JS heap (GC 40–170 ms), so three's kept images
-  or GPU-side copies are the suspects.
+  to 3–4 decimals.
+* **Done — what survived a reopen** (2026-09-18, late). The renderer grew
+  ~700 MB per reopen of the mix map (Tab 103 → 1605 → 2348 → 2620 MB on
+  the build before the blob transport, 966 → 1676 → 1743 after it), and
+  the reopened map's blob fetch slowed with it. Counted first
+  (`_tmp/reopen-leak.ts`: three's `info.memory` and the per-process
+  metrics over four opens, after a forced GC): **+183 geometries** per
+  open — one per creature kind — and **+6 textures**. Then named, with a
+  counter patched into the bundle's `Texture` constructor and `dispose`
+  (`_tmp/patch-tex.mjs`, `_tmp/tex-leak.ts`: every texture made during
+  open N and still undisposed after open N+1, by creation stack). Four
+  holders. (1) A kind's draw geometry (`skinnedGeometry`, its own object
+  with its own skin indices) — `InstancedMesh.dispose` does not reach a
+  geometry; disposed in `clearIdle` and `removeIdle` now. (2) The material
+  cache (`materials.ts texCache`) lived for the session: a reopened map
+  found its old textures there and kept their bytes beside the new
+  payload's, and every map switched to added its own for good — ~480
+  textures of the first open alive after the second. It is the world's
+  now: `disposeMaterials()` from `clearWorld`. (3) The ground-projected
+  parts' overlay textures (`splat.ts projectedMaterial`, made through
+  `partTexture` outside the cache) and (4) the cliff rock texture — both
+  in `disposeSplats` now. The `copyTextureToTexture` source of a landing
+  fx table is disposed too (never uploaded, but an object). After: three's
+  counts flat over eight reopens (1369 textures, 529 geometries), the Tab
+  979 → 1089 → 1190 → 1252 → ~1260–1310 and level from the fourth open,
+  GPU ~520–550, main ~720 — the step over the first open is allocator
+  retention, not objects. The picture after a reopen matches a single
+  open's.
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,

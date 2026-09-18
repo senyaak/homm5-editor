@@ -127,6 +127,13 @@ pre-release.
   ~2.1 → ~1.7 s; a stress map of 2000 objects and 600 creatures: ~8.2 →
   ~5.0 s. The frame loop also stands still while a map loads instead of
   drawing the old one under the spinner.
+- Reopening a map, or switching maps, no longer grows the editor by the
+  map's size each time (~700 MB per reopen of a crowded map, until the
+  window ran out of memory). Four things survived a map's close: every
+  creature kind's draw geometry, the shared material cache with every
+  texture ever shown, the ground-projected parts' overlay textures and the
+  cliff rock texture. All four go with the world now; eight reopens hold
+  steady where four used to add 1.5 GB.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

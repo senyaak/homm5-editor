@@ -485,6 +485,7 @@ function placeTable(t: FxTable, d: FxTableData): void {
   // its texels straight into the arena's rows.
   const src = new THREE.DataTexture(d.data, TABLE_W, d.rows, THREE.RGBAFormat, THREE.HalfFloatType);
   renderer.copyTextureToTexture(src, arena.tex, null, new THREE.Vector2(0, t.rowStart));
+  src.dispose(); // never uploaded on its own; this only lets the object go
 }
 
 /**

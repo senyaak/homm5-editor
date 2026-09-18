@@ -22,6 +22,7 @@ import { bakeLightMap, makeLightMap } from '#viewport/point-lights.ts';
 import { markShadowRoles, markShadowsDirty } from '#viewport/shadows.ts';
 import type { IdleBody, IdleKind } from '#viewport/skinning.ts';
 import { clearSky } from '#viewport/sky.ts';
+import { disposeMaterials } from '#viewport/materials.ts';
 import { disposeSplats, upgradeToSplat } from '#viewport/splat.ts';
 import { cam, camera, controls, scene, syncTopCamera } from '#viewport/stage.ts';
 import { asTileSpace, makeWaterMesh, terrainGeometry } from '#viewport/terrain-mesh.ts';
@@ -46,6 +47,9 @@ export function clearWorld(): void {
     fl.heightTex?.dispose();
     fl.group.traverse((o) => { if (o instanceof THREE.Mesh) o.geometry.dispose(); });
   }
+  // The model materials and their textures were made for this world; the next
+  // one brings its own pictures.
+  disposeMaterials();
   if (state.boxHelper) { scene.remove(state.boxHelper); state.boxHelper = null; }
   state.world = null; state.selected = null; updatePanel();
   applyAmbient(null);

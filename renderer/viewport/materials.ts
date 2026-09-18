@@ -155,9 +155,22 @@ gameLit(greyMat, true);
 
 /**
  * Materials shared across every part that uses the same texture, so a model
- * naming one material for several meshes uploads it once.
+ * naming one material for several meshes uploads it once. The cache is the
+ * WORLD's: `disposeMaterials` empties it when the world is cleared. Left to
+ * live across maps it kept every texture ever shown — a reopened map found
+ * its old textures here and went on holding their bytes beside the new
+ * payload's, and every map switched to added its own for good.
  */
 const texCache = new Map<string, THREE.Material>();
+
+/** Dispose every cached material and its texture — the world they were made for is gone (clearWorld). */
+export function disposeMaterials(): void {
+  for (const m of texCache.values()) {
+    (m as THREE.MeshBasicMaterial).map?.dispose();
+    m.dispose();
+  }
+  texCache.clear();
+}
 
 /** The pictures with no key of their own, numbered as they come, so the material cache can name them. */
 const pictureIds = new WeakMap<Picture | CompressedPicture, number>();

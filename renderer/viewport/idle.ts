@@ -137,6 +137,10 @@ export function clearIdle(objGroup: THREE.Group, list: IdleBody[], kinds: Map<Sk
   for (const kind of kinds.values()) {
     objGroup.remove(kind.mesh);
     kind.mesh.dispose();
+    // The kind's geometry is its own object (skinning.ts skinnedGeometry) —
+    // shared attributes plus its own offset skin indices — and an InstancedMesh's
+    // dispose does not reach it: 183 of them survived every reopen of a map.
+    kind.mesh.geometry.dispose();
     releaseSkeleton(kind.skin);
   }
   kinds.clear();
@@ -164,6 +168,7 @@ export function removeIdle(fl: Floor3D, inst: Instance): void {
   if (last) return;
   fl.objGroup.remove(kind.mesh);
   kind.mesh.dispose();
+  kind.mesh.geometry.dispose();
   releaseSkeleton(kind.skin);
   fl.idleKinds.delete(kind.skin);
 }
