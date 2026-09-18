@@ -252,6 +252,16 @@ specializations); the faction reuses them. What is specific:
 - towns of the race are drawn for a hero of it; a hero "without a town"
   (a class not tied to a race) is the ordinary case for reuse.
 
+### 2b. An effect of our own — the proof of concept (Senya, 2026-09-18)
+
+Every shipped special's effect is a row of the feature table now (`grants`),
+so the next question is an effect the engine never had: a REFUGEE CAMP in
+the guild's place — three levels, a slot of hires that a new week fills with
+a random creature. The shape is the extension's: the building is data
+(`TownSpec.buildings`, a record with levels, a model, a button if it needs
+one), the effect a term of the DLL — `OnBuildingBuilt` says it stands, the
+new-week hook puts a stack into the town's hire slots, the hire screen shows
+it. Done after §3–4, and if it works, any faction can be made for real.
 ### 3. Fixes: large addresses
 
 The executable is not `LARGEADDRESSAWARE`: 2 GB, and a faction's copied
