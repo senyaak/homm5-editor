@@ -270,6 +270,33 @@ show a model of the town for ANY building built — the stage table grown
 past ten in the DLL, the chooser ours, `TownSpec.exterior` naming a model
 per building. Not started; after the faction entity (§5) stands.
 
+### 2d. Arenas of our own — later (Senya, 2026-09-19)
+
+A battle arena of ours (the field a fight is drawn on: ground, obstacles,
+lighting, the siege layout) — the same shape as an own exterior stage or an
+own screen: a scene of ours where a shipped one stood. Guides exist on the
+net for authoring arenas for this game; read them first. After the faction's
+own siege parts, which are arena work too.
+
+### 2e. The town screen as a scene to edit — decision pending (2026-09-19)
+
+Senya's picture: a dialog that RENDERS the town screen — the location loaded,
+the buildings appearing on it — where a building can be switched off and
+MOVED, and its pick hull moved with it (what the shipyard's spot and the
+graves did by numbers). What it takes: the ArenaDesc scene drawn (static
+models under the baked lightmap, cameras, one ArenaModObject per building
+and level), a drag that rewrites the model's positions (the one array a
+geometry keeps a coordinate in — what `place`/`at` already do), and an
+AIGeometry hull WRITTEN for the moved model (today a hull is a container the
+geometry tools do not rewrite: the shipyard's hull serves the graves — the
+open debt). The renderer for it is the asset editor's scene switch
+(SLICE_asset_editor.md on `fx/engine-playback`, §2: one renderer, the map
+and the arena as backgrounds, TransformControls from the three.js editor);
+a viewer of its own here would be a second renderer to keep in step. The
+recommendation on record: build it AS that switch when the asset editor's
+foundation stands, not before; until then the data side keeps going (siege
+parts of ours, music of ours), which needs no viewer.
+
 ### 3. Fixes: large addresses — DONE (2026-09-19, `src/exe/large-address.ts`, the `large-addresses` flag in the Crashes group, off by default)
 
 The executable is not `LARGEADDRESSAWARE`: 2 GB, and a faction's copied
