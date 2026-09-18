@@ -168,6 +168,22 @@ export const QOL_FLAGS = [
       + ' — https://forum.heroesworld.ru/showthread.php?t=15624',
   },
   {
+    name: 'large-addresses',
+    tab: 'fixes',
+    group: 'crashes',
+    // Not the extension's: one bit of the executable's header, set by the
+    // editor when the flag is applied and cleared when it is not.
+    native: false,
+    title: 'Let the game use more than 2 GB of memory',
+    detail: 'The game is a 32-bit program not marked large-address aware, so a 64-bit Windows gives'
+      + ' it the 2 GB a 32-bit one would have — and a faction of ours, a whole town copied plus a row'
+      + " of creatures' art, leaves a few hundred megabytes free before the first map opens. This"
+      + ' sets that mark (one bit of the header of H5_Game_H5E.exe, the same executable every other'
+      + ' patch lives in), and the process gets 4 GB. Off by default: the code is not changed, and'
+      + " whether every part of it copes with an address above 2 GB is the game's own business —"
+      + ' turn it on when memory runs out, off again if something new goes wrong.',
+  },
+  {
     name: 'snare-crash-fix',
     tab: 'fixes',
     group: 'crashes',

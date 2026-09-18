@@ -23,6 +23,7 @@ import { extensionState, installExtension } from '#src/mods/extension.ts';
 import { heldByRunningGame } from '#src/game/running.ts';
 import { MOD_DIR } from '#src/game/mod-paths.ts';
 import { PATCHED_EXE } from '#src/exe/creature-limit.ts';
+import { setLargeAddressAware } from '#src/exe/large-address.ts';
 
 /** The install, or a refusal that says what is missing rather than throwing null. */
 function install(): string {
@@ -134,6 +135,17 @@ export function registerQol(): void {
       if (held) { /* said above; nothing in the install is touched */ }
       else if (wanted['stack-health-bar']) writeQolArchive(g, gameData());
       else removeQolArchive(g);
+    } catch (e) {
+      notes.push(e instanceof Error ? e.message : String(e));
+    }
+
+    // The large-address mark is one bit of the executable, and it follows the
+    // flag the way the archives do: set when asked for, cleared when not — on
+    // the patched executable the extension was just imported into, which is
+    // why it comes after the install and not before.
+    try {
+      if (held) { /* said above; nothing in the install is touched */ }
+      else setLargeAddressAware(g, !!wanted['large-addresses']);
     } catch (e) {
       notes.push(e instanceof Error ? e.message : String(e));
     }

@@ -47,7 +47,12 @@ pre-release.
   root — the geometry document beside it, the binaries under `bin/` as the
   game keys them — and copied exactly as a shipped model is.
   `tools/test-faction-mod.ts`,
-  `tools/test-faction-limit.ts`, e2e 014.
+  `tools/test-faction-limit.ts`, e2e 018.
+- A fix in the panel's Crashes group, off by default: "Let the game use more
+  than 2 GB of memory" — the large-address-aware mark on `H5_Game_H5E.exe`,
+  one bit of its header, set when the flag is applied and cleared when it is
+  not. The game is 32-bit and not marked, so a 64-bit Windows gives it 2 GB;
+  with the mark, 4. `tools/test-large-address.ts`.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

@@ -270,7 +270,7 @@ show a model of the town for ANY building built — the stage table grown
 past ten in the DLL, the chooser ours, `TownSpec.exterior` naming a model
 per building. Not started; after the faction entity (§5) stands.
 
-### 3. Fixes: large addresses
+### 3. Fixes: large addresses — DONE (2026-09-19, `src/exe/large-address.ts`, the `large-addresses` flag in the Crashes group, off by default)
 
 The executable is not `LARGEADDRESSAWARE`: 2 GB, and a faction's copied
 town plus 21 creatures' art leave ~800 MB free in the menu. A one-bit
