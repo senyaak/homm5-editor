@@ -644,6 +644,21 @@ What it says, in the order it matters:
   ~160 with it inside. Caught by the masks: a DataTexture's defaults are
   nearest filtering, no mips and no flip — the rock drew as a cross-hatch
   until it was set up as the image loader had set it up.
+* **Main's warm open, again** (2026-09-19, `_tmp/load-cached.ts` under
+  `--cpu-prof`): stats 176 ms and `existsSync` 57 of a 765 ms profile, the
+  tile textures' DXT decode 38. The stats go through the thread pool in
+  parallel (`statAll` in decode.ts; first-root-wins like `assets()`'s own
+  search): 130 → 35 ms; the `existsSync` before each entry's open is gone;
+  the tiles are memoised per process by path, size and mtime
+  (`boxedTexture`). App-side reopen: main 430 → ~220–230 ms (headers 75–90,
+  stats 35, buildScene 45–65). Tried and dropped: a read-ahead
+  (`highWaterMark`) on the blob stream — the fetch stayed at ~250 ms for
+  95 MB, the transport is the limit, not the reads. What is left of the
+  open, in order: the first frame (~290 ms — 95 MB of uploads plus three's
+  first-use program queries, one GPU-process round trip each), the fetch
+  (~250 ms, ~380 MB/s through the pipe), `buildWorld` ~150, main's headers
+  ~80 (async reads in parallel would halve it), the IPC of the payload's
+  skeleton.
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,

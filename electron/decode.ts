@@ -17,7 +17,7 @@
 
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { statOf } from '#src/game/assets.ts';
+import { stat } from 'node:fs/promises';
 import type { Assets, FileStat } from '#src/game/assets.ts';
 import type { GeomData } from '#src/scene/payload.ts';
 import { depValid, entryPath, loadGeomEntry, pruneGeomCache, sharedLoader } from '#src/scene/geom-cache.ts';
@@ -59,6 +59,28 @@ export interface DecodeReport {
 }
 
 /**
+ * Every `rel` resolved through the chain and statted, in parallel: the first
+ * root that has it as a file, with its size and date — what `statOf` answers,
+ * off the thread pool. A rel no root has maps to null. First root wins is
+ * the rule of an `assets()` chain (game/assets.ts `found`), which is what a
+ * map open resolves through; a chain with another rule (game/mounted.ts —
+ * the generator's, never here) would have to be asked itself.
+ */
+async function statAll(data: Assets, rels: Iterable<string>): Promise<Map<string, FileStat | null>> {
+  const out = new Map<string, FileStat | null>();
+  const one = async (rel: string): Promise<void> => {
+    for (const root of data.roots) {
+      const path = join(root, rel);
+      const s = await stat(path).catch(() => null);
+      if (s?.isFile()) { out.set(rel, { path, size: s.size, mtime: s.mtimeMs }); return; }
+    }
+    out.set(rel, null);
+  };
+  await Promise.all([...rels].map(one));
+  return out;
+}
+
+/**
  * The geoms for `hrefs`, decoded ahead. Null for an href that is known not to
  * decode; absent for one whose decode failed this time.
  */
@@ -69,29 +91,29 @@ export async function decodedGeoms(
   const session = randomUUID();
   const geoms = new Map<string, GeomData | null>();
   const report: DecodeReport = { hits: 0, decoded: 0, failed: [], cacheMs: 0, headMs: 0, statMs: 0, decodeMs: 0, workers: 0, workMs: 0, stats: 0 };
-  // A texture's document is a dependency of every model wearing it: each
-  // file is resolved and statted once per open, not once per entry.
-  const memo = new Map<string, FileStat | null>();
-  const stat = (rel: string): FileStat | null => {
-    let m = memo.get(rel);
-    if (m === undefined) {
-      const t = performance.now();
-      report.stats++;
-      m = statOf(data, rel);
-      memo.set(rel, m);
-      report.statMs += performance.now() - t;
-    }
-    return m;
-  };
-  const valid = (deps: Dep[]): boolean => deps.every((d) => depValid(d, stat(d.rel)));
   const jobs: DecodeJob[] = [];
   const shared = sharedLoader();
   const t0 = performance.now();
+  // The heads first, all of them; then every file they depend on, statted
+  // ONCE (a texture's document is a dependency of every model wearing it)
+  // and in parallel — a stat is ~0.07 ms of kernel time on Windows and there
+  // are ~1800 of them per map, a quarter of the warm open done one after
+  // another on this thread; the thread pool does them four at a time while
+  // this thread waits for nothing else.
+  const heads: { href: string; file: string; have: ReturnType<typeof loadGeomEntry> }[] = [];
   for (const href of new Set(hrefs)) {
     const file = entryPath(dir, href, params);
-    const tr = performance.now();
-    const have = loadGeomEntry(file, shared, false);
-    report.headMs += performance.now() - tr;
+    heads.push({ href, file, have: loadGeomEntry(file, shared, false) });
+  }
+  report.headMs = performance.now() - t0;
+  const t0s = performance.now();
+  const rels = new Set<string>();
+  for (const h of heads) for (const d of h.have?.entry.deps ?? []) rels.add(d.rel);
+  const stats = await statAll(data, rels);
+  report.stats = rels.size;
+  report.statMs = performance.now() - t0s;
+  const valid = (deps: Dep[]): boolean => deps.every((d) => depValid(d, stats.get(d.rel) ?? null));
+  for (const { href, file, have } of heads) {
     if (have && valid(have.entry.deps)) {
       geoms.set(href, have.geom);
       report.hits++;

@@ -8,7 +8,7 @@
 // wanted: the first is what a freshly loaded map draws with while the second is
 // still being decoded.
 
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { parseTerrain, readTextureLayers, readMask } from '../terrain/terrain.ts';
 import { decodeDDS } from '../format/dds.ts';
@@ -89,7 +89,25 @@ function tileTexture(tilePath: string, readXdb: ReadXdb, data: Assets, size: num
   }
   const dest = tx.match(/<DestName href="([^"]+)"/); if (!dest) return null;
   const ddsPath = data.path(join(dirname(texXdb), dest[1]));
-  if (!existsSync(ddsPath)) return null;
+  return boxedTexture(ddsPath, size);
+}
+
+/**
+ * Ground textures decoded and shrunk, kept for the process: the same nine
+ * tiles open with every map of a terrain type, and a warm open spent ~40 ms
+ * decoding them again. Keyed by the file's path, size and date, so an edit
+ * or a mod resolving the tile elsewhere is a new decode; bounded, oldest
+ * first.
+ */
+const boxed = new Map<string, Uint8Array>();
+const BOXED_BUDGET = 64 * 1024 * 1024;
+let boxedBytes = 0;
+function boxedTexture(ddsPath: string, size: number): Uint8Array | null {
+  const s = statSync(ddsPath, { throwIfNoEntry: false });
+  if (!s) return null;
+  const key = `${ddsPath}|${size}|${s.mtimeMs}`;
+  const hit = boxed.get(key);
+  if (hit) return hit;
   // The file's own mip level at `size` when it has one (dds.ts): a 1024² tile
   // at 64 for a thumbnail is a sixteenth of the blocks, and the box filter
   // below then has nothing left to average.
@@ -112,6 +130,13 @@ function tileTexture(tilePath: string, readXdb: ReadXdb, data: Assets, size: num
     }
     const o = (y * size + x) * 4;
     out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n; out[o + 3] = 255;
+  }
+  boxed.set(key, out);
+  boxedBytes += out.byteLength;
+  for (const old of boxed.keys()) {
+    if (boxedBytes <= BOXED_BUDGET || old === key) break;
+    boxedBytes -= boxed.get(old)!.byteLength;
+    boxed.delete(old);
   }
   return out;
 }

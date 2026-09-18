@@ -182,7 +182,8 @@ function writeBlobFile(file: string, header: object, object: unknown): void {
  * arrays would run past the file's end is a torn file, and null.
  */
 function readBlobFile<H>(file: string, whole: boolean): { header: H; object: unknown } | null {
-  if (!existsSync(file)) return null;
+  // No existence check ahead of the open: a file that is not there fails the
+  // open, and a stat per entry was a fifth of reading the headers.
   try {
     const { object, rest, arrays } = whole ? readWhole<H>(file) : readHead<H>(file);
     if (object !== null) {

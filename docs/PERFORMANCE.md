@@ -183,3 +183,9 @@ tried and dropped, and what is left is in [SLICE_fx_performance.md](../SLICE_fx_
   ms, and a second swap of the ground's material when they landed). The
   splat stands with the world now — 16 ms — and the map's first frame is
   its first frame with textured ground.
+- The main process's warm open, once more: the ~1800 stats that validate
+  the cache run in parallel on the thread pool (130 → 35 ms), the entries'
+  headers are opened without a stat ahead of each open, and the ground
+  tiles' decode is kept for the process (the same nine tiles open with
+  every map of a terrain type; `buildScene` 150 → ~60 ms on a reopen).
+  A2C1M1's main-side time on a reopen: 0.44 → ~0.23 s.
