@@ -53,8 +53,11 @@ static const BYTE ENERGY_GETTER_HEAD[7] = { 0x8B, 0x81, 0x38, 0x06, 0x00, 0x00, 
 #define LUA_COMBAT_TABLE_ACCESSOR_RVA 0x201480u
 #define LUA_MOV_EAX_IMM 0xB8
 #define LUA_RET 0xC3
-/** How many of ours can be added. Room to grow; the table is ours to size. */
-#define MAX_LUA_FUNCTIONS 16
+/** How many of ours can be added. The table is ours to size — and it was
+ *  sized to sixteen when the seventeenth (`H5EMessageBox`, 18.09.2026) was
+ *  refused with a line under a unit that was off: `Value was NIL` in the
+ *  game's console was the whole report. The refusal speaks for itself now. */
+#define MAX_LUA_FUNCTIONS 64
 
 /** One row of a registration table, exactly as the engine lays it out. */
 typedef struct {

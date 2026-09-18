@@ -590,5 +590,41 @@ the handler says `<lua>("<town name>")` to the map through `world+0x40`
 slot 0 (lua/adv-cast.c). **The map has to introduce itself**: the click has
 no Lua context, and the map is reached from one (`0xA455E0` reads
 `[[ctx]]`), so `H5ETownButtons()` at the map's start is what fetches it.
-Open until launch 22: whether the map's scheduler runs the thread WHILE the
-town screen is up.
+**Launches 22–27 (2026-09-18), all answered.**
+
+- The skin, the enable by presence and the click all worked first time.
+- **The town's name** is NOT the holder's base's slot: the holder hands out
+  the base at `+0xF8` (vtable `0xFB624C`), whose `+0x90` (`0xACC390`)
+  answers `whole+0x120`, another base. The script name is slot `+0x90` of
+  the virtual base at `+0x334` (vtable `0xFB6408`, a thunk into `0xC7B950`:
+  `lea eax,[ecx-84h]`) — `0-8-83-AdvMapTown-12113` for a random town. The
+  whole object comes from the RTTI locator's offset (`whole_object_of`).
+- **A map script is a `Script` document** (`<FileName href="x.lua"/>`); an
+  href straight at the `.lua` is ignored without a word.
+- **The scheduler does not run under the town screen.** `DoString` queues a
+  thread; the thread ran the moment the screen closed. The engine's own map
+  start ticks the scheduler itself right after handing over
+  `advmap-startup.lua` — `scripts->slot 2` (`0xA42EC0` → `0xA2F010`, no
+  arguments; walks the thread list at `engine+0x20`, decrements sleeps,
+  resumes) at `0x6D7B1A` — so the click does the same one tick after saying
+  its line, and the Lua runs inside the click.
+- **`MessageBox` does not show anything.** `0x5F04E0` reads its argument
+  into a wide string (`0x5CD330(out, block, argIndex)`, the four-word block
+  with the Lua context at `[2]`) and hands `map->+0x2C(0, list, callback)` a
+  `CScriptDialogEntry_MessageBox` for the world's dialog queue; the
+  ADVENTURE screen pops that queue in its update (`0x6B0E20`, with
+  `ecx = this - 0x844`, → `0x7666E0(entry)` → the MessageBox case at
+  `0x767358`), which the town screen never runs. The screen's own boxes —
+  the grail's at `0x855B4F` — call `0x6D2FA0` (with a picture) or
+  `0x6D2D60` (without) directly: `__fastcall(owner, edx, flag, STexture*,
+  WideString* header, WideString* text, flag)`, `ret 14h`; they take the
+  screen on top of the interface stack (`0x5BA730`), `dynamic_cast` it to
+  `0x10AA97C`, build a `0x16C`-byte box (`0x6D50D0`, filled by
+  `0x6D32E0`) and `ShowWindow` it (`0x6CF590`). `H5EMessageBox(text[,
+  header])` is that: the engine's reader on the Lua argument (a path or a
+  table — the reader needs a REAL empty string, sixteen allocated bytes with
+  a terminator, as `MessageBox` gives it; three nulls crashed at `0x4E75F9`),
+  then `0x6D2D60`. Header third, text fourth — launch 27 had them swapped.
+- Our Lua table was sixteen wide and `H5EMessageBox` was the seventeenth:
+  `Value was NIL` in the console and a refusal logged under a unit that was
+  off. Sixty-four now, and the refusal always speaks.

@@ -92,6 +92,10 @@ pre-release.
   message on the town screen, enables the button by the building's presence
   the engine's own way and says `<function>("<town>")` to the map's Lua
   (`native/faction/town-button.c`, `bin/homm5-editor-buildings.txt`).
+- `H5EMessageBox(text[, header])` for a map's Lua: a message box on the
+  screen that is up — the town screen included — where the game's own
+  `MessageBox` only queues one for the adventure screen. The extension's
+  Lua table holds sixty-four functions now, and refuses out loud.
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were

@@ -49,8 +49,8 @@
 //
 // The town is what the screen holds — `+0x2F0` or `+0x344` by the byte at
 // `+0x370`, its slot 1 the town object — and the town's type is its slot
-// `+0xD4`, its script name its slot `+0x90` (the same slot
-// `GetObjectNamesByType` reads, 0x5F5B8C), an engine string {begin, end, cap}.
+// `+0xD4`; its script name is slot `+0x90` of the virtual base at `+0x334` of
+// the whole object, an engine string {begin, end, cap} (see `town_name_of`).
 //
 // NOT DONE YET: the tooltip's `<value=special>` — the building's name, which
 // the engine reads out of the record through four calls not measured here.
@@ -133,7 +133,7 @@ static const BYTE RT_DYNAMIC_CAST_HEAD[2] = { 0xFF, 0x25 };
 #define SCREEN_ROOT 0xA0u
 /** The holder's slot that answers with the town. */
 #define VT_HOLDER_TOWN 0x04u
-/** The town's slots: its type, and its script name as an engine string. */
+/** The town's slots: its type (on the base the holder gives), and its script name (on the base at +0x334). */
 #define VT_TOWN_TYPE 0xD4u
 #define VT_TOWN_NAME 0x90u
 /** The root widget's lookup of a child by name, on its IWindow base: (name*, 1). */
@@ -196,19 +196,60 @@ static int town_type_of(void *town) {
   return type ? type(town) : -1;
 }
 
-/** The town's script name into `out`, or an empty string. */
-static void town_name_of(void *town, char *out, int room) {
+/** The printable head of an engine string at `s`, or nothing. */
+static int name_string_into(const NameString *s, char *out, int room) {
   out[0] = 0;
-  TownScriptNameFn name = (TownScriptNameFn)vtable_entry(town, VT_TOWN_NAME);
-  if (!name) return;
-  NameString *s = name(town);
-  if (!readable(s, sizeof *s) || !readable(s->begin, 1) || s->end < s->begin) return;
+  if (!readable(s, sizeof *s) || !readable(s->begin, 1) || s->end < s->begin || s->end - s->begin > 200) return 0;
   int n = 0;
   for (const char *c = s->begin; c < s->end && n < room - 1; c++) {
-    if (*c < 0x20 || *c >= 0x7f || *c == '"' || *c == '\\') break;
+    if (*c < 0x20 || *c >= 0x7f || *c == '"' || *c == '\\') return 0;
     out[n++] = *c;
   }
   out[n] = 0;
+  return n > 0;
+}
+
+/**
+ * The town's script name into `out`, or an empty string.
+ *
+ * MEASURED, launches 22–23. The holder hands out the base at `+0xF8` of the
+ * `CAdvMapTown` (vtable `0xFB624C`), and THAT base's slot `+0x90` is not the
+ * name — it answers `whole+0x120`, another base. The name is the slot `+0x90`
+ * of the virtual base at `+0x334` (vtable `0xFB6408`, a thunk to `0xC7B950`:
+ * `lea eax,[ecx-84h]` on the implementer's `this`), an engine string —
+ * `0-8-83-AdvMapTown-12113` for a random town, what `GetObjectNamesByType`
+ * lists and what every Lua function takes. The whole object comes from RTTI
+ * (the locator's offset), the base from it; nothing is derived from the
+ * pointer the holder gave.
+ */
+#define TOWN_NAME_BASE 0x334u
+static void town_name_of(void *town, char *out, int room) {
+  out[0] = 0;
+  BYTE *sub = (BYTE *)whole_object_of(town) + TOWN_NAME_BASE;
+  TownScriptNameFn name = (TownScriptNameFn)vtable_entry(sub, VT_TOWN_NAME);
+  if (!name) { log_line("town button: the town has no name slot where we measured one"); return; }
+  if (!name_string_into(name(sub), out, room)) log_line("town button: the town's name does not read as one");
+}
+
+/**
+ * RUN WHAT WAS SAID, NOW. `DoString` only queues a thread for the scheduler
+ * (lua/adv-cast.c), and the scheduler is the world's per-frame tick — which
+ * does not run while the town screen is up: in launch 23 the box came up the
+ * moment the screen closed. The engine's own map start does exactly this
+ * after handing over `advmap-startup.lua` (0x6D7B1A): the script system's
+ * slot 2, no arguments, resumes every thread that is due. One tick, here,
+ * is the same call.
+ */
+#define SCRIPTS_TICK 0x08u
+typedef void (__thiscall *ScriptsTickFn)(void *scripts);
+static int tick_the_map_scripts(void) {
+  void *map = map_without_context();
+  if (!map || !readable((BYTE *)map + WORLD_SCRIPTS, 4)) return 0;
+  void *scripts = *(void **)((BYTE *)map + WORLD_SCRIPTS);
+  ScriptsTickFn tick = (ScriptsTickFn)vtable_entry(scripts, SCRIPTS_TICK);
+  if (!tick) return 0;
+  tick(scripts);
+  return 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -246,8 +287,12 @@ static int __thiscall own_button_handler(void *screen, void *msg) {
   const char *tail = "); end;";
   while (*tail) line[at++] = *tail++;
   line[at] = 0;
-  if (say_to_the_map(line)) log_text("town button: said to the map: ", line);
-  else log_line("town button: the map has no script system to say it to — no script of ours has fetched the map yet");
+  if (!say_to_the_map(line)) {
+    log_line("town button: the map has no script system to say it to — no script of ours has fetched the map yet");
+    return 1;
+  }
+  log_text("town button: said to the map: ", line);
+  log_line(tick_the_map_scripts() ? "town button:   and the scheduler was ticked once, so it ran now" : "town button:   but the scheduler could not be ticked");
   return 1;
 }
 
@@ -323,7 +368,95 @@ static void *__fastcall lua_town_buttons(void *ctx) {
   return (void *)(INT_PTR)lua_push_int(ctx, g_townButtonCount);
 }
 
+// ---------------------------------------------------------------------------
+// A BOX ON THE SCREEN THAT IS UP. Launch 24: the click's Lua ran at once, and
+// its `MessageBox` still came up only after the town screen closed — the
+// engine's `MessageBox` (0x5F04E0) does not show anything, it queues a
+// `CScriptDialogEntry_MessageBox` on the world, and the ADVENTURE screen's
+// update is what pops the queue (0x6B0E20 → 0x7666E0 → 0x6D2FA0), which the
+// town screen does not run. The screen's own boxes — the grail's, 0x855B4F —
+// go straight to 0x6D2FA0/0x6D2D60, which asks the interface stack for the
+// screen on top (0x5BA730), builds a 0x16C-byte box, and shows it there
+// (0x6CF590, the same ShowWindow the count window uses). So a box on the
+// screen that is up is that call with the text the engine's own reader
+// makes of the Lua argument — 0x5CD330, what `MessageBox` itself runs.
+//
+//     H5EMessageBox(text [, header])
+//
+// `text` and `header` are what `MessageBox` takes: a text file's path, or a
+// table with the path and its `<value=…>` parameters. Unlike `MessageBox`
+// the thread is not held while the box is open.
+
+/** The engine's wide string: {begin, end, capacity end} of WCHAR. */
+typedef struct { WCHAR *begin; WCHAR *end; WCHAR *cap; } WideString;
+
+/** `sub esp,64h / push ebx / mov ebx,ecx` — (out, the four-word block, the argument's index), `ret 8`; true when a text was made. */
+#define MESSAGE_TEXT_RVA 0x1cd330u
+static const BYTE MESSAGE_TEXT_HEAD[6] = { 0x83, 0xEC, 0x64, 0x53, 0x8B, 0xD9 };
+/** `push ebx / push ebp / push esi / mov ebx,edx / mov ebp,ecx` — the picture-less box, `ret 14h`:
+ *  (owner in ecx, edx, flag, texture, header, text, flag). The adventure screen's own
+ *  MessageBox case passes (0, 0, 0, 0, &header, &text, 1). */
+#define SHOW_BOX_RVA 0x2d2d60u
+static const BYTE SHOW_BOX_HEAD[7] = { 0x53, 0x55, 0x56, 0x8B, 0xDA, 0x8B, 0xE9 };
+
+typedef int (__thiscall *MessageTextFn)(WideString *out, void *block, int arg);
+typedef void (__fastcall *ShowBoxFn)(void *owner, void *edx, int a, void *texture, WideString *header, WideString *text, int b);
+typedef void (__cdecl *BoxFreeFn)(void *p);
+
+static MessageTextFn g_messageText = NULL;
+static ShowBoxFn g_showBox = NULL;
+static BoxFreeFn g_boxFree = NULL;
+static AllocateFn g_boxAllocate = NULL;
+
+/**
+ * An empty wide string the reader can write into. NOT three nulls: the reader
+ * truncates what it is given (`*begin = 0` unless begin == end) and its
+ * assign grows from the capacity it finds, and with nothing behind the
+ * pointers it wrote the terminator at address 2 (launch 26, 0x4E75F9). The
+ * engine's `MessageBox` hands it sixteen bytes from the allocator, terminated,
+ * and so does this.
+ */
+#define EMPTY_WIDE_BYTES 16
+static int empty_wide(WideString *s) {
+  WCHAR *buf = (WCHAR *)g_boxAllocate(EMPTY_WIDE_BYTES);
+  if (!buf) return 0;
+  buf[0] = 0;
+  s->begin = s->end = buf;
+  s->cap = (WCHAR *)((BYTE *)buf + EMPTY_WIDE_BYTES);
+  return 1;
+}
+
+static void *__fastcall lua_message_box(void *ctx) {
+  if (!g_messageText || !g_showBox || !g_boxFree || !g_boxAllocate) { log_line("H5EMessageBox: the engine's box is not where we measured it"); return NULL; }
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  // The block every one of theirs hands to the text reader: a reporter, a
+  // zero, the call context, a flag (lua/hero-specialization.c).
+  void *block[4] = { base + REPORTER_VTABLE_RVA, NULL, ctx, NULL };
+  WideString text, header;
+  if (!empty_wide(&text) || !empty_wide(&header)) { log_line("H5EMessageBox: no memory for the text"); return NULL; }
+  if (!(g_messageText(&text, block, 1) & 0xFF) || text.begin == text.end) {
+    log_line("H5EMessageBox: takes a text (a path, or a table with a path and its values)");
+    g_boxFree(text.begin);
+    g_boxFree(header.begin);
+    return NULL;
+  }
+  int withHeader = (g_messageText(&header, block, 2) & 0xFF) && header.begin != header.end;
+  if (!withHeader) { header.end = header.begin; header.begin[0] = 0; }
+  // Header before text: the adventure screen passes the entry's `+0x14` third
+  // and the formatted body fourth, and launch 27 drew ours the other way round.
+  g_showBox(NULL, NULL, 0, NULL, &header, &text, 1);
+  log_line(withHeader ? "H5EMessageBox: shown on the screen that is up, with a header" : "H5EMessageBox: shown on the screen that is up");
+  g_boxFree(text.begin);
+  g_boxFree(header.begin);
+  return NULL;
+}
+
 /** Added where the others are — BEFORE the table is handed to the engine. */
 static void add_town_button_map_functions(void) {
   add_map_function("H5ETownButtons", (void *)&lua_town_buttons);
+  g_messageText = (MessageTextFn)code_at(MESSAGE_TEXT_RVA, MESSAGE_TEXT_HEAD, sizeof MESSAGE_TEXT_HEAD, "the message text reader");
+  g_showBox = (ShowBoxFn)code_at(SHOW_BOX_RVA, SHOW_BOX_HEAD, sizeof SHOW_BOX_HEAD, "the screen's message box");
+  g_boxFree = (BoxFreeFn)code_at(ENGINE_FREE_RVA, ENGINE_FREE_HEAD, sizeof ENGINE_FREE_HEAD, "the allocator's free");
+  g_boxAllocate = (AllocateFn)code_at(ALLOCATE_RVA, ALLOCATE_HEAD, ALLOCATE_HEAD_LEN, "the allocator");
+  add_map_function("H5EMessageBox", (void *)&lua_message_box);
 }

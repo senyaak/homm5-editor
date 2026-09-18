@@ -82,7 +82,9 @@ static int g_ourFunctionCount = 2;
  */
 static void add_map_function(const char *name, void *fn) {
   if (g_ourFunctionCount >= MAX_LUA_FUNCTIONS) {
-    log_text("no room in our lua table for ", name);
+    // Whatever the build asked for: a map that calls this name gets "Value was
+    // NIL" in the game's console, and nothing else says why.
+    log_text_now("no room in our lua table for ", name);
     return;
   }
   g_ourFunctions[g_ourFunctionCount].name = name;
