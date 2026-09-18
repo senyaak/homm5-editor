@@ -188,8 +188,8 @@ const grail: Glyph = (p, t) => {
   p.polygon(star(0.50, 0.36, 0.06, 0.025), t.accent);
 };
 
-/** A skull: the race. */
-const skull: Glyph = (p, t) => {
+/** A skull: the race. Drawn in `ink`, its eyes and teeth in `field`. */
+export const raceGlyph: Glyph = (p, t) => {
   p.disc(0.50, 0.44, 0.24, t.ink);
   p.rect(0.36, 0.58, 0.28, 0.14, t.ink);
   p.disc(0.41, 0.44, 0.065, t.field);
@@ -278,7 +278,7 @@ export function raceIcon(theme: IconTheme, size = 55): Image {
   const p = new Painter(WORK);
   p.clear(theme.field);
   border(p, theme);
-  skull(p, theme);
+  raceGlyph(p, theme);
   return p.image(size);
 }
 

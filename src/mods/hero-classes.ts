@@ -63,6 +63,7 @@
 // stops at startup or reads a class it will not use.
 
 import { EOL, count, indentOf, insertAfterLine, insertBeforeLine, once, retune } from './xml-edit.ts';
+import type { MagicKind } from './magic-kind.ts';
 
 /** How many the game ships — and so the value the tenth class takes. */
 export const SHIPPED_CLASSES = 9;
@@ -127,6 +128,13 @@ export interface HeroClassSpec {
   preferredSpells?: string[];
   /** Shipped perks this class may take. Ours are declared on the skills instead. */
   allowedPerks?: AllowedPerk[];
+  /**
+   * What its heroes open in a battle: a spellbook (the default) or a book of
+   * warcries, as a barbarian's. Not a record's field — the engine asks
+   * "is he a barbarian" at nineteen places, and the extension answers yes
+   * for a class of warcries there (magic-kind.ts, `bin/homm5-editor-magic.txt`).
+   */
+  magic?: MagicKind;
 }
 
 /** One in a mod: a class plus the enum value it holds. */

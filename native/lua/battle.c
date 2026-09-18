@@ -175,6 +175,36 @@ static int begins_with(const char *text, const char *word) {
  */
 static void *g_battleHost = NULL;
 static int g_firedLogged = 0;
+/** The host's vtable, once ours is in its slot 0 — what a live host still points at. */
+static void **g_hostVtable = NULL;
+
+/**
+ * THE HOST DIES WITH THE BATTLE, and a pointer to it does not know. It is a
+ * base inside the battle object (`COMBAT_SCRIPT_HOST`), freed with it; the
+ * next screen to log a line — the town screen, registering its handlers
+ * (2026-09-18, launch 31) — spoke into the freed memory, read a Lua state
+ * out of `[host+0x1C]` that was no longer one, and jumped through it
+ * (`0x667389`). Two guards: the pointer is dropped when the engine closes
+ * the battle (`CCloseCombat::Execute`, below), and before every word the
+ * host has to still look like one — its vtable the one we took over, its
+ * state pointing at a vtable inside the executable. The second is for the
+ * paths that end a battle without the command.
+ */
+static int points_into_exe(const void *p) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  IMAGE_DOS_HEADER *dos = (IMAGE_DOS_HEADER *)base;
+  IMAGE_NT_HEADERS *nt = (IMAGE_NT_HEADERS *)(base + dos->e_lfanew);
+  return (BYTE *)p >= base && (BYTE *)p < base + nt->OptionalHeader.SizeOfImage;
+}
+
+static int battle_host_alive(void) {
+  BYTE *host = (BYTE *)g_battleHost;
+  if (!host || !g_hostVtable || !readable(host, 0x20)) return 0;
+  if (*(void ***)host != g_hostVtable) return 0;
+  BYTE *state = *(BYTE **)(host + 0x1C);
+  if (!state || !readable(state, 4) || !points_into_exe(*(void **)state)) return 0;
+  return 1;
+}
 
 /** Trigger kinds, mirrored in the Lua the mod carries (src/mods/skill-scripts.ts). */
 #define TRIGGER_COMBAT_STARTED 1
@@ -191,8 +221,7 @@ static int g_firedLogged = 0;
  * tail of `combat-startup.lua`.
  */
 static void fire_trigger(int kind, int argc, int a, int b, int c) {
-  if (!g_runLine || !g_battleHost) return;
-  if (!readable((BYTE *)g_battleHost + 0x1C, 4) || !*(DWORD *)((BYTE *)g_battleHost + 0x1C)) return;
+  if (!g_runLine || !battle_host_alive()) return;
 
   char line[200];
   int at = 0;
@@ -280,7 +309,7 @@ static void *__fastcall run_line_hook(void *host, void *edx, const char *source)
 static int g_inConsole = 0;
 
 static void console_line(const char *text) {
-  if (g_inConsole || !g_battleHost || !g_runLine) return;
+  if (g_inConsole || !g_runLine || !battle_host_alive()) return;
   g_inConsole = 1;
   char line[240];
   int at = 0;
@@ -310,6 +339,7 @@ static void take_over_run_line(void *host) {
     return;
   }
   g_runLine = (RunLineFn)vt[0];
+  g_hostVtable = vt;
   vt[0] = &run_line_hook;
   VirtualProtect(vt, sizeof(void *), old, &old);
   log_hex("battle: every line now comes past us; theirs is at rva ",
@@ -334,7 +364,23 @@ static void *__fastcall host_init_hook(void *host, void *edx) {
   return result;
 }
 
-/** The battle's side of the extension: one detour, one address only read. */
+/**
+ * `CCloseCombat::Execute` (`0x6656C0`, vtable `0xF59568` slot +0xC): `push
+ * ecx / push edi / mov edi,ecx / lea eax,[esp+7]`, one stack argument, `ret
+ * 4`. The battle is over once it has run, and so is the host.
+ */
+#define CLOSE_COMBAT_RVA 0x2656c0u
+static const BYTE CLOSE_COMBAT_HEAD[8] = { 0x51, 0x57, 0x8B, 0xF9, 0x8D, 0x44, 0x24, 0x07 };
+typedef void (__fastcall *CloseCombatFn)(void *cmd, void *edx, void *arg);
+static CloseCombatFn g_closeCombat = NULL;
+
+static void __fastcall close_combat_hook(void *cmd, void *edx, void *arg) {
+  g_closeCombat(cmd, edx, arg);
+  if (g_battleHost) log_line("battle: closed; the host is forgotten");
+  g_battleHost = NULL;
+}
+
+/** The battle's side of the extension: three detours, one address only read. */
 static int install_combat_scripts(void) {
   BYTE *runner = (BYTE *)GetModuleHandleW(NULL) + RUN_SOURCE_RVA;
   for (int i = 0; i < (int)sizeof RUN_SOURCE_HEAD; i++) {
@@ -352,6 +398,8 @@ static int install_combat_scripts(void) {
   g_hostInit = (HostInitFn)detour(COMBAT_HOST_INIT_RVA, COMBAT_HOST_INIT_HEAD,
                                   sizeof COMBAT_HOST_INIT_HEAD, &host_init_hook,
                                   "battle script host");
+  g_closeCombat = (CloseCombatFn)detour(CLOSE_COMBAT_RVA, CLOSE_COMBAT_HEAD, sizeof CLOSE_COMBAT_HEAD,
+                                        &close_combat_hook, "battle close");
   return g_loadScripts != NULL || g_hostInit != NULL;
 }
 

@@ -628,3 +628,134 @@ no Lua context, and the map is reached from one (`0xA455E0` reads
 - Our Lua table was sixteen wide and `H5EMessageBox` was the seventeenth:
   `Value was NIL` in the console and a refusal logged under a unit that was
   off. Sixty-four now, and the refusal always speaks.
+
+**The tooltip's `<value=special>` (launch 30, 2026-09-18, worked first
+time).** The four calls of `0x8541B0` between the cast and the enable:
+`town->+0x5C(String* out, building)` (`0xAC2D90`, `ret 8`) walks the
+town's map of building records — `town+0x68`, a hash map by name whose
+node holds the record at `+0x10` with the building TYPE at `+0` — and
+copies the node's KEY (the record's name) into `out`; `town->+0x30` is
+`lea eax,[ecx+68h]` and cleans nothing, which is why its two pushes are
+the arguments of the next call, `0x4EB510(map, iterator* {node, map},
+key*)` (`ret 8`, the hash is `h*5+c`); `0xAC0760(record, back)` (`ret 4`)
+picks the level `max(0, min(count-1, level-back))` — with `back = 1` the
+current level's name, the first level's when it is not built — from the
+record's `{type, level, count, entries[8 bytes]}`, resolves the entry's
+shared reference (`0x846B70`) and returns its text through `0x956620(obj +
+0x44)`, a cached pointer; and the button's IWindow base (`button + 4 +
+[[button+4]+8]`) takes it by slot `+0x80(String* "special", text)`. Ours
+does the same four with the row's building (`set_special_tooltip`).
+
+## Warcries: where the engine asks (2026-09-18, read; launch 35 pending)
+
+The game never asks "does this hero use warcries". It asks whether he IS a
+barbarian — `IHero::GetClass()` (vtable slot `+0x258`) `== 8` — and whether
+the town IS a Stronghold — the type virtual (slot `+0xD4` of the town, and of
+the shared at `+0xF8`) `== 10`. Scanned rather than listed by hand
+(`_tmp/class-sites.ts`, `_tmp/town-type-sites.ts`): every `call [reg+258h]`
+whose result meets a `cmp eax,N`, and every `call [reg+0D4h]` the same way.
+
+**The class, nineteen sites** (the plan's 1c knew sixteen; the three it
+missed are the book chooser's other two ways of finding the hero):
+
+| function | what the barbarian branch does |
+|---|---|
+| `0x70CC30` ×3 | which book the spellbook button opens: `CCreateOrcsSpellBook` (`0x7F5CD0`) for him, `CCreateSpellBook` (`0x7ECE40`) for the rest; the hero found through the combat, the adventure map or the hero screen |
+| `0x8506F0` ×2 | the town screen: a Stronghold (`+0xD4 == 10` first) with a barbarian in the garrison or visiting is taught — `0x8C91F0(hero, town)` |
+| `0x859860` ×2 | "does this town hold a barbarian" — the guild button's enable through `0x851D20` |
+| `0xACBC50` | why a cast is refused: 3 for a non-barbarian past an ability check (`0x2B`) |
+| `0xB840B0` | a barbarian casts no battle spell (the earthquake strings are the function's) |
+| `0xBCBD20`, `0xBCBE70` | a perk's multiplier: a ranger with skill 7 at expert reads `DefaultStats+0x11A8`, a barbarian with skill 8 at expert `+0x11B4` — inert without the skill |
+| `0xC1F8C0`, `0xC2A400`, `0xD16920` | the AI: what a barbarian is worth casting |
+| `0xD35B20`, `0xD47240` | learning (`TT_SPELL_LEARNED`, `RUNE_OBTAINED`): the branch for runes and warcries |
+| `0xD36380`, `0xD366A0` | may this hero cast this: a barbarian skips the school test (`+0xDC`) |
+| `0xD3BDC0` | a spell's cost by level (`0x1091FC8[level]`) goes through `0xB42570` for a barbarian |
+
+Other classes are asked the same way, fewer times: `== 6` (warlock) five,
+`== 1` (knight) four, `== 2` (ranger) three, `== 4` (demon lord) two,
+`== 3` and `== 7` (wizard, runemage) once each — the racial mechanics. And
+`0xB42630` maps a class to its racial skill by a switch (1…8 → 13, 16, 17,
+14, 15, 18, 0x97, 0xAC; else 0) — the skill binds the class from its own side
+(HERO_CLASSES.md), so a class of ours answering 0 there has cost nothing yet.
+
+**The town, twelve sites, nine of them the guild's:**
+
+| function | what the Stronghold branch does |
+|---|---|
+| `0x8564A0` | which building the guild button stands for: 17 (`TB_SPECIAL_1`, the Hall of Trial) against 6 |
+| `0x851D20` | the guild button's enable: a barbarian present (`0x859860`) against the guild's level (`0x856500(0x856430())`) |
+| `0x84D690` → `0x8506F0` | entering the town: teach warcries (`0x8506F0`) against spells (`0x850200`) |
+| `0x8BA6B0` | the guild window's header: `T_ORCS_HEADER` against `T_HEADER` |
+| `0xAC30D0`, `0xACAF50` | a record whose kind (`+0x10`) is 6 in a Stronghold is no building — its five guild records are stubs with no cells |
+| `0xAC7B40`, `0xAC7D80` | build rules: what needs the guild's level (`push 6` → `+0x34`) elsewhere needs nothing of the kind |
+| `0x850550` | Stronghold with `TB_SPECIAL_5` (the Slave Market) built: something for the heroes — not magic |
+| `0x856060`, `0x856330` | `buy_artifacts` against `traveller_shelter`: the merchant button — not magic |
+
+So "a faction of warcries" is exactly the plan's shape, measured: a class
+answering 8 at the nineteen, a town answering 10 at the nine, and the hall as
+DATA in `TB_SPECIAL_1` with three levels (the teaching reads the building by
+its ordinal — so the hall is that slot, not any). `native/faction/magic-kind.c`
+overwrites each six-byte `call [reg+slot]` with `call thunk / nop`; the thunk
+re-reads the vtable off the object in ecx (every site has it there), calls
+the same virtual, and answers the shipped identity for an ordinal in
+`bin/homm5-editor-magic.txt`. All sites of a list or none: a build where one
+mark has moved gets nothing. The copier's half is `TownSpec.magic` and
+`BuildingEdit.from` (src/mods/town-files.ts). The three Stronghold specials
+are left as they are — a faction has specials of its own.
+
+Own SCHOOLS are still out of reach: `MagicSchool` is nine values compiled
+(Destructive, Dark, Light, Summoning, Adventure, Runic, Warcries, Special,
+None), the book's tabs and the skills are keyed on them. A faction chooses
+between the book and the warcries, or — a plan, not a finding — a hall of
+ours teaching a school the engine has, through the same sites.
+
+## Launch 35, and the table behind every special building (2026-09-18)
+
+The class and town sites answered as read: the orc header over the guild
+button, the orc book for the Knight, a three-level hall built. **The hall was
+empty** — "spells of the first circle", nothing under it — because a hall is
+not what teaches warcries. A FEATURE is.
+
+Every compiled effect a special building has is a number 0…0x2E and one
+table at `0x10909B0` (RVA `0xC909B0`) says who grants it:
+
+```
+{ feature, town, building, minLevel } ×47      town 2 = any
+ 0x00–0x04 Haven SPECIAL_1…5      0x05–0x09 Inferno SPECIAL_1…5
+ 0x0A/0x0B Sylvan SPECIAL_0 lv1/2, 0x0C/0x0D SPECIAL_2 lv1/2, 0x0E, 0x0F
+ 0x10–0x14 Necropolis             0x15–0x19 Academy (0x15 = the Library)
+ 0x1A/0x1B Dungeon SPECIAL_1 lv1/2, 0x1C–0x1F
+ 0x20–0x22 Fortress SPECIAL_1 lv1/2/3 (the runic shrine), 0x23–0x26
+ 0x27–0x29 Stronghold SPECIAL_1 lv1/2/3 (the Hall of Trial), 0x2A–0x2D
+ 0x2E      any town, TB_TOWN_HALL ≥ 4 (the Capitol)
+```
+
+Six readers, all CAdvMapTown virtuals with one test — `row.town == 2 ||
+row.town == GetType()`: `+0x40` `0xAC8970` (may it be built: the row's
+building and level through `+0x5C`, `+0xB4`), `+0x44` `0xAC8A10`
+`HasFeature(f)` (`BuildingLevel(row.building) >= row.minLevel`), `+0x48`
+`0xAC8A80` `FeatureOf(building)` (the FIRST row's feature, else −1),
+`+0x4C` `0xAC8AD0` `BuildingOf(f)` (else 0x1A), `+0x50` `0xAC8B20` through
+`RowOf` `0xAD0710` (an index, read back as a column), `+0x54` `0xAC8B90`.
+`OnBuildingBuilt` (`0xAC7FF0`) asks `FeatureOf` and for 0x27 at level 0
+calls `0xAC4740(1, 1)`, which draws the tier's warcries into the town's list
+(`+0x2D8/+0x2DC` of the whole object — `+0x1E0` of the `+0xF8` subobject the
+readers get as `this`); `GetSpellsOfLevel` `0xAC7B40` reads that list under
+`HasFeature(0x27..0x29)`, the Library's `+0xFC` list under 0x15, the runic
+`+0x1CC` under 0x20–0x22, and the guild's `+0x98` under the guild's level —
+which is where the town-type sites of the previous section sat.
+
+So "what does the engine do with a special of a twelfth type" is answered:
+nothing, because no row. And the plan's 1b — "known static effects = forms
+= native from config" — is this table: `native/faction/town-features.c`
+copies the 47 rows into the DLL, appends `feature <town> <building>
+<minLevel> <feature>` rows from `bin/homm5-editor-buildings.txt`, and moves
+the twenty address operands of the six readers onto the copy (start, end,
+columns — checked against the table's loaded address, ASLR included; all or
+none). A building of ours grants what any shipped building grants
+(`BuildingEdit.grants: { like, building? }`, `src/mods/town-features.ts`);
+`from` implies its source's rows, a hall of warcries implies Stronghold's
+three. The 46 effects are the menu; an effect of our own is a term of the
+extension, not a row.
+
+Launch 36 pending: the same map, the hall's rows in the file.

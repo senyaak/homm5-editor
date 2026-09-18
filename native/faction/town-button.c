@@ -52,8 +52,8 @@
 // `+0xD4`; its script name is slot `+0x90` of the virtual base at `+0x334` of
 // the whole object, an engine string {begin, end, cap} (see `town_name_of`).
 //
-// NOT DONE YET: the tooltip's `<value=special>` — the building's name, which
-// the engine reads out of the record through four calls not measured here.
+// The tooltip's `<value=special>` is the building's name, read through the
+// town's own map of building records (`set_special_tooltip`).
 
 #define MAX_TOWN_BUTTONS 16
 #define LUA_NAME_LEN 48
@@ -125,6 +125,12 @@ static const BYTE RT_DYNAMIC_CAST_HEAD[2] = { 0xFF, 0x25 };
 /** The type descriptors the engine's own cast names: `.?AUIWindow@@` and `.?AUIButton@@`. */
 #define IWINDOW_TYPE_RVA 0xcaaf54u
 #define IBUTTON_TYPE_RVA 0xcab610u
+/** The town's building map's lookup by key: `push ecx / push ebx / mov ebx,[esp+10h]` — (iterator* out, key*), `ret 8`. */
+#define MAP_FIND_RVA 0x0eb510u
+static const BYTE MAP_FIND_HEAD[6] = { 0x51, 0x53, 0x8B, 0x5C, 0x24, 0x10 };
+/** A building record's name for its level: `movzx eax,byte ptr [esp+4] / push esi / push edi` — (levels back), `ret 4`. */
+#define LEVEL_NAME_RVA 0x6c0760u
+static const BYTE LEVEL_NAME_HEAD[7] = { 0x0F, 0xB6, 0x44, 0x24, 0x04, 0x56, 0x57 };
 
 /** The screen's two town holders, the byte that picks between them, and its root widget. */
 #define SCREEN_TOWN_A 0x2F0u
@@ -140,6 +146,14 @@ static const BYTE RT_DYNAMIC_CAST_HEAD[2] = { 0xFF, 0x25 };
 #define VT_WINDOW_FIND 0x94u
 /** IButton's SetState(int), `ret 4` (0xE41550 — the state modulo the ButtonStates count). */
 #define VT_BUTTON_SET_STATE 0x0Cu
+/** The town's slot that copies a building's record key out of its map: (String* out, building), `ret 8`. */
+#define VT_TOWN_BUILDING_KEY 0x5Cu
+/** The map itself — what the town's slot +0x30 answers with (`lea eax,[ecx+68h]`). */
+#define TOWN_BUILDING_MAP 0x68u
+/** A map node's value: the record, its type at +0, its level at +4, its level names at +8/+0xC. */
+#define NODE_RECORD 0x10u
+/** IWindow's tooltip substitution: (key*, text) fills `<value=key>`. */
+#define VT_WINDOW_SET_VALUE 0x80u
 /** Where the special button's compiled switch starts and stops. */
 #define FIRST_TOWN_OF_OURS 11
 
@@ -153,6 +167,11 @@ typedef int (__thiscall *TownTypeFn)(void *town);
 typedef NameString *(__thiscall *TownScriptNameFn)(void *town);
 typedef void *(__thiscall *WindowFindFn)(void *window, const NameString *name, int flag);
 typedef void (__thiscall *SetStateFn)(void *button, int state);
+typedef NameString *(__thiscall *BuildingKeyFn)(void *town, NameString *out, int building);
+typedef struct { void *node; void *map; } MapIterator;
+typedef MapIterator *(__thiscall *MapFindFn)(void *map, MapIterator *out, const NameString *key);
+typedef void *(__thiscall *LevelNameFn)(void *record, int back);
+typedef void (__thiscall *SetValueFn)(void *window, const NameString *key, void *text);
 
 static ScreenVoidFn g_registerHandlers = NULL;
 static ScreenVoidFn g_updateSpecial = NULL;
@@ -160,6 +179,9 @@ static RegistrarFn g_registrar = NULL;
 static EnableByBuildingFn g_enableByBuilding = NULL;
 static HasBuildingFn g_hasBuilding = NULL;
 static RtDynamicCastFn g_rtDynamicCast = NULL;
+static MapFindFn g_mapFind = NULL;
+static LevelNameFn g_levelName = NULL;
+static EngineFreeFn g_nameFree = NULL;
 
 /** The message the ninth state's click sends — the data's `Own.(ARSendGameMessage).xdb`. */
 static const char OWN_MESSAGE[] = "enter_own";
@@ -303,6 +325,36 @@ static void __fastcall register_handlers_hook(void *screen) {
 }
 
 // ---------------------------------------------------------------------------
+// The tooltip's `<value=special>`: the building's name for its level, read the
+// way 0x8541B0 reads it for a shipped town — the town copies the building's
+// record key out of its map (slot +0x5C), the map finds the node (0x4EB510),
+// the node's record answers with the name of its current level, or the first
+// when it is not built yet (0xAC0760, a cached text), and the button's IWindow
+// base takes it for the key `special` (slot +0x80).
+
+static const char SPECIAL_VALUE[] = "special";
+static const NameString SPECIAL_VALUE_NAME = { SPECIAL_VALUE, SPECIAL_VALUE + sizeof SPECIAL_VALUE - 1, SPECIAL_VALUE + sizeof SPECIAL_VALUE };
+
+static void set_special_tooltip(void *town, BYTE *button, int building) {
+  BuildingKeyFn key_of = (BuildingKeyFn)vtable_entry(town, VT_TOWN_BUILDING_KEY);
+  if (!key_of) return;
+  NameString key = { NULL, NULL, NULL };
+  key_of(town, &key, building);
+  MapIterator it = { NULL, NULL };
+  if (key.begin && key.end > key.begin) g_mapFind((BYTE *)town + TOWN_BUILDING_MAP, &it, &key);
+  if (key.begin) g_nameFree(key.begin);
+  if (!it.node) { log_num("town button: no record in the town's map for building ", building); return; }
+  void *text = g_levelName((BYTE *)it.node + NODE_RECORD, 1);
+  // The button's IWindow base, as the engine reaches it: `[button+4]` is its vbtable, `+8` in it the displacement.
+  BYTE *vb = *(BYTE **)(button + 4);
+  if (!readable(vb, 12)) return;
+  BYTE *window = button + 4 + *(int *)(vb + 8);
+  SetValueFn set_value = (SetValueFn)vtable_entry(window, VT_WINDOW_SET_VALUE);
+  if (!set_value) return;
+  set_value(window, &SPECIAL_VALUE_NAME, text);
+}
+
+// ---------------------------------------------------------------------------
 // The button, after the engine has given up on it.
 
 static void __fastcall update_special_hook(void *screen) {
@@ -332,6 +384,7 @@ static void __fastcall update_special_hook(void *screen) {
   SetStateFn set_state = (SetStateFn)vtable_entry(button, VT_BUTTON_SET_STATE);
   if (!set_state) return;
   set_state(button, row->state);
+  set_special_tooltip(town, (BYTE *)button, row->building);
   int built = g_enableByBuilding(screen, &SPECIAL_WIDGET_NAME, row->building);
   log_num("town button: state ", row->state);
   log_num("town button:   building ", row->building);
@@ -345,7 +398,11 @@ static int install_town_buttons(void) {
   g_hasBuilding = (HasBuildingFn)code_at(HAS_BUILDING_RVA, HAS_BUILDING_HEAD, sizeof HAS_BUILDING_HEAD, "has building");
   g_rtDynamicCast = (RtDynamicCastFn)code_at(RT_DYNAMIC_CAST_RVA, RT_DYNAMIC_CAST_HEAD, sizeof RT_DYNAMIC_CAST_HEAD,
                                              "the dynamic cast");
+  g_mapFind = (MapFindFn)code_at(MAP_FIND_RVA, MAP_FIND_HEAD, sizeof MAP_FIND_HEAD, "the building map's lookup");
+  g_levelName = (LevelNameFn)code_at(LEVEL_NAME_RVA, LEVEL_NAME_HEAD, sizeof LEVEL_NAME_HEAD, "the building's level name");
+  g_nameFree = (EngineFreeFn)code_at(ENGINE_FREE_RVA, ENGINE_FREE_HEAD, sizeof ENGINE_FREE_HEAD, "the allocator's free");
   if (!g_registrar || !g_enableByBuilding || !g_hasBuilding || !g_rtDynamicCast) return 0;
+  if (!g_mapFind || !g_levelName || !g_nameFree) return 0;
   g_registerHandlers = (ScreenVoidFn)detour(REGISTER_HANDLERS_RVA, REGISTER_HANDLERS_HEAD, sizeof REGISTER_HANDLERS_HEAD,
                                             &register_handlers_hook, "town screen handlers");
   g_updateSpecial = (ScreenVoidFn)detour(UPDATE_SPECIAL_RVA, UPDATE_SPECIAL_HEAD, sizeof UPDATE_SPECIAL_HEAD,

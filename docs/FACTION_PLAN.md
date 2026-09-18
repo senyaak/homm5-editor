@@ -164,12 +164,13 @@ fully, in the probe, one launch per question.
   (engineInternals/FACTIONS.md, launches 22–27). **The faction's Lua is the
   mod's, on every map** (`TownSpec.script` → `scripts/homm5-editor/
   faction-<file>.lua`, loaded by the mod's `advmap-common.lua`), never a
-  map's own script — launch 28, another map: "Value was NIL" at every click. Not yet: the tooltip's
-  `<value=special>` (the building's name — four unmeasured calls).
+  map's own script — launch 28, another map: "Value was NIL" at every click.
+  The tooltip's `<value=special>` is the building's name for its level
+  (launch 30). Nothing of the button is left.
   **Still unknown:** the grail's common bonuses. Launch 20, the AI's first
   turn, crashed — not the tree: the ceiling patcher had raised the wrong
   table's accessor (engineInternals/FACTIONS.md, "The table half").
-- **1c. Magic — READ (2026-09-17), nothing launched.** Two separate
+- **1c. Magic — BUILT (2026-09-18); launch 35 showed the mechanism (orc header, orc book, the hall built) and an EMPTY hall — the effect is a row of the compiled feature table, now the extension's (`native/faction/town-features.c`, `BuildingEdit.grants`; engineInternals/FACTIONS.md, "the table behind every special building"); launch 36 pending.** The sites are scanned, not listed: nineteen for the class (the three the list below lacks are the book chooser's), nine for the guild's side of the town; `native/faction/magic-kind.c` answers at all of them for `bin/homm5-editor-magic.txt`, the copier takes Stronghold's stubs and hall (`TownSpec.magic`, `BuildingEdit.from`), the probe's Test town shouts and the Knight is the A/B class. See engineInternals/FACTIONS.md, "Warcries: where the engine asks". The reading that led there, two separate
   things, and neither is a field of the town:
   - **The guild's spells.** The town's `MagicSchool_0/1` (shared `+0x124`,
     `+0x128`; Light/Dark when unset) are the two FAVOURED schools; a
@@ -212,12 +213,28 @@ fully, in the probe, one launch per question.
   type pointed at the name. **To launch:** is it lit (the lightmap is baked
   per ArenaDesc uid), picked, flown to. The probe puts the Necropolis graves
   on the shipyard's spot.
-- **1e. The exterior.** The ten stage models on the map: another town's,
-  or a mix by level, the way the siege mixes.
-- **1f. Texts.** Building names and descriptions, the town name, the
-  race's own name — written by the copy from the spec, the way the named
-  towns already are. **To find:** the text the town window's "Race:" line
-  reads, now that the type's name is honest.
+- **1e. The exterior — DONE (2026-09-18, launches 31–32).** `TownSpec.exterior`:
+  another town's whole `Exterior` or a mix per stage, gate named separately
+  (town-files.ts, `EXTERIOR_STAGES`). The stage is `0xAC7980`: hall ≤ 2 →
+  walls (0 none, 1 fort or citadel, 2 castle) + 3 with the guild; hall 3 →
+  6 + walls; hall 4 → 9. Launch 32 showed Necropolis, Dungeon and Haven
+  stages in turn. **Debt:** a black stripe before the entrance on the
+  Necropolis stages only — not looked into. **Found on the way:** the sign
+  over an owned town (`PlayerColourSchemes.xdb`, capture-marker.ts) — done,
+  the red skull stands over the town.
+- **1f. Texts — DONE (2026-09-18, launches 33–34).** Building names and
+  descriptions were already `BuildingEdit`; the race as such is
+  `TownSpec.race` (town-type-info.ts): the type's record in
+  `TownTypesInfo` copied from the donor and made ours — `textType` is
+  the "Race:" line and every place a type is written out
+  (`TownTypeFormats.xdb` is dead data, unread by the exe), the walls'
+  names out of the copy, four kingdom-overview icons drawn, the neutral
+  creature (the tier-2 base everywhere), silo income, native war machine,
+  moat damage and spells. **Music** is a row per `<race>` in
+  `Sounds/_(Music)/TableRaceMusic.xdb` — a type without one is silent
+  everywhere (launch 33); `race.music` names whose set to take. A
+  creature has FOUR icon sizes; the creature copy took only the 128 (the
+  hero window drew the donor's face over a recoloured creature).
 
 ### 2. Heroes
 
@@ -225,8 +242,10 @@ Heroes are already a thing the editor makes (`HeroSpec`, classes, skills,
 specializations); the faction reuses them. What is specific:
 
 - a hero of the race is one with `TownType` ours and `ScenarioHero` false,
-  listed in `Heroes/Any.xdb` (the random pool) — check that the hero
-  builder does the listing;
+  listed in `Heroes/Any.xdb` (the random pool). The hero builder writes the
+  two fields and does NOT list him — listing is membership, the faction's
+  business like `Towns/any.xdb`: `src/mods/shared-groups.ts` does both
+  (2026-09-18), the probe calls it, the faction entity (§5) will;
 - his class is one of ours or a shipped one; his starting army is the
   race's tier 1–3 base creatures (engine, works);
 - **spellbook or warcries** — item 1c's finding, applied per faction;

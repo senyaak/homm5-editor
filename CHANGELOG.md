@@ -67,8 +67,9 @@ pre-release.
   skin (drawn) and a ninth click to the game's `EnterSpecial` button
   (`src/mods/town-button.ts`), and the extension registers the click's
   message on the town screen, enables the button by the building's presence
-  the engine's own way and says `<function>("<town>")` to the map's Lua
-  (`native/faction/town-button.c`, `bin/homm5-editor-buildings.txt`).
+  the engine's own way, puts the building's name into its tooltip and says
+  `<function>("<town>")` to the map's Lua (`native/faction/town-button.c`,
+  `bin/homm5-editor-buildings.txt`).
 - `H5EMessageBox(text[, header])` for a map's Lua: a message box on the
   screen that is up — the town screen included — where the game's own
   `MessageBox` only queues one for the adventure screen. The extension's
@@ -76,6 +77,52 @@ pre-release.
 - A faction's adventure-map Lua (`TownSpec.script`) is a file of the
   mod's under `scripts/homm5-editor/`, loaded by the mod's global script on
   every map — where the button's function lives.
+- A faction's town looks like what it is told on the map: `TownSpec.exterior`
+  takes another shipped town's whole exterior or a MIX, a town per stage
+  (`EXTERIOR_STAGES`, the ten every town lists) plus whose gate, spliced into
+  the donor's document before the copy walks it (`test-town-exterior`).
+- A captured town of a faction carries its owner's colour and the race's
+  crest, like a shipped one: `src/mods/capture-marker.ts` draws the sign and
+  the flag in the eight player colours and puts the faction's item into every
+  record of `UI/RefTables/PlayerColourSchemes.xdb`, ninth, before the grey
+  one that mines and dwellings index (`test-capture-marker`).
+- A faction is a race in the game's own words: `TownSpec.race` names it
+  ("Race:" in the town window, the overview, the reports), gives the
+  resource silo's income, the native war machine, the moat and whose music
+  it plays — the type's record in `TownTypesInfo` and a row in the race
+  music table, both the donor's copied and made ours (town-type-info.ts).
+- A recoloured creature wears its own face everywhere: the creature copy
+  takes all four icon sizes, not only the 128 the hire screen shows.
+- The extension no longer speaks into a dead battle: the host it mirrors the
+  log into is forgotten when the engine closes the combat, and checked for
+  life before every line — opening the town screen after a fight crashed on
+  the freed host.
+- Membership in the game's random groups is one splice: `src/mods/
+  shared-groups.ts` seats a town in `Towns/any.xdb` and a hero in
+  `Heroes/Any.xdb` — the two lists a random town and a random hero of a
+  race are drawn from, and the only thing that makes either "of the race"
+  (`test-shared-groups`). A race with no hero listed starts with nothing.
+- A faction of warcries: `TownSpec.magic: 'warcries'` makes the town's guild
+  a hall — the guild's five records Stronghold's stubs, `TB_SPECIAL_1` three
+  levels (Stronghold's own through `BuildingEdit.from`, which takes any
+  building whole from another shipped town: records, texts, grid slot) —
+  and `HeroClassSpec.magic: 'warcries'` a class that shouts. The extension
+  answers "barbarian" for the class at the nineteen places the engine asks
+  and "Stronghold" for the town at the nine about its guild
+  (`native/faction/magic-kind.c`, `bin/homm5-editor-magic.txt`); the book,
+  the hall's teaching and the AI's casting follow. Two buildings on one grid
+  cell are refused now (`test-magic-kind`, `test-town-buildings`).
+- What a special building DOES is a row of one compiled table — forty-seven
+  `{feature, town, building, level}` rows behind the Library, the Hall of
+  Trial, the Capitol and every other shipped special — and the table is the
+  extension's now (`native/faction/town-features.c`): the engine's rows,
+  then a row per building of ours, the six readers pointed at the copy. A
+  building of ours grants any shipped building's effect
+  (`BuildingEdit.grants: { like: 'TOWN_ACADEMY', building: 'TB_SPECIAL_1' }`
+  for a Library of ours; `from` brings its source's; a hall of warcries
+  brings Stronghold's three tiers), written as `feature` rows of
+  `bin/homm5-editor-buildings.txt` (`test-town-features` reads the table
+  back out of the executable).
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were

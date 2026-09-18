@@ -111,6 +111,12 @@
 // whose door to the map's Lua it uses, and after race-order.c, whose word
 // reader it borrows.
 #include "faction/town-button.c"
+// A faction's magic — a class that shouts, a town whose guild is a hall: after
+// detour.c, whose overwrite it uses, and after race-order.c, whose reader.
+#include "faction/magic-kind.c"
+// What a building of ours does: the town-feature table, ours, after race-order.c
+// (its reader) and log.c.
+#include "faction/town-features.c"
 #include "net/ubi-log.c"
 #include "net/ubi-module-probe.c"
 #include "net/ubi-friends-probe.c"
@@ -340,6 +346,14 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // The town screen's centre button for a building of ours, one row per faction.
   load_town_buttons();
   if (g_townButtonCount && install_town_buttons()) log_line("town buttons: the special button is ours for a town of ours");
+  // Warcries for a class of ours and a hall for a town of ours: the sites where
+  // the engine asks "barbarian?" and "Stronghold?" answer for them too.
+  load_magic_kinds();
+  if ((g_warcryClassCount || g_hallTownCount) && install_magic_kinds()) log_line("magic: warcries answer for a class and a town of ours");
+  // The effects a building grants — the engine's own forty-seven and a row per
+  // building of ours — from one table that lives here.
+  load_town_features();
+  if (g_ownFeatureCount && install_town_features()) log_line("town features: a building of ours grants what its row says");
   // A probe, in a build that asks — `--log faction/start-probe`: what a race's
   // player, town and hero come out as at the start of a game.
   if (install_start_probe()) log_line("the start of a game is being watched");

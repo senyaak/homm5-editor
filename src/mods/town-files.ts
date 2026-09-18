@@ -25,20 +25,25 @@
 // creatures replace the first two, and the biome stock stays the game's.
 
 import { buildingGlyph, buildingIcon, raceIcon, specialButtonSkins, textureFiles, towerIcon, townIcon } from './faction-icons.ts';
+import { captureMarkerFiles } from './capture-marker.ts';
+import type { CaptureMarkerBuild } from './capture-marker.ts';
+import { buildingOrdinal } from './town-button.ts';
 import type { TownButton } from './town-button.ts';
+import type { RaceSpec } from './town-type-info.ts';
 import type { IconTheme } from './faction-icons.ts';
-import { copyArt, dataPath, resolve } from './mod-art.ts';
+import { grantedFeatures } from './town-features.ts';
+import type { Grant, OwnFeature } from './town-features.ts';
+import { copyArt, dataPath, resolve, uidFor } from './mod-art.ts';
 import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
 import { donorObjectsOf, placeBuildingModel } from './town-screen.ts';
 import type { BuildingModel } from './town-screen.ts';
 import { EOL, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
+import { TOWN_GROUP } from './shared-groups.ts';
+export { TOWN_GROUP };
 
 export const TOWN_CLASS = 'AdvMapTownShared';
 export const BUILD_CLASS = 'TownBuildDefinition';
-
-/** The random-town group: every town the game can put on a map by race. */
-export const TOWN_GROUP = 'MapObjects/_(AdvMapSharedGroup)/Towns/any.xdb';
 
 /** Where the editor's object palette lists towns. */
 export const TOWN_LINK_DIR = 'MapObjects/_(AdvMapObjectLink)/Towns';
@@ -67,6 +72,18 @@ export const TOWN_LEAVE = (rel: string): boolean =>
 /** `TOWN_HEAVEN`'s ordinal: the first real town, after none/random/neutral. */
 export const FIRST_REAL_TOWN = 3;
 
+/** The eight shipped towns by `TownType` name — the ordinal `town_buildings_N` and the tables key on. */
+export const SHIPPED_TOWN_ORDINALS: Readonly<Record<string, number>> = {
+  TOWN_HEAVEN: 3, TOWN_PRESERVE: 4, TOWN_ACADEMY: 5, TOWN_DUNGEON: 6,
+  TOWN_NECROMANCY: 7, TOWN_INFERNO: 8, TOWN_FORTRESS: 9, TOWN_STRONGHOLD: 10,
+};
+
+/** The guild's building type, and the hall's: Stronghold teaches its warcries from `TB_SPECIAL_1`, three levels. */
+export const GUILD_BUILDING = 'TB_MAGIC_GUILD';
+export const HALL_BUILDING = 'TB_SPECIAL_1';
+export const HALL_LEVELS = 3;
+export const HALL_DONOR = 'TOWN_STRONGHOLD';
+
 export interface TownSpec {
   /** Folder and file stem inside the mod. */
   file: string;
@@ -78,6 +95,19 @@ export interface TownSpec {
   name: string;
   /** The two schools its magic guild teaches; the donor's when absent. */
   magicSchools?: readonly [string, string];
+  /**
+   * What its heroes learn in it. `'guild'` (the default) is a magic guild
+   * teaching spells of `magicSchools`. `'warcries'` is a HALL: the guild's
+   * five records become the stubs Stronghold's are (never built, never shown
+   * — the engine wants a record per level), and `TB_SPECIAL_1` is the hall,
+   * three levels, teaching a warcry tier each — Stronghold's own through
+   * `buildings: { TB_SPECIAL_1: { from: 'TOWN_STRONGHOLD' } }`, or three
+   * levels of the donor's. The extension then answers "Stronghold" for the
+   * town wherever the engine asks whether the guild is a hall
+   * (native/faction/magic-kind.c); a hero shouts when his CLASS says so
+   * (hero-classes.ts). What needed the guild has to be re-parented.
+   */
+  magic?: 'guild' | 'warcries';
   /**
    * What the dwellings hire, by tier 1–7: the base creature for the dwelling
    * and its upgrade for the upgraded one (the expansion's second upgrade is
@@ -95,6 +125,15 @@ export interface TownSpec {
    * (the siege layout is the same eight times over), so the parts combine.
    */
   siege?: string | SiegeMix;
+  /**
+   * What the town looks like on the map: the `TownType` of a shipped town
+   * whose `Exterior` — its ten stage models with their effects and its gate
+   * geometry — replaces the donor's; or a MIX, a town per stage. The donor's
+   * own when absent. Every shipped town lists the same ten stages in the
+   * same order (`EXTERIOR_STAGES`), each one model and one effect, so the
+   * stages combine.
+   */
+  exterior?: string | ExteriorMix;
   /**
    * Who mans the towers: the Character that stands on them and the Shot it
    * fires, as hrefs. Every tower with a shooter gets this one; the donor's
@@ -117,6 +156,12 @@ export interface TownSpec {
    */
   buildings?: Readonly<Record<BuildingKey, BuildingEdit | null>>;
   /**
+   * The race as such — its name, the silo's income, the native war machine,
+   * the moat: the type's record in `TownTypesInfo` (town-type-info.ts). The
+   * donor's record under our type when absent, its name included.
+   */
+  race?: RaceSpec;
+  /**
    * The faction's adventure-map Lua, run on every map: where a building's
    * button function (`BuildingEdit.button.lua`) is defined. Loaded through
    * the mod's global script (town-button.ts, `factionScriptFile`).
@@ -135,6 +180,25 @@ export type Resource = 'Wood' | 'Ore' | 'Mercury' | 'Crystal' | 'Sulfur' | 'Gem'
 export const RESOURCES: readonly Resource[] = ['Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gem', 'Gold'];
 
 export interface BuildingEdit {
+  /**
+   * Take this building from another shipped town instead of the donor: the
+   * `TownType` whose records of this type, at EVERY level, replace the
+   * donor's in the list, with that town's slot on the build grid (cells and
+   * all, or none when that town has none). On the whole building's key
+   * (`TB_SPECIAL_1`), never a level's. What their records needed of their
+   * own town they need of ours — the donor's building of the same type and
+   * level, or the copy refuses until `requires` says otherwise. The rest of
+   * the edit applies to the records taken.
+   */
+  from?: string;
+  /**
+   * What it DOES: the compiled effect of a shipped town's building, level
+   * for level — the Library's spell, the Hall of Trial's warcry tiers
+   * (town-features.ts). A building taken with `from` grants what it granted
+   * there unless this says otherwise; `null` is a building with no effect.
+   * A record with no such row does nothing whatever the engine has.
+   */
+  grants?: Grant | null;
   /** Its name on the build screen; the donor's when absent. */
   name?: string;
   description?: string;
@@ -192,6 +256,28 @@ const SIEGE_PARTS: Record<Exclude<keyof SiegeMix, 'arena'>, readonly string[]> =
   moat: ['MOAT'],
 };
 
+/**
+ * The ten stages of a town on the map, in the order every shipped town lists
+ * them under `Exterior/upgrades` — named after the models' files
+ * (`Heaven-town_mg_wall1.xdb`): the hall's level (town, city, capital),
+ * the magic guild (`mg`) and the walls (1, 2).
+ */
+export const EXTERIOR_STAGES = [
+  'town', 'town_wall1', 'town_wall2', 'town_mg', 'town_mg_wall1', 'town_mg_wall2',
+  'city_mg', 'city_mg_wall1', 'city_mg_wall2', 'capital_mg_wall2',
+] as const;
+export type ExteriorStage = typeof EXTERIOR_STAGES[number];
+
+/**
+ * An exterior assembled from several towns: the town whose model and effect
+ * stand at each stage, the donor's at a stage left out; and whose gate
+ * geometry the AI walks through — the donor's when absent.
+ */
+export interface ExteriorMix {
+  stages: Partial<Record<ExteriorStage, string>>;
+  gates?: string;
+}
+
 export interface TownPaths {
   dir: string;
   /** The town: `AdvMapTownShared`, ours. */
@@ -248,6 +334,8 @@ export function donorBuildDefinition(ordinal: number, read: DataReader): string 
 export interface TownBuild {
   files: ModFile[];
   paths: TownPaths;
+  /** The effects the faction's buildings grant, for the buildings file (`featureLines`). */
+  features: OwnFeature[];
   /** Source path → the copy's path, for whoever edits a building record next. */
   at: Map<string, string>;
   /** The building records that made it into the copy, by key. */
@@ -259,6 +347,8 @@ export interface TownBuild {
   raceIcon?: string;
   /** The siege tower on the initiative bar, likewise — for `ATB_TOWER_ICONS`. */
   towerIcon?: string;
+  /** The sign over an owned town and its flag, in every player's colour — for `patchColourSchemes` (capture-marker.ts). */
+  captureMarker?: CaptureMarkerBuild;
   /** The centre button's building, function and skins, for the faction to register (town-button.ts). */
   button?: Omit<TownButton, 'town'>;
 }
@@ -334,22 +424,105 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       seeded.set(arenaPath, arena);
     }
   }
+  // Another town's exterior goes in the same way, before the walk: the whole
+  // `AdvMapTownExterior`, or the donor's with a stage swapped for another
+  // town's item — every href in a part taken from elsewhere made absolute
+  // first, so the walk copies what the part names as it copies the rest.
+  if (spec.exterior) {
+    const whole = typeof spec.exterior === 'string' ? spec.exterior : null;
+    const mix: ExteriorMix = typeof spec.exterior === 'string' ? { stages: {} } : spec.exterior;
+    const exteriorFrom = (type: string): string => exteriorOf(type === spec.donor ? source : donorTown(type, read), read, type);
+    let exterior = exteriorFrom(whole ?? spec.donor);
+    const ours = stagesOf(exterior, whole ?? spec.donor);
+    for (const [stage, from] of Object.entries(mix.stages) as [ExteriorStage, string][]) {
+      const i = EXTERIOR_STAGES.indexOf(stage);
+      if (i < 0) throw new Error(`no exterior stage ${stage} — the ten are ${EXTERIOR_STAGES.join(', ')}`);
+      if (from === spec.donor) continue;
+      exterior = exterior.replace(ours[i]!, stagesOf(exteriorFrom(from), from)[i]!);
+    }
+    if (mix.gates && mix.gates !== spec.donor) {
+      exterior = exterior.replace(gatesOf(exterior, spec.donor), gatesOf(exteriorFrom(mix.gates), mix.gates));
+    }
+    const donor = seeded.get(source) ?? mustRead(read, source);
+    const [es, ee] = exteriorSpan(donor, spec.donor);
+    const id = `item_${uidFor(`exterior:${spec.file}`).toLowerCase()}`;
+    seeded.set(source, `${donor.slice(0, es)}<Exterior href="#n:inline(AdvMapTownExterior)" id="${id}">${EOL}\t\t${exterior}${EOL}\t</Exterior>${donor.slice(ee)}`);
+  }
   // A dropped building leaves the donor's list BEFORE the walk too, so its
   // record, its texts and its icon are never copied; and a re-parented one
   // has its dependencies rewritten before the walk as well, or the walk
   // would reach the dropped record through the old list. The grid loses
   // the building's cell here too (and the slot, when it was the last).
   let build = mustRead(read, donorBuildDefinition(donorOrdinal, read));
-  if (spec.buildings) {
-    const donor = seeded.get(source) ?? mustRead(read, source);
+  const edits = buildingEdits(spec);
+  if (edits) {
+    let donor = seeded.get(source) ?? mustRead(read, source);
+    // A building taken from another town goes into the donor's list BEFORE
+    // the walk, by absolute href, so the walk copies their records with the
+    // rest — structure preserved, so what they name of each other (the
+    // hall's second level needs its first) still resolves in the copy. What
+    // they name of THEIR town is repointed at the donor's building of the
+    // same type and level, or refused. The grid takes their slot whole.
+    for (const [key, edit] of Object.entries(edits)) {
+      if (!edit?.from || edit.from === spec.donor) continue;
+      const { type, level } = parseBuildingKey(key);
+      if (level !== 1) throw new Error(`${key}: \`from\` takes the whole building — name ${type}, not a level of it`);
+      const fromSource = donorTown(edit.from, read);
+      const theirs = listedBuildings(mustRead(read, fromSource), fromSource, read).filter((b) => b.type === type);
+      if (!theirs.length) throw new Error(`${edit.from} has no ${type} to take`);
+      const mine = listedBuildings(donor, source, read);
+      for (const b of theirs) {
+        let record = mustRead(read, b.path);
+        for (const dep of dependencyItems(record, b.path)) {
+          const [t, l] = typeAndLevel(mustRead(read, dep.path), dep.path);
+          if (t === type) continue;
+          const on = mine.find((m) => m.type === t && m.level === l);
+          if (!on) throw new Error(`${edit.from}'s ${b.key} needs ${buildingKey(t, l)}, which ${spec.donor} has not — re-parent it (requires)`);
+          record = record.replace(`href="${dep.href}"`, `href="/${on.path}#xpointer(/${BUILDING_RECORD})"`);
+        }
+        seeded.set(b.path, record);
+      }
+      // And the other way round: what needed the donor's building needs the
+      // one taken, at the same level — or the walk would still reach the
+      // donor's record through the dependency, and the copy would hold both.
+      const ours = mine.filter((b) => b.type === type);
+      for (const b of mine) {
+        if (b.type === type) continue;
+        let record = seeded.get(b.path) ?? mustRead(read, b.path);
+        let changed = false;
+        for (const dep of dependencyItems(record, b.path)) {
+          const was = ours.find((o) => o.path === dep.path);
+          if (!was) continue;
+          const now = theirs.find((t) => t.level === was.level);
+          if (!now) throw new Error(`${b.key} needs ${was.key}, and ${edit.from}'s ${type} has no level ${was.level} — re-parent it (requires)`);
+          record = record.replace(`href="${dep.href}"`, `href="/${now.path}#xpointer(/${BUILDING_RECORD})"`);
+          changed = true;
+        }
+        if (changed) seeded.set(b.path, record);
+      }
+      donor = swapListed(donor, ours, theirs.map((b) => `<Item href="/${b.path}#xpointer(/${BUILDING_RECORD})"/>`), `${type} in ${spec.donor}'s list`);
+      const fromOrdinal = SHIPPED_TOWN_ORDINALS[edit.from];
+      if (!fromOrdinal) throw new Error(`${edit.from} is not a shipped town — a building comes from one of ${Object.keys(SHIPPED_TOWN_ORDINALS).join(', ')}`);
+      build = replaceGridSlot(build, type, gridSlotText(mustRead(read, donorBuildDefinition(fromOrdinal, read)), type));
+    }
+    seeded.set(source, donor);
     const listed = listedBuildings(donor, source, read);
     const byKey = new Map(listed.map((b) => [b.key, b]));
     const dropped = new Set<string>();
-    for (const [key, edit] of Object.entries(spec.buildings)) {
+    for (const [key, edit] of Object.entries(edits)) {
       const { type, level } = parseBuildingKey(key);
       if (!byKey.has(key)) throw new Error(`${spec.donor} has no building ${key} — it has ${[...byKey.keys()].join(', ')}`);
       if (edit !== null) continue;
       for (const b of listed) if (b.type === type && b.level >= level) dropped.add(b.path);
+    }
+    // A hall's town has no guild to build: the records stay (stubs, like
+    // Stronghold's) but nothing may need them, exactly as if they were dropped.
+    const unbuildable = new Set(spec.magic === 'warcries' ? listed.filter((b) => b.type === GUILD_BUILDING).map((b) => b.path) : []);
+    if (spec.magic === 'warcries') {
+      const hall = listed.filter((b) => b.type === HALL_BUILDING && !dropped.has(b.path));
+      if (hall.length !== HALL_LEVELS) {
+        throw new Error(`${spec.file}: a hall is ${HALL_BUILDING} with ${HALL_LEVELS} levels — ${spec.donor}'s has ${hall.length}; take ${HALL_DONOR}'s (from) or give it three`);
+      }
     }
     const keyOf = new Map(listed.map((b) => [b.path, b.key]));
     let town = donor;
@@ -359,7 +532,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
         build = dropGridCell(build, b.type, b.level);
         continue;
       }
-      const requires = spec.buildings[b.key]?.requires;
+      const requires = edits[b.key]?.requires;
       if (requires) {
         const items = requires.map((dep) => {
           const on = byKey.get(dep);
@@ -373,8 +546,9 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
         seeded.set(b.path, record.replace(re, block));
         continue;
       }
-      for (const dep of dependenciesOf(mustRead(read, b.path), b.path)) {
+      for (const dep of dependenciesOf(seeded.get(b.path) ?? mustRead(read, b.path), b.path)) {
         if (dropped.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which is dropped — re-parent it (requires) or drop it too`);
+        if (unbuildable.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which a town of warcries never builds — re-parent it (requires)`);
       }
     }
     if (dropped.size) seeded.set(source, town);
@@ -405,6 +579,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     /<messagesFileRef>[\s\S]*?<\/messagesFileRef>/,
     `<messagesFileRef>${EOL}\t\t<Item href="/${p.name}"/>${EOL}\t</messagesFileRef>`,
   );
+  if (spec.magicSchools && spec.magic === 'warcries') throw new Error(`${spec.file}: a town of warcries has no guild to teach ${spec.magicSchools.join(' and ')}`);
   if (spec.magicSchools) {
     for (const [i, school] of spec.magicSchools.entries()) {
       town = town.replace(new RegExp(`<MagicSchool_${i}>[^<]*</MagicSchool_${i}>`), `<MagicSchool_${i}>${school}</MagicSchool_${i}>`);
@@ -445,7 +620,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   }
 
   // The tree's edits: what a record says, and where its cell is on the grid.
-  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+  for (const [key, edit] of Object.entries(edits ?? {})) {
     if (!edit) continue;
     const path = records.get(key);
     if (!path) throw new Error(`${key} is dropped, nothing to edit`);
@@ -475,10 +650,29 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     files.set(path, Buffer.from(text, 'latin1'));
   }
 
+  // After every drop, swap and move: no two buildings on one cell.
+  checkGridCells(build, spec.file);
+
+  // What the buildings do: a row per level of the shipped building each
+  // grant names, under our slot. A building taken from another town keeps
+  // its effect unless told otherwise; a hall of warcries is Stronghold's.
+  const features: OwnFeature[] = [];
+  for (const [key, edit] of Object.entries(edits ?? {})) {
+    if (!edit) continue;
+    const { type, level } = parseBuildingKey(key);
+    if (edit.grants === undefined && !edit.from) continue;
+    if (level !== 1) throw new Error(`${key}: an effect is the whole building's — name ${type}, not a level of it`);
+    if (edit.grants === null) continue;
+    features.push(...grantedFeatures(type, edit.grants ?? { like: edit.from! }, `${spec.file}: ${key}`, edit.grants === undefined));
+  }
+  if (spec.magic === 'warcries' && !features.some((f) => f.building === buildingOrdinal(HALL_BUILDING))) {
+    features.push(...grantedFeatures(HALL_BUILDING, { like: HALL_DONOR }, `${spec.file}: the hall`));
+  }
+
   // Models of ours in the town screen: placed, named, and every level of the
   // building pointed at the name.
   let donorObjects: Map<string, string> | null = null;
-  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+  for (const [key, edit] of Object.entries(edits ?? {})) {
     if (!edit?.model) continue;
     const { type } = parseBuildingKey(key);
     const interiorHref = hrefOf(town, 'Interior');
@@ -501,7 +695,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   }
 
   // The icons, drawn: one per building record, the town's two, the race's.
-  let race: string | undefined, tower: string | undefined;
+  let race: string | undefined, tower: string | undefined, captureMarker: CaptureMarkerBuild | undefined;
   if (spec.icons) {
     const theme = spec.icons;
     const put = (name: string, image: ReturnType<typeof townIcon>): string => {
@@ -512,6 +706,8 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     for (const path of records.values()) {
       const text = files.get(path)!.toString('latin1');
       const [type, level] = typeAndLevel(text, path);
+      // A stub — Stronghold's guild records, never shown — has no icon and keeps none.
+      if (/<Icon\/>/.test(text)) continue;
       const href = put(`${type.slice(3).toLowerCase()}_${level}`, buildingIcon(buildingGlyph(type, level), theme));
       files.set(path, Buffer.from(setHref(text, 'Icon', href, `${path} icon`), 'latin1'));
     }
@@ -520,11 +716,13 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     files.set(p.shared, Buffer.from(town, 'latin1'));
     race = put('race', raceIcon(theme)).replace(/#.*$/, '').slice(1);
     tower = put('tower', towerIcon(theme)).replace(/#.*$/, '').slice(1);
+    captureMarker = captureMarkerFiles(spec, theme, read);
+    for (const f of captureMarker.files) files.set(f.path, f.data);
   }
 
   // The centre button: one building's, its skins drawn from the theme.
   let button: Omit<TownButton, 'town'> | undefined;
-  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+  for (const [key, edit] of Object.entries(edits ?? {})) {
     if (!edit?.button) continue;
     if (button) throw new Error(`${spec.file}: two buildings want the centre button; the dial has one`);
     if (!spec.icons) throw new Error(`${spec.file}: a button needs the icon theme to draw its skins`);
@@ -541,9 +739,10 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
 
   return {
     files: [...files].map(([path, data]) => ({ path, data })),
-    paths: p, at: copy.at, records, stopped: copy.stopped, missing: copy.missing,
+    paths: p, at: copy.at, records, stopped: copy.stopped, missing: copy.missing, features,
     ...(race ? { raceIcon: race } : {}),
     ...(tower ? { towerIcon: tower } : {}),
+    ...(captureMarker ? { captureMarker } : {}),
     ...(button ? { button } : {}),
   };
 }
@@ -568,6 +767,65 @@ function buildingsOf(combat: string): { type: string; text: string }[] {
     if (type) out.push({ type, text: m[0] });
   }
   return out;
+}
+
+/** Where a town document's `Exterior` element begins and ends — inline with a body, or one line with an href. */
+function exteriorSpan(text: string, what: string): [number, number] {
+  const start = once(text, '<Exterior ', `${what} exterior`);
+  const oneLine = text.indexOf('/>', start), body = text.indexOf('>', start);
+  if (oneLine === body - 1) return [start, oneLine + '/>'.length];
+  return [start, once(text, '</Exterior>', `${what} exterior end`) + '</Exterior>'.length];
+}
+
+/**
+ * A town's `AdvMapTownExterior` element, whole, with every href in it made
+ * absolute — so it can stand in another document. Seven shipped towns write
+ * it inline in the shared document; Stronghold keeps it in a document of its
+ * own beside it.
+ */
+function exteriorOf(sharedPath: string, read: DataReader, what: string): string {
+  const shared = mustRead(read, sharedPath);
+  const href = hrefOf(shared, 'Exterior');
+  if (!href) throw new Error(`${what}: no <Exterior> in ${sharedPath}`);
+  let text: string, from: string;
+  if (href.startsWith('#n:inline')) {
+    const s = once(shared, '<AdvMapTownExterior', `${what} exterior`);
+    const e = once(shared, '</AdvMapTownExterior>', `${what} exterior end`) + '</AdvMapTownExterior>'.length;
+    text = shared.slice(s, e);
+    from = sharedPath;
+  } else {
+    const path = resolve(sharedPath, href);
+    if (!path) throw new Error(`${what}: the exterior's href ${href} names nothing`);
+    from = path;
+    const doc = mustRead(read, path);
+    const s = once(doc, '<AdvMapTownExterior', `${what} exterior`);
+    const e = once(doc, '</AdvMapTownExterior>', `${what} exterior end`) + '</AdvMapTownExterior>'.length;
+    text = doc.slice(s, e);
+  }
+  return text.replace(/href="([^"#][^"]*)"/g, (whole, h: string) => {
+    if (h.startsWith('/') || h.startsWith('\\')) return whole;
+    const target = resolve(from, h);
+    if (!target) return whole;
+    const hash = h.indexOf('#');
+    return `href="/${target}${hash < 0 ? '' : h.slice(hash)}"`;
+  });
+}
+
+/** The exterior's stage items, whole, in the shipped order — exactly ten. */
+function stagesOf(exterior: string, what: string): string[] {
+  const s = once(exterior, '<upgrades>', `${what} exterior stages`);
+  const e = once(exterior, '</upgrades>', `${what} exterior stages end`);
+  const items = [...exterior.slice(s, e).matchAll(/<Item>[\s\S]*?<\/Item>/g)].map((m) => m[0]);
+  if (items.length !== EXTERIOR_STAGES.length) throw new Error(`${what}'s exterior has ${items.length} stages, not ${EXTERIOR_STAGES.length}`);
+  return items;
+}
+
+/** The exterior's gate geometry element, whole — inline with a body, or one line with an href. */
+function gatesOf(exterior: string, what: string): string {
+  const start = once(exterior, '<Gates', `${what} exterior gates`);
+  const oneLine = exterior.indexOf('/>', start), body = exterior.indexOf('>', start);
+  if (oneLine === body - 1) return exterior.slice(start, oneLine + '/>'.length);
+  return exterior.slice(start, once(exterior, '</Gates>', `${what} exterior gates end`) + '</Gates>'.length);
 }
 
 // --- the building tree --------------------------------------------------------
@@ -617,6 +875,54 @@ function dependenciesOf(text: string, from: string): string[] {
   const m = /<dependencies>([\s\S]*?)<\/dependencies>/.exec(text);
   if (!m) return [];
   return [...m[1]!.matchAll(RECORD_ITEM)].map((i) => resolve(from, i[1]!)).filter((x): x is string => x !== null);
+}
+
+/** A record's dependency items: the href as written, and where it points. */
+function dependencyItems(text: string, from: string): { href: string; path: string }[] {
+  const m = /<dependencies>([\s\S]*?)<\/dependencies>/.exec(text);
+  if (!m) return [];
+  const out: { href: string; path: string }[] = [];
+  for (const i of m[1]!.matchAll(RECORD_ITEM)) {
+    const path = resolve(from, i[1]!);
+    if (path) out.push({ href: i[1]!, path });
+  }
+  return out;
+}
+
+/** The record class a building list names. */
+const BUILDING_RECORD = 'TownBuildingSharedStats';
+
+/**
+ * The town document's list with `ours` — the donor's items of one type —
+ * replaced by `lines`, in the first one's place; at the list's end when the
+ * donor had none of the type.
+ */
+function swapListed(town: string, ours: readonly ListedBuilding[], lines: readonly string[], what: string): string {
+  let out = town;
+  if (ours.length) {
+    const first = once(out, ours[0]!.item, what);
+    out = insertAfterLine(out, first, [...lines]);
+    for (const b of ours) out = dropLine(out, once(out, b.item, what));
+    return out;
+  }
+  return insertBeforeLine(out, once(out, '</buildings>', what), [...lines]);
+}
+
+/**
+ * The spec's building edits with what `magic` implies: a town of warcries
+ * takes Stronghold's guild — five stubs and an empty slot — unless the spec
+ * says where its own come from.
+ */
+function buildingEdits(spec: TownSpec): Readonly<Record<BuildingKey, BuildingEdit | null>> | undefined {
+  if (spec.magic !== 'warcries') return spec.buildings;
+  const guild = spec.buildings?.[GUILD_BUILDING];
+  if (guild === null) throw new Error(`${spec.file}: a town of warcries keeps the guild's records as stubs — do not drop ${GUILD_BUILDING}`);
+  // The stubs name texts the game does not ship: nothing shows them.
+  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
+    if (parseBuildingKey(key).type !== GUILD_BUILDING || !edit) continue;
+    if (edit.name !== undefined || edit.description !== undefined) throw new Error(`${spec.file}: a town of warcries never shows its guild — ${key} has no name to give`);
+  }
+  return { ...spec.buildings, [GUILD_BUILDING]: { from: HALL_DONOR, ...guild } };
 }
 
 /** The text without the line `at` falls on. */
@@ -669,6 +975,37 @@ export function moveGridCell(build: string, type: string, level: number, to: { x
     .replace(/<XSlotPos>\d+<\/XSlotPos>/, `<XSlotPos>${to.x}</XSlotPos>`)
     .replace(/<YSlotPos>\d+<\/YSlotPos>/, `<YSlotPos>${to.y}</YSlotPos>`);
   return build.slice(0, s) + slot.slice(0, cs) + cell + slot.slice(ce) + build.slice(e);
+}
+
+/** A grid's slot for `type` as text, lines and all; null when it has none. */
+export function gridSlotText(build: string, type: string): string | null {
+  const span = gridSlot(build, type);
+  return span ? build.slice(span[0], span[1]) : null;
+}
+
+/** The grid with its slot for `type` replaced by `slot` — added at the end when it had none, removed when `slot` is null. */
+export function replaceGridSlot(build: string, type: string, slot: string | null): string {
+  const span = gridSlot(build, type);
+  if (span) return build.slice(0, span[0]) + (slot ?? '') + build.slice(span[1]);
+  if (!slot) return build;
+  const end = build.indexOf('\n\t</slots>');
+  if (end < 0) throw new Error('build grid: no </slots>');
+  return build.slice(0, end + 1) + slot + build.slice(end + 1);
+}
+
+/** Every cell on the grid: two buildings on one cell is a grid the screen cannot draw. */
+export function checkGridCells(build: string, what: string): void {
+  const at = new Map<string, string>();
+  const slots = /<BuildingType>(TB_\w+)<\/BuildingType>\s*(?:<buildings\/>|<buildings>([\s\S]*?)<\/buildings>)/g;
+  for (const slot of build.matchAll(slots)) {
+    const type = slot[1]!;
+    for (const cell of (slot[2] ?? '').matchAll(/<XSlotPos>(\d+)<\/XSlotPos>\s*<YSlotPos>(\d+)<\/YSlotPos>/g)) {
+      const pos = `${cell[1]},${cell[2]}`;
+      const other = at.get(pos);
+      if (other && other !== type) throw new Error(`${what}: ${type} and ${other} share grid cell ${pos} — move one (slot)`);
+      at.set(pos, type);
+    }
+  }
 }
 
 /** The palette entry: a link file pointing at our town. */
