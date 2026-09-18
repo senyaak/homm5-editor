@@ -42,6 +42,13 @@ export interface FactionSpec extends TownSpec {
    * no town to draw and its player is out before the first turn.
    */
   towns: NamedTown[];
+  /**
+   * Who mans the siege towers: a creature of the mod, by id. Resolved at
+   * build time to the Character its visual names and the Shot it fires —
+   * the mod's own copies, recolouring and all — which is what
+   * `siegeShooter` holds; a spec that gives `siegeShooter` outright keeps it.
+   */
+  shooter?: string;
 }
 
 /** One in a mod: a spec plus the ordinal it holds. */

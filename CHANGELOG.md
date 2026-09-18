@@ -29,6 +29,21 @@ pre-release.
   longer replaces the HUD's line about the map just opened (or generated) —
   it is added to it. The palette's background scan got fast enough to land
   while that line was still being read.
+- **Factions…** — a town type of our own, authored in a window: a shipped town
+  is the start ("Fill from donor"), its building tree lands on a grid drawn
+  like the game's build screen (one building per cell, its upgrades stacked, a
+  dependency an arrow from the cell above), and every edit — a building
+  dropped, renamed, repriced, moved, given the dial's centre button and a Lua
+  function, taken whole from another town — is a diff the copier applies. The
+  rest of the faction is beside it: which creatures the dwellings hire, whose
+  siege parts and exterior stages, the race (name, silo, war machine, music,
+  moat), drawn icons, a town without magic, named towns. Installing sets the
+  four numbers in the executable (town types, named towns, generator rows,
+  the picker's clamp) and writes the extension's races, buildings and magic
+  files whole; removing the last faction puts all of them back. The town
+  copier no longer refuses Necropolis as a donor (its Ruined Tower depends on
+  Sylvan's fort in the shipped data). `tools/test-faction-mod.ts`,
+  `tools/test-faction-limit.ts`, e2e 014.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

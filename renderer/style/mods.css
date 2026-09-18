@@ -102,3 +102,43 @@ button.he-file { margin-left: 6px; flex: 0 0 auto; }
 .hc-sides select { width: 100%; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
   color: #c9d1d9; font-size: 12px; padding: 4px; }
 .hc-buttons { display: flex; flex-direction: column; gap: 6px; }
+
+/* Factions: the build grid the town screen draws, five by six, and the
+   editor of the cell that was clicked beside it. A cell shows the building
+   standing on it — one per cell; its upgrade levels stack as small marks —
+   and a dropped one is struck through. */
+.fc-card { width: min(1240px, 96vw); }
+.fc-grid-wrap { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: start; }
+.fc-grid { display: grid; grid-template-columns: repeat(5, 92px); grid-auto-rows: 64px; gap: 6px; }
+.fc-cell { position: relative; border: 1px solid #30363d; border-radius: 6px; background: #0d1014; cursor: pointer;
+  padding: 4px 6px; font-size: 11px; color: #c9d1d9; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
+.fc-cell:hover { border-color: #58a6ff; }
+.fc-cell.on { border-color: #1f6feb; box-shadow: 0 0 0 1px #1f6feb inset; }
+.fc-cell.empty { color: #6e7681; justify-content: center; align-items: center; }
+.fc-cell.dropped { text-decoration: line-through; color: #6e7681; }
+.fc-cell.from { border-style: dashed; }
+.fc-cell .fc-type { color: #8b949e; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-cell .fc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fc-cell .fc-levels { display: flex; gap: 3px; }
+.fc-cell .fc-levels i { font-style: normal; font-size: 9px; padding: 0 3px; border: 1px solid #30363d; border-radius: 3px; color: #8b949e; }
+.fc-cell .fc-levels i.edited { border-color: #d29922; color: #d29922; }
+.fc-cell .fc-arrow { position: absolute; top: 1px; right: 4px; color: #58a6ff; font-size: 10px; }
+.fc-cell-editor { min-width: 0; font-size: 12px; }
+.fc-cell-editor .on-row { margin-top: 5px; }
+.fc-cell-editor .on-row span { flex: 0 0 90px; }
+.fc-cell-editor textarea { flex: 1; min-height: 44px; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+  padding: 4px 6px; color: #c9d1d9; font-size: 12px; font-family: inherit; }
+.fc-level-tabs { display: flex; gap: 6px; margin-top: 6px; }
+.fc-level-tabs button { padding: 2px 8px; }
+.fc-level-tabs button.on { border-color: #1f6feb; color: #e6edf3; }
+.fc-tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
+.fc-tiers .on-row span { flex: 0 0 78px; }
+.fc-resources { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
+.fc-resources label { display: flex; flex-direction: column; font-size: 10px; color: #8b949e; width: 64px; }
+.fc-resources input { width: 100%; box-sizing: border-box; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+  padding: 3px 6px; color: #c9d1d9; font-size: 12px; }
+.fc-rows { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
+.fc-rows .on-row input, .fc-rows .on-row select { flex: 1; min-width: 0; }
+.fc-rows .on-row .narrow { flex: 0 0 70px; }
+.fc-script { width: 100%; min-height: 90px; box-sizing: border-box; background: #0d1014; border: 1px solid #30363d; border-radius: 6px;
+  padding: 6px 8px; color: #c9d1d9; font-size: 12px; font-family: ui-monospace, Consolas, monospace; }

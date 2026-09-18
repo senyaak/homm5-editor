@@ -144,6 +144,9 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   const art: Record<string, number> = {};
   const missing: string[] = [];
 
+  // What each creature's visual names for a siege tower: the Character that
+  // stands on it and the Shot it fires — the mod's copies (faction-files.ts).
+  const shooters = new Map<string, { character: string; shot: string }>();
   for (const c of mod.creatures) {
     const p = creaturePaths(c);
     let visual = mustRead(read, c.visualSource);
@@ -184,6 +187,11 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     }
 
     files.push({ path: p.visual, data: Buffer.from(creatureVisual(visual, p, c.visualSource), 'latin1') });
+    {
+      const character = hrefOf(visual, 'AnimCharacter');
+      const shot = hrefOf(visual, 'AnimShot');
+      if (character && shot) shooters.set(c.id, { character, shot });
+    }
     files.push({ path: p.monster, data: Buffer.from(monsterShared(monster, p, c), 'latin1') });
     // The palette entry. Its icon names the creature's own 128px texture, which
     // the art copy already put in the mod: the editor's thumbnail cache is keyed
@@ -208,7 +216,7 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   // types.xml, UIGameRoot, the global script — are patched below, on the one
   // copy of each the mod carries (faction-files.ts).
   const factionBuild: FactionBuild | null = (mod.factions ?? []).length
-    ? buildFactions(mod.factions!, mod.heroes ?? [], read)
+    ? buildFactions(mod.factions!, mod.heroes ?? [], shooters, read)
     : null;
   if (factionBuild) {
     files.push(...factionBuild.files);

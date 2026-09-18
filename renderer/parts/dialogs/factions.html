@@ -1,0 +1,131 @@
+  <!-- factions: a twelfth town type and everything the engine indexes by it.
+       Game-global like the other mod windows: no map need be open. The list
+       is what is installed; the form, opened on top, is the whole faction —
+       a shipped town filled in as the start, then edited: its building tree
+       on a grid like the game's own build screen, its creatures, its siege,
+       its exterior, its race, its named towns, its Lua. -->
+  <dialog id="facmod">
+    <div class="mp-card um-card">
+      <div class="mp-head">
+        <span class="mp-title">Factions</span>
+        <button id="fac-close" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <div class="um-note">A faction is a town type of our own: a shipped town copied and made ours, a race, named towns, a hero pool, a picker tile — and four numbers in the executable, set on install.</div>
+        <fieldset>
+          <legend>Installed</legend>
+          <div id="fac-list" class="um-mods"></div>
+        </fieldset>
+        <div class="de-foot" style="padding:0;justify-content:flex-start">
+          <button id="fac-new">New faction…</button>
+        </div>
+        <div id="fac-note" class="um-note"></div>
+        <div id="fac-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="fac-cancel" class="ghost">Close</button>
+      </div>
+    </div>
+  </dialog>
+
+  <!-- The form, on top of the list. -->
+  <dialog id="facedit">
+    <div class="mp-card um-card fc-card">
+      <div class="mp-head">
+        <span class="mp-title" id="facedit-title">New faction</span>
+        <button id="facedit-x" title="close (Esc)">✕</button>
+      </div>
+      <div class="mp-body on-body um-body">
+        <div id="fac-editing" class="um-editing"></div>
+        <fieldset>
+          <legend>The faction</legend>
+          <div class="on-body um-form">
+            <label class="on-row"><span>Identifier<b class="req">*</b></span><input id="fac-file" type="text" spellcheck="false" autocomplete="off" placeholder="letters and digits, e.g. BoneCourt" title="names its folder in the mod, its town type (TOWN_BONE_COURT) and every file"></label>
+            <label class="on-row"><span>Type</span><input id="fac-type" type="text" readonly title="the ETownType value the identifier gives — what maps store"></label>
+            <label class="on-row"><span>Race<b class="req">*</b></span><input id="fac-race-name" type="text" placeholder="the “Race:” line, the picker's tooltip"></label>
+            <label class="on-row"><span>Town<b class="req">*</b></span><input id="fac-name" type="text" placeholder="what a town of it is called on the map"></label>
+            <!-- The donor is the START: everything below is filled from it in
+                 one press and stays editable. It is also what the copy is
+                 made of, so it is kept. -->
+            <div class="on-row um-span">
+              <span>Donor</span>
+              <select id="fac-donor" title="the shipped town the faction's town is a copy of"></select>
+              <button id="fac-fill" class="ghost" title="fill the building tree, the race and the rest from the donor; each stays editable afterwards">Fill from donor</button>
+              <span id="fac-donor-note" class="um-note" style="flex:1;min-width:0"></span>
+            </div>
+            <label class="on-row"><span>Magic</span><select id="fac-magic" title="a guild teaching spells, or a town without magic (the guild's slot empty, its button dark)">
+              <option value="guild">magic guild</option>
+              <option value="none">none — no guild</option>
+            </select></label>
+            <div class="on-row" id="fac-schools-row"><span>Schools</span><select id="fac-school-1"></select><select id="fac-school-2"></select></div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Buildings — the grid the build screen draws</legend>
+          <div class="um-note">One building per cell; its upgrades stack on it unless a level is given a cell of its own. A dependency is a cell above in the same column with nothing between (the arrow). Click a cell to edit it.</div>
+          <div class="fc-grid-wrap">
+            <div id="fac-grid" class="fc-grid"></div>
+            <div id="fac-cell" class="fc-cell-editor">
+              <div class="um-empty">no cell chosen</div>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Creatures — what the dwellings hire</legend>
+          <div class="um-note">A tier left as “the donor's” keeps hiring the donor's creature. The creatures are the mod's own (Units…).</div>
+          <div id="fac-dwellings" class="fc-tiers"></div>
+          <label class="on-row um-span" style="margin-top:6px"><span>Towers</span><select id="fac-shooter" title="who mans the siege towers: a creature of the mod, or the donor's"></select></label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Siege and exterior — whose parts</legend>
+          <div class="on-body um-form">
+            <label class="on-row"><span>Arena</span><select id="fac-siege-arena" class="fc-town"></select></label>
+            <label class="on-row"><span>Walls</span><select id="fac-siege-walls" class="fc-town"></select></label>
+            <label class="on-row"><span>Gate</span><select id="fac-siege-gate" class="fc-town"></select></label>
+            <label class="on-row"><span>Towers</span><select id="fac-siege-towers" class="fc-town"></select></label>
+            <label class="on-row"><span>Moat</span><select id="fac-siege-moat" class="fc-town"></select></label>
+            <label class="on-row"><span>Exterior</span><select id="fac-exterior" class="fc-town" title="whose ten stage models the town shows on the map"></select></label>
+            <label class="on-row"><span>Gates</span><select id="fac-exterior-gates" class="fc-town" title="whose gate geometry the AI walks through"></select></label>
+            <details class="um-span he-art"><summary>Exterior, stage by stage</summary><div id="fac-stages" class="fc-tiers"></div></details>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>The race</legend>
+          <div class="on-body um-form">
+            <label class="on-row"><span>Machine</span><select id="fac-machine" title="the native war machine — what the blacksmith sells at the ordinary price"></select></label>
+            <label class="on-row"><span>Music</span><select id="fac-music" class="fc-town" title="whose music the race plays; a race without any is silent"></select></label>
+            <div class="on-row um-span"><span>Silo</span><div id="fac-silo" class="fc-resources"></div></div>
+            <label class="on-row"><span>Moat dmg</span><input id="fac-moat-damage" type="number" min="0" placeholder="donor's"></label>
+            <div class="on-row um-span"><span>Moat spells</span><div id="fac-moat-spells" class="fc-rows"></div><button id="fac-moat-add" class="ghost">+</button></div>
+            <label class="on-row um-span"><span>Icons</span>
+              <input id="fac-icons" type="checkbox" title="draw the town's icons in a theme instead of keeping the donor's">
+              <span style="flex:0 0 auto">draw in a theme:</span>
+              <input id="fac-icon-field" type="color" value="#3a1c42" title="field"><input id="fac-icon-rim" type="color" value="#c4a046" title="rim"><input id="fac-icon-ink" type="color" value="#e8dec4" title="ink"><input id="fac-icon-accent" type="color" value="#82cdc3" title="accent">
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Named towns — what a random town of the race is called</legend>
+          <div id="fac-towns" class="fc-rows"></div>
+          <div class="de-foot" style="padding:4px 0 0;justify-content:flex-start"><button id="fac-town-add" class="ghost">Add a town</button></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Lua — on every map</legend>
+          <textarea id="fac-script" class="fc-script" spellcheck="false" placeholder="function BonePit(town) H5EMessageBox(&quot;/Factions/…/texts/click.txt&quot;); end;"></textarea>
+        </fieldset>
+
+        <div id="fac-missing" class="um-note"></div>
+        <div id="fac-form-err" class="on-err"></div>
+      </div>
+      <div class="de-foot">
+        <button id="fac-form-cancel" class="ghost">Cancel</button>
+        <button id="fac-ok" disabled>Save</button>
+      </div>
+    </div>
+  </dialog>

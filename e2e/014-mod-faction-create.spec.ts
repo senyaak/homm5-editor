@@ -1,0 +1,263 @@
+// A faction, authored through the window: the donor's tree on the grid, a
+// building dropped, one renamed and given a button, a town without magic, a
+// named town, a script — saved, read back off disk, edited, removed.
+//
+// What the probe (_tmp/town12-probe.ts) wrote by hand for the Bone Court,
+// this makes through the palette; the archive, the extension's files and the
+// executable's four numbers are then read back the way the game would read
+// them. Standing alone: the faction needs nothing another stage authored —
+// every tier hires the donor's creature, the towers keep the donor's shooter.
+//
+// Every press goes through `press`, which asserts the renderer threw nothing
+// and no error line lit up BEFORE the next expectation waits on anything:
+// a handler that died leaves the form exactly as it was, and the next
+// `toBeVisible` would then sit out its timeout over a message already on
+// screen.
+//
+// Its own game install (HOMM5_ROOT, e2e/mods.ts), so the real one is untouched.
+
+import { test, expect } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { closeEditor, launchEditor } from './launch.ts';
+import type { Launched } from './launch.ts';
+import { modGameRoot, readInstalledMod } from './mods.ts';
+import { readEntries } from '../src/format/pak.ts';
+import { modFile } from '../src/game/mod-paths.ts';
+import { MOD_STEM } from '../src/mods/mod-files.ts';
+import { PATCHED_EXE } from '../src/exe/creature-limit.ts';
+import { findClamp } from '../src/exe/faction-limit.ts';
+import { TOWN_SPEC_TABLE, TOWN_TYPE_TABLE, readTableLimit } from '../src/exe/table-limit.ts';
+import { RACES_FILE } from '../src/mods/race-order.ts';
+import { BUILDINGS_FILE } from '../src/mods/town-button.ts';
+
+let ed: Launched;
+const GAME = modGameRoot();
+const FILE = 'E2eBone';
+const TYPE = 'TOWN_E2E_BONE';
+
+/** A press that is checked at once: no renderer error, no error line in either dialog. */
+async function press(page: Page, target: Locator): Promise<void> {
+  await expect(target).toBeVisible();
+  await target.click();
+  expect(ed.errors, 'the renderer threw nothing on that press').toEqual([]);
+  for (const id of ['#fac-err', '#fac-form-err']) {
+    const line = page.locator(id);
+    if (await line.isVisible()) await expect(line, `${id} stayed empty`).toHaveText('');
+  }
+}
+
+const cell = (page: Page, x: number, y: number): Locator => page.locator(`#fac-grid .fc-cell[data-x="${x}"][data-y="${y}"]`);
+
+/** The four numbers in the sandbox's executable. */
+function exeNumbers(): { towns: number | null; specs: number | null; clamp: number } {
+  const buf = readFileSync(join(GAME, PATCHED_EXE));
+  return { towns: readTableLimit(buf, TOWN_TYPE_TABLE).limit, specs: readTableLimit(buf, TOWN_SPEC_TABLE).limit, clamp: buf[findClamp(buf)]! };
+}
+
+test.beforeAll(async () => { ed = await launchEditor({ HOMM5_ROOT: GAME }); });
+test.afterAll(async () => { await closeEditor(ed); });
+
+test('the window opens on what is installed, and a blank form says what it needs', { tag: '@game' }, async () => {
+  const { page } = ed;
+  await press(page, page.locator('#facbtn'));
+  await expect(page.locator('#facmod')).toBeVisible();
+  await expect(page.locator('#fac-list')).toContainText('none yet');
+
+  await press(page, page.locator('#fac-new'));
+  await expect(page.locator('#facedit')).toBeVisible();
+  await expect(page.locator('#fac-ok')).toBeDisabled();
+  await expect(page.locator('#fac-missing')).toHaveText(/identifier.*race.*town name.*donor.*named town/);
+  // The eight donors, in the ordinals' order, Haven first.
+  await expect(page.locator('#fac-donor option')).toHaveCount(8);
+  await expect(page.locator('#fac-donor option').first()).toHaveText('Haven');
+  // The grid is drawn empty until the donor's tree is loaded.
+  await expect(page.locator('#fac-grid .fc-cell')).toHaveCount(30);
+  await expect(page.locator('#fac-grid .fc-cell.empty')).toHaveCount(30);
+});
+
+test('the identifier names the type; the donor fills the grid', { tag: '@game' }, async () => {
+  const { page } = ed;
+  await page.locator('#fac-file').fill(FILE);
+  await expect(page.locator('#fac-type')).toHaveValue(TYPE);
+  await page.locator('#fac-race-name').fill('Bone Court');
+  await page.locator('#fac-name').fill('Ossuary Town');
+
+  await press(page, page.locator('#fac-fill'));
+  await expect(page.locator('#fac-donor-note')).toContainText(/\d+ building records of TOWN_HEAVEN/);
+  // Haven's grid, as shipped: the hall at 1,1 with its levels down the
+  // column, the guild at 4,2 with five levels stacked, the shipyard at 5,5.
+  await expect(cell(page, 1, 1)).toContainText('TOWN_HALL');
+  await expect(cell(page, 1, 1).locator('.fc-levels i')).toHaveCount(1);
+  await expect(cell(page, 4, 2)).toContainText('MAGIC_GUILD');
+  await expect(cell(page, 4, 2).locator('.fc-levels i')).toHaveCount(5);
+  await expect(cell(page, 5, 5)).toContainText('SHIPYARD');
+  await expect(cell(page, 2, 6)).toContainText('GRAIL');
+  // Still not enough: a named town.
+  await expect(page.locator('#fac-ok')).toBeDisabled();
+  await expect(page.locator('#fac-missing')).toHaveText(/named town/);
+});
+
+test('a building is dropped, another renamed, priced and given a button', { tag: '@game' }, async () => {
+  const { page } = ed;
+  // The shipyard goes.
+  await press(page, cell(page, 5, 5));
+  await expect(page.locator('#fac-cell')).toContainText('TB_SHIPYARD');
+  await press(page, page.locator('#fac-cell button', { hasText: 'drop the building' }));
+  await expect(cell(page, 5, 5)).toHaveClass(/dropped/);
+  await expect(page.locator('#fac-cell')).toContainText('DROPPED');
+
+  // Haven's training grounds become the Bone Pit: renamed, cheaper, earlier,
+  // and the dial's centre button opens it through a Lua function.
+  await press(page, cell(page, 5, 3));
+  await expect(page.locator('#fac-cell')).toContainText('TB_SPECIAL_1');
+  const editor = page.locator('#fac-cell');
+  await editor.locator('input[placeholder]').first().fill('Bone Pit');   // Name
+  await editor.locator('input[placeholder]').first().dispatchEvent('change');
+  await expect(cell(page, 5, 3)).toContainText('Bone Pit');
+  await expect(cell(page, 5, 3).locator('.fc-levels i.edited')).toHaveCount(1);
+  const gold = editor.locator('.fc-resources input').last();
+  await gold.fill('2000');
+  await gold.dispatchEvent('change');
+  await editor.locator('select').nth(1).selectOption('3');               // Town level (after Needs)
+  const lua = editor.locator('input[placeholder="no button"]');
+  await lua.fill('BonePit');
+  await lua.dispatchEvent('change');
+
+  // The special beside it needs the pit (Haven's own tree): the dependency
+  // picker offers the cell above in the same column.
+  await press(page, cell(page, 5, 4));
+  await expect(page.locator('#fac-cell')).toContainText('TB_SPECIAL_2');
+  await expect(editor.locator('select').first()).toHaveValue('TB_SPECIAL_1');
+  expect(ed.errors).toEqual([]);
+});
+
+test('a town without magic, a named town, a script — and it saves', { tag: '@game' }, async () => {
+  test.setTimeout(10 * 60_000);
+  const { page } = ed;
+  await page.locator('#fac-magic').selectOption('none');
+  await expect(page.locator('#fac-schools-row')).toBeHidden();
+
+  await press(page, page.locator('#fac-town-add'));
+  await expect(page.locator('#fac-towns .fc-town-row')).toHaveCount(1);
+  await page.locator('#fac-towns .town-file').fill('Ossuary');
+  await page.locator('#fac-towns .town-name').fill('The Ossuary');
+  await page.locator('#fac-towns .town-bio').fill('Where the bones are kept.');
+  await page.locator('#fac-script').fill('function BonePit(town)\n  H5ELog(1);\nend;');
+  await expect(page.locator('#fac-missing')).toHaveText('');
+  await expect(page.locator('#fac-ok')).toBeEnabled();
+
+  // Haven's Monastery needs the guild, and a town without magic never builds
+  // one: the copier refuses, by name, and the form shows the refusal rather
+  // than closing over it.
+  await page.locator('#fac-ok').click();
+  await expect(page.locator('#fac-form-err')).toContainText('TB_DWELLING_5 needs TB_MAGIC_GUILD', { timeout: 300_000 });
+  await expect(page.locator('#facedit')).toBeVisible();
+  expect(ed.errors).toEqual([]);
+  // Re-parented to nothing — the column above it holds only the guild.
+  await press(page, cell(page, 4, 4));
+  await expect(page.locator('#fac-cell')).toContainText('TB_DWELLING_5');
+  await page.locator('#fac-cell select').first().selectOption('');
+  await expect(cell(page, 4, 4).locator('.fc-arrow')).toHaveCount(0);
+
+  await press(page, page.locator('#fac-ok'));
+  // The town copy is the donor's whole closure: a while.
+  await expect(page.locator('#facedit')).toBeHidden({ timeout: 300_000 });
+  await expect(page.locator('#fac-form-err')).toHaveText('');
+  await expect(page.locator('#fac-note')).toContainText(`${TYPE} = 11`);
+  await expect(page.locator('#fac-note')).toContainText('town types 12');
+  await expect(page.locator('#fac-list')).toContainText('Bone Court');
+  await expect(page.locator('#fac-list')).toContainText(TYPE);
+  expect(ed.errors).toEqual([]);
+});
+
+test('what landed on disk is the faction as the form said it', { tag: '@game' }, async () => {
+  const mod = readInstalledMod(GAME);
+  const f = mod.factions?.[0];
+  expect(f, 'the manifest carries the faction').toBeTruthy();
+  expect(f!.type).toBe(TYPE);
+  expect(f!.number).toBe(11);
+  expect(f!.donor).toBe('TOWN_HEAVEN');
+  expect(f!.magic).toBe('none');
+  expect(f!.race?.name).toBe('Bone Court');
+  expect(f!.towns).toEqual([{ file: 'Ossuary', name: 'The Ossuary', biography: 'Where the bones are kept.', bonus: 'TOWN_NO_BONUS' }]);
+  expect(f!.buildings?.TB_SHIPYARD).toBeNull();
+  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 3, button: { lua: 'BonePit' } });
+  expect(f!.buildings?.TB_DWELLING_5).toEqual({ requires: [] });
+  expect(f!.script).toContain('function BonePit');
+
+  const names = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM))).map((e) => e.name.split('\\').join('/'));
+  const has = (p: string | RegExp): boolean => names.some((n) => (typeof p === 'string' ? n === p : p.test(n)));
+  expect(has(`Factions/${FILE}/${FILE}.(AdvMapTownShared).xdb`), 'the town').toBe(true);
+  expect(has(`Factions/${FILE}/race.txt`), 'the race name').toBe(true);
+  expect(has(`Factions/${FILE}/towns/Ossuary.xdb`), 'the named town').toBe(true);
+  expect(has(`scripts/homm5-editor/faction-${FILE}.lua`), 'the script').toBe(true);
+  expect(has(`Factions/${FILE}/town/GameMechanics/TownBuildingSharedStats/Haven/Shipyard/Shipyard.xdb`), "the shipyard's record was never copied").toBe(false);
+  expect(names.some((n) => /^Factions\/E2eBone\/town\/GameMechanics\/TownBuildingSharedStats\/Haven\/Special_1\//.test(n)), "the pit's record was").toBe(true);
+  const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
+  const text = (p: string): string => entries.find((e) => e.name.split('\\').join('/') === p)!.data.toString('latin1');
+  expect(text('types.xml')).toContain(`<Item>${TYPE}</Item>`);
+  expect(text('types.xml')).toContain('<Item>RACE_E2E_BONE</Item>');
+  expect(text('UI/UIGameRoot.(UIGameRoot).xdb')).toContain('<ID>town_buildings_8</ID>');
+  expect(text('GameMechanics/RefTables/TownTypesInfo.xdb')).toContain(`<ID>${TYPE}</ID>`);
+
+  // The extension's files beside the executable, and the executable itself.
+  const races = readFileSync(join(GAME, RACES_FILE), 'latin1');
+  expect(races.split('\n').filter((l) => l.startsWith('race ')).length).toBe(9);
+  expect(races).toContain(`race 11 ${TYPE} race_e2ebone race_tooltip_e2ebone`);
+  const buildings = readFileSync(join(GAME, BUILDINGS_FILE), 'latin1');
+  expect(buildings).toMatch(/^button 11 \d+ \d+ BonePit$/m);
+  expect(exeNumbers()).toEqual({ towns: 12, specs: 256, clamp: 8 });
+});
+
+test('editing reloads the tree with the edits over it, and saving keeps the ordinal', { tag: '@game' }, async () => {
+  test.setTimeout(10 * 60_000);
+  const { page } = ed;
+  await press(page, page.locator('#fac-list .um-item button[title*="change it"]').first());
+  await expect(page.locator('#facedit')).toBeVisible();
+  await expect(page.locator('#fac-file')).toHaveValue(FILE);
+  await expect(page.locator('#fac-file')).toHaveAttribute('readonly', '');
+  await expect(page.locator('#fac-editing')).toContainText('ordinal 11');
+  await expect(page.locator('#fac-magic')).toHaveValue('none');
+  await expect(page.locator('#fac-donor-note')).toContainText('building records of TOWN_HEAVEN');
+  await expect(cell(page, 5, 5)).toHaveClass(/dropped/);
+  await expect(cell(page, 5, 3)).toContainText('Bone Pit');
+  await expect(page.locator('#fac-towns .town-name')).toHaveValue('The Ossuary');
+
+  // One more named town, and the shipyard is kept after all.
+  await press(page, page.locator('#fac-town-add'));
+  await page.locator('#fac-towns .town-file').nth(1).fill('Charnel');
+  await page.locator('#fac-towns .town-name').nth(1).fill('Charnel House');
+  await press(page, cell(page, 5, 5));
+  await press(page, page.locator('#fac-cell button', { hasText: 'keep it' }));
+  await expect(cell(page, 5, 5)).not.toHaveClass(/dropped/);
+
+  await press(page, page.locator('#fac-ok'));
+  await expect(page.locator('#facedit')).toBeHidden({ timeout: 300_000 });
+  await expect(page.locator('#fac-note')).toContainText(`${TYPE} = 11`);
+  const f = readInstalledMod(GAME).factions?.[0];
+  expect(f?.number).toBe(11);
+  expect(f?.towns.length).toBe(2);
+  expect(f?.buildings?.TB_SHIPYARD, 'kept: no edit at all').toBeUndefined();
+  expect(exeNumbers()).toEqual({ towns: 12, specs: 257, clamp: 8 });
+  expect(ed.errors).toEqual([]);
+});
+
+test('removing it puts the shipped numbers back', { tag: '@game' }, async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  await press(page, page.locator('#fac-list .um-item button[title="remove it from the mod"]').first());
+  await expect(page.locator('#ask')).toBeVisible();
+  await press(page, page.locator('#ask-yes'));
+  await expect(page.locator('#fac-list')).toContainText('none yet', { timeout: 120_000 });
+  // The faction was the mod's only content when this spec runs alone, and a
+  // mod of nothing is an archive removed; run after the other stages, the
+  // archive stays and simply lists no faction.
+  if (existsSync(modFile(GAME, 'mod', MOD_STEM))) expect(readInstalledMod(GAME).factions ?? []).toEqual([]);
+  expect(existsSync(join(GAME, PATCHED_EXE))).toBe(true);
+  expect(exeNumbers()).toEqual({ towns: 11, specs: 255, clamp: 7 });
+  const races = readFileSync(join(GAME, RACES_FILE), 'latin1');
+  expect(races.split('\n').filter((l) => l.startsWith('race ')).length).toBe(8);
+  expect(ed.errors).toEqual([]);
+});

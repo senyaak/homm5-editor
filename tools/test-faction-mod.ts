@@ -29,6 +29,7 @@ import { HERO_GROUP, TOWN_GROUP, groupMembers } from '../src/mods/shared-groups.
 import { COMMON_SCRIPT } from '../src/mods/artifact-scripts.ts';
 import { factionScriptPath } from '../src/mods/town-button.ts';
 import { BONE_ON_PLUM } from '../src/mods/faction-icons.ts';
+import { readTownTree } from '../src/mods/town-tree.ts';
 import { dataDir } from './game-dir.ts';
 import type { BuildReport } from '../src/mods/mod-files.ts';
 
@@ -80,6 +81,22 @@ console.log('the model');
   removeFaction(mod, 'Alpha');
   check('the ones after a removal move down', mod.factions!.length === 1 && mod.factions![0]!.number === SHIPPED_TOWN_TYPES);
   check('the grid is five by six', GRID.columns === 5 && GRID.rows === 6);
+}
+
+console.log('the tree, read for the form');
+{
+  const haven = readTownTree('TOWN_HEAVEN', read);
+  const at = (key: string) => haven.buildings.find((b) => b.key === key);
+  check('Haven lists thirty-six records', haven.buildings.length === 36, String(haven.buildings.length));
+  check("the hall's levels have cells of their own down the column", at('TB_TOWN_HALL')?.cell?.x === 1 && at('TB_TOWN_HALL/2')?.cell?.y === 2 && at('TB_TOWN_HALL/4')?.cell?.y === 6);
+  check("a dwelling's upgrade stacks on its cell", JSON.stringify(at('TB_DWELLING_1')?.cell) === JSON.stringify(at('TB_DWELLING_1/2')?.cell));
+  check('a level needs the one below it', at('TB_TOWN_HALL/3')?.requires.join() === 'TB_TOWN_HALL/2');
+  check('a dependency is named by key', at('TB_DWELLING_5')?.requires.join() === 'TB_MAGIC_GUILD');
+  check("the record's words, cost and level are read", !!at('TB_DWELLING_3')?.name && at('TB_DWELLING_3')?.cost.Gold === 1500 && at('TB_DWELLING_3')?.devLevel === 3);
+  check('a dwelling names its creature', at('TB_DWELLING_1')?.creature === 'CREATURE_PEASANT');
+  const necro = readTownTree('TOWN_NECROMANCY', read);
+  check('a dependency on a record the town never lists is left out', necro.buildings.every((b) => b.requires.every((r) => necro.buildings.some((x) => x.key === r))));
+  throws('a town that is not shipped is refused', () => readTownTree('TOWN_TEST', read), 'not a shipped town');
 }
 
 console.log('the build, one faction');

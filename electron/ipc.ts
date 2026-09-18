@@ -21,6 +21,8 @@ import type { ActorView, ShotView } from '../src/dialog/play.ts';
 import type { SceneSource } from '../src/dialog/scene-source.ts';
 import type { RmgResolvedOrder, RmgWish } from '../src/rmg/service.ts';
 import type { RmgTemplate } from '../src/rmg/template.ts';
+import type { FactionSpec } from '../src/mods/factions.ts';
+import type { TownTree } from '../src/mods/town-tree.ts';
 export type { PlaceableObject } from '../src/map/objects.ts';
 
 /**
@@ -1235,6 +1237,11 @@ export interface ModListEntry {
    */
   spells: ModSpellDTO[];
   /**
+   * Its factions — whole, like the rest: the form is filled from this list.
+   * `?? []` for a manifest from before factions existed.
+   */
+  factions: ModFactionDTO[];
+  /**
    * Its buildings — everything a hero walks up to, one of sixteen classes each.
    *
    * The WHOLE building, for the reason a hero is whole here: this list is where
@@ -1717,6 +1724,55 @@ export interface BuildingPresetDTO {
   fields: Record<string, string | string[]>;
 }
 
+/** One faction of an installed mod, as `mods:list` reports it: the spec whole, plus its ordinal. */
+export interface ModFactionDTO extends FactionSpec {
+  number: number;
+}
+
+/** A shipped town a faction can start from. */
+export interface FactionDonorDTO {
+  /** `TOWN_HEAVEN`… */
+  type: string;
+  /** What a player calls it. */
+  label: string;
+  /** Its ordinal — what `town_buildings_N` keys on. */
+  ordinal: number;
+}
+
+/** Result of `mods:faction-data` — everything the Factions window is built from. */
+export interface ModsFactionDataResult {
+  donors: FactionDonorDTO[];
+  /** Every `TB_*` the grid can hold, in the enum's order. */
+  buildingTypes: string[];
+  /** `TOWN_BONUS_*`, for a named town. */
+  bonuses: string[];
+  /** `WAR_MACHINE_*`, for the race's native machine. */
+  warMachines: string[];
+  /** The spells a moat can cast, and the masteries. */
+  spells: RosterEntryDTO[];
+  masteries: string[];
+  /** The mod's own creatures, for the dwellings and the towers. */
+  creatures: RosterEntryDTO[];
+  /** The ten exterior stages, in the engine's order. */
+  exteriorStages: string[];
+}
+
+/** Payload of `mods:faction-tree`: a shipped town's building tree, for "fill from donor". */
+export interface ModsFactionTreePayload { donor: string; }
+export type FactionTreeDTO = TownTree;
+
+/** Payload of `mods:install-faction` / `mods:update-faction`: the spec as the form holds it. */
+export type ModsFactionPayload = FactionSpec;
+export interface ModsRemoveFactionPayload { file: string; }
+export interface ModsFactionResult {
+  archive: string;
+  file: string;
+  type: string;
+  number: number;
+  /** What the executable's four numbers were set to, in words. */
+  exe: string;
+}
+
 /** Result of `mods:building-data` — everything the Buildings window is built from. */
 export interface ModsBuildingDataResult {
   classes: BuildingClassDTO[];
@@ -2117,6 +2173,16 @@ export interface EditorApi {
   updateBuilding(p: ModsBuildingPayload): Promise<ModsBuildingResult>;
   /** Take a building out of the mod, with its art. */
   removeBuilding(p: ModsRemoveBuildingPayload): Promise<ModsBuildingResult>;
+  /** The donors, enums and rosters the Factions window is built from. */
+  factionData(): Promise<ModsFactionDataResult>;
+  /** A shipped town's building tree — what "fill from donor" fills the grid with. */
+  factionTree(donor: string): Promise<FactionTreeDTO>;
+  /** Add a faction to OUR mod, build it, install it, set the ceilings. */
+  installFaction(p: ModsFactionPayload): Promise<ModsFactionResult>;
+  /** Change a faction already in the mod. Its identifier and ordinal do not move. */
+  updateFaction(p: ModsFactionPayload): Promise<ModsFactionResult>;
+  /** Take a faction out of the mod. */
+  removeFaction(p: ModsRemoveFactionPayload): Promise<ModsFactionResult>;
   /** Add a creature to OUR mod, build it, install it, patch the ceiling. */
   installMod(p: ModsInstallPayload): Promise<ModsInstallResult>;
   /** Change a creature already in the mod. Its id and number do not move. */

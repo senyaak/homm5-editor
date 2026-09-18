@@ -57,6 +57,7 @@ export function registerModsList(): void {
       // `?? []` for the same reason the sets have it: a mod installed before
       // buildings existed has a manifest without the field, and it stays listable.
       buildings: (f.mod.buildings ?? []).map((b) => ({ ...b })),
+      factions: (f.mod.factions ?? []).map((x) => ({ ...x })),
       specializations: (f.mod.specializations ?? []).map((s) => ({ ...s })),
       classes: (f.mod.classes ?? []).map((c) => ({ ...c })),
       skills: (f.mod.skills ?? []).map((s) => ({ ...s })),

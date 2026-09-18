@@ -90,7 +90,12 @@ export function pickerNames(f: Pick<ModFaction, 'file'>): { texture: string; too
  * all of them. `heroes` is the mod's, for the random-hero pool — a hero of
  * the type, not a scenario one, is seated in `Heroes/Any`.
  */
-export function buildFactions(factions: readonly ModFaction[], heroes: readonly HeroSpec[], read: DataReader): FactionBuild {
+export function buildFactions(
+  factions: readonly ModFaction[], heroes: readonly HeroSpec[],
+  /** The mod's creatures' Character and Shot, by id — what a `shooter` resolves to. */
+  shooters: ReadonlyMap<string, { character: string; shot: string }>,
+  read: DataReader,
+): FactionBuild {
   const files: ModFile[] = [];
   const stopped: string[] = [];
   const missing: string[] = [];
@@ -111,9 +116,15 @@ export function buildFactions(factions: readonly ModFaction[], heroes: readonly 
   const features: string[] = [];
   const picker: PickerRace[] = SHIPPED_PICKER_ORDER.map((name) => ({ name, town: shippedOrdinal(name) }));
 
-  for (const f of factions) {
-    const donorOrdinal = SHIPPED_TOWN_ORDINALS[f.donor];
-    if (!donorOrdinal) throw new Error(`${f.file}: ${f.donor} is not a shipped town`);
+  for (const given of factions) {
+    const donorOrdinal = SHIPPED_TOWN_ORDINALS[given.donor];
+    if (!donorOrdinal) throw new Error(`${given.file}: ${given.donor} is not a shipped town`);
+    let f = given;
+    if (given.shooter && !given.siegeShooter) {
+      const shooter = shooters.get(given.shooter);
+      if (!shooter) throw new Error(`${given.file}: the towers' shooter ${given.shooter} is not a creature of the mod`);
+      f = { ...given, siegeShooter: shooter };
+    }
     const town = buildTown(f, donorOrdinal, read);
     files.push(...town.files);
     stopped.push(...town.stopped);

@@ -10,6 +10,7 @@ import { $, $button } from '#core/dom.ts';
 /** The error line belonging to each form, as opposed to its list's. */
 const FORM_ERR: Record<string, string> = {
   unitedit: 'ue-err', artedit: 'ae-err', setedit: 'as-err', classedit: 'hc-err', skilledit: 'hk-err',
+  facedit: 'fac-form-err',
 };
 
 /** The dialog with this id — checked, so a wrong id fails where it is written. */
