@@ -116,8 +116,9 @@ function fxSummary(): { batches: number; copies: number; alive: number; atlases:
  * the shadow pass move it) but what each kind of thing costs in calls, which
  * is the question a draw-call number by itself never answers.
  */
-function drawBreakdown(): Record<string, { meshes: number; draws: number; instances: number }> {
-  const out: Record<string, { meshes: number; draws: number; instances: number }> = {};
+function drawBreakdown(): Record<string, { meshes: number; draws: number; instances: number; materials: number; merged: number }> {
+  const out: Record<string, { meshes: number; draws: number; instances: number; materials: number; merged: number }> = {};
+  const mats = new Map<string, Set<THREE.Material>>();
   const hidden = new Set<THREE.Object3D>();
   scene.traverse((o) => {
     if (!o.visible || (o.parent && hidden.has(o.parent))) { hidden.add(o); return; }
@@ -131,9 +132,15 @@ function drawBreakdown(): Record<string, { meshes: number; draws: number; instan
         ? (shader.uniforms.uAtlas ? 'effects' : shader.uniforms.uGround ? (shader.uniforms.uMask ? 'terrain splat' : 'projected parts') : `shader ${o.name || 'other'}`)
         : `${mat?.type ?? 'no material'}${o.name ? ` ${o.name}` : ''}`;
     const draws = m.geometry.groups.length || 1;
-    const e = out[kind] ??= { meshes: 0, draws: 0, instances: 0 };
+    const e = out[kind] ??= { meshes: 0, draws: 0, instances: 0, materials: 0, merged: 0 };
     e.meshes++; e.draws += draws; e.instances += m.isInstancedMesh ? m.count ?? 1 : 1;
+    // Draws the mesh would issue if its parts sharing a material were one group.
+    e.merged += Array.isArray(m.material) ? new Set(m.geometry.groups.map((g) => (m.material as THREE.Material[])[g.materialIndex ?? 0])).size : 1;
+    for (const x of Array.isArray(m.material) ? m.material : [m.material]) (mats.get(kind) ?? mats.set(kind, new Set()).get(kind)!).add(x);
   });
+  // How many DISTINCT materials those draws switch between: the floor under
+  // any batching by material.
+  for (const [kind, set] of mats) out[kind]!.materials = set.size;
   return out;
 }
 

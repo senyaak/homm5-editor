@@ -300,6 +300,17 @@ view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
 * With both off, `render` is ~3 ms for 608 calls, ~5 µs a call: three's
   per-call CPU. Fewer calls (merging materials across geoms, `BatchedMesh`)
   is the remaining lever there — and the largest one left in the frame.
+  **Counted** (2026-09-18, `view.perf().draws`): on A2C1M1 the 604 calls
+  were 330 from 124 static batches (2006 objects), 203 from 51 creature
+  kinds, 112 effects, the terrain and the sky — and a model's PARTS sharing
+  a material were a draw each: 330 draws over 235 materials, 203 over 122.
+  `geometryFor` lays parts of one material out contiguously and makes one
+  group of them: **604 → 427**, pixel-identical. What is left is one draw
+  per distinct material per model; fewer would take one material across
+  models — a `BatchedMesh` with instances, which three r160 does not have
+  (its BatchedMesh copies the geometry per object; instancing of a
+  geometry inside a batch arrived in r165+), so that step is a three
+  upgrade first.
 * `map:load` is 11.6 s. The worst number on the page, and not in a frame.
 
 ### 7a. Under a map no designer would make (`tools/perf-stress.ts`, 2026-09-17)

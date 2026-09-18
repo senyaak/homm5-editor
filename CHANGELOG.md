@@ -87,6 +87,9 @@ pre-release.
 - The scene payload's numbers are rounded by arithmetic instead of through
   `toFixed` strings (a quarter of a second per map), and `view.perf()`
   reports the scene's draws by what issues them.
+- A model's meshes that wear the same material are one draw call instead
+  of one each — a building's walls, a tree's branches. A2C1M1: 604 → 427
+  draw calls a frame, the picture unchanged.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

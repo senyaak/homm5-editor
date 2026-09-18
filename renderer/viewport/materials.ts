@@ -211,6 +211,17 @@ export function partTexture(pic: Picture | CompressedPicture): THREE.Texture {
 }
 
 /**
+ * What decides a part's material, as a string: two parts with the same key
+ * draw with the same material object (`materialFor` caches by it), and so
+ * can be one draw (`geometryFor` merges them).
+ */
+export function materialKey(part: GeomPart): string {
+  if (!part.tex) return `none|${part.terrainProjected ? 'hole' : 'grey'}`;
+  const decal = part.projectOnTerrain && part.flat;
+  return `${part.alphaMode}|${part.projectOnTerrain ? 'draped' : 'rigid'}|${decal ? 'decal' : 'body'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}${part.twoSided ? '2s' : ''}${part.card ? 'card' : ''}|${pictureKey(part.tex)}`;
+}
+
+/**
  * Material for one submesh: its own texture, blended as its material says.
  *
  * The mode comes from the file's <AlphaMode>, not from inspecting the texels.
@@ -233,7 +244,7 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
   // same texture in the same blend mode is a depth-writing body on one mesh
   // and a decal on another.
   const decal = part.projectOnTerrain && part.flat;
-  const key = `${sky ? 'sky|' : ''}${part.alphaMode}|${part.projectOnTerrain ? 'draped' : 'rigid'}|${decal ? 'decal' : 'body'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}${part.twoSided ? '2s' : ''}${part.card ? 'card' : ''}|${pictureKey(part.tex)}`;
+  const key = `${sky ? 'sky|' : ''}${materialKey(part)}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   const tx = partTexture(part.tex);
@@ -385,10 +396,42 @@ export function geometryFor(g: GeomData): THREE.BufferGeometry {
   const b = new THREE.BufferGeometry();
   b.setAttribute('position', new THREE.BufferAttribute(new Float32Array(g.pos), 3));
   if (g.uv) b.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(g.uv), 2));
-  b.setIndex(g.idx);
-  // A group per submesh, indexed into the material array. Drawn as one group
-  // instead, every mesh of a building took whichever texture came first.
-  g.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
+  // A group per MATERIAL, indexed into the per-part material array by the
+  // first part that uses it. A group is a draw call, and a model's meshes
+  // often wear one texture several times over — a building's walls, a
+  // tree's branches — which drawn as a group each was 330 calls for the 235
+  // materials of A2C1M1's static batches, and 203 for 122 among the
+  // creatures. Parts sharing a material are laid out contiguously in the
+  // index buffer so one group can cover them; the material array itself
+  // stays per part, which is how the rest of the renderer addresses it
+  // (an effect's card switched off by its part index, a draped part's
+  // material replaced by its index), and a merged group's parts share the
+  // material object those writes go to. Drawn as ONE group instead, every
+  // mesh of a building took whichever texture came first.
+  const keys = g.parts.map((p) => materialKey(p));
+  const groups: number[][] = [];
+  const byKey = new Map<string, number>();
+  keys.forEach((k, i) => {
+    let at = byKey.get(k);
+    if (at === undefined) { at = groups.length; byKey.set(k, at); groups.push([]); }
+    groups[at]!.push(i);
+  });
+  if (groups.length === g.parts.length) {
+    b.setIndex(g.idx);
+    g.parts.forEach((p, i) => b.addGroup(p.start, p.count, i));
+  } else {
+    const idx = new Array<number>(g.idx.length);
+    let at = 0;
+    for (const members of groups) {
+      const start = at;
+      for (const i of members) {
+        const p = g.parts[i]!;
+        for (let k = p.start; k < p.start + p.count; k++) idx[at++] = g.idx[k]!;
+      }
+      b.addGroup(start, at - start, members[0]!);
+    }
+    b.setIndex(idx);
+  }
   // Which vertices drape over the ground, as a per-vertex flag (drape.ts). The
   // colour pass knows it per part, from the part's own material; the SHADOW
   // pass draws the whole model with one depth material and has no part to ask,
