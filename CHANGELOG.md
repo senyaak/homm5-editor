@@ -48,6 +48,12 @@ pre-release.
 - The shadow map is redrawn when something in it changed — an object placed,
   moved or removed, the sun, the view — or every half second, not every
   frame. A creature's breathing does not count; its shadow stands.
+- A particle frame travels as its texels and lands in one RGBA atlas per
+  frame table, shared by every effect that wears the same frames — instead of
+  two PNGs per frame decoded through a canvas into two textures per batch.
+  On A2C1M1 the atlases are 38 MB where they were 146 (224 textures → 58),
+  and the frame's texels are in the main process once per file, not once
+  per effect that names it.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

@@ -13,8 +13,8 @@
 > p95 — under vsync with every effect playing. 82 baked recordings on the
 > GPU take 24 MB (§3.3, done as recording-per-uid tables rather than the
 > composite-period tables first planned: 23 MB against 148). What remains is
-> §7 — not effects — and 3.6 (atlases as RGBA, halving the 146 MB), which
-> was never in this slice's three steps. Fold the surviving facts into
+> §7 — not effects. 3.6 (atlases as RGBA), never in this slice's three
+> steps, is in too (2026-09-18): 146 → 38 MB. Fold the surviving facts into
 > [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) and retire this file.
 
 Reading first: [docs/EFFECTS_FORMAT.md](docs/EFFECTS_FORMAT.md) (what the data
@@ -289,10 +289,10 @@ view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
 * **Since then (2026-09-18):** every creature of a kind on a floor is one
   draw (`SkinnedInstances`, c06e3c8) — the creature stress map 2990 → 790
   calls, JS 18 → ~8 ms; and the shadow map is redrawn only when something
-  in it changed (d3aabf4) — A2C1M1 JS 4.5 → **3.2 ms**. What is left, in
-  order: the effect batches' state changes and their canvas atlases (3.6),
-  the static batches' 229 calls (BatchedMesh), load-time bakes off the main
-  thread, and the per-edit map serialisation (§7a).
+  in it changed (d3aabf4) — A2C1M1 JS 4.5 → **3.2 ms**. Then 3.6 (below).
+  What is left, in order: the static batches' 229 calls (BatchedMesh),
+  load-time bakes off the main thread, and the per-edit map serialisation
+  (§7a).
 * **The shadow pass was ~1.3 ms** of `render` (3.7 with the bodies) — a second submission of every
   caster. Fewer casters (animated bodies at rest pose, or none of them), or a
   shadow map that is only redrawn when something moved, since nothing but
@@ -339,6 +339,22 @@ What it says, in the order it matters:
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,
   the first a few. Not a frame problem, but the drop-from-palette lag on a
   big map is this.
-* 3.6 — atlases as RGBA typed arrays instead of PNG data-URIs — would halve
+* ~~3.6 — atlases as RGBA typed arrays instead of PNG data-URIs — would halve
   the 146 MB and the 3338 image decodes on load; never in this slice's three
-  steps, still worth its half day.
+  steps, still worth its half day.~~ **Done** (2026-09-18). A frame travels
+  as its straight-alpha texels (`FxFrame`, one object per distinct file —
+  the IPC's structured clone keeps that identity, 492 references → 114
+  objects on A2C1M1, 2.6 MB), and the renderer builds ONE RGBA atlas per
+  frame table, keyed by the frames' content and shared: 224 textures →
+  58, **146 → 38 MB**, the GPU process 324 → 211 MB; no canvas, no PNG
+  encode in the main process (the frame is decoded once per file now, it
+  was once per effect naming it), no image decodes in the renderer; the
+  atlas bytes are dropped after upload. The frame itself is unchanged
+  (masks and crops against the previous build match, grass included), and
+  the JS side is where it was — the atlases were never in the frame, they
+  were in memory and in the load. On the mix stress map (2000 objects, 528
+  batches over 270 effects): 1056 textures / 478 MB → 203 / 131 MB, the
+  GPU process 450 → 284 MB — and the tab's RSS still 3.1 GB against an
+  850 MB heap, so the atlases were a fifth of what lives outside the
+  heap; the rest is still to be named (decoded model textures three keeps
+  as images after upload is the next suspect).

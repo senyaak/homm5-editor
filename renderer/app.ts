@@ -587,9 +587,10 @@ interface ViewApi {
    * chased), the draw calls and triangles of the last frame, three's texture
    * and geometry counts, and the particle side summed over the active floor —
    * batches and the copies in them, particle slots and alive particles
-   * (per batch, summed), atlas textures and their bytes as uploaded, and how
-   * many of those atlases are DISTINCT objects (copies of one effect building
-   * their own was the 311 MB in SLICE_fx_performance.md).
+   * (per batch, summed), the atlases the batches hold, and how many DISTINCT
+   * textures those are with their bytes as uploaded (copies of one effect
+   * building their own was the 311 MB in SLICE_fx_performance.md; batches
+   * with one frame table now share one).
    * `loaf` is Chromium's own attribution of the long frames, newest last.
    */
   perf(): {
@@ -603,6 +604,8 @@ interface ViewApi {
     sections: Record<string, { p50: number; p95: number; max: number }>;
     fx: {
       batches: number; copies: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number;
+      /** The frame objects the floor's payloads hold: references, distinct objects, and their bytes. */
+      frames: { refs: number; objects: number; bytes: number };
       /** The baked recordings on the GPU, one per effect uid: how many, entries, bytes. */
       tables: number; tableEntries: number; tableBytes: number;
     };

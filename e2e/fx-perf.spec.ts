@@ -45,6 +45,7 @@ const line = (tag: string, p: Perf): string =>
   + ` · ${p.calls} calls · ${p.triangles} tris · ${p.textures} textures`
   + ` · fx ${p.fx.copies} copies in ${p.fx.batches} batches, ${p.fx.alive} alive,`
   + ` ${p.fx.atlases} atlases (${p.fx.distinctAtlases} distinct) = ${mb(p.fx.atlasBytes)},`
+  + ` ${p.fx.frames.refs} frames (${p.fx.frames.objects} objects) = ${mb(p.fx.frames.bytes)},`
   + ` ${p.fx.tables} tables = ${mb(p.fx.tableBytes)}`
   + ` · idle ${p.idle.bodies} bodies over ${p.idle.tables} tables = ${mb(p.idle.tableBytes)}`
   + ` · shadow redraws ${p.shadow.redraws} (${p.shadow.dirty} asked) in ${p.frames} frames`;
@@ -79,7 +80,7 @@ test('A2C1M1: the frame with effects on and off', { tag: '@data' }, async () => 
   await page.waitForFunction(() => window.view.idle().fx > 0, null, { timeout: 60_000 });
   await page.waitForFunction(() => {
     const p = window.view.perf();
-    return p.fx.batches > 0 && p.fx.atlases === p.fx.batches * 2;
+    return p.fx.batches > 0 && p.fx.atlases === p.fx.batches;
   }, null, { timeout: 120_000 });
   const fxReadyMs = Date.now() - t0;
   // Effects on, whatever the profile remembers.
@@ -120,7 +121,7 @@ test('A2C1M1: the frame with effects on and off', { tag: '@data' }, async () => 
   // integer divisions per batch now and would only grow if the sampling loop
   // came back (SLICE_fx_performance.md §1a: 4.3 ms before, 0.2 after).
   expect(on.fx.batches, 'one batch per distinct effect payload').toBeLessThan(on.fx.copies);
-  expect(on.fx.distinctAtlases, 'every atlas is its own effect').toBe(on.fx.atlases);
+  expect(on.fx.distinctAtlases, 'batches with one frame table share one atlas').toBeLessThan(on.fx.atlases);
   expect(on.fx.atlasBytes, 'atlases: 146 MB on A2C1M1').toBeLessThan(170 * 1048576);
   expect(on.fx.tableBytes, 'baked recordings: 24 MB on A2C1M1').toBeLessThan(40 * 1048576);
   expect(on.calls - off.calls, 'effects cost one draw per batch').toBeLessThanOrEqual(on.fx.batches);

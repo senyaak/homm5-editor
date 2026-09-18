@@ -287,7 +287,7 @@ function cueShotFx(shot: ShotView): void {
       for (const fx of fired.fx) {
         const baked = fxBank[fx.uid];
         if (!baked?.particles.length) continue;
-        const { system } = createFxSystem(fx, baked, m4, uFxTint);
+        const system = createFxSystem(fx, baked, m4, uFxTint);
         stage.add(system.mesh);
         shotFx.push({ system, at: fired.at });
       }
@@ -487,7 +487,7 @@ export async function openScene(inner: string, file?: string): Promise<SceneInfo
     for (const fx of p.actor.idleFx) {
       const baked = fxBank[fx.uid];
       if (!baked?.particles.length) continue;
-      const { system } = createFxSystem(fx, baked, new THREE.Matrix4(), uFxTint);
+      const system = createFxSystem(fx, baked, new THREE.Matrix4(), uFxTint);
       stage.add(system.mesh);
       p.fire.push({ system, local: system.mesh.matrix.clone() });
     }

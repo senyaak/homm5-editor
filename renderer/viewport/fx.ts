@@ -68,7 +68,7 @@ function batchFor(fl: Floor3D, f: FxInstancePayload, bank: Record<string, FxTran
   if (have) return have;
   const baked = bank[f.uid];
   if (!baked?.particles.length) return null;
-  const { batch } = createFxBatch(f, baked, uFxTint);
+  const batch = createFxBatch(f, baked, uFxTint);
   batch.mesh.userData.uid = f.uid; // for fxSystems() debugging
   batch.mesh.visible = state.showFx; // effects arrive async; respect the toggle they land under
   const entry: PlacedFx = { batch, at: [], rest: [] };

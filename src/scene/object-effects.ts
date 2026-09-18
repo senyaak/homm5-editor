@@ -22,7 +22,7 @@ import { join } from 'node:path';
 import { GrannyFile } from '../format/gr2.ts';
 import { pngDataUri } from '../format/png.ts';
 import { readAnimations, readSkeletons } from './animation.ts';
-import { particleTextureUris, textureDataUri } from './materials.ts';
+import { particleFrame, textureDataUri } from './materials.ts';
 import { decodeModelGeom, transformGeom } from './model-geom.ts';
 import { bakeCharacterClip } from './skin.ts';
 import type { BakedRig } from './skin.ts';
@@ -46,8 +46,8 @@ import type { GeomData, FxInstancePayload } from './payload.ts';
  * Edge of one particle FRAME, which is the model cap's business and not the
  * caller's: the renderer packs a frame table into an atlas of 128-wide cells
  * (viewport/particles.ts), so a frame decoded any larger is only scaled back
- * down by a canvas — paid for once in the payload and again in the atlas. A
- * puff of smoke is also the last thing in a scene that wants a hero's texel
+ * down into its cell — paid for once in the payload and again in the atlas.
+ * A puff of smoke is also the last thing in a scene that wants a hero's texel
  * budget.
  */
 const PARTICLE_FRAME = 128;
@@ -228,7 +228,7 @@ export function particlesOfEffect(
       const textures = listItems(texBlock).map((t) => {
         const href = t.attrs.match(/href="([^"]+)"/)?.[1];
         if (!href) return null;
-        return particleTextureUris(data, PARTICLE_FRAME, '/' + resolveHref(instance.dir, href));
+        return particleFrame(data, PARTICLE_FRAME, '/' + resolveHref(instance.dir, href));
       });
       if (!textures.some(Boolean)) continue;
 

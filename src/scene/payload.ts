@@ -284,15 +284,25 @@ export interface FxInstancePayload {
   pivot?: number[];
   /**
    * Frame table the baked texture indices point into; null = empty slot.
-   * Each frame ships as TWO data URIs — colour (alpha forced opaque) and the
-   * real alpha as a grayscale image — because a browser canvas premultiplies:
-   * a PNG texel with alpha 0 loses its colour on the way to the atlas, and
-   * zero-alpha colour is exactly what fire IS in this art (rgb adds, alpha
-   * occludes; the renderer blends ONE/ONE_MINUS_SRC_ALPHA with straight
-   * colour, so one instance mixes additive fire and covering smoke frames).
+   *
+   * A frame is its straight-alpha texels, not a PNG like every other texture
+   * in a payload: zero-alpha colour is exactly what fire IS in this art (rgb
+   * adds, alpha occludes; the renderer blends ONE/ONE_MINUS_SRC_ALPHA with
+   * straight colour, so one instance mixes additive fire and covering smoke
+   * frames), and the PNG road goes through a browser canvas, which
+   * premultiplies — the fire arrived black until each frame was split into
+   * a colour image and an alpha image. Bytes go straight to a texture.
+   *
+   * One object per distinct frame, shared by every instance that names it:
+   * the structured clone across the IPC keeps that identity (it copies a
+   * string per field, which is why the PNGs need `packTextures` and this
+   * does not), and the renderer keys its atlases on it.
    */
-  textures: ({ c: string; a: string } | null)[];
+  textures: (FxFrame | null)[];
 }
+
+/** One particle frame: `width * height * 4` bytes, R,G,B,A straight, row-major from the top. */
+export interface FxFrame { width: number; height: number; rgba: Uint8Array }
 
 /** A tile offset from an object's own tile, in grid axes; may be negative. */
 export interface TileOffset { x: number; y: number }
