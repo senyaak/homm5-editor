@@ -9,7 +9,7 @@
 
 
 
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { extract, readEntries, readEntryFrom, readIndex, writeArchive } from '../format/pak.ts';
 import { MOD_DIR, ensureModDir, modFile } from '../game/mod-paths.ts';
@@ -148,6 +148,22 @@ export function installFactionSide(gameRoot: string, mod: CreatureMod, rows?: Fa
   writeRacesFile(gameRoot, rows?.picker ?? SHIPPED_PICKER_ORDER.map((name) => ({ name, town: SHIPPED_TOWN_ORDINALS[name]! })));
   writeBuildingsFile(gameRoot, rows?.buttons ?? [], rows?.features ?? []);
   writeMagicFile(gameRoot, magicRows(mod.classes ?? []));
+  // Tracks of ours are LOOSE files — the game opens a Music document's path
+  // itself, and an archive is not a path — so they are copied under
+  // Music/H5E/<faction>/, and a faction's folder there goes when the faction
+  // does. Only our folder is ever touched; the game's music beside it is not.
+  const musicRoot = join(gameRoot, 'Music', 'H5E');
+  const keep = new Set((rows?.musicDirs ?? []).map((d) => basename(d)));
+  if (existsSync(musicRoot)) {
+    for (const entry of readdirSync(musicRoot)) if (!keep.has(entry)) rmSync(join(musicRoot, entry), { recursive: true, force: true });
+  }
+  for (const d of rows?.musicDirs ?? []) rmSync(join(gameRoot, d), { recursive: true, force: true });
+  for (const f of rows?.loose ?? []) {
+    const to = join(gameRoot, f.path);
+    mkdirSync(dirname(to), { recursive: true });
+    if (!existsSync(f.from)) throw new Error(`${f.from}: no such file — the track the faction names`);
+    copyFileSync(f.from, to);
+  }
   return result;
 }
 

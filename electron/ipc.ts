@@ -2248,7 +2248,7 @@ export interface EditorApi {
    */
   pickPicture(): Promise<string>;
   /** A file of our own on disk for a faction — a Model document or a picture — the path, or '' when cancelled. */
-  pickFactionFile(kind: 'model' | 'picture'): Promise<string>;
+  pickFactionFile(kind: 'model' | 'picture' | 'sound'): Promise<string>;
   /** Change an artifact already in the mod. Its id and number do not move. */
   updateArtifact(p: ModsInstallArtifactPayload): Promise<ModsInstallArtifactResult>;
   /** Change a set already in the mod. Its effect value does not move. */

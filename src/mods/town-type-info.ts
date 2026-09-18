@@ -43,6 +43,68 @@ export interface RaceSpec {
   moat?: { damage?: number; spells?: readonly MoatSpell[] };
   /** Whose music the race plays — a shipped TownType's whole set (RACE_MUSIC); the donor's when absent. A race without a row is silent. */
   music?: string;
+  /**
+   * Tracks of our own, by slot — `.ogg` files on disk, each replacing that
+   * slot of the set `music` names. The game plays music from LOOSE files
+   * under `<game>/Music/` (a `Music` document holds a path, not a uid), so
+   * a track of ours is copied beside the game's on install and its document
+   * points there (musicFiles, mod-archive.ts).
+   */
+  tracks?: OwnTracks;
+}
+
+/** The slots of a race's music set that take a track of ours. */
+export const TRACK_SLOTS = ['town', 'tavern', 'dwelling', 'siege', 'win', 'loss', 'retreat', 'wait'] as const;
+export type TrackSlot = typeof TRACK_SLOTS[number];
+export type OwnTracks = Partial<Record<TrackSlot, string>> & {
+  /** The battle themes, drawn from at random; up to any number, in place of the set's. */
+  combat?: readonly string[];
+};
+
+/** The element each slot is in the music row. */
+const TRACK_ELEMENTS: Record<TrackSlot, string> = {
+  town: 'TownMusic', tavern: 'TavernMusic', dwelling: 'DwellingMusic', siege: 'SiegeMusic',
+  win: 'WinCombatMusic', loss: 'LooseCombatMusic', retreat: 'RetreatCombatMusic', wait: 'WaitMusic',
+};
+
+/** Where a faction's tracks go, loose, under the game: `Music/H5E/<faction>/`. */
+export const musicDir = (spec: Pick<TownSpec, 'file'>): string => `Music/H5E/${spec.file}`;
+
+/** A file the install copies loose under the game root, from a path on disk. */
+export interface LooseFile {
+  /** Relative to the game root, forward slashes. */
+  path: string;
+  from: string;
+}
+
+/**
+ * The `Music` documents for the tracks of ours, and the files the install
+ * copies beside the game's music. A document names its file the way the
+ * shipped ones do — relative to the data folder, `..\Music\…`.
+ */
+export function musicFiles(spec: Pick<TownSpec, 'file'>, tracks: OwnTracks | undefined): { files: ModFile[]; loose: LooseFile[]; docs: Map<string, string> } {
+  const files: ModFile[] = [];
+  const loose: LooseFile[] = [];
+  const docs = new Map<string, string>();
+  if (!tracks) return { files, loose, docs };
+  const one = (slot: string, from: string): void => {
+    if (!/\.ogg$/i.test(from)) throw new Error(`${spec.file}: the ${slot} track ${from} is not an .ogg — the game plays Ogg Vorbis`);
+    const rel = `${musicDir(spec)}/${slot}.ogg`;
+    const doc = `Factions/${spec.file}/music/${slot}.(Music).xdb`;
+    files.push({ path: doc, data: Buffer.from([
+      '<?xml version="1.0" encoding="UTF-8"?>',
+      '<Music>',
+      `\t<FileName>..\\${rel.replace(/\//g, '\\')}</FileName>`,
+      '\t<FadeIn>2000</FadeIn>', '\t<FadeOut>2000</FadeOut>',
+      '\t<MinPausedTime>1000</MinPausedTime>', '\t<MaxPausedTime>10000</MaxPausedTime>',
+      '</Music>', '',
+    ].join(EOL), 'latin1') });
+    loose.push({ path: rel, from });
+    docs.set(slot, doc);
+  };
+  for (const slot of TRACK_SLOTS) if (tracks[slot]) one(slot, tracks[slot]!);
+  for (const [i, from] of (tracks.combat ?? []).entries()) one(`combat_${i + 1}`, from);
+  return { files, loose, docs };
 }
 
 /** One spell a moat casts: which, how likely (percent), at what mastery and power. */
@@ -177,7 +239,25 @@ export function patchRaceMusic(table: string, spec: TownSpec): string {
   const info = table.indexOf('</musicInfo>', at);
   const end = info < 0 ? -1 : table.indexOf('</Item>', info) + '</Item>'.length;
   if (start < 0 || end < '</Item>'.length) throw new Error(`${RACE_MUSIC}: the row of ${from} is not laid out as shipped`);
-  const row = table.slice(start, end).replace(`<race>${from}</race>`, `<race>${spec.type}</race>`);
+  let row = table.slice(start, end).replace(`<race>${from}</race>`, `<race>${spec.type}</race>`);
+  // The tracks of ours, slot by slot, over the set's.
+  const tracks = spec.race?.tracks;
+  if (tracks) {
+    const { docs } = musicFiles(spec, tracks);
+    for (const slot of TRACK_SLOTS) {
+      const doc = docs.get(slot);
+      if (!doc) continue;
+      const el = TRACK_ELEMENTS[slot];
+      const re = new RegExp(`<${el}(?: href="[^"]*")?\\s*/>`);
+      if (!re.test(row)) throw new Error(`${RACE_MUSIC}: the row of ${from} has no <${el}> for the ${slot} track`);
+      row = row.replace(re, `<${el} href="/${doc}#xpointer(/Music)"/>`);
+    }
+    if (tracks.combat?.length) {
+      const items = tracks.combat.map((_, i) => `\t\t\t\t\t<Item href="/${docs.get(`combat_${i + 1}`)}#xpointer(/Music)"/>`);
+      if (!/<combatMusics>[\s\S]*?<\/combatMusics>/.test(row)) throw new Error(`${RACE_MUSIC}: the row of ${from} has no <combatMusics>`);
+      row = row.replace(/<combatMusics>[\s\S]*?<\/combatMusics>/, ['<combatMusics>', ...items, '\t\t\t\t</combatMusics>'].join(EOL));
+    }
+  }
   const close = table.lastIndexOf('</objects>');
   if (close < 0) throw new Error(`${RACE_MUSIC}: no </objects>`);
   const lineStart = table.lastIndexOf('\n', close) + 1;

@@ -196,6 +196,29 @@ console.log('pictures of our own for the icons');
   rmSync(dir, { recursive: true, force: true });
 }
 
+console.log('tracks of our own');
+{
+  const dir = join(import.meta.dirname, '..', '_tmp', 'own-tracks-test');
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const ogg = (name: string): string => { const f = join(dir, `${name}.ogg`); writeFileSync(f, 'OggS'); return f; };
+  const mod: CreatureMod = newCreatureMod();
+  addFaction(mod, spec('Tune', { race: { name: 'Tune', music: 'TOWN_NECROMANCY', tracks: { town: ogg('town'), win: ogg('win'), combat: [ogg('b1'), ogg('b2'), ogg('b3')] } } }));
+  const r = buildCreatureMod(mod, read);
+  const text = (path: string): string => r.files.find((f) => f.path === path)!.data.toString('latin1');
+  const music = text(RACE_MUSIC);
+  const rowAt = music.indexOf('<race>TOWN_TUNE</race>');
+  const row = music.slice(rowAt, music.indexOf('</Item>', music.indexOf('</musicInfo>', rowAt)));
+  check('the town and win slots point at documents of ours', row.includes('<TownMusic href="/Factions/Tune/music/town.(Music).xdb#xpointer(/Music)"/>') && row.includes('<WinCombatMusic href="/Factions/Tune/music/win.(Music).xdb#xpointer(/Music)"/>'));
+  check("the tavern slot stays the set's (Necropolis's)", /<TavernMusic href="Tavern-Themes\/Necro/.test(row) || /<TavernMusic href="[^"]*Necr/i.test(row), /<TavernMusic href="([^"]*)"/.exec(row)?.[1]);
+  check('three battle themes of ours', (row.match(/\/Factions\/Tune\/music\/combat_\d\.\(Music\)\.xdb/g) ?? []).length === 3 && !row.includes('Battle-Themes/'));
+  const doc = text('Factions/Tune/music/town.(Music).xdb');
+  check('the document names the loose file the way the shipped ones do', doc.includes('<FileName>..' + ['', 'Music', 'H5E', 'Tune', 'town.ogg'].join(String.fromCharCode(92)) + '</FileName>') && doc.includes('<FadeIn>2000</FadeIn>'));
+  check('the install copies five files under Music/H5E/Tune', r.factions?.loose.length === 5 && r.factions.loose.every((l) => l.path.startsWith('Music/H5E/Tune/')) && r.factions.musicDirs.join() === 'Music/H5E/Tune');
+  throws('a track that is not an ogg', () => { const m = newCreatureMod(); addFaction(m, spec('Mp3', { race: { name: 'x', tracks: { town: join(dir, 'x.mp3') } } })); buildCreatureMod(m, read); }, 'not an .ogg');
+  rmSync(dir, { recursive: true, force: true });
+}
+
 console.log('the build, two factions');
 {
   const mod: CreatureMod = newCreatureMod();

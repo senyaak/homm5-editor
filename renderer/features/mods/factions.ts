@@ -24,7 +24,7 @@ import { modRow, NL } from '#features/mods/shared.ts';
 import type { FactionTreeDTO, ModFactionDTO, ModsFactionDataResult, ModsFactionPayload } from '#electron/ipc.ts';
 import type { BuildingEdit, BuildingKey, Resource, SiegeMix, ExteriorMix } from '#src/mods/town-files.ts';
 import type { TreeBuilding } from '#src/mods/town-tree.ts';
-import type { MoatSpell } from '#src/mods/town-type-info.ts';
+import type { MoatSpell, OwnTracks, TrackSlot } from '#src/mods/town-type-info.ts';
 import type { IconPictures } from '#src/mods/faction-icons.ts';
 import type { OwnSiegePart, SiegePartName } from '#src/mods/siege-parts.ts';
 
@@ -114,6 +114,35 @@ function readSiegeOwn(): { parts: Partial<Record<SiegePartName, OwnSiegePart>>; 
   return { parts, problems };
 }
 
+/** Tracks of our own, by slot; the battle themes as a list. */
+const TRACK_LABELS: ReadonlyArray<{ id: TrackSlot | 'combat.0' | 'combat.1' | 'combat.2'; label: string }> = [
+  { id: 'town', label: 'Town' }, { id: 'tavern', label: 'Tavern' }, { id: 'dwelling', label: 'Dwellings' },
+  { id: 'combat.0', label: 'Battle 1' }, { id: 'combat.1', label: 'Battle 2' }, { id: 'combat.2', label: 'Battle 3' },
+  { id: 'siege', label: 'Siege' }, { id: 'win', label: 'Victory' }, { id: 'loss', label: 'Defeat' },
+  { id: 'retreat', label: 'Retreat' }, { id: 'wait', label: "The AI's turn" },
+];
+let tracks: Record<string, string> = {};
+
+function drawTracks(): void {
+  const box = $('fac-tracks');
+  box.innerHTML = '';
+  for (const t of TRACK_LABELS) {
+    box.appendChild(fileRow(t.label, tracks[t.id] ?? '', 'sound', (v) => { if (v) tracks[t.id] = v; else delete tracks[t.id]; }));
+  }
+}
+
+function readTracks(): OwnTracks | undefined {
+  const out: Record<string, unknown> = {};
+  const combat: string[] = [];
+  for (const [k, v] of Object.entries(tracks)) {
+    if (!v) continue;
+    if (k.startsWith('combat.')) combat[Number(k.slice(7))] = v; else out[k] = v;
+  }
+  const battle = combat.filter((x) => x);
+  if (battle.length) out.combat = battle;
+  return Object.keys(out).length ? (out as OwnTracks) : undefined;
+}
+
 /** Pictures of our own for the icons, by slot; the buildings' by key. */
 let pictures: { buildings: Record<BuildingKey, string>; [slot: string]: unknown } = { buildings: {} };
 
@@ -128,7 +157,7 @@ const PICTURE_SLOTS: ReadonlyArray<{ id: string; label: string; size: number }> 
 ];
 
 /** A path box with a file picker beside it — the shape every file of ours is given in. */
-function fileRow(label: string, value: string, kind: 'model' | 'picture', on: (v: string) => void, title = ''): HTMLElement {
+function fileRow(label: string, value: string, kind: 'model' | 'picture' | 'sound', on: (v: string) => void, title = ''): HTMLElement {
   const row = document.createElement('label');
   row.className = 'on-row';
   const l = document.createElement('span');
@@ -137,7 +166,7 @@ function fileRow(label: string, value: string, kind: 'model' | 'picture', on: (v
   input.type = 'text';
   input.spellcheck = false;
   input.className = 'fc-file';
-  input.placeholder = kind === 'picture' ? 'a PNG or GIF of yours' : 'a path in the data, or a file of yours';
+  input.placeholder = kind === 'picture' ? 'a PNG or GIF of yours' : kind === 'sound' ? 'an .ogg of yours' : 'a path in the data, or a file of yours';
   input.title = title;
   input.value = value;
   input.oninput = () => on(input.value.trim());
@@ -318,6 +347,12 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   }
   drawTowns(data, existing?.towns ?? []);
   drawPictures();
+  tracks = {};
+  for (const [k, v] of Object.entries(existing?.race?.tracks ?? {})) {
+    if (k === 'combat') (v as string[]).forEach((x, i) => { tracks[`combat.${i}`] = x; });
+    else if (typeof v === 'string') tracks[k] = v;
+  }
+  drawTracks();
   (document.getElementById('fac-script') as HTMLTextAreaElement).value = existing?.script ?? '';
 
   drawGrid();
@@ -1075,6 +1110,8 @@ function readPayload(): ModsFactionPayload {
   if ($select('fac-music').value) race.music = $select('fac-music').value;
   const moat = readMoat();
   if (moat) race.moat = moat;
+  const own = readTracks();
+  if (own) race.tracks = own;
   const p: ModsFactionPayload = {
     file,
     type: townTypeFor(file),

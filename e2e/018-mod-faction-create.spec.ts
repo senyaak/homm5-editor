@@ -334,6 +334,12 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   // do: what is under test is the part standing where the donor's stands.
   await press(page, page.locator('#facedit summary', { hasText: 'Siege parts of your own' }));
   await page.locator('#fac-siege-own .fc-siege-gate-models').fill(necro);
+  // A town track of ours: the game plays music from loose files, so the
+  // install copies it under Music/H5E/<faction>/ and the row points there.
+  const ogg = join(REPO_ROOT, '_tmp', 'e2e-own-model', 'town.ogg');
+  writeFileSync(ogg, 'OggS');
+  await press(page, page.locator('#facedit summary', { hasText: 'Tracks of your own' }));
+  await page.locator('#fac-tracks .fc-file').first().fill(ogg);
 
   // One more named town, and the shipyard is kept after all.
   await press(page, page.locator('#fac-town-add'));
@@ -360,6 +366,9 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(f?.race?.tooltip).toBe('The dead of the Bone Court');
   expect(f?.exterior).toEqual({ stages: { town: necro } });
   expect(f?.siege).toEqual({ arena: 'TOWN_HEAVEN', gate: { models: [necro] } });
+  expect(f?.race?.tracks).toEqual({ town: ogg });
+  expect(existsSync(join(GAME, 'Music', 'H5E', FILE, 'town.ogg')), 'the track is copied loose under the game').toBe(true);
+  expect(names).toContain(`Factions/${FILE}/music/town.(Music).xdb`);
   expect(names).toContain(`Factions/${FILE}/siege/gate_1/${FILE}_gate_1.(ArenaModObject).xdb`);
   expect(f?.towns[1]?.bonusText).toBe('A marketplace from the first day.');
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
@@ -389,5 +398,6 @@ test('removing it puts the shipped numbers back', { tag: '@game' }, async () => 
   expect(exeNumbers()).toEqual({ towns: 11, specs: 255, clamp: 7 });
   const races = readFileSync(join(GAME, RACES_FILE), 'latin1');
   expect(races.split('\n').filter((l) => l.startsWith('race ')).length).toBe(8);
+  expect(existsSync(join(GAME, 'Music', 'H5E', FILE)), "the faction's music folder goes with it").toBe(false);
   expect(ed.errors).toEqual([]);
 });

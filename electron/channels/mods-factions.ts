@@ -105,11 +105,15 @@ export function registerModFactions(): void {
   // data root of its own when the faction is built (src/mods/own-files.ts), a
   // picture is read and fitted then — so a cancelled form leaves nothing
   // behind and the file can be edited in place until the next build.
-  ipcMain.handle('mods:pick-faction-file', async (_e: IpcMainInvokeEvent, { kind }: { kind: 'model' | 'picture' }): Promise<string> => {
+  ipcMain.handle('mods:pick-faction-file', async (_e: IpcMainInvokeEvent, { kind }: { kind: 'model' | 'picture' | 'sound' }): Promise<string> => {
     const opts = kind === 'model' ? {
       title: 'Choose a Model document of your own',
       properties: ['openFile' as const],
       filters: [{ name: 'Model documents', extensions: ['xdb'] }, { name: 'All files', extensions: ['*'] }],
+    } : kind === 'sound' ? {
+      title: 'Choose a track — Ogg Vorbis, as the game plays',
+      properties: ['openFile' as const],
+      filters: [{ name: 'Ogg Vorbis', extensions: ['ogg'] }, { name: 'All files', extensions: ['*'] }],
     } : {
       title: 'Choose a picture',
       properties: ['openFile' as const],

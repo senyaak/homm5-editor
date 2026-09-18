@@ -28,7 +28,8 @@
 
 import { SHIPPED_TOWN_ORDINALS, SHIPPED_TOWN_SPECS, TOWN_SPECS, ATB_TOWER_ICONS, buildNamedTowns, buildTown, patchTownSpecTable, patchTownSpecTypes, patchTowerIcons } from './town-files.ts';
 import type { TownBuild } from './town-files.ts';
-import { RACE_MUSIC, TOWN_TYPES_INFO, patchRaceMusic, patchTownTypesInfo, raceFiles } from './town-type-info.ts';
+import { RACE_MUSIC, TOWN_TYPES_INFO, musicFiles, patchRaceMusic, patchTownTypesInfo, raceFiles } from './town-type-info.ts';
+import type { LooseFile } from './town-type-info.ts';
 import { PLAYER_COLOUR_SCHEMES, patchColourSchemes } from './capture-marker.ts';
 import { HERO_GROUP, TOWN_GROUP, addGroupMember } from './shared-groups.ts';
 import { SHIPPED_PICKER_ORDER } from './race-order.ts';
@@ -61,6 +62,9 @@ export interface FactionRows {
   buttons: TownButtonRow[];
   /** What the buildings DO — `feature <town> <bldg> <lvl> <id>` lines. */
   features: string[];
+  /** Tracks of ours, copied loose under the game (`Music/H5E/<faction>/`), and the folders that may hold any. */
+  loose: LooseFile[];
+  musicDirs: string[];
 }
 
 /** What the faction pass produced. */
@@ -114,6 +118,8 @@ export function buildFactions(
   let townSpecs = mustRead(read, TOWN_SPECS);
   const buttons: TownButton[] = [];
   const features: string[] = [];
+  const loose: LooseFile[] = [];
+  const musicDirs: string[] = [];
   const picker: PickerRace[] = SHIPPED_PICKER_ORDER.map((name) => ({ name, town: shippedOrdinal(name) }));
 
   for (const given of factions) {
@@ -137,6 +143,12 @@ export function buildFactions(
     files.push(...race.files);
     townTypes = patchTownTypesInfo(townTypes, f, town, race);
     music = patchRaceMusic(music, f);
+    {
+      const m = musicFiles(f, f.race.tracks);
+      files.push(...m.files);
+      loose.push(...m.loose);
+      musicDirs.push(`Music/H5E/${f.file}`);
+    }
     rmg = cloneRecord(rmg, raceFor(f.donor), raceFor(f.type), '__RACE_COUNT');
 
     // The picker: a tile and a tooltip under names the extension's races file
@@ -202,7 +214,7 @@ export function buildFactions(
       return out;
     },
     scripts: factions.map((f) => factionScriptPath(f.file)),
-    rows: { picker, buttons: rows, features },
+    rows: { picker, buttons: rows, features, loose, musicDirs },
     stopped,
     missing,
   };

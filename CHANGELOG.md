@@ -51,7 +51,11 @@ pre-release.
   and a named town's bonus, beside the names and descriptions already there.
   The siege parts too: the walls, the towers, the gate and the moat as models
   of your own, each stood where the donor's piece stands, with the breached
-  and razed models optional (the level before serves). A model of yours that
+  and razed models optional (the level before serves). And the race's music:
+  any slot of the set — town, tavern, dwellings, the battle themes, siege,
+  victory, defeat, retreat, the AI's turn — as an .ogg of your own, copied
+  under `Music/H5E/<faction>/` on install (the game plays music from loose
+  files, not from an archive) and removed with the faction. A model of yours that
   names a document its folder has not is refused by name, not shipped without
   it.
   A building's model can be a file of
