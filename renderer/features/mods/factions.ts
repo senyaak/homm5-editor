@@ -409,63 +409,87 @@ function isDropped(key: BuildingKey): boolean {
   return false;
 }
 
-function drawGrid(): void {
+/**
+ * The thirty cells, made once and redrawn in place; a cell is picked on
+ * MOUSEDOWN, not click.
+ *
+ * Because a redraw can happen inside the press: a field of the editor is
+ * being typed into, the press on a cell blurs it, its `change` lands the edit
+ * and redraws — and Chromium fires no click when the node the press began on
+ * is gone by the time it ends. Mousedown is dispatched before the blur that
+ * is its default action, so the pick lands first, whatever the blur does. The
+ * editor's text fields store on `input` for the same reason: an edit that
+ * waited for `change` could be lost with the field the press removes.
+ */
+function gridCells(): HTMLElement[] {
   const grid = $('fac-grid');
-  grid.innerHTML = '';
-  const all = effectiveBuildings();
-  for (let y = 1; y <= ROWS; y++) {
-    for (let x = 1; x <= COLUMNS; x++) {
-      const here = all.filter((b) => { const c = cellOf(b); return c?.x === x && c?.y === y; });
-      const cell = document.createElement('div');
-      cell.className = 'fc-cell';
-      cell.dataset.x = String(x);
-      cell.dataset.y = String(y);
-      if (picked?.x === x && picked?.y === y) cell.classList.add('on');
-      if (!here.length) {
-        cell.classList.add('empty');
-        cell.textContent = tree ? '+' : '';
-        cell.title = tree ? 'empty — click to put a building here' : 'fill from the donor first';
-      } else {
-        // The lowest level here names the cell; the rest are its stack.
-        here.sort((a, b) => a.level - b.level);
-        const first = here[0]!;
-        const edit = edits[first.key];
-        const type = document.createElement('div');
-        type.className = 'fc-type';
-        type.textContent = first.type.replace('TB_', '');
-        const name = document.createElement('div');
-        name.className = 'fc-name';
-        name.textContent = edit?.name ?? first.name ?? first.type;
-        const levels = document.createElement('div');
-        levels.className = 'fc-levels';
-        for (const b of here) {
-          const i = document.createElement('i');
-          i.textContent = String(b.level);
-          if (edits[b.key] !== undefined) i.classList.add('edited');
-          if (isDropped(b.key)) i.style.textDecoration = 'line-through';
-          levels.appendChild(i);
-        }
-        cell.append(type, name, levels);
-        if (here.every((b) => isDropped(b.key))) cell.classList.add('dropped');
-        if (edits[first.type]?.from) cell.classList.add('from');
-        const requires = edit?.requires ?? first.requires;
-        if (requires.length) {
-          const arrow = document.createElement('span');
-          arrow.className = 'fc-arrow';
-          arrow.textContent = '↑';
-          arrow.title = `needs ${requires.join(', ')}`;
-          cell.appendChild(arrow);
-        }
-        cell.title = here.map((b) => `${b.key}: ${edits[b.key]?.name ?? b.name}`).join(NL);
+  if (grid.children.length !== COLUMNS * ROWS) {
+    grid.innerHTML = '';
+    for (let y = 1; y <= ROWS; y++) {
+      for (let x = 1; x <= COLUMNS; x++) {
+        const cell = document.createElement('div');
+        cell.className = 'fc-cell';
+        cell.dataset.x = String(x);
+        cell.dataset.y = String(y);
+        cell.onmousedown = () => {
+          if (!tree) return;
+          const here = effectiveBuildings().filter((b) => { const c = cellOf(b); return c?.x === x && c?.y === y; }).sort((a, b) => a.level - b.level);
+          picked = { x, y, key: here[0]?.key ?? null };
+          drawGrid();
+          drawCellEditor();
+        };
+        grid.appendChild(cell);
       }
-      cell.onclick = () => {
-        if (!tree) return;
-        picked = { x, y, key: here[0]?.key ?? null };
-        drawGrid();
-        drawCellEditor();
-      };
-      grid.appendChild(cell);
     }
+  }
+  return [...grid.children] as HTMLElement[];
+}
+
+function drawGrid(): void {
+  const all = effectiveBuildings();
+  for (const cell of gridCells()) {
+    const x = Number(cell.dataset.x), y = Number(cell.dataset.y);
+    const here = all.filter((b) => { const c = cellOf(b); return c?.x === x && c?.y === y; });
+    cell.className = 'fc-cell';
+    cell.innerHTML = '';
+    if (picked?.x === x && picked?.y === y) cell.classList.add('on');
+    if (!here.length) {
+      cell.classList.add('empty');
+      cell.textContent = tree ? '+' : '';
+      cell.title = tree ? 'empty — click to put a building here' : 'fill from the donor first';
+      continue;
+    }
+    // The lowest level here names the cell; the rest are its stack.
+    here.sort((a, b) => a.level - b.level);
+    const first = here[0]!;
+    const edit = edits[first.key];
+    const type = document.createElement('div');
+    type.className = 'fc-type';
+    type.textContent = first.type.replace('TB_', '');
+    const name = document.createElement('div');
+    name.className = 'fc-name';
+    name.textContent = edit?.name ?? first.name ?? first.type;
+    const levels = document.createElement('div');
+    levels.className = 'fc-levels';
+    for (const b of here) {
+      const i = document.createElement('i');
+      i.textContent = String(b.level);
+      if (edits[b.key] !== undefined) i.classList.add('edited');
+      if (isDropped(b.key)) i.style.textDecoration = 'line-through';
+      levels.appendChild(i);
+    }
+    cell.append(type, name, levels);
+    if (here.every((b) => isDropped(b.key))) cell.classList.add('dropped');
+    if (edits[first.type]?.from) cell.classList.add('from');
+    const requires = edit?.requires ?? first.requires;
+    if (requires.length) {
+      const arrow = document.createElement('span');
+      arrow.className = 'fc-arrow';
+      arrow.textContent = '↑';
+      arrow.title = `needs ${requires.join(', ')}`;
+      cell.appendChild(arrow);
+    }
+    cell.title = here.map((b) => `${b.key}: ${edits[b.key]?.name ?? b.name}`).join(NL);
   }
 }
 
@@ -556,7 +580,7 @@ function drawCellEditor(): void {
     input.placeholder = donor;
     input.value = value ?? '';
     input.title = `blank keeps the donor's: ${donor}`;
-    input.onchange = () => on(input.value);
+    input.oninput = () => on(input.value);
     row.append(l, input);
     box.appendChild(row);
   };
@@ -654,7 +678,7 @@ function drawCellEditor(): void {
       input.type = 'number'; input.min = '0';
       input.placeholder = String(current.cost[r]);
       input.value = edit.cost?.[r] === undefined ? '' : String(edit.cost[r]);
-      input.onchange = () => {
+      input.oninput = () => {
         const cost = { ...(edits[current.key]?.cost ?? {}) };
         if (input.value.trim() === '') delete cost[r]; else cost[r] = Number(input.value);
         put({ cost: Object.keys(cost).length ? cost : undefined });
@@ -753,10 +777,12 @@ const formGate = (): { check: () => void; rewatch: () => void } => (gate ??= req
     const towns = readTowns();
     if (!towns.length) missing.push('a named town');
     if (towns.some((t) => !t.file || !t.name)) missing.push('every named town\'s id and name');
+    // The dial's button is drawn in the theme: no theme, no skins to draw it with.
+    if (Object.values(edits).some((e) => e?.button) && !$input('fac-icons').checked) missing.push("the icon theme (a button's skins are drawn in it)");
     if (!/^[A-Za-z][A-Za-z0-9]*$/.test($input('fac-file').value.trim()) && $input('fac-file').value.trim()) missing.push('an identifier of letters and digits');
     return missing;
   },
-  watch: '#facedit .town-file, #facedit .town-name',
+  watch: '#facedit .town-file, #facedit .town-name, #fac-icons',
 }));
 const watchForm = (): void => { formGate().rewatch(); };
 
@@ -833,7 +859,9 @@ export function initFactionsMod(): void {
   $('fac-ok').onclick = () => { void submitFaction(); };
   $('fac-fill').onclick = () => { void loadTree($select('fac-donor').value, false); };
   $('fac-magic').onchange = showSchools;
-  $('fac-file').oninput = () => { $input('fac-type').value = $input('fac-file').value.trim() ? townTypeFor($input('fac-file').value) : ''; };
+  // A listener, not `oninput`: the form gate binds `oninput` on the fields it
+  // watches (form-gate.ts), and the identifier is one of them.
+  $('fac-file').addEventListener('input', () => { $input('fac-type').value = $input('fac-file').value.trim() ? townTypeFor($input('fac-file').value) : ''; });
   $('fac-town-add').onclick = () => { if (facData) addTownRow(facData); };
   $('fac-moat-add').onclick = () => { if (facData) addMoatSpellRow(facData); };
 }

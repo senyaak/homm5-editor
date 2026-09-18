@@ -37,14 +37,19 @@ const GAME = modGameRoot();
 const FILE = 'E2eBone';
 const TYPE = 'TOWN_E2E_BONE';
 
-/** A press that is checked at once: no renderer error, no error line in either dialog. */
-async function press(page: Page, target: Locator): Promise<void> {
+/**
+ * A press that is checked at once: no renderer error, no error line in either
+ * dialog — except a message the test expects to still be there (`allow`).
+ */
+async function press(page: Page, target: Locator, allow?: RegExp): Promise<void> {
   await expect(target).toBeVisible();
   await target.click();
   expect(ed.errors, 'the renderer threw nothing on that press').toEqual([]);
   for (const id of ['#fac-err', '#fac-form-err']) {
     const line = page.locator(id);
-    if (await line.isVisible()) await expect(line, `${id} stayed empty`).toHaveText('');
+    if (!await line.isVisible()) continue;
+    if (allow) await expect(line, `${id} says only what was expected`).toHaveText(allow);
+    else await expect(line, `${id} stayed empty`).toHaveText('');
   }
 }
 
@@ -145,6 +150,9 @@ test('a town without magic, a named town, a script — and it saves', { tag: '@g
   await page.locator('#fac-towns .town-name').fill('The Ossuary');
   await page.locator('#fac-towns .town-bio').fill('Where the bones are kept.');
   await page.locator('#fac-script').fill('function BonePit(town)\n  H5ELog(1);\nend;');
+  // The pit's button is drawn in the icon theme, so the theme is asked for.
+  await expect(page.locator('#fac-missing')).toHaveText(/icon theme/);
+  await page.locator('#fac-icons').check();
   await expect(page.locator('#fac-missing')).toHaveText('');
   await expect(page.locator('#fac-ok')).toBeEnabled();
 
@@ -156,12 +164,12 @@ test('a town without magic, a named town, a script — and it saves', { tag: '@g
   await expect(page.locator('#facedit')).toBeVisible();
   expect(ed.errors).toEqual([]);
   // Re-parented to nothing — the column above it holds only the guild.
-  await press(page, cell(page, 4, 4));
+  await press(page, cell(page, 4, 4), /TB_DWELLING_5 needs TB_MAGIC_GUILD|^$/);
   await expect(page.locator('#fac-cell')).toContainText('TB_DWELLING_5');
   await page.locator('#fac-cell select').first().selectOption('');
   await expect(cell(page, 4, 4).locator('.fc-arrow')).toHaveCount(0);
 
-  await press(page, page.locator('#fac-ok'));
+  await press(page, page.locator('#fac-ok'), /TB_DWELLING_5 needs TB_MAGIC_GUILD|^$/);
   // The town copy is the donor's whole closure: a while.
   await expect(page.locator('#facedit')).toBeHidden({ timeout: 300_000 });
   await expect(page.locator('#fac-form-err')).toHaveText('');
@@ -186,6 +194,7 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 3, button: { lua: 'BonePit' } });
   expect(f!.buildings?.TB_DWELLING_5).toEqual({ requires: [] });
   expect(f!.script).toContain('function BonePit');
+  expect(f!.icons?.field).toEqual([58, 28, 66, 255]);
 
   const names = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM))).map((e) => e.name.split('\\').join('/'));
   const has = (p: string | RegExp): boolean => names.some((n) => (typeof p === 'string' ? n === p : p.test(n)));
