@@ -161,7 +161,10 @@ fully, in the probe, one launch per question.
   click ticks the scheduler once, so the Lua runs inside it; the map's own
   `MessageBox` only queues for the adventure screen, so a box in town is
   `H5EMessageBox(text[, header])`, shown on the screen that is up
-  (engineInternals/FACTIONS.md, launches 22–27). Not yet: the tooltip's
+  (engineInternals/FACTIONS.md, launches 22–27). **The faction's Lua is the
+  mod's, on every map** (`TownSpec.script` → `scripts/homm5-editor/
+  faction-<file>.lua`, loaded by the mod's `advmap-common.lua`), never a
+  map's own script — launch 28, another map: "Value was NIL" at every click. Not yet: the tooltip's
   `<value=special>` (the building's name — four unmeasured calls).
   **Still unknown:** the grail's common bonuses. Launch 20, the AI's first
   turn, crashed — not the tree: the ceiling patcher had raised the wrong

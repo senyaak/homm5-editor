@@ -102,6 +102,9 @@ pre-release.
   screen that is up — the town screen included — where the game's own
   `MessageBox` only queues one for the adventure screen. The extension's
   Lua table holds sixty-four functions now, and refuses out loud.
+- A faction's adventure-map Lua (`TownSpec.script`) is a file of the
+  mod's under `scripts/homm5-editor/`, loaded by the mod's global script on
+  every map — where the button's function lives.
 
 **Mountains stand on the ground again — and grow out of it.** A mountain on a
 hillside floated on one side and was buried on the other, and its edges were

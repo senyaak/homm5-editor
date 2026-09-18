@@ -116,6 +116,12 @@ export interface TownSpec {
    * re-parented (`requires`) or dropped too; the copy refuses otherwise.
    */
   buildings?: Readonly<Record<BuildingKey, BuildingEdit | null>>;
+  /**
+   * The faction's adventure-map Lua, run on every map: where a building's
+   * button function (`BuildingEdit.button.lua`) is defined. Loaded through
+   * the mod's global script (town-button.ts, `factionScriptFile`).
+   */
+  script?: string;
 }
 
 /**

@@ -19,7 +19,8 @@ import { buildTown, dropGridCell, moveGridCell, parseBuildingKey } from '../src/
 import type { TownBuild, TownSpec } from '../src/mods/town-files.ts';
 import { positionsBox, wideBase } from '../src/scene/geometry.ts';
 import { BONE_ON_PLUM } from '../src/mods/faction-icons.ts';
-import { SHIPPED_BUTTON_STATES, SPECIAL_BUTTON, SPECIAL_BUTTON_SHARED, TOWN_BUILDINGS, addTownButtons, buildingsFileText } from '../src/mods/town-button.ts';
+import { SHIPPED_BUTTON_STATES, SPECIAL_BUTTON, SPECIAL_BUTTON_SHARED, TOWN_BUILDINGS, addTownButtons, buildingsFileText, factionScriptFile, factionScriptLoadLine } from '../src/mods/town-button.ts';
+import { patchCommonScript } from '../src/mods/artifact-scripts.ts';
 import { dataDir } from './game-dir.ts';
 
 let failures = 0;
@@ -202,6 +203,13 @@ console.log('the centre button');
   check('the row: type, TB_SPECIAL_1 = 17, the appended state, the function', buildingsFileText(out.rows).trim().endsWith('button 11 17 8 BonePit'));
   throws('a function name that is not one', () => addTownButtons(button, shared, [{ ...t2.button!, town: 11, lua: 'Bone Pit' }]), 'Lua function name');
   throws('a document already extended', () => addTownButtons(out.button, shared, []), 'not the shipped');
+  // The faction's Lua is the mod's, on every map — not a map's own script.
+  const script = factionScriptFile('Test', ['function BonePit(town)', '  H5ELog(1);', 'end;'].join('\n'));
+  const lua = script.data.toString('latin1');
+  check("the faction's script is a file of the mod's", script.path === 'scripts/homm5-editor/faction-Test.lua');
+  check("it introduces the map first, then the author's Lua",lua.indexOf('H5ETownButtons();') < lua.indexOf('function BonePit(town)'));
+  const common = patchCommonScript(read('scripts/advmap-common.lua')!.toString('latin1'), [], [script.path]);
+  check('and the global script loads it', common.includes(factionScriptLoadLine('Test')) && factionScriptLoadLine('Test') === 'doFile("/scripts/homm5-editor/faction-Test.lua");');
 }
 
 console.log('the grid alone');

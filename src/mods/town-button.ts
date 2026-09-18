@@ -31,6 +31,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import type { Image } from '../format/dds.ts';
+import { SCRIPT_DIR } from './artifact-scripts.ts';
 import { textureFiles } from './faction-icons.ts';
 import type { ModFile } from './mod-files.ts';
 import { EOL, insertBeforeLine, once } from './xml-edit.ts';
@@ -247,3 +248,36 @@ export function writeBuildingsFile(gameRoot: string, rows: readonly TownButtonRo
   writeFileSync(path, buildingsFileText(rows), 'latin1');
   return path;
 }
+
+// --- the faction's Lua, on every map -----------------------------------------
+//
+// The button names a function; the function has to EXIST on every map the
+// faction can be played on, not on one map's script — a map with a town of
+// ours and no `BonePit` prints "Value was NIL" at every click. So the
+// faction's map-side Lua is a file of the mod's, loaded by the one global
+// script the game runs at every map's start (`scripts/advmap-common.lua`,
+// see artifact-scripts.ts — a `doFile` line per file of ours), and it begins
+// with the call that lets the extension reach the map from a click.
+
+/** Where a faction's map-side script goes inside the mod. */
+export const factionScriptPath = (file: string): string => `${SCRIPT_DIR}/faction-${file}.lua`;
+
+/**
+ * The faction's script file: the extension's prelude, then the author's Lua
+ * verbatim — where the button's function is defined.
+ */
+export function factionScriptFile(file: string, lua: string): ModFile {
+  const text = [
+    `-- ${file}: the faction's adventure-map Lua, loaded on every map by advmap-common.lua.`,
+    '-- The map introduces itself to the extension, so a click on the town',
+    "-- screen's centre button can reach the map's Lua (native/faction/town-button.c).",
+    'H5ETownButtons();',
+    '',
+    ...lua.split(/\r?\n/),
+    '',
+  ];
+  return { path: factionScriptPath(file), data: Buffer.from(text.join('\n'), 'latin1') };
+}
+
+/** The line the global script loads it with — what `patchCommonScript`'s `extra` takes is the path. */
+export const factionScriptLoadLine = (file: string): string => `doFile("/${factionScriptPath(file)}");`;
