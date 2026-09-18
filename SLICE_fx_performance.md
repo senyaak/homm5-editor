@@ -678,6 +678,15 @@ What it says, in the order it matters:
   fetch (`loadMapPath`), so the old one can go while the bytes stream. What
   is left: the Tab's ~550 MB on the mix map with the JS heap at ~630
   reported (the geometry and the tables are the map), GPU ~400–460 MB.
+* **Tried and dropped, last**: the entries' heads read in parallel off the
+  thread pool (`loadGeomEntries`, three rounds: model heads, shared heads,
+  references). Headers stayed at 75–88 ms — the phase is not I/O-bound:
+  ~25 ms of JSON.parse and the walks, and the async version paid ~2800
+  promise hops for its four calls per file. The sync loader stays. Where
+  the warm open stands (A2C1M1, second open): main ~220 ms, fetch ~250,
+  unpack ~50, `buildWorld` ~150, first frame ~290 — ~1.2 s to the world,
+  from 11.5 s at the start of the series; the pieces left are each under
+  a tenth of it and transport- or GPU-bound.
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,
