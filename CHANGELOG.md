@@ -103,6 +103,13 @@ pre-release.
   kind on the map instead of one per kind, and an effect glued to a bone
   is re-hung only when the bone moves. On that same map: the frame's
   JavaScript 10.8 → 8.5 ms.
+- Every particle effect on a floor that draws with one frame atlas is one
+  draw call, however many different effects that is: the baked recordings
+  are stacked in one GPU texture, and a small per-draw list says which
+  entries, which copies and which tint each instance takes. That same map
+  drew its 528 effect batches as 528 calls and wears 203 atlases: 994 →
+  683 calls, JavaScript 8.5 → 6.3 ms, render 8.1 → 5.8; A2C1M1's 112
+  effect draws are 58. The picture is unchanged.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

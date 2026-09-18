@@ -26,6 +26,7 @@ import { deselect, renderExList } from '#features/selection.ts';
 import { forgetScriptContext } from '#features/text-editor/context.ts';
 import { geomSkin, setFxCardsVisible, worldGeos } from '#viewport/geoms.ts';
 import { idleMode, setIdleMode } from '#viewport/idle.ts';
+import { setFxVisible } from '#viewport/particles.ts';
 import { markShadowsDirty } from '#viewport/shadows.ts';
 import type { IdleMode } from '#viewport/idle.ts';
 import { replaceInstances } from '#viewport/instancing.ts';
@@ -122,7 +123,7 @@ export async function loadIdleSkins(): Promise<void> {
 
 export function setShowFx(on: boolean): void {
   state.showFx = on;
-  if (state.world) for (const fl of state.world.floors) for (const e of fl.fx) e.batch.mesh.visible = on;
+  setFxVisible(on);
   $('fxbtn').textContent = on ? 'Effects: on' : 'Effects: off';
   $('fxbtn').classList.toggle('on', on);
   saveUiPrefs({ showFx: on });

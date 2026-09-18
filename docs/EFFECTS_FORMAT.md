@@ -164,15 +164,20 @@ frames' RGBA texels, one shared object per distinct frame) and uid
 arrays — as JSON they doubled the scene payload of one map. The renderer
 (renderer/viewport/particles.ts) packs the texture table into one RGBA atlas —
 shared by every batch whose frames are the same, keyed by their content —
-and draws each DISTINCT ParticleInstance payload as one batch of instanced
-camera-facing quads — drawn once per placed copy through a per-copy matrix
-(renderer/viewport/fx.ts keeps which object is which copy). The recording
-itself is sampled ONCE, at its own rate, into a table on the GPU — the alive
+and keeps each DISTINCT ParticleInstance payload as one batch of instanced
+camera-facing quads, one per placed copy through a per-copy matrix
+(renderer/viewport/fx.ts keeps which object is which copy). Every batch on a
+floor that wears one atlas is drawn as ONE call — a pool: the copies'
+matrices in one texture, and the frame's segments (which table entries,
+how many, which copies, which tint) in a small integer texture the vertex
+shader binary-searches by instance id. The recording
+itself is sampled ONCE, at its own rate, into a table — the alive
 particles of each frame, three half-float texels each, one table per uid
-however many instances play it (24 MB for A2C1M1's 82) — and a frame update
-only decides which copies of the trigger train are playing and at which
-frame each is: at most eight (base, count) segments as uniforms, from which
-the vertex shader finds its particle. The sampling runs in a worker
+however many instances play it (24 MB for A2C1M1's 82); every table is
+stacked by rows in one GPU texture, the arena, so any pool can play any of
+them — and a frame update only decides which copies of the trigger train are
+playing and at which frame each is: at most eight (entry, count) segments per
+batch, handed to its pool. The sampling runs in a worker
 (`renderer/viewport/fx-table.ts` is the arithmetic, `bakery.ts` the door):
 a batch draws nothing until its uid's table lands, then plays from wherever
 the clock is. Playback steps at the recording's rate

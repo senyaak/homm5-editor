@@ -114,7 +114,7 @@ try {
     const p = await page.evaluate(() => window.view.perf());
     console.log(`[perf] ${tag.padEnd(10)} frame p50/p95/max ${ms(p.frame.p50)}/${ms(p.frame.p95)}/${ms(p.frame.max)} ms · js ${ms(p.js.p50)}/${ms(p.js.p95)}`
       + ` [${Object.entries(p.sections).map(([k, v]) => `${k} ${ms(v.p50)}`).join(', ')}] · ${p.calls} calls · ${p.triangles} tris`
-      + ` · fx ${p.fx.copies} copies/${p.fx.batches} batches, ${p.fx.alive} alive, atlases ${mb(p.fx.atlasBytes)}, tables ${mb(p.fx.tableBytes)}`
+      + ` · fx ${p.fx.copies} copies/${p.fx.batches} batches/${p.fx.pools} pools, ${p.fx.alive} alive, atlases ${mb(p.fx.atlasBytes)}, tables ${mb(p.fx.tableBytes)}`
       + ` · idle ${p.idle.bodies} bodies/${p.idle.tables} tables ${mb(p.idle.tableBytes)} · js heap ${mb(p.jsHeapBytes)}`);
     return p;
   };
@@ -148,7 +148,7 @@ try {
   await page.evaluate((p) => window.view.open(p), mapPath);
   await page.waitForFunction(() => window.view.size() > 0, undefined, { timeout: 300_000 });
   const loadMs = Date.now() - t1;
-  await page.waitForFunction(() => { const p = window.view.perf(); return (p.fx.batches === 0 || p.fx.atlases === p.fx.batches) && p.bakes.pending === 0; }, null, { timeout: 300_000 });
+  await page.waitForFunction(() => { const p = window.view.perf(); return p.bakes.pending === 0; }, null, { timeout: 300_000 });
   const readyMs = Date.now() - t1;
   console.log(`[perf] reopen: map:load ${loadMs} ms · effects ready at ${readyMs} ms`);
   const reopened = await read('reopened');

@@ -338,6 +338,37 @@ view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
   uniforms among them — merging batches that share an atlas would be the
   next cut), the scene walk (`projectObject` over ~1000 objects), the
   GPU at ~93 fps.
+* **Done** (2026-09-18, `particles.ts` pools): the batches on a floor that
+  wear one atlas (and one shader, and one pivot) are ONE draw. What told
+  them apart was uniforms — the table texture, the eight train segments,
+  the copy matrices, the tint — and is textures now: every baked table
+  stacked by rows in one ARENA texture (they share `TABLE_W`; a landing
+  table is `texSubImage2D`'d into its rows through three's
+  `copyTextureToTexture`, the arena laid out again only when it has to
+  grow), the pool's copies' matrices in one texture with a block per
+  batch, and the frame's segments — (instance end, entry base, count,
+  copy base), (copies, lit) — in a narrow RGBA32I texture the vertex
+  shader binary-searches by `gl_InstanceID`, rebuilt in `onBeforeRender`
+  only when a train in the pool moved (the table steps at 30 Hz under a
+  faster loop). The instance count is exact now — alive × copies per
+  segment — where a batch used to run `alive × capacity` and collapse the
+  spare slots in the shader. Measured on the kept mix map in one window:
+  **528 batches → 203 pools, 994 → 683 calls, JS 8.5 → 6.3 ms, render 8.1
+  → 5.8**; A2C1M1 322 → 274 calls (effects 112 → 58). The picture: masks
+  of "effects on − off" over ten frames against a build of the previous
+  commit (`_tmp/snap2.ts`, `_tmp/cmp2.ts`) agree on A2C1M1's three
+  commonest effects, the grass (standing shader, pivot) and three
+  creatures' glued effects, to the phase of the run. A first cut had the
+  segment texture 512 wide and re-uploaded every frame: 203 × 16 KB, and
+  `texSubImage2D` was 7% of the profile — the width is 16 now and the
+  upload waits for a change. Two things the profile names next: three
+  calling `getParameters` (a program re-resolve) for 144 ms self of a
+  4.4 s mix-map profile — some material is re-resolving its program every frame,
+  not attributed yet (program-cache `usedTimes` does not see a same-key
+  re-resolve, so that metric was tried and dropped); and the 4900
+  `THREE.DataUtils.toHalfFloat(): Value out of range` warnings a load
+  prints from the table bake — present before this step, a recording
+  value past ±65504 clamps in the table.
 * `map:load` is 11.6 s. The worst number on the page, and not in a frame.
 
 ### 7a. Under a map no designer would make (`tools/perf-stress.ts`, 2026-09-17)

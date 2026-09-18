@@ -43,10 +43,10 @@ const line = (tag: string, p: Perf): string =>
   + ` · js ${ms(p.js.p50)}/${ms(p.js.p95)}/${ms(p.js.max)} ms`
   + ` [${Object.entries(p.sections).map(([k, v]) => `${k} ${ms(v.p50)}`).join(', ')}]`
   + ` · ${p.calls} calls · ${p.triangles} tris · ${p.textures} textures`
-  + ` · fx ${p.fx.copies} copies in ${p.fx.batches} batches, ${p.fx.alive} alive,`
-  + ` ${p.fx.atlases} atlases (${p.fx.distinctAtlases} distinct) = ${mb(p.fx.atlasBytes)},`
+  + ` · fx ${p.fx.copies} copies in ${p.fx.batches} batches in ${p.fx.pools} pools, ${p.fx.alive} alive,`
+  + ` ${p.fx.distinctAtlases} atlases = ${mb(p.fx.atlasBytes)},`
   + ` ${p.fx.frames.refs} frames (${p.fx.frames.objects} objects) = ${mb(p.fx.frames.bytes)},`
-  + ` ${p.fx.tables} tables = ${mb(p.fx.tableBytes)}`
+  + ` ${p.fx.tables} tables = ${mb(p.fx.tableBytes)} in a ${mb(p.fx.arenaBytes)} arena`
   + ` · idle ${p.idle.bodies} bodies over ${p.idle.tables} tables = ${mb(p.idle.tableBytes)}`
   + ` · shadow redraws ${p.shadow.redraws} (${p.shadow.dirty} asked) in ${p.frames} frames`;
 
@@ -74,13 +74,13 @@ test('A2C1M1: the frame with effects on and off', { tag: '@data' }, async () => 
   await page.evaluate((p) => window.view.open(p), MAP);
   await page.waitForFunction(() => window.view.size() > 0, undefined, { timeout: 180_000 });
   const loadMs = Date.now() - t0;
-  // The systems arrive after the scene, and their atlases after them (each is
-  // a chain of image decodes). Everything counted must be there before the
-  // window opens, or "off" would win by being measured later.
+  // The systems arrive after the scene, and their tables after them (baked in
+  // the workers). Everything counted must be there before the window opens,
+  // or "off" would win by being measured later.
   await page.waitForFunction(() => window.view.idle().fx > 0, null, { timeout: 60_000 });
   await page.waitForFunction(() => {
     const p = window.view.perf();
-    return p.fx.batches > 0 && p.fx.atlases === p.fx.batches && p.bakes.pending === 0;
+    return p.fx.batches > 0 && p.fx.pools > 0 && p.bakes.pending === 0;
   }, null, { timeout: 120_000 });
   const fxReadyMs = Date.now() - t0;
   // Effects on, whatever the profile remembers.
@@ -121,10 +121,10 @@ test('A2C1M1: the frame with effects on and off', { tag: '@data' }, async () => 
   // integer divisions per batch now and would only grow if the sampling loop
   // came back (SLICE_fx_performance.md §1a: 4.3 ms before, 0.2 after).
   expect(on.fx.batches, 'one batch per distinct effect payload').toBeLessThan(on.fx.copies);
-  expect(on.fx.distinctAtlases, 'batches with one frame table share one atlas').toBeLessThan(on.fx.atlases);
+  expect(on.fx.pools, 'batches with one frame table are one draw').toBeLessThan(on.fx.batches);
   expect(on.fx.atlasBytes, 'atlases: 146 MB on A2C1M1').toBeLessThan(170 * 1048576);
   expect(on.fx.tableBytes, 'baked recordings: 24 MB on A2C1M1').toBeLessThan(40 * 1048576);
-  expect(on.calls - off.calls, 'effects cost one draw per batch').toBeLessThanOrEqual(on.fx.batches);
+  expect(on.calls - off.calls, 'effects cost one draw per pool').toBeLessThanOrEqual(on.fx.pools);
   expect(on.sections.fx!.p50, 'advanceFx is a lookup, not a sampler').toBeLessThan(1.5);
   expect(errors).toEqual([]);
 });

@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 import { state, activeFloor } from '#core/state.ts';
 import { renderer, scene } from '#viewport/stage.ts';
-import { fxAtlasStats, fxTableStats } from '#viewport/particles.ts';
+import { fxAtlasStats, fxPoolCount, fxTableStats } from '#viewport/particles.ts';
 import { idleTableStats } from '#viewport/idle.ts';
 import { shadowRedraws } from '#viewport/shadows.ts';
 import { bakeStats } from '#viewport/bakes.ts';
@@ -81,17 +81,18 @@ function percentiles(ring: Float32Array): { p50: number; p95: number; max: numbe
 }
 
 /**
- * The particle side: the active floor's batches and copies, and the atlases
- * and recording tables, which are shared across floors and counted whole —
- * `atlases` is how many the floor's batches hold (one each), `distinctAtlases`
- * and `atlasBytes` what actually exists.
+ * The particle side: the active floor's batches and copies and the POOLS they
+ * are drawn in (one draw each — a pool per atlas, shader and pivot), and the
+ * atlases and recording tables, which are shared across floors and counted
+ * whole; `arenaBytes` is the one texture the tables are stacked in.
  */
-function fxSummary(): { batches: number; copies: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number; frames: { refs: number; objects: number; bytes: number }; tables: number; tableEntries: number; tableBytes: number } {
+function fxSummary(): { batches: number; copies: number; alive: number; pools: number; atlasBytes: number; distinctAtlases: number; frames: { refs: number; objects: number; bytes: number }; tables: number; tableEntries: number; tableBytes: number; arenaBytes: number } {
   const fl = state.world ? activeFloor() : null;
   const t = fxTableStats();
   const a = fxAtlasStats();
-  const out = { batches: 0, copies: 0, alive: 0, atlases: 0, atlasBytes: a.bytes, distinctAtlases: a.atlases, frames: { refs: 0, objects: 0, bytes: 0 }, tables: t.tables, tableEntries: t.entries, tableBytes: t.bytes };
+  const out = { batches: 0, copies: 0, alive: 0, pools: 0, atlasBytes: a.bytes, distinctAtlases: a.atlases, frames: { refs: 0, objects: 0, bytes: 0 }, tables: t.tables, tableEntries: t.entries, tableBytes: t.bytes, arenaBytes: t.arenaBytes };
   if (!fl) return out;
+  out.pools = fxPoolCount(fl.objGroup);
   // The frames the floor's payloads hold — references against objects. One
   // object per distinct frame is what the IPC clone is supposed to deliver
   // (payload.ts Picture); the bytes are what those objects weigh in the heap.
@@ -100,7 +101,6 @@ function fxSummary(): { batches: number; copies: number; alive: number; atlases:
     out.batches++;
     out.copies += batch.copies;
     out.alive += batch.alive;
-    if ((batch.mesh.material as THREE.ShaderMaterial).uniforms.uAtlas?.value) out.atlases++;
     for (const f of batch.fx.textures) {
       if (!f) continue;
       out.frames.refs++;

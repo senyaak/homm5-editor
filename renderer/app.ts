@@ -586,11 +586,11 @@ interface ViewApi {
    * JS share of it as percentiles (a mean hides exactly the stutter being
    * chased), the draw calls and triangles of the last frame, three's texture
    * and geometry counts, and the particle side summed over the active floor —
-   * batches and the copies in them, particle slots and alive particles
-   * (per batch, summed), the atlases the batches hold, and how many DISTINCT
-   * textures those are with their bytes as uploaded (copies of one effect
+   * batches and the copies in them, alive particles (per batch, summed), the
+   * pools the batches are drawn in (one draw each), and how many DISTINCT
+   * atlas textures exist with their bytes as uploaded (copies of one effect
    * building their own was the 311 MB in SLICE_fx_performance.md; batches
-   * with one frame table now share one).
+   * with one frame table share one atlas, and one draw).
    * `loaf` is Chromium's own attribution of the long frames, newest last.
    */
   perf(): {
@@ -603,11 +603,14 @@ interface ViewApi {
     /** The loop's sections — input, idle, scene, fx, lights, render — as percentiles. */
     sections: Record<string, { p50: number; p95: number; max: number }>;
     fx: {
-      batches: number; copies: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number;
+      batches: number; copies: number; alive: number;
+      /** The draws the floor's batches are gathered into — one per atlas, shader and pivot. */
+      pools: number;
+      atlasBytes: number; distinctAtlases: number;
       /** The frame objects the floor's payloads hold: references, distinct objects, and their bytes. */
       frames: { refs: number; objects: number; bytes: number };
-      /** The baked recordings on the GPU, one per effect uid: how many, entries, bytes. */
-      tables: number; tableEntries: number; tableBytes: number;
+      /** The baked recordings, one per effect uid: how many, entries, bytes — and the one GPU texture they are stacked in. */
+      tables: number; tableEntries: number; tableBytes: number; arenaBytes: number;
     };
     /** Animated bodies on the active floor, and the baked idle tables behind them (one per creature kind). */
     idle: { bodies: number; tables: number; tableBytes: number };
@@ -841,7 +844,7 @@ const view: ViewApi = {
     // is the same answer for every copy except where it stands.
     const m4 = new THREE.Matrix4(), p = new THREE.Vector3();
     return fl.fx.flatMap((e) => e.at.map((inst, slot) => {
-      const tint = ((e.batch.mesh.material as THREE.ShaderMaterial).uniforms.uTint?.value ?? null) as THREE.Color | null;
+      const tint = e.batch.tint;
       // Where the copy actually SITS this frame, not where its object stands:
       // a glued copy rides an animated bone, and "did the eye glow follow the
       // head" is a question only this answers.
@@ -853,8 +856,8 @@ const view: ViewApi = {
         pos: [p.x, p.y, p.z],
         glue: e.batch.glue ?? '',
         alive: e.batch.alive,
-        visible: e.batch.mesh.visible,
-        tint: tint ? [tint.r, tint.g, tint.b] : [1, 1, 1],
+        visible: e.batch.visible,
+        tint: [tint.r, tint.g, tint.b],
       };
     }));
   },

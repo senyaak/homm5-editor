@@ -76,12 +76,11 @@ function batchFor(fl: Floor3D, f: FxInstancePayload, bank: Record<string, FxTran
   if (have) return have;
   const baked = bank[f.uid];
   if (!baked?.particles.length) return null;
-  const batch = createFxBatch(f, baked, uFxTint);
-  batch.mesh.userData.uid = f.uid; // for fxSystems() debugging
-  batch.mesh.visible = state.showFx; // effects arrive async; respect the toggle they land under
+  // The batch joins the floor's pool for its atlas — the pool hangs its one
+  // mesh under the object group itself, and is born under the Effects toggle.
+  const batch = createFxBatch(f, baked, uFxTint, fl.objGroup);
   const entry: PlacedFx = { batch, at: [], rest: [], hungAt: [] };
   fl.fx.push(entry);
-  fl.objGroup.add(batch.mesh);
   return entry;
 }
 
@@ -120,7 +119,7 @@ function addCopy(fl: Floor3D, f: FxInstancePayload, inst: Instance, bank: Record
  * show effects for objects that are gone.
  */
 export async function reloadFx(fl: Floor3D): Promise<void> {
-  for (const e of fl.fx) { fl.objGroup.remove(e.batch.mesh); e.batch.dispose(); }
+  for (const e of fl.fx) e.batch.dispose();
   fl.fx.length = 0;
   if (!geomFx.size) return;
   const uids = [...new Set(fl.instances.flatMap((i) => geomFx.get(i.g) ?? []).map((f) => f.uid))];
@@ -245,7 +244,6 @@ export function removeFx(fl: Floor3D, inst: Instance): void {
       e.at.length--; e.rest.length--;
     }
     if (e.batch.copies) continue;
-    fl.objGroup.remove(e.batch.mesh);
     e.batch.dispose();
     fl.fx.splice(i, 1);
   }
