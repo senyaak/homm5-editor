@@ -17,12 +17,11 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { decodeDDS } from '../format/dds.ts';
-import { pngDataUri } from '../format/png.ts';
 import { resampleTo, shrinkToFit } from '../format/texture.ts';
 import { resolveHref, dirOf } from './xdb.ts';
 import type { Assets } from '../game/assets.ts';
 import type { Mesh } from './geometry.ts';
-import type { AlphaMode, FxFrame } from './payload.ts';
+import type { AlphaMode, Picture } from './payload.ts';
 
 /** A material as the renderer needs it: what to draw and how to blend it. */
 export interface MaterialInfo {
@@ -224,7 +223,7 @@ function meshMaterialIndex(model: string, meshCount: number, materialCount: numb
  */
 export const TEXTURE_CAP = 512;
 
-interface DecodedTexture { uri: string; hasAlpha: boolean; opaque: boolean }
+interface DecodedTexture { picture: Picture; hasAlpha: boolean; opaque: boolean }
 
 /**
  * Textures already decoded, by file and cap.
@@ -236,27 +235,28 @@ interface DecodedTexture { uri: string; hasAlpha: boolean; opaque: boolean }
  *
  * Bounded, and evicting the oldest first, because the main process lives as
  * long as the editor does and every map opened would otherwise stay resident.
- * The budget is generous next to one scene's worth (23 MB at this cap) so that
- * a build never evicts inside itself.
+ * The budget is generous next to one scene's worth (a shipped map's 223
+ * textures are ~70 MB of texels at this cap) so that a build never evicts
+ * inside itself.
  */
 const decoded = new Map<string, DecodedTexture | null>();
-const DECODED_BUDGET = 128 * 1024 * 1024;
+const DECODED_BUDGET = 384 * 1024 * 1024;
 let decodedBytes = 0;
 
 function remember(key: string, value: DecodedTexture | null): DecodedTexture | null {
   decoded.set(key, value);
-  decodedBytes += value ? value.uri.length : 0;
+  decodedBytes += value ? value.picture.rgba.byteLength : 0;
   for (const old of decoded.keys()) {
     if (decodedBytes <= DECODED_BUDGET) break;
     if (old === key) break;                    // never evict what was just asked for
-    decodedBytes -= decoded.get(old)?.uri.length ?? 0;
+    decodedBytes -= decoded.get(old)?.picture.rgba.byteLength ?? 0;
     decoded.delete(old);
   }
   return value;
 }
 
 /**
- * One material's texture as the renderer takes it: a PNG data URI, plus the two
+ * One material's texture as the renderer takes it: its texels, plus the two
  * things about its alpha that decide how the part is drawn.
  *
  * `cap` is the longest side allowed, not the size produced — see `shrinkToFit`.
@@ -271,7 +271,7 @@ export function textureDataUri(model: string, data: Assets, cap: number, href?: 
     const key = `${ddsPath}|${cap}`;
     const known = decoded.get(key);
     if (known !== undefined) return known;
-    const img = shrinkToFit(decodeDDS(ddsPath), cap);
+    const img = shrinkToFit(decodeDDS(ddsPath, cap), cap);
     let hasAlpha = false, solidTexels = 0;
     for (let i = 3; i < img.rgba.length; i += 4) {
       const a = img.rgba[i]!;
@@ -282,7 +282,7 @@ export function textureDataUri(model: string, data: Assets, cap: number, href?: 
     // skin sits at 96%, a feathered overlay at 11%), so where the line lands
     // between them does not matter.
     return remember(key, {
-      uri: pngDataUri(img.width, img.height, img.rgba),
+      picture: { width: img.width, height: img.height, rgba: img.rgba, key },
       hasAlpha,
       opaque: solidTexels > img.width * img.height * 0.5,
     });
@@ -297,7 +297,7 @@ export function textureDataUri(model: string, data: Assets, cap: number, href?: 
  * budget is generous the same way `decoded`'s is: a map never evicts inside
  * its own build.
  */
-const frames = new Map<string, FxFrame | null>();
+const frames = new Map<string, Picture | null>();
 const FRAMES_BUDGET = 96 * 1024 * 1024;
 let frameBytes = 0;
 
@@ -305,7 +305,7 @@ let frameBytes = 0;
  * A particle frame's texture as FxInstancePayload.textures documents it: the
  * straight-alpha texels, no larger than `size` on either side.
  */
-export function particleFrame(data: Assets, size: number, href: string): FxFrame | null {
+export function particleFrame(data: Assets, size: number, href: string): Picture | null {
   try {
     const tx = readFileSync(data.path(href.split('#')[0]!), 'utf8');
     const dest = tx.match(/<DestName href="([^"]+)"/);
@@ -315,12 +315,14 @@ export function particleFrame(data: Assets, size: number, href: string): FxFrame
     const key = `${ddsPath}|${size}`;
     const known = frames.get(key);
     if (known !== undefined) return known;
-    const raw = decodeDDS(ddsPath);
+    const raw = decodeDDS(ddsPath, size);
     // Down to the atlas cell and no further: `size` is a ceiling on each side
     // rather than the shape produced, so a small frame is not blown up into
     // four times the bytes on its way to a cell that would scale it anyway.
+    // (The file's own mip level usually is the size already; this is for a
+    // file without one.)
     const img = resampleTo(raw, Math.min(size, raw.width), Math.min(size, raw.height));
-    const frame: FxFrame = { width: img.width, height: img.height, rgba: img.rgba };
+    const frame: Picture = { width: img.width, height: img.height, rgba: img.rgba, key };
     frames.set(key, frame);
     frameBytes += frame.rgba.byteLength;
     for (const old of frames.keys()) {

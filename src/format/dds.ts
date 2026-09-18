@@ -91,27 +91,52 @@ function decodeUncompressed(
   }
 }
 
-export function decodeDDS(path: string): Image {
-  return decodeDDSBuffer(readFileSync(path));
+/**
+ * The picture, or with `cap` the largest of its mip levels no wider or
+ * taller than `cap` — the same halving `shrinkToFit` would do, read off the
+ * file instead of computed: a 1024² skin capped to 512 decodes a quarter of
+ * the blocks and is not resampled after, and what comes out is the level
+ * the game itself draws that texture with at that size. A file without the
+ * level (no mip chain, or a chain that stops short) decodes at the largest
+ * it has, and the caller reduces as before.
+ */
+export function decodeDDS(path: string, cap?: number): Image {
+  return decodeDDSBuffer(readFileSync(path), cap);
 }
 
 /** The same, from bytes already in hand — a texture read out of an archive. */
-export function decodeDDSBuffer(b: Buffer): Image {
+export function decodeDDSBuffer(b: Buffer, cap?: number): Image {
   if (b.subarray(0, 4).toString() !== 'DDS ') throw new Error('not a DDS');
-  const height = b.readUInt32LE(12), width = b.readUInt32LE(16);
+  let height = b.readUInt32LE(12), width = b.readUInt32LE(16);
   const pfFlags = b.readUInt32LE(80);
   const fourCC = b.subarray(84, 88).toString();
-  const rgba = new Uint8Array(width * height * 4);
   let off = 128; // header size
 
   // DDPF_FOURCC (0x4) selects the block-compressed path; otherwise it's a plain
   // RGB(A) surface described by channel masks.
-  if (!(pfFlags & 0x4)) {
-    decodeUncompressed(b, off, width, height, b.readUInt32LE(88) || 32, rgba);
+  const compressed = !!(pfFlags & 0x4);
+  const bpp = b.readUInt32LE(88) || 32;
+  const blockBytes = fourCC === 'DXT1' ? 8 : 16;
+  /** Bytes one level of `w × h` takes, in this format. */
+  const levelBytes = (w: number, h: number): number =>
+    compressed ? Math.ceil(w / 4) * Math.ceil(h / 4) * blockBytes : w * h * (bpp / 8);
+  // DDSD_MIPMAPCOUNT (0x20000) says the count at 28 is meaningful; the levels
+  // follow the top one in order, each a quarter of the last.
+  const levels = b.readUInt32LE(8) & 0x20000 ? Math.max(1, b.readUInt32LE(28)) : 1;
+  if (cap) {
+    for (let level = 1; level < levels && (width > cap || height > cap); level++) {
+      off += levelBytes(width, height);
+      width = Math.max(1, width >> 1);
+      height = Math.max(1, height >> 1);
+    }
+  }
+  const rgba = new Uint8Array(width * height * 4);
+
+  if (!compressed) {
+    decodeUncompressed(b, off, width, height, bpp, rgba);
     return { width, height, rgba };
   }
   const bw = Math.ceil(width / 4), bh = Math.ceil(height / 4);
-  const blockBytes = fourCC === 'DXT1' ? 8 : 16;
   const dxt1 = fourCC === 'DXT1';
   for (let by = 0; by < bh; by++) for (let bx = 0; bx < bw; bx++) {
     let alpha: Uint8Array | null = null, colorOff = off;

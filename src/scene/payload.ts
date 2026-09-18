@@ -33,8 +33,14 @@ export interface GeomPart {
   /** First index in `GeomData.idx` this part covers. */
   start: number;
   count: number;
-  /** Downsampled texture as a PNG data URI, or null if unresolved. */
-  tex: string | null;
+  /**
+   * The part's texture, reduced to the cap, as its texels; null if unresolved.
+   * Texels rather than a PNG (which every other picture in a payload still
+   * is): the PNG was encoded here and decoded again in the renderer, two
+   * seconds of a map open between them, for a texture that goes straight
+   * into a texture either way.
+   */
+  tex: Picture | null;
   /** How this part blends, as its material declares. */
   alphaMode: AlphaMode;
   /**
@@ -298,11 +304,21 @@ export interface FxInstancePayload {
    * string per field, which is why the PNGs need `packTextures` and this
    * does not), and the renderer keys its atlases on it.
    */
-  textures: (FxFrame | null)[];
+  textures: (Picture | null)[];
 }
 
-/** One particle frame: `width * height * 4` bytes, R,G,B,A straight, row-major from the top. */
-export interface FxFrame { width: number; height: number; rgba: Uint8Array }
+/**
+ * A picture as its texels: `width * height * 4` bytes, R,G,B,A straight,
+ * row-major from the top — a part's texture, a particle frame.
+ *
+ * One object per distinct picture per IPC message: the structured clone
+ * keeps that identity (it is a string it copies per field, which is why the
+ * PNGs need `packTextures` and this does not). `key` names the file and cap
+ * it was decoded from, when it was one — the same key means the same texels
+ * across messages, which is what lets the renderer keep one texture per
+ * picture rather than per object that wears it.
+ */
+export interface Picture { width: number; height: number; rgba: Uint8Array; key?: string }
 
 /** A tile offset from an object's own tile, in grid axes; may be negative. */
 export interface TileOffset { x: number; y: number }

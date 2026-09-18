@@ -15,10 +15,10 @@
 // The last section needs game data and skips itself without it.
 
 // needs: data
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { decodeDDS } from '../src/format/dds.ts';
 import { assets } from '../src/game/assets.ts';
-import { readPng } from '../src/format/png.ts';
 import { resampleTo, shrinkToFit } from '../src/format/texture.ts';
 import { textureDataUri } from '../src/scene/materials.ts';
 import { packTextures, unpackTextures } from '../src/scene/tex-table.ts';
@@ -132,20 +132,25 @@ function testAgainstData(): void {
   }
   const data = assets([root]);
   const big = textureDataUri('', data, 512, '/' + rel);
-  check('a 512 skin arrives at 512 under the default cap', !!big && readPng(
-    Buffer.from(big.uri.split(',')[1]!, 'base64')).width === 512,
-  big ? String(readPng(Buffer.from(big.uri.split(',')[1]!, 'base64')).width) : 'null');
+  check('a 512 skin arrives at 512 under the default cap', big?.picture.width === 512,
+    big ? String(big.picture.width) : 'null');
+  check('as its texels, the buffer the size says', !!big && big.picture.rgba.byteLength === 512 * 512 * 4);
 
   const again = textureDataUri('', data, 512, '/' + rel);
-  check('asked twice, it is decoded once and the same string comes back',
-    !!again && again.uri === big!.uri);
+  check('asked twice, it is decoded once and the same picture comes back',
+    !!again && again.picture === big!.picture);
 
   const small = textureDataUri('', data, 128, '/' + rel);
-  check('a lower cap really does reduce it', !!small && readPng(
-    Buffer.from(small.uri.split(',')[1]!, 'base64')).width === 128);
+  check('a lower cap really does reduce it', small?.picture.width === 128);
   check('and the reduction is smaller than the original',
-    !!small && small.uri.length < big!.uri.length,
-    `${small ? (small.uri.length / 1024) | 0 : 0} KB vs ${(big!.uri.length / 1024) | 0} KB`);
+    !!small && small.picture.rgba.byteLength < big!.picture.rgba.byteLength,
+    `${small ? (small.picture.rgba.byteLength / 1024) | 0 : 0} KB vs ${(big!.picture.rgba.byteLength / 1024) | 0} KB`);
+  // The file carries a mip chain, and the cap reads the level off it rather
+  // than reducing the top one (dds.ts): a 128 from a 512 is the file's third level.
+  const raw = decodeDDS(data.path(dirname('/' + rel) + '/' + readFileSync(data.path('/' + rel), 'utf8').match(/<DestName href="([^"]+)"/)![1]!));
+  const level2 = decodeDDS(data.path(dirname('/' + rel) + '/' + readFileSync(data.path('/' + rel), 'utf8').match(/<DestName href="([^"]+)"/)![1]!), 128);
+  check('the 128 is the file\'s own level, not the top one box-filtered', raw.width === 512 && level2.width === 128
+    && !level2.rgba.every((v, i) => v === shrinkToFit(raw, 128).rgba[i]));
 }
 
 testShrink();

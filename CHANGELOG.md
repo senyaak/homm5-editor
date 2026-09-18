@@ -67,6 +67,11 @@ pre-release.
   to 310 ms and its effects' from 560 to 200; on the creature stress map
   the scene build was 2.4 s and is 0.8. `view.perf()` reports the bakes
   (count, milliseconds, still pending).
+- A model's textures reach the renderer as texels, not as PNGs encoded in
+  the main process and decoded again in the window, and a texture over the
+  cap is read from the file's own mip level instead of decoded whole and
+  reduced. Opening A2C1M1: the main process's part 6.2 → 3.6 s, the scene
+  on screen at 7.4 s where it was 11.5.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

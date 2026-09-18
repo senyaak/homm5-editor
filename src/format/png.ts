@@ -1,10 +1,11 @@
 // PNG, both ways.
 //
-// OUT: an RGBA buffer as a data URI, which is how every decoded texture reaches
-// the renderer (embedded in the scene JSON rather than fetched). RGBA (colour
-// type 6) so transparency survives; foliage cutouts, particle alpha and the
-// terrain masks all need it. One IDAT, filter 0 on every scanline — deflate
-// does the work, and at these sizes nothing else is worth the code.
+// OUT: an RGBA buffer as a data URI, which is how the ground tiles, the water
+// and the rock reach the renderer (embedded in the scene JSON rather than
+// fetched; model skins and particle frames go as texels, payload.ts
+// `Picture`). RGBA (colour type 6) so transparency survives; the terrain
+// masks need it. One IDAT, filter 0 on every scanline — deflate does the
+// work, and at these sizes nothing else is worth the code.
 //
 // IN: a picture an author points the mod at. GIF came first because the art
 // people had was GIF; a PNG is what everything else produces — a screenshot, a

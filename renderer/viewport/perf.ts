@@ -94,7 +94,7 @@ function fxSummary(): { batches: number; copies: number; alive: number; atlases:
   if (!fl) return out;
   // The frames the floor's payloads hold — references against objects. One
   // object per distinct frame is what the IPC clone is supposed to deliver
-  // (payload.ts FxFrame); the bytes are what those objects weigh in the heap.
+  // (payload.ts Picture); the bytes are what those objects weigh in the heap.
   const frames = new Set<object>();
   for (const { batch } of fl.fx) {
     out.batches++;

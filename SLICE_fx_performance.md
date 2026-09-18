@@ -346,6 +346,20 @@ What it says, in the order it matters:
   render's texture uploads (~330 ms of `render` plus the GPU's time), the
   payload's deserialisation (~300 ms), buildWorld's own 300 ms, and the
   atlases (137 ms; frames could go to the worker too).
+* **The main process's 6.2 s, profiled** (`node --cpu-prof` over
+  `buildScene`, 2026-09-18): `textureDataUri` 3.6 s — PNG encoding 1.95 s,
+  DXT decoding 1.5 s over 223 textures — then ~0.8 s of `existsSync`/`stat`/
+  `readFileSync` resolving hrefs, 0.6 s baking clips, 0.3 s of Oodle. Two
+  of those are gone: the skins travel as texels (`Picture`, the frames'
+  road — the renderer makes a `DataTexture` and decodes nothing), and a
+  texture over the cap is read from the file's own mip level (dds.ts
+  `decodeDDS(path, cap)`: 5× fewer blocks, no box filter after; 1946 of the
+  3986 shipped textures carry chains, and the level differs from our box
+  filter by 2.9/255 on average — it is what the game draws with). 6.2 →
+  **3.6 s**; the scene is on screen at 7.4 s where it was 11.5. Left in
+  the main process: the href resolution (a cache of `Assets.path` over the
+  mounts, ~0.8 s), the clip bakes (0.6 s), the DXT decode of what remains
+  (~1 s, a native decoder or a worker pool).
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,

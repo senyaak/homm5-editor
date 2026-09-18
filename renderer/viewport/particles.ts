@@ -40,7 +40,7 @@
 // thousands of instances.
 
 import * as THREE from 'three';
-import type { FxFrame, FxInstancePayload } from '#src/scene/payload.ts';
+import type { Picture, FxInstancePayload } from '#src/scene/payload.ts';
 import type { FxTransfer } from '#src/scene/effects.ts';
 import { countBake } from '#viewport/bakes.ts';
 import { bakeFx } from '#viewport/bakery.ts';
@@ -121,7 +121,7 @@ interface FxAtlas {
 }
 const atlases = new Map<string, FxAtlas>();
 /** A frame's content key, computed once per frame object. */
-const frameKeys = new WeakMap<FxFrame, string>();
+const frameKeys = new WeakMap<Picture, string>();
 
 /**
  * Two FNV-1a hashes over the texels (64 bits between them: a few hundred
@@ -129,7 +129,7 @@ const frameKeys = new WeakMap<FxFrame, string>();
  * The frames arrive shared — one object per distinct file per IPC message —
  * so this runs once per distinct frame, not once per instance wearing it.
  */
-function frameKey(f: FxFrame): string {
+function frameKey(f: Picture): string {
   let key = frameKeys.get(f);
   if (key !== undefined) return key;
   const d = f.rgba;
@@ -144,7 +144,7 @@ function frameKey(f: FxFrame): string {
 }
 
 /** The atlas for a frame table — built on first use, shared after. Pair with releaseAtlas. */
-function atlasFor(textures: (FxFrame | null)[], rawColor: boolean): FxAtlas {
+function atlasFor(textures: (Picture | null)[], rawColor: boolean): FxAtlas {
   // A static system's colour stays RAW: its texel goes to the framebuffer
   // as-authored (the terrain's gamma convention). Decoded as sRGB it would be
   // re-encoded on the way out and the grass would brighten past the game's.
@@ -203,7 +203,7 @@ export function fxAtlasStats(): { atlases: number; bytes: number } {
  * Bilinear where it has to stretch (a frame never exceeds the cell), a row
  * copy where it fits exactly, which is the common case.
  */
-function blitCell(f: FxFrame, data: Uint8Array, width: number, x0: number, y0: number): void {
+function blitCell(f: Picture, data: Uint8Array, width: number, x0: number, y0: number): void {
   const src = f.rgba;
   if (f.width === CELL && f.height === CELL) {
     for (let y = 0; y < CELL; y++) data.set(src.subarray(y * CELL * 4, (y + 1) * CELL * 4), ((y0 + y) * width + x0) * 4);

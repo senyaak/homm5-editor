@@ -11,9 +11,7 @@ import * as THREE from 'three';
 import { drapeThreeShader } from '#viewport/drape.ts';
 import { uSunDir, uSunCol, uAmbCol, uShadeCol, uIncidentCol, uWhiten } from '#viewport/lighting.ts';
 import { renderer } from '#viewport/stage.ts';
-import type { GeomData, GeomPart } from '#src/scene/payload.ts';
-
-const texLoader = new THREE.TextureLoader();
+import type { GeomData, GeomPart, Picture } from '#src/scene/payload.ts';
 
 /**
  * The space a diffuse texture is sampled in — RAW, and the same one the probe
@@ -161,11 +159,29 @@ gameLit(greyMat, true);
  */
 const texCache = new Map<string, THREE.Material>();
 
-/** Load a part's own texture the way the renderer expects it (unflipped, tiling). */
-export function partTexture(src: string): THREE.Texture {
-  const tx = texLoader.load(src);
+/** The pictures with no key of their own, numbered as they come, so the material cache can name them. */
+const pictureIds = new WeakMap<Picture, number>();
+let pictures = 0;
+/** What tells one picture from another in a cache key: its file and cap, or its number. */
+export function pictureKey(p: Picture): string {
+  if (p.key) return p.key;
+  let id = pictureIds.get(p);
+  if (id === undefined) { id = pictures++; pictureIds.set(p, id); }
+  return `#${id}`;
+}
+
+/** A part's own texture the way the renderer expects it (unflipped, tiling, mipmapped) — straight from its texels. */
+export function partTexture(pic: Picture): THREE.Texture {
+  const tx = new THREE.DataTexture(pic.rgba, pic.width, pic.height, THREE.RGBAFormat, THREE.UnsignedByteType);
   tx.wrapS = tx.wrapT = THREE.RepeatWrapping;
+  // Row 0 is the top, as it lies in the file; the UVs were authored for that.
   tx.flipY = false;
+  // A DataTexture is born unfiltered and without mipmaps; a model's skin wants
+  // what an image-loaded texture gets by default.
+  tx.generateMipmaps = true;
+  tx.minFilter = THREE.LinearMipmapLinearFilter;
+  tx.magFilter = THREE.LinearFilter;
+  tx.needsUpdate = true;
   // Anisotropic filtering, at whatever the card allows. Every surface a scene
   // shows at a slant — the ground under a shot, a wall running away from the
   // camera, the flat of a blade — is sampled along its short axis by a plain
@@ -198,7 +214,7 @@ export function materialFor(part: GeomPart, sky = false): THREE.Material {
   // same texture in the same blend mode is a depth-writing body on one mesh
   // and a decal on another.
   const decal = part.projectOnTerrain && part.flat;
-  const key = `${sky ? 'sky|' : ''}${part.alphaMode}|${part.projectOnTerrain ? 'draped' : 'rigid'}|${decal ? 'decal' : 'body'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}${part.twoSided ? '2s' : ''}${part.card ? 'card' : ''}|${part.tex}`;
+  const key = `${sky ? 'sky|' : ''}${part.alphaMode}|${part.projectOnTerrain ? 'draped' : 'rigid'}|${decal ? 'decal' : 'body'}|${part.opaque ? 'body' : 'sheer'}|${part.additive ? 'add' : ''}${part.selfIllum ? 'lit' : ''}${part.twoSided ? '2s' : ''}${part.card ? 'card' : ''}|${pictureKey(part.tex)}`;
   const hit = texCache.get(key);
   if (hit) return hit;
   const tx = partTexture(part.tex);

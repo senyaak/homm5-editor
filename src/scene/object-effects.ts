@@ -29,7 +29,7 @@ import type { BakedRig } from './skin.ts';
 import { followHref, listItems, readAsset, readVec3, readQuat, resolveHref, dirOf } from './xdb.ts';
 import type { Assets } from '../game/assets.ts';
 import type { ReadXdb } from './xdb.ts';
-import type { GeomData, FxInstancePayload } from './payload.ts';
+import type { GeomData, FxInstancePayload, Picture } from './payload.ts';
 
 // `<Model/>` empty and everything visible about the object a particle effect is
 // the ordinary case here, not the corner one — the anti-magic garrison wall is
@@ -77,7 +77,7 @@ export function lightGlowCard(): GeomData {
       px[at] = 255; px[at + 1] = 190; px[at + 2] = 90; px[at + 3] = Math.round(a * 255);
     }
   }
-  const t = pngDataUri(S, S, px);
+  const t: Picture = { width: S, height: S, rgba: px, key: 'lightGlowCard' };
   const hw = 1.5, h = 3; // reads as a small fire glow, about a tile wide
   return {
     pos: [-hw, 0, 0, hw, 0, 0, hw, 0, h, -hw, 0, h],
@@ -150,7 +150,7 @@ export function effectGeom(
     idx: [0, 1, 2, 0, 2, 3],
     // A particle stand-in is a glow: draw it additive and full-bright so it
     // reads as light, the way the game's particles do, not as a dark grey decal.
-    parts: [{ start: 0, count: 6, tex: t.uri, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false, additive: true, selfIllum: true, twoSided: true, card: true }],
+    parts: [{ start: 0, count: 6, tex: t.picture, alphaMode: 'AM_TRANSPARENT', projectOnTerrain: false, flat: false, opaque: false, terrainProjected: false, additive: true, selfIllum: true, twoSided: true, card: true }],
   };
 }
 

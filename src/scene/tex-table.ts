@@ -1,11 +1,14 @@
 // Sending each texture once.
 //
-// A payload embeds its textures as PNG data URIs (src/format/png.ts says why),
-// and a scene wears the same texture over and over: C1M1's opening dialog names
-// 4659 of them and there are 299 distinct ones behind those. Built, that is one
-// shared string per texture — `textureDataUri` caches — but the structured
-// clone across the IPC boundary does not care that two fields point at one
-// string. It copies the bytes 4659 times: 85 MB where 21 MB is the whole truth.
+// A payload embeds its pictures as PNG data URIs (src/format/png.ts says why)
+// — the ground tiles, the water, the rock — and a scene wears the same one
+// over and over. Built, that is one shared string per texture, but the
+// structured clone across the IPC boundary does not care that two fields
+// point at one string. It copies the bytes per field: when a model's skins
+// went this way too, C1M1's opening dialog named 4659 of them over 299
+// distinct ones, 85 MB where 21 MB was the whole truth. (Model skins and
+// particle frames travel as texels now — payload.ts `Picture` — which the
+// clone shares by identity, so this table no longer sees them.)
 //
 // So the payload is PACKED on its way out of the main process — every data URI
 // replaced by a handle into a table sent beside it — and UNPACKED as it
