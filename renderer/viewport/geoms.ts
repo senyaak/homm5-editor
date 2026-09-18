@@ -73,10 +73,11 @@ export function setFxCardsVisible(on: boolean): void {
     // floors do not share one). Written through the registry alone, the
     // switch never reached those: the Inferno post kept its smoke card up
     // (Senya) while the bats lost theirs.
-    for (const fl of state.world?.floors ?? []) {
-      const list = fl.batches.get(c.g)?.im.material;
-      if (Array.isArray(list)) list[c.i] = m;
-    }
+  }
+  // The batches draw a card with its own material and hide it whole: every
+  // card on the floor wearing one texture is one batch (instancing.ts).
+  for (const fl of state.world?.floors ?? []) {
+    for (const b of fl.materialBatches.values()) if (b.card) b.mesh.visible = on;
   }
 }
 

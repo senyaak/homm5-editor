@@ -10,9 +10,9 @@
 import * as THREE from 'three';
 
 import { uiPrefs } from '#core/prefs.ts';
-import type { Floor3D } from '#core/state.ts';
+import type { Floor3D, MaterialBatch } from '#core/state.ts';
 import type { IdleKind } from '#viewport/skinning.ts';
-import type { Instance } from '#src/scene/payload.ts';
+import type { GeomPart, Instance, SplatData } from '#src/scene/payload.ts';
 import { UNITS_PER_TILE as U } from '#src/scene/units.ts';
 import { DRAPE_PARS, DRAPE_VERT_PARS, TERRAIN_DEPTH, drapeUniforms } from '#viewport/drape.ts';
 import { geomParts } from '#viewport/geoms.ts';
@@ -203,6 +203,7 @@ export function disposeSplats(): void {
 const PROJ_VERT = `
 ${SHADOW_VERT_PARS}
 ${DRAPE_VERT_PARS}
+#include <batching_pars_vertex>
 out vec2 vGrid;   // 0..1 across the map -> mask lookup
 out vec2 vWorld;  // tile coords -> tiled ground lookup
 out vec2 vUv;     // the part's own uv, for its own texture
@@ -210,12 +211,15 @@ out vec3 vNrm;
 uniform float uMapSide;   // V - 1
 uniform float uUnits;     // world units per tile
 void main() {
-  // The mesh is batched, so the position has to come through the instance
-  // matrix exactly as the instanced draw sees it.
+  // The mesh is batched, so the position has to come through the batch's
+  // matrix for this instance exactly as three's own materials take it.
+  #include <batching_vertex>
+  mat4 model = modelMatrix;
+  #ifdef USE_BATCHING
+    model = modelMatrix * batchingMatrix;
+  #endif
   #ifdef USE_INSTANCING
-    mat4 model = modelMatrix * instanceMatrix;
-  #else
-    mat4 model = modelMatrix;
+    model = modelMatrix * instanceMatrix;
   #endif
   vec4 world = drape(model * vec4(position, 1.0), model[3].z, 1.0);
   vNrm = normalize(mat3(model) * normal);
@@ -297,8 +301,8 @@ export function applyProjectedMaterials(fl: Floor3D): void {
   // One batch's failure must not leave every batch after it unprojected — a
   // skin drawn with the untextured stand-in is a light grey plate on the
   // ground, and an overlay drawn as a plain decal is a see-through floor.
-  for (const g of fl.batches.keys()) {
-    try { projectBatch(fl, g); } catch (e) { console.error(`projected material failed for geom ${g}`, e); }
+  for (const b of fl.materialBatches.values()) {
+    try { projectMaterialBatch(fl, b); } catch (e) { console.error(`projected material failed for ${b.key}`, e); }
   }
   // The animated bodies are drawn by their own skinned meshes, not by a batch
   // (idle.ts), and they need the ground just the same: a sawmill's floor and
@@ -329,8 +333,59 @@ export function projectIdle(fl: Floor3D, kind: IdleKind): void {
 export function projectBatch(fl: Floor3D, g: number): void {
   const batch = fl.batches.get(g);
   if (!batch) return;
-  const list = projectedList(fl, g, batch.im.material);
-  if (list) batch.im.material = list;
+  for (const p of batch.parts) projectMaterialBatch(fl, p.batch);
+}
+
+/**
+ * A material batch whose part takes the ground draws with this floor's
+ * ground-sampling material — built once per batch, since every part in it
+ * wears the same overlay; left alone when the splat is not up yet, or when
+ * the batch already samples THIS floor's ground.
+ */
+function projectMaterialBatch(fl: Floor3D, b: MaterialBatch): void {
+  if (!b.part.terrainProjected) return;
+  const s = fl.splat;
+  const splatMat = fl.terrainMesh.material as THREE.ShaderMaterial;
+  if (!s || !splatMat?.uniforms?.uGround) return;
+  if ((b.mesh.material as THREE.ShaderMaterial)?.uniforms?.uGround === splatMat.uniforms.uGround) return;
+  b.mesh.material = projectedMaterial(fl, b.part, s, splatMat);
+}
+
+/** The ground-sampling material for one ground-projected part on one floor. */
+function projectedMaterial(fl: Floor3D, p: GeomPart, s: SplatData, splatMat: THREE.ShaderMaterial): THREE.ShaderMaterial {
+  const overlay = p.tex ? partTexture(p.tex) : null;
+  return new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    vertexShader: PROJ_VERT,
+    fragmentShader: projFrag(s.maskGroups.length, s.layerCount),
+    uniforms: {
+      ...shadowUniforms(),
+      ...drapeUniforms(),
+      uGround: splatMat.uniforms.uGround!,
+      uMask: splatMat.uniforms.uMask!,
+      uScale: splatMat.uniforms.uScale!,
+      uOverlay: { value: overlay },
+      uHasOverlay: { value: overlay ? 1 : 0 },
+      uMapSide: { value: s.V - 1 },
+      uUnits: { value: U },
+      uLm: { value: fl.lightMap }, uLmGain,
+      uSunDir, uSunCol, uAmb: uAmbCol, uShade: uShadeCol, uIncident: uIncidentCol, uWhiten,
+    },
+    lights: true, // what makes three define the shadow chunks and fill them
+    // Culled like any other part (materials.ts on why): a mountain drawn
+    // two-sided fills the frame with its inside when a dialogue camera pulls
+    // back into the ridge.
+    side: p.twoSided ? THREE.DoubleSide : THREE.FrontSide,
+    // The mound IS the ground, and the building's entrance and floor sit ON
+    // it: where they are coplanar the two flickered green/dark as the camera
+    // moved. Push the ground surface back in depth so the solid parts on top
+    // of it always win — but less far than the terrain itself is pushed
+    // (upgradeToSplat), since a draped swamp or crater is coplanar with THAT
+    // and has to win there.
+    polygonOffset: true,
+    polygonOffsetFactor: 1,
+    polygonOffsetUnits: 1,
+  });
 }
 
 /**
@@ -356,39 +411,7 @@ function projectedList(fl: Floor3D, g: number, mats: THREE.Material | THREE.Mate
     // Against another one — an add-layer rebuild replaced the ground textures —
     // it has to be built again.
     if ((list[i] as THREE.ShaderMaterial)?.uniforms?.uGround === splatMat.uniforms.uGround) return;
-    const overlay = p.tex ? partTexture(p.tex) : null;
-    list[i] = new THREE.ShaderMaterial({
-      glslVersion: THREE.GLSL3,
-      vertexShader: PROJ_VERT,
-      fragmentShader: projFrag(s.maskGroups.length, s.layerCount),
-      uniforms: {
-        ...shadowUniforms(),
-        ...drapeUniforms(),
-        uGround: splatMat.uniforms.uGround!,
-        uMask: splatMat.uniforms.uMask!,
-        uScale: splatMat.uniforms.uScale!,
-        uOverlay: { value: overlay },
-        uHasOverlay: { value: overlay ? 1 : 0 },
-        uMapSide: { value: s.V - 1 },
-        uUnits: { value: U },
-        uLm: { value: fl.lightMap }, uLmGain,
-        uSunDir, uSunCol, uAmb: uAmbCol, uShade: uShadeCol, uIncident: uIncidentCol, uWhiten,
-      },
-      lights: true, // what makes three define the shadow chunks and fill them
-      // Culled like any other part (materials.ts on why): a mountain drawn
-      // two-sided fills the frame with its inside when a dialogue camera pulls
-      // back into the ridge.
-      side: p.twoSided ? THREE.DoubleSide : THREE.FrontSide,
-      // The mound IS the ground, and the building's entrance and floor sit ON
-      // it: where they are coplanar the two flickered green/dark as the camera
-      // moved. Push the ground surface back in depth so the solid parts on top
-      // of it always win — but less far than the terrain itself is pushed
-      // (upgradeToSplat), since a draped swamp or crater is coplanar with THAT
-      // and has to win there.
-      polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1,
-    });
+    list[i] = projectedMaterial(fl, p, s, splatMat);
     changed = true;
   });
   return changed ? list : null;

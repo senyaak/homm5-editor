@@ -1,35 +1,166 @@
-// Instanced drawing: every copy of one model on one floor in a single call.
+// Batched drawing: every part of every object that wears one material, on one
+// floor, in a single call.
 //
-// A map draws the same few models over and over: 2258 placed objects on one
-// shipped map resolve to 120 distinct models, the commonest of which appears
-// 363 times. Drawn one mesh each that is 2729 draw calls, which is what made
-// the view stutter. Batched by model it is 229.
+// A map draws the same few models over and over — 2258 placed objects on one
+// shipped map resolve to 120 distinct models — and the models wear the same
+// few textures over and over again: the mix stress map's 469 kinds of static
+// object draw with 148 materials between them. Drawn one InstancedMesh per
+// model, with a group per material, that was 775 calls; drawn one
+// BatchedMesh per MATERIAL, with every part of every model that wears it as a
+// geometry in the batch and every placement as an instance, it is 148. Three
+// issues one multi-draw per batch, and the card sorts the rest out.
 //
-// Merging submeshes that share a material was measured first and is not worth
-// doing on its own: it takes 2729 to 2630.
+// So a floor keeps two maps. `materialBatches`, by material key: the draws.
+// `batches`, by model: what the rest of the editor addresses an object by —
+// its slot, and per part of the model which material batch draws it and as
+// which instance. An object with three parts of two materials is two
+// instances in two batches; move it and both move.
 //
-// Each object keeps a THREE.Mesh as its handle, but that mesh is NOT added to
-// the scene — it exists to be picked, dragged and boxed, and the drawing is
-// done by the InstancedMesh. The raycaster is handed the handles explicitly, so
-// it still finds them; their world matrices just have to be kept current.
+// Each object also keeps a THREE.Mesh as its handle, but that mesh is NOT
+// added to the scene — it exists to be picked, dragged and boxed, and the
+// drawing is done by the batches. The raycaster is handed the handles
+// explicitly, so it still finds them; their world matrices just have to be
+// kept current.
 
 import * as THREE from 'three';
 
 import { groundOn, tileCenter } from '#core/coords.ts';
-import type { Floor3D, GeomBatch } from '#core/state.ts';
-import type { Instance } from '#src/scene/payload.ts';
-import { geomScale, worldGeos, worldMats } from '#viewport/geoms.ts';
+import { state } from '#core/state.ts';
+import type { Floor3D, GeomBatch, MaterialBatch } from '#core/state.ts';
+import type { GeomPart, Instance } from '#src/scene/payload.ts';
+import { geomParts, geomScale, worldGeos, worldMats } from '#viewport/geoms.ts';
 import { moveFx, reloadFx } from '#viewport/fx.ts';
 import { addIdle, clearIdle, moveIdle } from '#viewport/idle.ts';
+import { materialFor, materialKey } from '#viewport/materials.ts';
 import { syncFootprints } from '#viewport/overlays.ts';
 import { bakeLightMap, markLightsDirty } from '#viewport/point-lights.ts';
 import { markShadowRoles, markShadowsDirty } from '#viewport/shadows.ts';
-import { applyProjectedMaterials } from '#viewport/splat.ts';
+import { applyProjectedMaterials, projectBatch } from '#viewport/splat.ts';
 
-/** Spare slots kept so placing a few objects does not reallocate every time. */
-const BATCH_HEADROOM = 8;
+/** A batch is born with room for this many instances and grows by doubling. */
+const INSTANCE_HEADROOM = 64;
+/** …and this many vertices; a model's part that does not fit grows it. */
+const VERTEX_HEADROOM = 4096;
 
-/** Write an object's transform into its slot of the instance buffer. */
+/**
+ * One material group of one model as a geometry of its own: the vertices the
+ * group's indices reach, compacted, with the attributes every batch carries.
+ * Every batch carries the same set (a BatchedMesh's geometries must agree on
+ * theirs): position, normal, uv and the drape flag, a zero where the model
+ * has none.
+ */
+function partGeometry(geo: THREE.BufferGeometry, group: { start: number; count: number }): THREE.BufferGeometry {
+  const index = geo.getIndex()!;
+  const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+  const nrm = geo.getAttribute('normal') as THREE.BufferAttribute | undefined;
+  const uv = geo.getAttribute('uv') as THREE.BufferAttribute | undefined;
+  const drape = geo.getAttribute('aDrape') as THREE.BufferAttribute | undefined;
+  const remap = new Map<number, number>();
+  const idx = new Uint32Array(group.count);
+  for (let k = 0; k < group.count; k++) {
+    const v = index.getX(group.start + k);
+    let to = remap.get(v);
+    if (to === undefined) { to = remap.size; remap.set(v, to); }
+    idx[k] = to;
+  }
+  const n = remap.size;
+  const p = new Float32Array(n * 3), nr = new Float32Array(n * 3), t = new Float32Array(n * 2), d = new Float32Array(n);
+  for (const [from, to] of remap) {
+    p[to * 3] = pos.getX(from); p[to * 3 + 1] = pos.getY(from); p[to * 3 + 2] = pos.getZ(from);
+    if (nrm) { nr[to * 3] = nrm.getX(from); nr[to * 3 + 1] = nrm.getY(from); nr[to * 3 + 2] = nrm.getZ(from); }
+    if (uv) { t[to * 2] = uv.getX(from); t[to * 2 + 1] = uv.getY(from); }
+    if (drape) d[to] = drape.getX(from);
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.BufferAttribute(p, 3));
+  out.setAttribute('normal', new THREE.BufferAttribute(nr, 3));
+  out.setAttribute('uv', new THREE.BufferAttribute(t, 2));
+  out.setAttribute('aDrape', new THREE.BufferAttribute(d, 1));
+  out.setIndex(new THREE.BufferAttribute(idx, 1));
+  return out;
+}
+
+/** The floor's batch for a material — made on the first part that wears it. */
+function materialBatchFor(fl: Floor3D, part: GeomPart, material: THREE.Material): MaterialBatch {
+  const key = materialKey(part);
+  const have = fl.materialBatches.get(key);
+  if (have) return have;
+  const mesh = new THREE.BatchedMesh(INSTANCE_HEADROOM, VERTEX_HEADROOM, VERTEX_HEADROOM * 2, material);
+  // Objects stand all over the map, so the batch as a whole is never culled —
+  // and neither are its instances, one by one: three would walk every one
+  // of them every frame (a sphere per instance against the frustum, 3000 of
+  // them on A2C1M1 — more CPU than the draws it saved), and the instanced
+  // draws this replaces never culled per object either. Nor are they depth
+  // sorted, for the same reason and with the same picture as before: a
+  // batch left alone does no per-frame work at all.
+  mesh.frustumCulled = false;
+  mesh.perObjectFrustumCulled = false;
+  mesh.sortObjects = false;
+  // A stand-in card under a particle effect is drawn on request only
+  // (geoms.ts setFxCardsVisible); its batch answers the toggle whole.
+  mesh.visible = !part.card || state.showFxCards;
+  // A batch made after the floor was built misses the pass that hands out the
+  // shadow roles, and a mesh that neither casts nor receives is the first
+  // object of its model standing in flat light with no shadow under it.
+  markShadowRoles(mesh);
+  const batch: MaterialBatch = { key, mesh, part, material, card: !!part.card, vertices: VERTEX_HEADROOM, indices: VERTEX_HEADROOM * 2 };
+  fl.objGroup.add(mesh);
+  fl.materialBatches.set(key, batch);
+  return batch;
+}
+
+/** Room in a batch for one more geometry of this size, growing it (by doubling) when there is none. */
+function fitGeometry(mb: MaterialBatch, geo: THREE.BufferGeometry): void {
+  const bm = mb.mesh;
+  const verts = geo.getAttribute('position').count, idx = geo.getIndex()!.count;
+  if (bm.unusedVertexCount >= verts && bm.unusedIndexCount >= idx) return;
+  const grow = (have: number, need: number): number => { let n = have; while (n < need) n *= 2; return n; };
+  mb.vertices = grow(mb.vertices, mb.vertices - bm.unusedVertexCount + verts);
+  mb.indices = grow(mb.indices, mb.indices - bm.unusedIndexCount + idx);
+  bm.setGeometrySize(mb.vertices, mb.indices);
+}
+
+/** Room in a batch for one more instance, growing it when there is none. */
+function fitInstance(bm: THREE.BatchedMesh): void {
+  if (bm.instanceCount < bm.maxInstanceCount) return;
+  bm.setInstanceCount(bm.maxInstanceCount * 2);
+}
+
+/**
+ * The floor's record of a model — made on its first object: each material
+ * group of the model becomes a geometry of that material's batch.
+ */
+function geomBatchFor(fl: Floor3D, g: number): GeomBatch | null {
+  const have = fl.batches.get(g);
+  if (have) return have;
+  const geo = worldGeos[g], parts = geomParts.get(g);
+  if (!geo || !worldMats[g] || !parts) return null;
+  const batch: GeomBatch = { parts: [], slot: new Map(), at: [], ids: [] };
+  for (const group of geo.groups) {
+    const mi = group.materialIndex ?? 0;
+    const part = parts[mi];
+    if (!part) continue;
+    // The part's own material (cached by key, so the same object for every
+    // part of every model that wears it) — not the registry's slot, which
+    // holds the undrawn stand-in for a hidden effect card; a card's batch is
+    // hidden whole instead (materialBatchFor).
+    const mb = materialBatchFor(fl, part, materialFor(part));
+    const sub = partGeometry(geo, group);
+    fitGeometry(mb, sub);
+    const geometryId = mb.mesh.addGeometry(sub);
+    sub.dispose(); // copied into the batch; the compacted copy has done its job
+    batch.parts.push({ batch: mb, geometryId, mi });
+  }
+  fl.batches.set(g, batch);
+  // A model with a ground-projected part draws it with the floor's ground
+  // material once the splat is up — the batch that was just made needs that
+  // too, or a mine dropped from the palette kept the transparent overlay and
+  // its earth hood vanished.
+  projectBatch(fl, g);
+  return batch;
+}
+
+/** Write an object's transform into its instances. */
 export function syncInstance(fl: Floor3D, inst: Instance): void {
   const batch = fl.batches.get(inst.g);
   const mesh = fl.meshes.get(inst);
@@ -37,9 +168,9 @@ export function syncInstance(fl: Floor3D, inst: Instance): void {
   // If the object carries designer point lights, its pool follows it (rebaked
   // by the render loop, throttled, so a drag doesn't bake per mousemove).
   markLightsDirty(fl, inst);
-  // An animated object is drawn by its own skinned mesh rather than a slot in
-  // the batch, so a drag has to move that instead — and it may be the only
-  // thing to move, since an animated instance is not in the batch at all.
+  // An animated object is drawn by its kind's skinned draw rather than by the
+  // batches, so a drag has to move that instead — and it may be the only
+  // thing to move, since an animated instance is not in the batches at all.
   if (mesh) {
     mesh.updateMatrixWorld();
     moveIdle(fl, inst, mesh.matrixWorld);
@@ -53,123 +184,60 @@ export function syncInstance(fl: Floor3D, inst: Instance): void {
   const slot = batch.slot.get(inst);
   if (slot === undefined) return;
   mesh.updateMatrixWorld();
-  batch.im.setMatrixAt(slot, mesh.matrixWorld);
-  batch.im.instanceMatrix.needsUpdate = true;
+  const ids = batch.ids[slot]!;
+  batch.parts.forEach((p, i) => p.batch.mesh.setMatrixAt(ids[i]!, mesh.matrixWorld));
 }
 
-/**
- * Free an object's slot.
- *
- * The last live instance is moved into the freed slot and the count drops by
- * one, so the buffer stays packed. Instances are unordered, so moving one costs
- * nothing; leaving a hole would mean either drawing a stale copy or carrying a
- * free list for no benefit.
- */
+/** Free an object's instances. Its slot stays, empty: instances are addressed by id, not by position. */
 export function removeFromBatch(fl: Floor3D, inst: Instance): void {
   markShadowsDirty();
   const batch = fl.batches.get(inst.g);
   if (!batch) return;
   const slot = batch.slot.get(inst);
   if (slot === undefined) return;
-  const last = batch.im.count - 1;
-  if (slot !== last) {
-    const moved = batch.at[last];
-    const m = new THREE.Matrix4();
-    batch.im.getMatrixAt(last, m);
-    batch.im.setMatrixAt(slot, m);
-    batch.at[slot] = moved ?? null;
-    if (moved) batch.slot.set(moved, slot);
-  }
-  batch.at[last] = null;
+  const ids = batch.ids[slot]!;
+  batch.parts.forEach((p, i) => p.batch.mesh.deleteInstance(ids[i]!));
+  batch.at[slot] = null;
+  batch.ids[slot] = null;
   batch.slot.delete(inst);
-  batch.im.count = last;
-  batch.im.instanceMatrix.needsUpdate = true;
 }
 
-/**
- * Give a newly placed object a slot, growing the batch when it is full.
- *
- * A batch that has to grow is rebuilt at double capacity rather than one bigger,
- * so placing a run of the same object does not reallocate on every click.
- */
+/** Give a newly placed object its instances, one per material its model wears. */
 export function addToBatch(fl: Floor3D, inst: Instance, mesh: THREE.Mesh): void {
   markShadowsDirty();
-  let batch = fl.batches.get(inst.g);
-  const geo = worldGeos[inst.g], mat = worldMats[inst.g];
-  if (!geo || !mat) return;
-  if (!batch) {
-    const im = new THREE.InstancedMesh(geo, mat, 1 + BATCH_HEADROOM);
-    im.count = 0;
-    im.frustumCulled = false;
-    // A batch made after the floor was built misses the pass that hands out the
-    // shadow roles, and a mesh that neither casts nor receives is the first
-    // object of its model standing in flat light with no shadow under it.
-    markShadowRoles(im);
-    batch = { im, slot: new Map(), at: [] };
-    fl.objGroup.add(im);
-    fl.batches.set(inst.g, batch);
-  }
-  if (batch.im.count >= batch.im.instanceMatrix.count) {
-    const bigger = new THREE.InstancedMesh(geo, mat, Math.max(4, batch.im.count * 2));
-    const m = new THREE.Matrix4();
-    for (let i = 0; i < batch.im.count; i++) { batch.im.getMatrixAt(i, m); bigger.setMatrixAt(i, m); }
-    bigger.count = batch.im.count;
-    bigger.frustumCulled = false;
-    // The roles do not come across with the matrices — a batch that outgrew
-    // itself used to take every copy of that model out of the shadow map.
-    markShadowRoles(bigger);
-    fl.objGroup.remove(batch.im);
-    batch.im.dispose();
-    fl.objGroup.add(bigger);
-    batch.im = bigger;
-  }
-  const slot = batch.im.count;
+  const batch = geomBatchFor(fl, inst.g);
+  if (!batch) return;
   mesh.updateMatrixWorld();
-  batch.im.setMatrixAt(slot, mesh.matrixWorld);
+  const ids = batch.parts.map((p) => {
+    fitInstance(p.batch.mesh);
+    const id = p.batch.mesh.addInstance(p.geometryId);
+    p.batch.mesh.setMatrixAt(id, mesh.matrixWorld);
+    return id;
+  });
+  const slot = batch.at.length;
   batch.slot.set(inst, slot);
   batch.at[slot] = inst;
-  batch.im.count = slot + 1;
-  batch.im.instanceMatrix.needsUpdate = true;
+  batch.ids[slot] = ids;
 }
 
-/** Group a floor's objects by model and draw each group in one call. */
-export function buildBatches(
-  instances: Instance[],
-  meshes: Map<Instance, THREE.Mesh>,
-  geos: THREE.BufferGeometry[],
-  mats: THREE.Material[][],
-  objGroup: THREE.Group,
-): Map<number, GeomBatch> {
-  const byGeom = new Map<number, Instance[]>();
+/** Draw a floor's objects: every part of every one, by material. */
+export function buildBatches(fl: Floor3D, instances: Instance[]): void {
   for (const it of instances) {
-    const list = byGeom.get(it.g);
-    if (list) list.push(it); else byGeom.set(it.g, [it]);
+    const mesh = fl.meshes.get(it);
+    // An object without a handle has no placement to draw at; it is not drawn
+    // rather than drawn at the origin.
+    if (mesh) addToBatch(fl, it, mesh);
   }
-  const batches = new Map<number, GeomBatch>();
-  for (const [g, list] of byGeom) {
-    const geo = geos[g], mat = mats[g];
-    if (!geo || !mat) continue;
-    const im = new THREE.InstancedMesh(geo, mat, list.length + BATCH_HEADROOM);
-    im.count = list.length;
-    // Objects sit where the map puts them, which is nowhere near the origin the
-    // shared geometry is centred on, so let three.js work the bounds out.
-    im.frustumCulled = false;
-    const batch: GeomBatch = { im, slot: new Map(), at: [] };
-    list.forEach((it, i) => {
-      batch.slot.set(it, i);
-      batch.at[i] = it;
-      const mesh = meshes.get(it);
-      // A slot nobody writes keeps the IDENTITY three.js seeds the buffer with,
-      // which draws the model at the world origin rather than not at all — so
-      // an object that never gets its transform does not go missing, it joins a
-      // heap in the corner of the map, and the place it belongs looks empty.
-      if (mesh) im.setMatrixAt(i, mesh.matrixWorld);
-    });
-    im.instanceMatrix.needsUpdate = true;
-    objGroup.add(im);
-    batches.set(g, batch);
+}
+
+/** Take a floor's draws down: every batch, and the records that pointed into them. */
+export function disposeBatches(fl: Floor3D): void {
+  for (const b of fl.materialBatches.values()) {
+    fl.objGroup.remove(b.mesh);
+    b.mesh.dispose();
   }
-  return batches;
+  fl.materialBatches.clear();
+  fl.batches.clear();
 }
 
 /**
@@ -183,8 +251,7 @@ export function buildBatches(
  */
 export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
   markShadowsDirty();
-  for (const b of fl.batches.values()) { fl.objGroup.remove(b.im); b.im.dispose(); }
-  fl.batches.clear();
+  disposeBatches(fl);
   fl.meshes.clear();
   clearIdle(fl.objGroup, fl.idle, fl.idleKinds);
   fl.instances = instances;
@@ -205,23 +272,17 @@ export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
     m.updateMatrixWorld();
     fl.meshes.set(it, m);
   }
-  const still = instances.filter((it, i) => {
+  const still = instances.filter((it) => {
     const handle = fl.meshes.get(it);
     return !(handle && addIdle(fl.objGroup, fl.idle, fl.idleKinds, it, handle));
   });
-  const batches = buildBatches(still, fl.meshes, worldGeos, worldMats, fl.objGroup);
-  for (const [g, b] of batches) fl.batches.set(g, b);
+  buildBatches(fl, still);
   // Everything buildFloor does to a floor's objects AFTER the batches exist has
   // to happen here too, or an undo quietly returns a poorer picture than the one
   // it took away — and it stays poorer, because nothing re-runs until the map is
-  // reopened.
+  // reopened. (The batches take their shadow roles as they are made; the
+  // animated bodies mark themselves, in addIdle.)
   //
-  // Marked one by one rather than by walking the group: `markShadowRoles` makes
-  // every mesh it finds a caster, and by this point the group also holds the
-  // footprint and passability overlays, which are flat coloured squares that
-  // must not appear in the shadow map. (The animated bodies mark themselves, in
-  // addIdle.)
-  for (const b of fl.batches.values()) markShadowRoles(b.im);
   // A model that takes the ground it stands on (the abandoned mine's mound) is
   // drawn with a material built from the floor's splat, and the batch it lived
   // on has just been thrown away with it.

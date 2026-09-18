@@ -4,6 +4,7 @@
 //   node tools/perf-stress.ts --map effects   — effect-bearing objects only
 //   node tools/perf-stress.ts --map creatures — animated creatures only
 //   node tools/perf-stress.ts --count 3000 --size 216
+//   node tools/perf-stress.ts --keep            — leave the map in the sandbox (for _tmp profiling)
 //
 // The shipped maps are the honest workload (e2e/fx-perf.spec.ts), but they
 // are also what the renderer was tuned on. This builds a map no designer would
@@ -161,5 +162,7 @@ try {
   console.log('errors', ed.errors);
 } finally {
   await ed.app.close();
-  cleanup();
+  // `--keep` leaves the map in the sandbox for a profiler to open (its name
+  // says which recipe); the next run's cleanup takes it away.
+  if (!process.argv.includes('--keep')) cleanup();
 }

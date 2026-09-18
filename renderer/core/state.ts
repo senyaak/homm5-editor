@@ -12,19 +12,42 @@
 
 import * as THREE from 'three';
 
-import type { Instance, SplatData, AmbientData } from '#src/scene/payload.ts';
+import type { Instance, SplatData, AmbientData, GeomPart } from '#src/scene/payload.ts';
 import type { PlacedFx } from '#viewport/fx.ts';
 import type { IdleBody, IdleKind } from '#viewport/skinning.ts';
 import type { SkinnedGeom } from '#src/scene/payload.ts';
 import { uiPrefs } from '#core/prefs.ts';
 
 /** Every copy of one model on one floor, drawn in a single call. */
+/**
+ * One material's draw on one floor: a BatchedMesh holding, as geometries,
+ * every part of every model on the floor that wears the material, and as
+ * instances every placement of those (instancing.ts).
+ */
+export interface MaterialBatch {
+  key: string;
+  mesh: THREE.BatchedMesh;
+  /** A part that wears it — what a floor's ground-projected material is built from. */
+  part: GeomPart;
+  /** The material the registry gave the part; the mesh may draw a projected one instead. */
+  material: THREE.Material;
+  /** A stand-in card under a particle effect: hidden with the "effect markers" toggle. */
+  card: boolean;
+  /** The mesh's vertex and index capacity, grown by doubling. */
+  vertices: number;
+  indices: number;
+}
+
+/** A floor's record of one model: which material batches draw its parts, and its objects' instances in them. */
 export interface GeomBatch {
-  im: THREE.InstancedMesh;
-  /** Slot in the instance buffer for each object. */
+  /** Per material group of the model: the batch that draws it, the group's geometry there, and the part's index in the material array. */
+  parts: { batch: MaterialBatch; geometryId: number; mi: number }[];
+  /** Slot for each object. */
   slot: Map<Instance, number>;
-  /** What occupies each slot, so a removed one can be back-filled. */
+  /** What occupies each slot; null once removed (slots are not reused). */
   at: (Instance | null)[];
+  /** Per slot, the object's instance id in each part's batch, in `parts` order. */
+  ids: (number[] | null)[];
 }
 
 /** One floor as it exists in the scene graph, beside the data it came from. */
@@ -80,6 +103,8 @@ export interface Floor3D {
   meshes: Map<Instance, THREE.Mesh>;
   /** One instanced draw per model. See buildBatches. */
   batches: Map<number, GeomBatch>;
+  /** The draws: one per material worn by the floor's objects (instancing.ts). */
+  materialBatches: Map<string, MaterialBatch>;
   /**
    * Objects playing their idle clip, each its own skinned draw. Empty unless
    * the idle-stance setting is on — and an object in here is NOT in `batches`,

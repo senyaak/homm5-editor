@@ -16,7 +16,7 @@ import { TERRAIN_DEPTH, updateHeightTexture, useDrapeFloor } from '#viewport/dra
 import { loadFx } from '#viewport/fx.ts';
 import { buildGeos, geomScale } from '#viewport/geoms.ts';
 import { addIdle, clearIdle } from '#viewport/idle.ts';
-import { buildBatches } from '#viewport/instancing.ts';
+import { buildBatches, disposeBatches } from '#viewport/instancing.ts';
 import { applyAmbient, refreshLighting } from '#viewport/lighting.ts';
 import { bakeLightMap, makeLightMap } from '#viewport/point-lights.ts';
 import { markShadowRoles, markShadowsDirty } from '#viewport/shadows.ts';
@@ -33,9 +33,9 @@ export function clearWorld(): void {
   clearSky(); // dome meshes are keyed by this world's payload objects
   if (state.world) for (const fl of state.world.floors) {
     scene.remove(fl.group);
-    // An InstancedMesh owns a GPU buffer of its own beyond the shared geometry;
-    // without this it survives every map load.
-    for (const b of fl.batches.values()) b.im.dispose();
+    // A BatchedMesh owns GPU buffers of its own beyond the shared geometry;
+    // without this they survive every map load.
+    disposeBatches(fl);
     for (const e of fl.fx) e.batch.dispose();
     fl.fx.length = 0;
     // And the animated bodies, whose shared skeletons are reference-counted:
@@ -115,16 +115,16 @@ export function buildFloor(floor: Floor, geos: THREE.BufferGeometry[], mats: THR
     const handle = meshes.get(it);
     return !(handle && addIdle(objGroup, idle, idleKinds, it, handle));
   });
-  const batches = buildBatches(still, meshes, geos, mats, objGroup);
   const fl: Floor3D = {
     name: floor.name, V, heights, flags: floor.flags, colors: floor.colors, holes,
     // A river already in the map is at full depth: never dig it again.
     riverDrop: new Map(floor.riverVerts.map((v) => [v, RIVER_DEPTH])),
     passable: floor.passable, river: new Set(floor.riverVerts), passMeshes: [], footMeshes: [],
-    group, objGroup, meshes, batches, idle, idleKinds, fx: [], terrainMesh, heightTex: null, waterMesh, waterTex: floor.water?.tex ?? null,
+    group, objGroup, meshes, batches: new Map(), materialBatches: new Map(), idle, idleKinds, fx: [], terrainMesh, heightTex: null, waterMesh, waterTex: floor.water?.tex ?? null,
     splat: floor.splat, maskTex: null, ambient: floor.ambient, instances: floor.instances,
     lightMap: makeLightMap(V), lightsDirty: false,
   };
+  buildBatches(fl, still);
   updateHeightTexture(fl); // the ground the draped parts will read
   bakeLightMap(fl); // cheap when nothing on the floor carries lights
   // After the batches and the animated bodies exist, so both are covered — the

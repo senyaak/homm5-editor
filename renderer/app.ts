@@ -889,15 +889,19 @@ const view: ViewApi = {
     const m = new THREE.Matrix4(), at = new THREE.Vector3();
     let slots = 0, misplaced = 0;
     for (const b of fl.batches.values()) {
-      for (let i = 0; i < b.im.count; i++) {
-        const inst = b.at[i];
-        if (!inst) continue;
+      b.at.forEach((inst, i) => {
+        const ids = b.ids[i];
+        if (!inst || !ids) return;
         slots++;
-        b.im.getMatrixAt(i, m);
+        // Every part of the object stands where the object does; the first
+        // answers for all.
+        const p = b.parts[0];
+        if (!p) return;
+        p.batch.mesh.getMatrixAt(ids[0]!, m);
         at.setFromMatrixPosition(m);
         const dx = at.x - tileCenter(inst.x), dy = at.y - tileCenter(inst.y), dz = at.z - inst.z;
         if (Math.hypot(dx, dy, dz) > 1e-3) misplaced++;
-      }
+      });
     }
     return { slots, misplaced };
   },
@@ -908,10 +912,13 @@ const view: ViewApi = {
     const inst = id === undefined ? state.selected?.inst
       : fl?.instances.find((i) => i.id === id) ?? fl?.instances.find((i) => !!i.id && i.id.endsWith(id));
     if (!inst) return null;
-    // An animated object is drawn by its own skinned mesh, not by the batch.
-    const drawn = fl!.idle.find((a) => a.inst === inst)?.kind.mesh ?? fl!.batches.get(inst.g)?.im;
-    if (!drawn) return null;
-    const list = Array.isArray(drawn.material) ? drawn.material : [drawn.material];
+    // An animated object is drawn by its kind's skinned mesh; a still one by
+    // a material batch per part of its model.
+    const kind = fl!.idle.find((a) => a.inst === inst)?.kind;
+    const list: THREE.Material[] = kind
+      ? (Array.isArray(kind.mesh.material) ? kind.mesh.material : [kind.mesh.material])
+      : (fl!.batches.get(inst.g)?.parts.map((p) => p.batch.mesh.material as THREE.Material) ?? []);
+    if (!list.length) return null;
     return list.map((m) => `${m.type} visible=${m.visible} alphaTest=${m.alphaTest} blending=${m.blending}`);
   },
   projectionAudit() {
@@ -927,7 +934,13 @@ const view: ViewApi = {
       const bad = parts.map((p, i) => (p.terrainProjected && list[i]?.type !== 'ShaderMaterial' ? `part ${i} ${list[i]?.type}` : null)).filter((s): s is string => !!s);
       if (bad.length) unprojected.push(`${what}: ${bad.join(', ')}`); else projected++;
     };
-    for (const [g, b] of fl.batches) check(g, b.im.material, `batch g${g} ${b.at.find((it) => it)?.shared?.split('/').pop() ?? '?'}`);
+    // A still model's parts draw from their material batches; listed back in
+    // the model's part order so the check reads them like the animated ones.
+    for (const [g, b] of fl.batches) {
+      const list: THREE.Material[] = [];
+      for (const p of b.parts) list[p.mi] = p.batch.mesh.material as THREE.Material;
+      check(g, list, `batch g${g} ${b.at.find((it) => it)?.shared?.split('/').pop() ?? '?'}`);
+    }
     for (const k of fl.idleKinds.values()) { const inst = k.bodies[0]!.inst; check(inst.g, k.mesh.material, `animated ${inst.shared.split('/').pop()}`); }
     return { terrain: terrain.type, splat: !!fl.splat, batches: fl.batches.size + fl.idleKinds.size, projected, unprojected };
   },
@@ -944,7 +957,7 @@ const view: ViewApi = {
       if (m.castShadow && m.receiveShadow) casting++;
       else missing.push(`${what} cast=${m.castShadow} receive=${m.receiveShadow}`);
     };
-    for (const [g, b] of fl.batches) count(b.im, `batch g${g}`);
+    for (const [k, b] of fl.materialBatches) count(b.mesh, `batch ${k.split('|').pop()}`);
     for (const k of fl.idleKinds.values()) count(k.mesh, `idle ${k.bodies[0]?.inst.shared ?? '?'}`);
     return { drawn, casting, missing };
   },

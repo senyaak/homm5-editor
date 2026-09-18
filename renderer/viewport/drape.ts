@@ -140,6 +140,9 @@ export function drapeThreeShader(shader: { vertexShader: string; uniforms: Recor
     .replace('#include <common>', `#include <common>\n${DRAPE_VERT_PARS}\nattribute float aDrape;`)
     .replace('#include <project_vertex>', `
   mat4 drapeModel = modelMatrix;
+  #ifdef USE_BATCHING
+    drapeModel = modelMatrix * batchingMatrix;
+  #endif
   #ifdef USE_INSTANCING
     drapeModel = modelMatrix * instanceMatrix;
   #endif

@@ -122,18 +122,20 @@ function drawBreakdown(): Record<string, { meshes: number; draws: number; instan
   const hidden = new Set<THREE.Object3D>();
   scene.traverse((o) => {
     if (!o.visible || (o.parent && hidden.has(o.parent))) { hidden.add(o); return; }
-    const m = o as THREE.Mesh & { isInstancedMesh?: boolean; isSkinnedMesh?: boolean; count?: number };
+    const m = o as THREE.Mesh & { isInstancedMesh?: boolean; isSkinnedMesh?: boolean; isBatchedMesh?: boolean; count?: number; instanceCount?: number };
     if (!m.isMesh) return;
     const mat = Array.isArray(m.material) ? m.material[0] : m.material;
     const shader = mat && (mat as THREE.ShaderMaterial).isShaderMaterial ? (mat as THREE.ShaderMaterial) : null;
-    const kind = m.isInstancedMesh
-      ? (m.isSkinnedMesh ? 'idle kinds' : 'static batches')
+    const kind = m.isBatchedMesh
+      ? 'static batches'
+      : m.isInstancedMesh
+      ? (m.isSkinnedMesh ? 'idle kinds' : 'instanced')
       : shader
         ? (shader.uniforms.uAtlas ? 'effects' : shader.uniforms.uGround ? (shader.uniforms.uMask ? 'terrain splat' : 'projected parts') : `shader ${o.name || 'other'}`)
         : `${mat?.type ?? 'no material'}${o.name ? ` ${o.name}` : ''}`;
     const draws = m.geometry.groups.length || 1;
     const e = out[kind] ??= { meshes: 0, draws: 0, instances: 0, materials: 0, merged: 0 };
-    e.meshes++; e.draws += draws; e.instances += m.isInstancedMesh ? m.count ?? 1 : 1;
+    e.meshes++; e.draws += draws; e.instances += m.isBatchedMesh ? m.instanceCount ?? 0 : m.isInstancedMesh ? m.count ?? 1 : 1;
     // Draws the mesh would issue if its parts sharing a material were one group.
     e.merged += Array.isArray(m.material) ? new Set(m.geometry.groups.map((g) => (m.material as THREE.Material[])[g.materialIndex ?? 0])).size : 1;
     for (const x of Array.isArray(m.material) ? m.material : [m.material]) (mats.get(kind) ?? mats.set(kind, new Set()).get(kind)!).add(x);
