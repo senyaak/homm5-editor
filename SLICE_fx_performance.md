@@ -659,6 +659,25 @@ What it says, in the order it matters:
   (~250 ms, ~380 MB/s through the pipe), `buildWorld` ~150, main's headers
   ~80 (async reads in parallel would halve it), the IPC of the payload's
   skeleton.
+* **Memory outside the heap, the reopen** (2026-09-19). Views onto the blob
+  brought back a reopen leak: Tab +300 MB per reopen of the mix map, level
+  after forced GCs at 541 → 844 → 1143 (`_tmp/rss-after-gc.ts`). A heap
+  snapshot (`_tmp/heap-snap.ts`, `_tmp/heap-retainers.ts`) showed two
+  292 MB backing stores, the old one with NO retainer, weak edges included
+  — held natively. Bisected by copying one class of array at a time at
+  unpack (all Uint8Array → flat; then by holder key: `rgba` → flat; frames
+  → not; tiles+rock → flat; rock alone → flat): the rock's `DataTexture`
+  made directly on the payload's view (flipY, mipmapped) keeps the buffer
+  after dispose; the tables' DataTextures on Uint16 views and the
+  CompressedTexture levels do not. Not explained — the copy is the fix
+  (256 KB). With it: 543 → 552 → 559 after GC over reopens; the Tab right
+  after a reopen still reads ~1.2 GB until V8 collects (the old map is
+  garbage, not retained). The six decoder processes stayed for the session
+  at ~200 MB each after the stress map — they and the scene builder stop
+  after 30 s idle now. The previous world is cleared before the new blob's
+  fetch (`loadMapPath`), so the old one can go while the bytes stream. What
+  is left: the Tab's ~550 MB on the mix map with the JS heap at ~630
+  reported (the geometry and the tables are the map), GPU ~400–460 MB.
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,

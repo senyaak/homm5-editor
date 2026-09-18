@@ -4,7 +4,7 @@
 // built from one path and torn down together, so both live behind these calls.
 
 import { FLOOR_LABEL, explorerOpen, hideExternalChange, setCliffs, setExplorer, setMapOpen, setShowObjects, updateIdleButton, updateFloorUI } from '#features/shell.ts';
-import { buildWorld } from '#viewport/world.ts';
+import { buildWorld, clearWorld } from '#viewport/world.ts';
 import { markDirty } from '#core/dirty.ts';
 import { $, $button, $input } from '#core/dom.ts';
 import { api, fetchBlob } from '#core/ipc.ts';
@@ -65,6 +65,12 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     const tReq = performance.now();
     const { scene: S, info, history, idleAnimation, textures } = await api.loadMap(path);
     const tLoad = performance.now();
+    // The previous map goes NOW, before the new one's bytes arrive: the main
+    // process has switched to the new map (nothing draws under the overlay
+    // anyway), and the old world's blob, textures and tables held beside the
+    // new blob were the peak of a reopen — ~1.2 GB on the stress map, where
+    // either map alone is ~550.
+    clearWorld();
     // The pictures came once each and the scene holds handles into that table
     // — see src/scene/tex-table.ts. Put them back before anything draws.
     unpackTextures(S, textures);

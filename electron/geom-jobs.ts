@@ -6,8 +6,11 @@
 // each, src/scene/decode-job.ts), so a POOL of `utilityProcess` children
 // takes them, as many at a time as the machine has cores to spare, and each
 // writes its result into the geom cache (src/scene/geom-cache.ts) for this
-// process to read back. The children stay for the session — a fork costs
-// ~200 ms — and one that dies has its jobs redone here.
+// process to read back. The children stay while maps are being opened — a
+// fork costs ~200 ms — and go when none has been for a while: each holds
+// what it decoded with (the asset chain's documents, the frames and
+// recordings it baked), ~200 MB apiece after the stress map, 1.3 GB for
+// six that sat idle for the session. One that dies has its jobs redone here.
 //
 // The same fallback the scene builder has (scene-jobs.ts): no worker file, a
 // machine that refuses the fork — the decode runs in this process, slower,
@@ -24,6 +27,9 @@ import type { GeomWorkerReply } from '#electron/geom-worker.ts';
 
 /** Children to keep: the machine's threads less the app's own and the GPU's, at most six. */
 const POOL = Math.max(1, Math.min(6, availableParallelism() - 2));
+/** Idle this long after the last decode, the pool is stopped; the next map forks it again. */
+const IDLE_MS = 30_000;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
 const workerFile = (): string =>
   join(APP_ROOT, 'electron', app.isPackaged ? 'geom-worker.js' : 'geom-worker.ts');
@@ -82,6 +88,7 @@ function inline(job: DecodeJob): Error | null {
 export async function decodeAll(jobs: DecodeJob[]): Promise<Map<DecodeJob, Error | null>> {
   const out = new Map<DecodeJob, Error | null>();
   if (!jobs.length) return out;
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
   while (children.length < Math.min(POOL, jobs.length) && spawn()) { /* up to the pool */ }
   if (!children.length) {
     for (const j of jobs) out.set(j, inline(j));
@@ -101,6 +108,7 @@ export async function decodeAll(jobs: DecodeJob[]): Promise<Map<DecodeJob, Error
   await Promise.all(children.map(runOn));
   // A child that died mid-run leaves its queue behind: finish it here.
   for (const job of queue) out.set(job, inline(job));
+  idleTimer = setTimeout(() => { idleTimer = null; stopDecoders(); }, IDLE_MS);
   return out;
 }
 

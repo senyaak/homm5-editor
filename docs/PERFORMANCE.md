@@ -189,3 +189,13 @@ tried and dropped, and what is left is in [SLICE_fx_performance.md](../SLICE_fx_
   tiles' decode is kept for the process (the same nine tiles open with
   every map of a terrain type; `buildScene` 150 → ~60 ms on a reopen).
   A2C1M1's main-side time on a reopen: 0.44 → ~0.23 s.
+- Reopening a map no longer keeps the previous map's bytes. With the blob's
+  arrays as views, one texture made straight on a view (the cliff rock)
+  kept the whole previous blob alive past every dispose — ~300 MB per
+  reopen of the stress map, with no JS retainer in a heap snapshot; the
+  rock takes a copy now. The window after a reopen of the stress map,
+  once collected: ~550 MB where it was ~1.3 GB and climbing. The decoder
+  processes and the scene builder stop after 30 s idle instead of holding
+  what they decoded with for the session (six decoders at ~200 MB each
+  after the stress map), and the previous world is taken down before the
+  next map's bytes are fetched rather than after.

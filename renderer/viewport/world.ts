@@ -15,7 +15,8 @@ import { RIVER_DEPTH } from '#features/terrain-brush/sculpt.ts';
 import { TERRAIN_DEPTH, updateHeightTexture, useDrapeFloor } from '#viewport/drape.ts';
 import { loadFx } from '#viewport/fx.ts';
 import { buildGeos, geomScale } from '#viewport/geoms.ts';
-import { addIdle, clearIdle } from '#viewport/idle.ts';
+import { addIdle, clearIdle, idleTableStats } from '#viewport/idle.ts';
+import { fxTableStats, fxTablesLeft } from '#viewport/particles.ts';
 import { buildBatches, disposeBatches } from '#viewport/instancing.ts';
 import { applyAmbient, refreshLighting } from '#viewport/lighting.ts';
 import { bakeLightMap, makeLightMap } from '#viewport/point-lights.ts';
@@ -50,6 +51,11 @@ export function clearWorld(): void {
   // The model materials and their textures were made for this world; the next
   // one brings its own pictures.
   disposeMaterials();
+  // Everything reference-counted should be at zero now; what is not is a
+  // holder of the old map's bytes (a table keeps a view into the map's blob,
+  // and one view keeps the whole blob).
+  const fx = fxTableStats(), idle = idleTableStats();
+  if (fx.tables || idle.tables) console.warn(`[world] left after close: ${fx.tables} effect table(s), ${idle.tables} idle table(s)`, fxTablesLeft());
   if (state.boxHelper) { scene.remove(state.boxHelper); state.boxHelper = null; }
   state.world = null; state.selected = null; updatePanel();
   applyAmbient(null);

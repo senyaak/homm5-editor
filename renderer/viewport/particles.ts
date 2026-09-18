@@ -544,6 +544,11 @@ function releaseTable(uid: string): void {
   }
 }
 
+/** The tables still registered, with their reference counts — for the close-time check in world.ts. */
+export function fxTablesLeft(): string[] {
+  return [...tables.entries()].map(([uid, t]) => `${uid} ×${t.refs}`);
+}
+
 /** What the tables hold right now — for view.perf(). */
 export function fxTableStats(): { tables: number; entries: number; bytes: number; arenaBytes: number } {
   let entries = 0, bytes = 0;

@@ -212,7 +212,8 @@ export function packBlobs<T>(payload: T, sink: BlobSink, minBytes = MIN_BYTES): 
  * thing a view must never do is be posted to a worker: a structured clone
  * takes the whole buffer with it. The window has no workers that take
  * payload arrays (the bakes moved to the scene build); one that appears
- * again copies what it posts.
+ * again copies what it posts. And a view handed to a flipY'd DataTexture
+ * kept the buffer alive past every dispose — see splat.ts, the rock.
  */
 export async function unpackBlobs(
   payload: unknown, fetchBytes: (url: string) => Promise<ArrayBuffer>,

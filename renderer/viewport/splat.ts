@@ -442,7 +442,15 @@ export async function upgradeToSplat(fl: Floor3D): Promise<void> {
 
   let rock = null;
   if (s.rockTex) {
-    rock = new THREE.DataTexture(s.rockTex.rgba, s.rockTex.width, s.rockTex.height, THREE.RGBAFormat, THREE.UnsignedByteType);
+    // A COPY of the texels, not the payload's view. The payload's arrays are
+    // views onto the map's one blob, and this texture — alone of everything
+    // made from a view: the tables' DataTextures did not, the compressed
+    // levels did not — kept that blob alive past every dispose and reopen:
+    // 300 MB per reopen of the stress map, and a heap snapshot with no JS
+    // retainer of the old buffer at all (bisected by copying one kind of
+    // array at a time). What holds it natively is not named here; the copy
+    // is 256 KB.
+    rock = new THREE.DataTexture(s.rockTex.rgba.slice(), s.rockTex.width, s.rockTex.height, THREE.RGBAFormat, THREE.UnsignedByteType);
     // As the image loader set it up: row 0 at the top, mipmapped, filtered
     // both ways (a DataTexture's defaults are none of those: unflipped, no
     // mips, nearest — which drew the cliffs as a cross-hatch).

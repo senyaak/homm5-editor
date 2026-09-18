@@ -9,9 +9,12 @@
 //
 // HOW. `utilityProcess` is Electron's own answer to this — a Node child with no
 // window and no Electron API, addressed over a MessagePort. The child is forked
-// on the first scene and kept for the session (a fork costs ~200ms, and the
-// window that opens one scene usually opens another), and it takes ONE job at a
-// time: the queue lives here, so the child has no state to get wrong.
+// on the first scene and kept while scenes are being opened (a fork costs
+// ~200ms, and the window that opens one scene usually opens another), and it
+// takes ONE job at a time: the queue lives here, so the child has no state to
+// get wrong. Idle for a while, it is stopped: it holds what it built with —
+// the asset chain's documents, the recordings it baked — for as long as it
+// lives, and a session that opened one scene an hour ago has no use for that.
 //
 // A child that cannot start is not a broken editor. Anything that goes wrong
 // with it falls back to building in this process, which is what used to happen
@@ -37,6 +40,9 @@ interface Pending {
 let child: UtilityProcess | null = null;
 let nextId = 1;
 const pending = new Map<number, Pending>();
+/** Idle this long after the last scene, the child is stopped; the next scene forks it again. */
+const IDLE_MS = 30_000;
+let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Give up on the child: everything waiting on it fails, and the next call forks again. */
 function drop(why: string): void {
@@ -92,6 +98,7 @@ export function ensureChild(): UtilityProcess | null {
  * still stalls, and the console says which happened.
  */
 export async function buildSceneOffThread(job: OpenSceneJob): Promise<ScenePayload> {
+  if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
   const proc = ensureChild();
   if (!proc) return inline(job);
   const id = nextId++;
@@ -99,6 +106,8 @@ export async function buildSceneOffThread(job: OpenSceneJob): Promise<ScenePaylo
     return await new Promise<ScenePayload>((resolve, reject) => {
       pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
       proc.postMessage({ id, job });
+    }).finally(() => {
+      if (!pending.size) idleTimer = setTimeout(() => { idleTimer = null; if (!pending.size) stopSceneBuilder(); }, IDLE_MS);
     });
   } catch (e) {
     // A scene that FAILED to build fails the same way here — the fallback is
