@@ -190,6 +190,7 @@
     "test-faction-mod": "node tools/test-faction-mod.ts",
     "test-faction-limit": "node tools/test-faction-limit.ts",
     "test-large-address": "node tools/test-large-address.ts",
+    "test-siege-parts": "node tools/test-siege-parts.ts",
     "e2e-live": "node tools/e2e-live.ts",
     "perf-stress": "node tools/perf-stress.ts",
     "sod-content": "node tools/build-sod-content.ts"

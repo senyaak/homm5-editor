@@ -90,6 +90,13 @@ console.log('the exterior');
   rmSync(join(dir, '..'), { recursive: true, force: true });
   mkdirSync(join(dir, 'bin', 'Geometries'), { recursive: true });
   mkdirSync(join(dir, 'bin', 'AIGeometries'), { recursive: true });
+  mkdirSync(join(dir, '_(AdvMapTownExterior)'), { recursive: true });
+  for (const t of ['Necropolis', 'Necropolis_pod', 'Necropolis_stone']) {
+    for (const ext of ['xdb', 'dds']) {
+      const f = `_(AdvMapTownExterior)/Necropolis-town_mg_wall1-${t}.(Texture).${ext}`;
+      writeFileSync(join(dir, f), read(`MapObjects/${f}`)!);
+    }
+  }
   for (const f of ['Necromancy-town.xdb', 'Necromancy-town-geom.xdb', 'Necromancy-town_AI.xdb',
     'Necromancy-town-Podlojka1.(Material).xdb', 'Necromancy-town-lambert7.(Material).xdb', 'Necromancy-town-lambert8.(Material).xdb']) {
     writeFileSync(join(dir, f), read(`MapObjects/${f}`)!);

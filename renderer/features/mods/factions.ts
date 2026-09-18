@@ -26,6 +26,7 @@ import type { BuildingEdit, BuildingKey, Resource, SiegeMix, ExteriorMix } from 
 import type { TreeBuilding } from '#src/mods/town-tree.ts';
 import type { MoatSpell } from '#src/mods/town-type-info.ts';
 import type { IconPictures } from '#src/mods/faction-icons.ts';
+import type { OwnSiegePart, SiegePartName } from '#src/mods/siege-parts.ts';
 
 const RESOURCES: readonly Resource[] = ['Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gem', 'Gold'];
 const COLUMNS = 5;
@@ -46,6 +47,73 @@ const trees = new Map<string, FactionTreeDTO>();
 let edits: Record<BuildingKey, BuildingEdit | null> = {};
 /** The cell and level under the editor. */
 let picked: { x: number; y: number; key: BuildingKey | null } | null = null;
+/** Siege parts of our own: per part, per piece, the three ruin levels' files. */
+const SIEGE_PIECE_LABELS: Record<SiegePartName, readonly string[]> = {
+  walls: ['wall 1', 'wall 2', 'wall 3', 'wall 4'], towers: ['left tower', 'right tower', 'big tower'], gate: ['gate'], moat: ['moat'],
+};
+const blankSiegeOwn = (): Record<SiegePartName, { models: string[]; damaged: string[]; destroyed: string[] }> => ({
+  walls: { models: [], damaged: [], destroyed: [] }, towers: { models: [], damaged: [], destroyed: [] },
+  gate: { models: [], damaged: [], destroyed: [] }, moat: { models: [], damaged: [], destroyed: [] },
+});
+let siegeOwn = blankSiegeOwn();
+
+function drawSiegeOwn(): void {
+  const box = $('fac-siege-own');
+  box.innerHTML = '';
+  for (const part of ['walls', 'towers', 'gate', 'moat'] as const) {
+    const own = siegeOwn[part];
+    for (const [i, label] of SIEGE_PIECE_LABELS[part].entries()) {
+      const row = document.createElement('div');
+      row.className = 'on-row';
+      const l = document.createElement('span');
+      l.textContent = label;
+      row.appendChild(l);
+      for (const level of ['models', 'damaged', 'destroyed'] as const) {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.spellcheck = false;
+        input.className = `fc-siege-file fc-siege-${part}-${level}`;
+        input.placeholder = level === 'models' ? 'whole — a Model of yours' : level === 'damaged' ? 'breached (optional)' : 'razed (optional)';
+        input.value = own[level][i] ?? '';
+        input.oninput = () => { own[level][i] = input.value.trim(); formGate().check(); };
+        const pick = document.createElement('button');
+        pick.className = 'ghost he-file';
+        pick.textContent = 'file…';
+        pick.onclick = (ev) => {
+          ev.preventDefault();
+          void api.pickFactionFile('model').then((path) => { if (path) { input.value = path; own[level][i] = path; formGate().check(); } });
+        };
+        row.append(input, pick);
+      }
+      box.appendChild(row);
+    }
+  }
+}
+
+/** The parts with any model of ours, as the spec takes them; a part half given is a problem named. */
+function readSiegeOwn(): { parts: Partial<Record<SiegePartName, OwnSiegePart>>; problems: string[] } {
+  const parts: Partial<Record<SiegePartName, OwnSiegePart>> = {};
+  const problems: string[] = [];
+  for (const part of ['walls', 'towers', 'gate', 'moat'] as const) {
+    const own = siegeOwn[part];
+    const n = SIEGE_PIECE_LABELS[part].length;
+    if (![...own.models, ...own.damaged, ...own.destroyed].some((v) => v)) continue;
+    const models = Array.from({ length: n }, (_, i) => own.models[i] ?? '');
+    if (models.some((m) => !m)) { problems.push(`every whole model of the ${part} (${n})`); continue; }
+    const opt = (list: string[]): (string | undefined)[] | undefined => {
+      const out = Array.from({ length: n }, (_, i) => list[i] || undefined);
+      return out.some((v) => v) ? out : undefined;
+    };
+    const p: OwnSiegePart = { models };
+    const damaged = opt(own.damaged);
+    const destroyed = opt(own.destroyed);
+    if (damaged) p.damaged = damaged;
+    if (destroyed) p.destroyed = destroyed;
+    parts[part] = p;
+  }
+  return { parts, problems };
+}
+
 /** Pictures of our own for the icons, by slot; the buildings' by key. */
 let pictures: { buildings: Record<BuildingKey, string>; [slot: string]: unknown } = { buildings: {} };
 
@@ -221,9 +289,15 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   fillSelect($select('fac-shooter'), [{ id: '', label: 'the donor\'s' }, ...data.creatures.map((c) => ({ id: c.id, label: c.name ? `${c.name} (${c.id})` : c.id }))], existing?.shooter ?? '');
 
   const siege: SiegeMix = typeof existing?.siege === 'string' ? { arena: existing.siege } : (existing?.siege ?? { arena: '' });
+  siegeOwn = blankSiegeOwn();
   for (const part of ['arena', 'walls', 'gate', 'towers', 'moat'] as const) {
-    fillSelect($select(`fac-siege-${part}`), townOptions(data, part === 'arena' ? 'the donor\'s siege' : 'as the arena\'s'), siege[part] ?? '');
+    const v = siege[part];
+    if (part !== 'arena' && v && typeof v !== 'string') {
+      siegeOwn[part] = { models: [...v.models], damaged: [...(v.damaged ?? [])].map((x) => x ?? ''), destroyed: [...(v.destroyed ?? [])].map((x) => x ?? '') };
+    }
+    fillSelect($select(`fac-siege-${part}`), townOptions(data, part === 'arena' ? 'the donor\'s siege' : 'as the arena\'s'), typeof v === 'string' ? v : '');
   }
+  drawSiegeOwn();
   const exterior: ExteriorMix = typeof existing?.exterior === 'string' ? { stages: {} } : (existing?.exterior ?? { stages: {} });
   fillSelect($select('fac-exterior'), townOptions(data, 'the donor\'s'), typeof existing?.exterior === 'string' ? existing.exterior : '');
   fillSelect($select('fac-exterior-gates'), townOptions(data, 'the donor\'s'), exterior.gates ?? '');
@@ -360,11 +434,13 @@ function readExterior(): ModsFactionPayload['exterior'] {
 }
 
 function readSiege(): ModsFactionPayload['siege'] {
-  const arena = $select('fac-siege-arena').value;
+  const own = readSiegeOwn().parts;
+  // The arena is the donor's when unsaid — a part of ours needs one to stand in.
+  const arena = $select('fac-siege-arena').value || (Object.keys(own).length ? $select('fac-donor').value : '');
   if (!arena) return undefined;
   const mix: SiegeMix = { arena };
   for (const part of ['walls', 'gate', 'towers', 'moat'] as const) {
-    const v = $select(`fac-siege-${part}`).value;
+    const v = own[part] ?? $select(`fac-siege-${part}`).value;
     if (v) mix[part] = v;
   }
   return Object.keys(mix).length === 1 ? arena : mix;
@@ -980,6 +1056,7 @@ const formGate = (): { check: () => void; rewatch: () => void } => (gate ??= req
     if (towns.some((t) => !t.file || !t.name)) missing.push('every named town\'s id and name');
     // The dial's button is drawn in the theme: no theme, no skins to draw it with.
     if (Object.values(edits).some((e) => e?.button) && !$input('fac-icons').checked && !(pictures.button as Record<string, string> | undefined)?.normal) missing.push("the icon theme, or pictures for the button (its skins are drawn in the theme)");
+    missing.push(...readSiegeOwn().problems);
     if (!/^[A-Za-z][A-Za-z0-9]*$/.test($input('fac-file').value.trim()) && $input('fac-file').value.trim()) missing.push('an identifier of letters and digits');
     return missing;
   },

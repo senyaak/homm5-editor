@@ -37,6 +37,8 @@ import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
 import { donorObjectsOf, placeBuildingModel } from './town-screen.ts';
 import { isOwnFile, mountOwn } from './own-files.ts';
+import { placeSiegeParts } from './siege-parts.ts';
+import type { OwnSiegePart, SiegePartName } from './siege-parts.ts';
 import type { BuildingModel } from './town-screen.ts';
 import { EOL, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
 import { TOWN_GROUP } from './shared-groups.ts';
@@ -244,10 +246,11 @@ export function parseBuildingKey(key: BuildingKey): { type: string; level: numbe
  */
 export interface SiegeMix {
   arena: string;
-  walls?: string;
-  gate?: string;
-  towers?: string;
-  moat?: string;
+  /** A shipped town's, or models of ours for every piece of the part (siege-parts.ts). */
+  walls?: string | OwnSiegePart;
+  gate?: string | OwnSiegePart;
+  towers?: string | OwnSiegePart;
+  moat?: string | OwnSiegePart;
 }
 
 /** Which building types each part of a mix covers. */
@@ -392,7 +395,8 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     const swapped: { ours: string; theirs: string }[] = [];
     for (const [part, types] of Object.entries(SIEGE_PARTS) as [keyof typeof SIEGE_PARTS, readonly string[]][]) {
       const from = mix[part];
-      if (!from || from === mix.arena) continue;
+      // A part of ours goes in after the walk, over the arena's own piece.
+      if (!from || from === mix.arena || typeof from !== 'string') continue;
       const theirs = buildingsOf(combatOf(shared(from), from));
       for (const type of types) {
         const ours = buildingsOf(combat).filter((b) => b.type === type);
@@ -576,6 +580,12 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     return read(rel);
   };
   const copy = copyArt([source], p.art, readSeeded, `town:${spec.file}`, { stopAt: TOWN_STOP_AT, leave: TOWN_LEAVE });
+  // A document a model of ours names and its folder has not is a refusal,
+  // not a note: the game's data is not looked in for a mounted path, and a
+  // model that reaches a texture nobody has is a model with no texture.
+  for (const m of copy.missing) {
+    if (m.startsWith('own/') && m.toLowerCase().endsWith('.xdb')) throw new Error(`${spec.file}: a model of yours reaches ${m}, which its folder has not`);
+  }
   const copied = copy.at.get(source)!;
   const files = new Map(copy.files);
 
@@ -718,6 +728,18 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       once(text, '<ModObjectName>', `${key} model object`);
       files.set(path, Buffer.from(text.replace(/<ModObjectName>[^<]*<\/ModObjectName>/, `<ModObjectName>${placed.name}</ModObjectName>`), 'latin1'));
     }
+  }
+
+  // Siege parts of ours: the models copied and stood where the arena's
+  // pieces stand, the records and the arena's list pointed at them.
+  {
+    const own: Partial<Record<SiegePartName, OwnSiegePart>> = {};
+    const siegeMix: SiegeMix | null = typeof spec.siege === 'string' ? null : spec.siege ?? null;
+    for (const part of ['walls', 'towers', 'gate', 'moat'] as const) {
+      const v = siegeMix?.[part];
+      if (v && typeof v !== 'string') own[part] = v;
+    }
+    if (Object.keys(own).length) placeSiegeParts({ faction: spec.file, parts: own, files, shared: p.shared, dir: p.dir, read });
   }
 
   // The icons: one per building record, the town's two, the race's, the

@@ -49,6 +49,11 @@ pre-release.
   dial button's three skins — each fitted to its size; a slot left blank is
   the theme's or the donor's. Words of your own too: the picker's tooltip
   and a named town's bonus, beside the names and descriptions already there.
+  The siege parts too: the walls, the towers, the gate and the moat as models
+  of your own, each stood where the donor's piece stands, with the breached
+  and razed models optional (the level before serves). A model of yours that
+  names a document its folder has not is refused by name, not shipped without
+  it.
   A building's model can be a file of
   your own on disk ("file…" beside the field): its folder is read as a data
   root — the geometry document beside it, the binaries under `bin/` as the

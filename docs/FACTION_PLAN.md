@@ -338,12 +338,12 @@ replacement.
 another source — wherever the form takes a donor's, it takes a file of
 ours. Done: a building's screen model, an exterior stage's model
 (own-files.ts mounts the folder as a data root), every icon as a picture,
-the picker's tooltip and a named town's bonus text. Not done, said
+the picker's tooltip and a named town's bonus text, the siege parts
+(siege-parts.ts: an object of ours shaped as the donor's, per ruin level).
+Not done, said
 honestly: the town SCREEN itself (the ArenaDesc scene — background, lightmap,
 cameras — stays the donor's; ours replace its buildings one by one; a whole
-scene of ours is the asset editor's business), the siege parts (walls,
-towers, gate, moat are shipped towns' — a part of ours is a combat building
-record with locators and a shooter stand, later), the music (a shipped
+scene of ours is the asset editor's business), the music (a shipped
 town's set), the gate geometry, the capture marker (drawn from the theme).
 
 When 1–4 have stopped changing the list above: `FactionSpec` in the mod

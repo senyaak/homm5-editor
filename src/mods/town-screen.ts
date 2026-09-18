@@ -195,7 +195,7 @@ export function placeBuildingModel(o: {
  * level the model is widest at (`wideBase`); the bottom only when neither
  * says. Placed by the lowest vertex, the graves floated 6 units up (launch 21).
  */
-function groundOf(doc: string, bin: Buffer, box: BBox): number {
+export function groundOf(doc: string, bin: Buffer, box: BBox): number {
   return groundLevel(doc, bin) ?? wideBase(bin) ?? box.cz - box.sz / 2;
 }
 
@@ -226,7 +226,7 @@ function sceneCamera(scene: string, sceneDir: string, object: string, files: Rea
 }
 
 /** A model's geometry document and binary, out of a set of files. */
-function geometryOf(modelPath: string, files: ReadonlyMap<string, Buffer>, what: string): { docPath: string; doc: string; binPath: string; bin: Buffer } {
+export function geometryOf(modelPath: string, files: ReadonlyMap<string, Buffer>, what: string): { docPath: string; doc: string; binPath: string; bin: Buffer } {
   const model = files.get(modelPath)?.toString('latin1');
   if (!model) throw new Error(`${what}: no model at ${modelPath}`);
   const href = hrefOf(model, 'Geometry');

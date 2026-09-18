@@ -84,6 +84,13 @@ function ownNecroTown(): string {
   mkdirSync(join(dir, 'bin', 'Geometries'), { recursive: true });
   mkdirSync(join(dir, 'bin', 'AIGeometries'), { recursive: true });
   const src = join(DATA, 'MapObjects');
+  mkdirSync(join(dir, '_(AdvMapTownExterior)'), { recursive: true });
+  for (const t of ['Necropolis', 'Necropolis_pod', 'Necropolis_stone']) {
+    for (const ext of ['xdb', 'dds']) {
+      const f = `_(AdvMapTownExterior)/Necropolis-town_mg_wall1-${t}.(Texture).${ext}`;
+      writeFileSync(join(dir, f), readFileSync(join(src, f)));
+    }
+  }
   for (const f of ['Necromancy-town.xdb', 'Necromancy-town-geom.xdb', 'Necromancy-town_AI.xdb',
     'Necromancy-town-Podlojka1.(Material).xdb', 'Necromancy-town-lambert7.(Material).xdb', 'Necromancy-town-lambert8.(Material).xdb']) {
     writeFileSync(join(dir, f), readFileSync(join(src, f)));
@@ -323,6 +330,10 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await press(page, page.locator('#facedit summary', { hasText: 'stage by stage' }));
   await page.locator('#fac-stages .fc-stage-file').first().fill(necro);
   await expect(page.locator('#fac-stages .fc-stage').first()).toBeDisabled();
+  // And the siege gate as a model of ours — the same Necropolis model will
+  // do: what is under test is the part standing where the donor's stands.
+  await press(page, page.locator('#facedit summary', { hasText: 'Siege parts of your own' }));
+  await page.locator('#fac-siege-own .fc-siege-gate-models').fill(necro);
 
   // One more named town, and the shipyard is kept after all.
   await press(page, page.locator('#fac-town-add'));
@@ -348,6 +359,8 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(f?.pictures).toEqual({ buildings: { TB_SPECIAL_1: pitIcon }, tower: towerPic });
   expect(f?.race?.tooltip).toBe('The dead of the Bone Court');
   expect(f?.exterior).toEqual({ stages: { town: necro } });
+  expect(f?.siege).toEqual({ arena: 'TOWN_HEAVEN', gate: { models: [necro] } });
+  expect(names).toContain(`Factions/${FILE}/siege/gate_1/${FILE}_gate_1.(ArenaModObject).xdb`);
   expect(f?.towns[1]?.bonusText).toBe('A marketplace from the first day.');
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   expect(centreIsMagenta(names, entries, `Factions/${FILE}/icons/special_1_1.dds`), "the pit's icon is the picture").toBe(true);
