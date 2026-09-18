@@ -94,6 +94,15 @@ pre-release.
   shadow intensity to three's `getShadow`; a non-square texture's padded
   mip tail has the block count its levels take (the new upload path
   checks, the old one did not).
+- Every part of every still object on a floor that wears one material is
+  one draw call: one `BatchedMesh` per material, the models' parts as its
+  geometries, the placements as its instances. A map crammed with 2000
+  objects of 470 kinds went from 1496 draw calls and a 12.9 ms render to
+  994 and 9.3; the picture is pixel-identical.
+- The creatures' idle animation uploads one bone texture a frame for every
+  kind on the map instead of one per kind, and an effect glued to a bone
+  is re-hung only when the bone moves. On that same map: the frame's
+  JavaScript 10.8 → 8.5 ms.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive

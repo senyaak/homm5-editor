@@ -147,7 +147,7 @@ the geometries already on the GPU — deterministic resolution keeps the geom
 indices aligned, and both ends check vertex counts before trusting a payload.
 `visible` and `all` only decide how much of it is drawn.
 
-An animated object cannot ride the ordinary instanced batches — those are
+An animated object cannot ride the ordinary material batches — those are
 plain meshes, and a skinned body is posed by a bone texture — so it leaves its
 batch and joins its KIND: one `SkinnedInstances` per creature kind per floor
 (`renderer/viewport/skinning.ts`), an InstancedMesh three also takes for a
@@ -155,7 +155,7 @@ skinned one, so a hundred gremlins are one draw. What poses it is shared too:
 every copy of a creature plays the one idle at the one time, so the clip is
 baked once per kind to a table of skinning matrices at 30 Hz (`bakeBoneTable`,
 with the same lerp and slerp as the per-frame path) and one `TableSkeleton`
-per kind — a skeleton with no bones, whose bone texture is the table's
+per kind — a skeleton with no bones, whose bone matrices are its stretch of one bone texture shared by every kind (uploaded once a frame) and hold the table's
 current row — poses them all. Nothing is posed or drawn per body; `visible`
 empties the slots of the bodies whose origin is off screen. The bake runs in
 a worker (`renderer/viewport/bakery.ts`, `renderer/workers/bake.ts`): a body

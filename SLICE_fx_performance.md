@@ -317,6 +317,27 @@ view, `_tmp/probe2.ts`; the frame is the JS, the GPU is waiting):
   frame's 1494 calls; on A2C1M1 235 → 111. The creature kinds gain
   nothing there (326 draws over 322 materials) and the effects are a
   draw per batch by construction.
+* **Done** (2026-09-18, three → 0.186 first): `instancing.ts` keeps one
+  `BatchedMesh` per material per floor, the models' material groups as
+  its geometries (compacted, all batches carrying position/normal/uv/
+  drape) and the placements as instances; the per-model record keeps
+  slot and per-part instance ids for the rest of the editor. Per-instance
+  culling and sorting OFF — three walks every instance every frame for
+  them, which cost more than the calls saved. **Measured on one kept map
+  in one window** (`perf-stress --keep` + `_tmp/frame-profile.ts`, a CDP
+  CPU profile of the loop): mix map render 12.9 → 9.3 ms, 1496 → 994
+  calls; A2C1M1 427 → 322 calls and the frame unchanged (the per-batch
+  texture binds eat the per-call saving at that size). The profile then
+  named the next two: ninety bone-texture uploads a frame (one per kind
+  per table step) and `advanceFx` re-hanging every glued copy every frame
+  — one shared bone texture written before the frame and uploaded once
+  (`skinning.ts` atlas; a kind's geometry carries offset skin indices),
+  and a glued copy hung again only when its bone's frame moved: mix map
+  JS 10.8 → **8.5 ms**, render 8.1. What the profile shows now: the
+  per-draw uniform uploads of ~1000 calls (the 528 effect batches' own
+  uniforms among them — merging batches that share an atlas would be the
+  next cut), the scene walk (`projectObject` over ~1000 objects), the
+  GPU at ~93 fps.
 * `map:load` is 11.6 s. The worst number on the page, and not in a frame.
 
 ### 7a. Under a map no designer would make (`tools/perf-stress.ts`, 2026-09-17)
