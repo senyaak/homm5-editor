@@ -311,7 +311,7 @@ export function addInstanceToScene(inst: Instance, geom: { index: number; data: 
   fl.instances.push(inst);
   // Its effects light up on the spot — the campfire burns where it lands,
   // not after a save and reopen. Async: the baked keys may need fetching.
-  void spawnFx(fl, inst);
+  spawnFx(fl, inst);
   syncFootprints(fl);
 }
 

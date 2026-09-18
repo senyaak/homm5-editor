@@ -8,6 +8,8 @@
 // a single line of file reading in its bundle.
 
 import type { BakedClip } from './animation.ts';
+import type { BoneTable } from './bone-table.ts';
+import type { FxBaked } from './fx-bake.ts';
 import type { MapObject, PointLightDef } from '../map/map.ts';
 
 
@@ -176,6 +178,12 @@ export interface SkinnedGeom {
   bind: number[][];
   /** The idle, sampled onto an even grid; null when the object has no clip. */
   clip: BakedClip | null;
+  /**
+   * The idle posed frame by frame (bone-table.ts), what a map's bodies are
+   * drawn from — baked where the scene is built, like the effect tables.
+   * Absent when there is no clip.
+   */
+  table?: BoneTable;
 }
 
 /**
@@ -232,14 +240,15 @@ export interface GeomData {
 
 /**
  * One particle instance of an object's effect (docs/EFFECTS_FORMAT.md): its
- * placement inside the object's frame and the texture frame table. The baked
- * keys themselves are NOT here — 45k particles of one map JSON-doubled the
- * scene payload — the renderer fetches them by `uid` over `map:fx`, which
- * ships typed arrays through structured clone instead of JSON.
+ * placement inside the object's frame, the texture frame table, and the
+ * recording BAKED — sampled into the table the shader reads (fx-bake.ts),
+ * once per recording file, shared by every instance that plays it.
  */
 export interface FxInstancePayload {
-  /** bin/effects file name; the key for map:fx. */
+  /** bin/effects file name — the recording. */
   uid: string;
+  /** The recording, baked: the table and what the batch needs to know about it. */
+  baked: FxBaked;
   pos: number[];
   quat: number[];
   scale: number;

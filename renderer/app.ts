@@ -618,8 +618,8 @@ interface ViewApi {
     jsHeapBytes: number;
     /** Shadow-map redraws since start, and how many a change asked for (shadows.ts). */
     shadow: { redraws: number; dirty: number };
-    /** The bakes since the map opened — idle bone tables, effect tables, effect atlases: how many, and their milliseconds in the workers — and how many are still out. */
-    bakes: Record<'idle' | 'fx' | 'atlas', { n: number; ms: number }> & { pending: number };
+    /** What the window bakes since the map opened — the effect atlases: how many, and their milliseconds. The bone and effect tables come baked with the scene; `pending` is 0 and kept for the harnesses that wait on it. */
+    bakes: Record<'atlas', { n: number; ms: number }> & { pending: number };
     /** The visible scene's draws by what issues them (static batches, idle kinds, effects, terrain…): meshes, draws (a geometry group each), instances, and the distinct materials among them. */
     draws: Record<string, { meshes: number; draws: number; instances: number; materials: number; merged: number }>;
     loaf: LongFrame[];

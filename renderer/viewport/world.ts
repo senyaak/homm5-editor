@@ -145,7 +145,7 @@ export function buildWorld(S: Scene): void {
   for (const fl of floors) scene.add(fl.group);
   // Particle effects arrive over their own IPC (typed arrays, not scene JSON);
   // the map is fully usable while they stream in.
-  loadFx(floors).catch((e: unknown) => console.error('effects failed', e));
+  loadFx(floors);
   state.world = { floors, active: 0 };
   setActiveFloor(0); // frames the floor + builds its explorer list
   updateFloorUI();

@@ -11,7 +11,7 @@
 // and the bake used to clamp it and warn once per entry, 4900 times a map.
 
 import { DataUtils } from 'three';
-import { bakeTableData, TABLE_ROW } from '../renderer/viewport/fx-table.ts';
+import { bakeTableData, TABLE_ROW } from '../src/scene/fx-table.ts';
 import type { FxTransfer } from '../src/scene/effects.ts';
 
 let failures = 0;

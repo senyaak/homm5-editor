@@ -6,13 +6,8 @@
 
 import { ipcMain } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
-import type { FxPayload } from '#electron/ipc.ts';
 import { gameData, mountedAssets, readSettings, saveSettings } from '#electron/paths.ts';
 import { need, state } from '#electron/state.ts';
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { transferEffect } from '#src/scene/effects.ts';
-import type { FxTransfer } from '#src/scene/effects.ts';
 import { createGeomResolver } from '#src/scene/scene.ts';
 import type { GeomData } from '#src/scene/payload.ts';
 
@@ -58,30 +53,5 @@ export function registerScene(): void {
     session.resolver = fresh;
     console.log(`[perf] map:idle-skins ${(performance.now() - t0) | 0}ms · ${Object.keys(skins).length} animated geom(s)`);
     return skins;
-  });
-
-  // Baked particle keys, by bin/effects uid.
-  // Separate from the scene payload on purpose: these are tens of MB as JSON and
-  // a few MB as typed arrays, and structured clone ships typed arrays binary.
-  // The renderer asks once per unique uid after the scene is up.
-  ipcMain.handle('map:fx', async (_e: IpcMainInvokeEvent, { uids }: FxPayload): Promise<Record<string, FxTransfer>> => {
-    // A baked effect is a GLOBAL asset — `bin/effects/<uid>` — so this does not
-    // need a map session, and must not require one: a dialog scene puts a world
-    // on the GPU without opening a map, and its campfires and fireflies asked
-    // for their keys here and got "no map loaded" back.
-    const data = state.session?.assets ?? mountedAssets(gameData());
-    const t0 = performance.now();
-    const out: Record<string, FxTransfer> = {};
-    for (const uid of uids) {
-      // The uid names a file; nothing else is accepted (it lands in a path).
-      if (!/^[0-9A-F-]{36}$/.test(uid)) continue;
-      try {
-        const p = data.path(join('bin', 'effects', uid));
-        if (!existsSync(p)) continue;
-        out[uid] = transferEffect(readFileSync(p));
-      } catch { /* an unreadable effect stays a static card */ }
-    }
-    console.log(`[perf] map:fx ${(performance.now() - t0) | 0}ms · ${Object.keys(out).length}/${uids.length} effect(s)`);
-    return out;
   });
 }

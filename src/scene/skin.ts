@@ -15,6 +15,8 @@ import type { ReadXdb } from './xdb.ts';
 import type { Animation, BakedClip, Skeleton } from './animation.ts';
 import type { GeomData } from './payload.ts';
 import { round } from './units.ts';
+import { bakeBoneTable } from './bone-table.ts';
+import { BufferGeometry } from 'three';
 
 
 /** Worst bone rotation between consecutive baked samples, in degrees. */
@@ -163,6 +165,12 @@ export function attachAnimation(
     // As baked: the samples are float32 already, which is finer than the
     // rounding the JSON payload used to apply to them.
     geom.skin.clip = clip;
+    // And posed frame by frame for the map's bodies (bone-table.ts): baked
+    // here, with the decode, so the renderer draws the idle from the first
+    // frame instead of standing every creature at rest until a worker of its
+    // own had baked it. The geometry is a carrier for the skeleton and nothing
+    // more — no vertex is read.
+    geom.skin.table = bakeBoneTable(geom.skin, new BufferGeometry(), []) ?? undefined;
   } catch { drop(); }
 }
 

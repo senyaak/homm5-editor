@@ -12,8 +12,6 @@ data-unpacked.*/
 renderer/index.html
 renderer/app.js
 renderer/app.js.map
-renderer/bake-worker.js
-renderer/bake-worker.js.map
 renderer/harness.html
 
 # The editor's own scratch space: unpacked archives, undo history. Rebuildable,

@@ -294,5 +294,5 @@ export function replaceInstances(fl: Floor3D, instances: Instance[]): void {
   // And the effects, which are bound to the instance objects that no longer
   // exist. Async, like the palette's own placement: the baked keys may need
   // fetching, and the map is usable while they come.
-  void reloadFx(fl);
+  reloadFx(fl);
 }

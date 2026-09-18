@@ -12,7 +12,6 @@ import * as THREE from 'three';
 import type { ActorView, ShotView } from '#src/dialog/play.ts';
 import { walkAt } from '#src/dialog/walk.ts';
 import type { WalkPath } from '#src/dialog/walk.ts';
-import type { FxTransfer } from '#src/scene/effects.ts';
 import { createFxSystem } from '#viewport/particles.ts';
 import type { FxSystem } from '#viewport/particles.ts';
 import { refreshLighting, uFxTint } from '#viewport/lighting.ts';
@@ -200,8 +199,6 @@ function clearActors(): void {
 /** The scene's own light, to fall back on when a shot names none. */
 let sceneLight: AmbientData | null = null;
 
-/** Baked keys for every effect the open scene can fire, by uid. */
-let fxBank: Record<string, FxTransfer> = {};
 /** Systems alive around the shot on screen, with the scene time each starts at. */
 let shotFx: Array<{ system: FxSystem; at: number }> = [];
 /**
@@ -285,9 +282,7 @@ function cueShotFx(shot: ShotView): void {
       if (fired.at >= to || fired.at + effectSpan(fired) <= from) continue;
       m4.makeRotationZ(fired.rot).setPosition(fired.pos[0], fired.pos[1], fired.pos[2]);
       for (const fx of fired.fx) {
-        const baked = fxBank[fx.uid];
-        if (!baked?.particles.length) continue;
-        const system = createFxSystem(fx, baked, m4, uFxTint);
+        const system = createFxSystem(fx, m4, uFxTint);
         stage.add(system.mesh);
         shotFx.push({ system, at: fired.at });
       }
@@ -470,24 +465,13 @@ export async function openScene(inner: string, file?: string): Promise<SceneInfo
   // as what a shot without one of its own falls back to.
   sceneLight = state.world ? activeFloor().ambient : null;
 
-  // Every effect the scene can show, baked, in one round trip — a shot cues in
-  // the middle of playback and cannot wait for IPC. The actors' own fires are
-  // in here too: they are alight from the moment the scene opens.
-  const uids = [...new Set([
-    ...shots.flatMap((s) => s.effects.flatMap((e) => e.fx.map((f) => f.uid))),
-    ...actors.flatMap((a) => a.idleFx.map((f) => f.uid)),
-  ])];
-  fxBank = uids.length ? await api.fx(uids) : {};
-  took('effects');
 
   // …and lit. An actor's idle effect is not a moment in the scene, it is what
   // that creature IS — the fire an inferno soldier stands in burns through
   // every shot, and follows them when they march.
   for (const p of playing.players) {
     for (const fx of p.actor.idleFx) {
-      const baked = fxBank[fx.uid];
-      if (!baked?.particles.length) continue;
-      const system = createFxSystem(fx, baked, new THREE.Matrix4(), uFxTint);
+      const system = createFxSystem(fx, new THREE.Matrix4(), uFxTint);
       stage.add(system.mesh);
       p.fire.push({ system, local: system.mesh.matrix.clone() });
     }
@@ -515,7 +499,6 @@ export async function openScene(inner: string, file?: string): Promise<SceneInfo
 export function closeScene(): void {
   clearActors();
   clearShotFx();
-  fxBank = {};
   sceneLight = null;
   clearWorld();
   playing.info = null;

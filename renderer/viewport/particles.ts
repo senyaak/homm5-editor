@@ -50,11 +50,10 @@
 
 import * as THREE from 'three';
 import type { Picture, FxInstancePayload } from '#src/scene/payload.ts';
-import type { FxTransfer } from '#src/scene/effects.ts';
+import type { FxBaked } from '#src/scene/fx-bake.ts';
 import { countBake } from '#viewport/bakes.ts';
-import { bakeFx } from '#viewport/bakery.ts';
-import { TABLE_ROW, TABLE_W } from '#viewport/fx-table.ts';
-import type { FxTableData } from '#viewport/fx-table.ts';
+import { TABLE_ROW, TABLE_W } from '#src/scene/fx-table.ts';
+import type { FxTableData } from '#src/scene/fx-table.ts';
 import { renderer } from '#viewport/stage.ts';
 
 /**
@@ -458,20 +457,16 @@ const arena = {
 const ARENA_MIN_ROWS = 256;
 
 /**
- * The table for a uid — asked of the bakery on first use, shared after. Pair
- * with releaseTable.
+ * The table for a uid — placed in the arena on first use from the bake the
+ * payload carries, shared after. Pair with releaseTable.
  */
-function tableFor(uid: string, baked: FxTransfer): FxTable {
+function tableFor(uid: string, baked: FxBaked): FxTable {
   const have = tables.get(uid);
   if (have) { have.refs++; return have; }
-  const frames = Math.max(1, Math.ceil(baked.duration * baked.rate));
-  const t: FxTable = { data: null, rows: 0, rowStart: -1, base: new Int32Array(frames + 1), count: new Int32Array(frames), frames, entries: 0, refs: 1 };
+  const d = baked.table;
+  const t: FxTable = { data: null, rows: 0, rowStart: -1, base: d.base, count: d.count, frames: d.frames, entries: 0, refs: 1 };
   tables.set(uid, t);
-  void bakeFx(baked).then((d) => {
-    // Released while baking: the table is nobody's now.
-    if (tables.get(uid) !== t) return;
-    placeTable(t, d);
-  });
+  placeTable(t, d);
   return t;
 }
 
@@ -779,21 +774,12 @@ export function fxPoolCount(parent: THREE.Object3D): number {
  * (createFxSystem).
  */
 export function createFxBatch(
-  fx: FxInstancePayload, baked: FxTransfer, litTint: { value: THREE.Color } = WHITE_TINT, parent: THREE.Object3D | null = null,
+  fx: FxInstancePayload, litTint: { value: THREE.Color } = WHITE_TINT, parent: THREE.Object3D | null = null,
 ): FxBatch {
-  // STANDING SCENERY, derived from the bake rather than from any XML flag
-  // (the instances' <Static> says P_STATIC on all 2709 shipped and separates
-  // nothing): a system whose every particle exists for the whole loop and
-  // never moves a channel, with enough of them to be a patch of vegetation
-  // rather than a lone glow card. The terrain-object grass is 33 one-key
-  // blade clumps; a portal's still glow is 1-2 cards and stays a billboard.
-  // Standing quads get the upright shader and the texel's own colour —
-  // moving effects (fire, surf, wall crashes) keep the billboard path.
-  const recFramesAll = baked.duration * baked.rate;
-  const standing = baked.particles.length >= 8 && baked.particles.every((p) =>
-    p.birth <= 0 && p.death >= recFramesAll - 1
-    && p.pos.length <= 4 && p.rot.length <= 2 && p.size.length <= 3
-    && p.color.length <= 5 && p.tex.length <= 2);
+  // The recording, baked where the scene was built (src/scene/fx-bake.ts):
+  // standing scenery or billboards is decided there too.
+  const baked = fx.baked;
+  const standing = baked.standing;
   const recFrames = Math.max(1, baked.duration * baked.rate);
   // One copy's length in real (playback) seconds: `<Speed>` scales the
   // instance's clock, so 0.8 plays the recording at 0.8× and it lasts longer.
@@ -962,10 +948,10 @@ function makeSegmentTexture(data: Int32Array, cap: number): THREE.DataTexture {
  * frame from the actor's frame and the instance's own offset (`local`).
  */
 export function createFxSystem(
-  fx: FxInstancePayload, baked: FxTransfer, objectMatrix: THREE.Matrix4,
+  fx: FxInstancePayload, objectMatrix: THREE.Matrix4,
   litTint: { value: THREE.Color } = WHITE_TINT,
 ): FxSystem {
-  const batch = createFxBatch(fx, baked, litTint) as Member;
+  const batch = createFxBatch(fx, litTint) as Member;
   batch.addCopy();
   const mesh = batch.pool.mesh;
   mesh.matrix.multiplyMatrices(objectMatrix, batch.local);

@@ -25,6 +25,7 @@ import { readAnimations, readSkeletons } from './animation.ts';
 import { particleFrame, textureDataUri } from './materials.ts';
 import { decodeModelGeom, transformGeom } from './model-geom.ts';
 import { bakeCharacterClip } from './skin.ts';
+import { bakedEffect } from './fx-bake.ts';
 import type { BakedRig } from './skin.ts';
 import { followHref, listItems, readAsset, readVec3, readQuat, resolveHref, dirOf } from './xdb.ts';
 import type { Assets } from '../game/assets.ts';
@@ -221,6 +222,9 @@ export function particlesOfEffect(
       if (!uid) continue;
       const binPath = data.path(join('bin', 'effects', uid.toUpperCase()));
       if (!existsSync(binPath)) continue;
+      // The recording itself, baked — once per file for the process.
+      const baked = bakedEffect(binPath);
+      if (!baked) continue;
 
       // The frame table, order preserved — the baked indices point into it.
       // Empty <Item/> slots stay as nulls so the numbering holds.
@@ -275,6 +279,7 @@ export function particlesOfEffect(
 
       out.push({
         uid: uid.toUpperCase(),
+        baked,
         pos,
         quat,
         scale: instScale,

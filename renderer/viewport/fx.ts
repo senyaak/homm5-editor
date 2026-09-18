@@ -7,11 +7,10 @@
 
 import * as THREE from 'three';
 
-import { api } from '#core/ipc.ts';
+
 import { state } from '#core/state.ts';
 import type { Floor3D } from '#core/state.ts';
 import type { FxInstancePayload, Instance } from '#src/scene/payload.ts';
-import type { FxTransfer } from '#src/scene/effects.ts';
 import { tileCenter } from '#core/coords.ts';
 import { geomFx } from '#viewport/geoms.ts';
 import { createFxBatch } from '#viewport/particles.ts';
@@ -43,42 +42,38 @@ export interface PlacedFx {
 /**
  * Give every placed object its playing particle effects.
  *
- * The scene payload carries only each effect's placement, textures and uid;
- * the baked keys come from `map:fx` here, once per unique uid, as typed
- * arrays. Every placement of the same effect is a copy in one batch, all on
- * one clock — thirty campfires flicker in step, and may: they are one
- * recording, and one simulation.
+ * The scene payload carries each effect's placement, textures and the
+ * recording baked (fx-bake.ts), so this is a walk over the placements and
+ * nothing is awaited. Every placement of the same effect is a copy in one
+ * batch, all on one clock — thirty campfires flicker in step, and may: they
+ * are one recording, and one simulation.
  */
-export async function loadFx(floors: Floor3D[]): Promise<void> {
+export function loadFx(floors: Floor3D[]): void {
   if (!geomFx.size) return;
-  const uids = [...new Set([...geomFx.values()].flat().map((f) => f.uid))];
-  const bank = await api.fx(uids);
   const t0 = performance.now();
   let built = 0, batches = 0;
-  for (const fl of floors) { built += buildFx(fl, bank); batches += fl.fx.length; }
-  if (built) console.log(`[perf] effects: ${built} cop${built === 1 ? 'y' : 'ies'} in ${batches} batch(es) over ${uids.length} unique effect(s), built in ${(performance.now() - t0) | 0}ms`);
+  for (const fl of floors) { built += buildFx(fl); batches += fl.fx.length; }
+  if (built) console.log(`[perf] effects: ${built} cop${built === 1 ? 'y' : 'ies'} in ${batches} batch(es), built in ${(performance.now() - t0) | 0}ms`);
 }
 
-/** Place the copies for the objects standing on one floor, from a fetched bank. */
-function buildFx(fl: Floor3D, bank: Record<string, FxTransfer>): number {
+/** Place the copies for the objects standing on one floor. */
+function buildFx(fl: Floor3D): number {
   let built = 0;
   for (const inst of fl.instances) {
     const list = geomFx.get(inst.g);
     if (!list) continue;
-    for (const f of list) if (addCopy(fl, f, inst, bank)) built++;
+    for (const f of list) if (addCopy(fl, f, inst)) built++;
   }
   return built;
 }
 
 /** The floor's batch for this payload — made on its first copy. */
-function batchFor(fl: Floor3D, f: FxInstancePayload, bank: Record<string, FxTransfer>): PlacedFx | null {
+function batchFor(fl: Floor3D, f: FxInstancePayload): PlacedFx {
   const have = fl.fx.find((e) => e.batch.fx === f);
   if (have) return have;
-  const baked = bank[f.uid];
-  if (!baked?.particles.length) return null;
   // The batch joins the floor's pool for its atlas — the pool hangs its one
   // mesh under the object group itself, and is born under the Effects toggle.
-  const batch = createFxBatch(f, baked, uFxTint, fl.objGroup);
+  const batch = createFxBatch(f, uFxTint, fl.objGroup);
   const entry: PlacedFx = { batch, at: [], rest: [], hungAt: [] };
   fl.fx.push(entry);
   return entry;
@@ -92,9 +87,8 @@ function objectMatrix(inst: Instance, out: THREE.Matrix4): THREE.Matrix4 {
 const _m4 = new THREE.Matrix4();
 
 /** One object's copy of one of its effects, placed where the object stands. */
-function addCopy(fl: Floor3D, f: FxInstancePayload, inst: Instance, bank: Record<string, FxTransfer>): boolean {
-  const e = batchFor(fl, f, bank);
-  if (!e) return false;
+function addCopy(fl: Floor3D, f: FxInstancePayload, inst: Instance): boolean {
+  const e = batchFor(fl, f);
   const slot = e.batch.addCopy();
   e.at[slot] = inst;
   e.rest[slot] = objectMatrix(inst, new THREE.Matrix4()).multiply(e.batch.local);
@@ -114,17 +108,11 @@ function addCopy(fl: Floor3D, f: FxInstancePayload, inst: Instance, bank: Record
  * and it cannot be moved or deleted, because nothing on the map claims it — while
  * the objects that came back stand cold.
  *
- * The old ones go SYNCHRONOUSLY, before the fetch: the caller has just rebuilt
- * the batches, and a frame drawn between here and the bank arriving must not
- * show effects for objects that are gone.
  */
-export async function reloadFx(fl: Floor3D): Promise<void> {
+export function reloadFx(fl: Floor3D): void {
   for (const e of fl.fx) e.batch.dispose();
   fl.fx.length = 0;
-  if (!geomFx.size) return;
-  const uids = [...new Set(fl.instances.flatMap((i) => geomFx.get(i.g) ?? []).map((f) => f.uid))];
-  if (!uids.length) return;
-  buildFx(fl, await api.fx(uids));
+  if (geomFx.size) buildFx(fl);
 }
 
 /** The one clock every effect follows. */
@@ -225,11 +213,8 @@ export function moveFx(fl: Floor3D, inst: Instance, objectWorld: THREE.Matrix4):
  * already run. Without this a campfire dropped from the palette stood cold
  * until the map was saved and reopened.
  */
-export async function spawnFx(fl: Floor3D, inst: Instance): Promise<void> {
-  const list = geomFx.get(inst.g);
-  if (!list?.length) return;
-  const bank = await api.fx([...new Set(list.map((f) => f.uid))]);
-  for (const f of list) addCopy(fl, f, inst, bank);
+export function spawnFx(fl: Floor3D, inst: Instance): void {
+  for (const f of geomFx.get(inst.g) ?? []) addCopy(fl, f, inst);
 }
 
 /** Drop one object's effect copies, e.g. when it is deleted; the last copy takes its batch down. */

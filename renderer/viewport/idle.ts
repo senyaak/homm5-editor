@@ -18,7 +18,6 @@ import type { Floor3D } from '#core/state.ts';
 import type { Instance, SkinnedGeom } from '#src/scene/payload.ts';
 import { worldGeos, worldMats, geomSkin } from '#viewport/geoms.ts';
 import { markShadowRoles, markShadowsDirty } from '#viewport/shadows.ts';
-import { bakeIdle } from '#viewport/bakery.ts';
 import { boneAtlasTexture, restTable, skinnedGeometry, SkinnedInstances, TableSkeleton } from '#viewport/skinning.ts';
 import type { IdleBody, IdleKind } from '#viewport/skinning.ts';
 import { cam } from '#viewport/stage.ts';
@@ -50,15 +49,12 @@ const skeletons = new Map<SkinnedGeom, { skel: TableSkeleton; refs: number }>();
 function skeletonFor(skin: SkinnedGeom): TableSkeleton | null {
   const have = skeletons.get(skin);
   if (have) { have.refs++; return have.skel; }
-  // Over the rest pose now, over the baked idle when the bakery hands it
-  // back — unless every kind of the creature is gone by then.
-  const rest = restTable(skin);
-  if (!rest) return null;
-  const skel = new TableSkeleton(rest);
+  // The idle comes baked with the scene (skin.ts attachAnimation); a payload
+  // from before that, or one without a clip, stands at rest.
+  const table = skin.table ?? restTable(skin);
+  if (!table) return null;
+  const skel = new TableSkeleton(table);
   skeletons.set(skin, { skel, refs: 1 });
-  void bakeIdle(skin).then((table) => {
-    if (table && skeletons.get(skin)?.skel === skel) skel.setTable(table);
-  });
   return skel;
 }
 

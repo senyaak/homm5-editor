@@ -1,0 +1,189 @@
+// A skin payload as a three.js skinned mesh, posed — and baked to a table.
+//
+// Pure three.js maths, no window: the main process's decode jobs bake here
+// (src/scene/bake.ts) and the renderer (viewport/skinning.ts) poses the
+// scene player's actors with the same functions, so a test of one is a test
+// of the other (tools/test-idle.ts drives THESE functions rather than a copy).
+//
+// The maths, since three.js does not spell it out and reasoning about it in the
+// abstract wastes an afternoon. The vertex shader computes
+//
+//   transformed = bindMatrixInverse * Σ w (bone.matrixWorld * boneInverse) * bindMatrix * p
+//
+// and the renderer then applies modelViewMatrix = view * mesh.matrixWorld on
+// top. Our inverse binds are in MODEL space and the bones are children of the
+// mesh, so bone.matrixWorld already carries the object's placement — which
+// means bindMatrix must be the IDENTITY, or the placement is applied twice and
+// a creature ends up at twice its distance from the origin. bindMode stays
+// attached, so bindMatrixInverse is recomputed from matrixWorld every frame and
+// dragging an animated object keeps working.
+
+import * as THREE from 'three';
+import type { SkinnedGeom } from './payload.ts';
+
+/** One animated object: its own skeleton, its own place in the loop. */
+export interface IdleObject {
+  mesh: THREE.SkinnedMesh;
+  bones: THREE.Bone[];
+  skin: SkinnedGeom;
+  /** Playback head in seconds, wrapped into the clip's duration. */
+  time: number;
+}
+
+/**
+ * Build a skinned mesh for one object out of a scene geom's skin payload.
+ *
+ * The geometry and materials are the shared ones — a model's binding is the
+ * same for every copy of it, and only the skeleton is per object, because two
+ * gremlins on the same map are at different points of the same loop.
+ */
+export function makeIdle(
+  skin: SkinnedGeom, geometry: THREE.BufferGeometry, material: THREE.Material[],
+): IdleObject | null {
+  if (!skin.clip || !skin.bones.length) return null;
+  const bones = skin.bones.map((b) => {
+    const bone = new THREE.Bone();
+    bone.name = b.name;
+    bone.position.set(b.pos[0]!, b.pos[1]!, b.pos[2]!);
+    bone.quaternion.set(b.quat[0]!, b.quat[1]!, b.quat[2]!, b.quat[3]!);
+    return bone;
+  });
+  const mesh = new THREE.SkinnedMesh(geometry, material);
+  skin.bones.forEach((b, i) => {
+    const parent = b.parent >= 0 ? bones[b.parent] : null;
+    (parent ?? mesh).add(bones[i]!);
+  });
+  mesh.bind(
+    new THREE.Skeleton(bones, skin.bind.map((m) => new THREE.Matrix4().fromArray(m))),
+    new THREE.Matrix4(),
+  );
+  // The bones carry vertices well outside the geometry's own bounds, and three
+  // culls against those bounds, so a leaning creature would blink out. What is
+  // on screen is decided by hand instead (see advanceIdle in app.ts).
+  mesh.frustumCulled = false;
+  return { mesh, bones, skin, time: 0 };
+}
+
+const _a = new THREE.Quaternion();
+const _b = new THREE.Quaternion();
+
+/**
+ * Put an object's bones where its clip says they are at `time`.
+ *
+ * The clip is already sampled onto an even grid (src/animation.ts bakes the
+ * B-splines away), so this is a lookup and a blend — linear between
+ * neighbouring samples, spherical for the rotations. `loop` is what an idle
+ * does; a clip a scene plays once holds its last frame instead.
+ */
+export function poseIdle(idle: IdleObject, time: number, loop = true): void {
+  const clip = idle.skin.clip;
+  if (!clip) return;
+  const n = clip.times.length;
+  if (!n) return;
+  const span = clip.duration || 1;
+  // A one-shot HOLDS its last frame. Wrapped like a loop it does not merely
+  // repeat: `time` clamped to the duration is exactly `span`, and `span % span`
+  // is zero — so a clip played to its end lands on its FIRST frame, and the
+  // creatures cut down in a scene stood straight back up.
+  const at = loop ? ((time % span) + span) % span : Math.min(Math.max(0, time), span);
+  // Even spacing is what makes this a division rather than a search.
+  const f = Math.min(n - 1, Math.max(0, at / span * (n - 1)));
+  const i0 = Math.min(n - 1, Math.floor(f));
+  const i1 = Math.min(n - 1, i0 + 1);
+  const t = f - i0;
+  idle.bones.forEach((bone, b) => {
+    const rot = clip.rotations[b], pos = clip.positions[b], scl = clip.scales?.[b];
+    if (rot) {
+      _a.set(rot[i0 * 4]!, rot[i0 * 4 + 1]!, rot[i0 * 4 + 2]!, rot[i0 * 4 + 3]!);
+      _b.set(rot[i1 * 4]!, rot[i1 * 4 + 1]!, rot[i1 * 4 + 2]!, rot[i1 * 4 + 3]!);
+      bone.quaternion.slerpQuaternions(_a, _b, t);
+    }
+    if (pos) {
+      bone.position.set(
+        pos[i0 * 3]! + (pos[i1 * 3]! - pos[i0 * 3]!) * t,
+        pos[i0 * 3 + 1]! + (pos[i1 * 3 + 1]! - pos[i0 * 3 + 1]!) * t,
+        pos[i0 * 3 + 2]! + (pos[i1 * 3 + 2]! - pos[i0 * 3 + 2]!) * t,
+      );
+    }
+    // Only present when the clip actually leaves unit scale (BakedClip.scales),
+    // and for a whole family of effects it is the whole animation: a meteor's
+    // impact ring swelling ×78, a gating vortex opening around the caster.
+    if (scl) {
+      bone.scale.set(
+        scl[i0 * 3]! + (scl[i1 * 3]! - scl[i0 * 3]!) * t,
+        scl[i0 * 3 + 1]! + (scl[i1 * 3 + 1]! - scl[i0 * 3 + 1]!) * t,
+        scl[i0 * 3 + 2]! + (scl[i1 * 3 + 2]! - scl[i0 * 3 + 2]!) * t,
+      );
+    }
+  });
+}
+
+/**
+ * Frames a second a bone table is baked at — the effects' rate; the clip's
+ * own samples are 15/s. A map's creatures all play the one idle loop at the
+ * one time, so the clip is posed ONCE at this rate and what three's
+ * Skeleton.update() would compute each frame — bone.matrixWorld × boneInverse
+ * per bone — is kept per frame in a table; at run time a body is drawn off
+ * the table's current row (renderer/viewport/skinning.ts).
+ */
+export const TABLE_RATE = 30;
+
+/** One creature kind's idle, posed frame by frame. */
+export interface BoneTable {
+  bones: number;
+  frames: number;
+  /** The clip's length, seconds — the loop. */
+  duration: number;
+  /** Per frame, per bone: `bone.matrixWorld × boneInverse` (what the skinning shader wants), 16 floats. */
+  offsets: Float32Array;
+  /** Per bone: the bind matrix (the inverse of `boneInverse`), 16 floats — what turns a row back into the bone's place. */
+  bind: Float32Array;
+}
+const _bind = new THREE.Matrix4();
+
+/**
+ * A skin at rest, as a one-frame table: what a body is drawn from until its
+ * idle is baked (bakery.ts). An offset row of identities is the bind pose —
+ * `world × boneInverse` is the identity exactly when the bone stands where
+ * it was bound — and the bind matrices are the inverses the skin carries,
+ * inverted back. The duration is the clip's, so the clock runs on.
+ */
+export function restTable(skin: SkinnedGeom): BoneTable | null {
+  if (!skin.clip || !skin.bones.length) return null;
+  const bones = skin.bones.length;
+  const offsets = new Float32Array(bones * 16);
+  const bind = new Float32Array(bones * 16);
+  for (let b = 0; b < bones; b++) {
+    _bind.identity().toArray(offsets, b * 16);
+    _bind.fromArray(skin.bind[b]!).invert().toArray(bind, b * 16);
+  }
+  return { bones, frames: 1, duration: skin.clip.duration, offsets, bind };
+}
+
+/**
+ * Bake a skin's idle to a table.
+ *
+ * Done the honest way: a real skeleton is built and posed at each frame with
+ * `poseIdle` — the same lerp and slerp the scene player runs — and three's own
+ * `Skeleton.update()` produces the row. The table is therefore what the
+ * per-frame path drew, sampled at TABLE_RATE.
+ */
+export function bakeBoneTable(skin: SkinnedGeom, geometry: THREE.BufferGeometry, material: THREE.Material[]): BoneTable | null {
+  const idle = makeIdle(skin, geometry, material);
+  if (!idle) return null;
+  const bones = idle.bones.length;
+  const duration = idle.skin.clip?.duration ?? 0;
+  const frames = Math.max(1, Math.round(duration * TABLE_RATE));
+  const offsets = new Float32Array(frames * bones * 16);
+  const skeleton = idle.mesh.skeleton;
+  const bind = new Float32Array(bones * 16);
+  skeleton.boneInverses.forEach((inv, i) => _bind.copy(inv).invert().toArray(bind, i * 16));
+  for (let f = 0; f < frames; f++) {
+    poseIdle(idle, f / TABLE_RATE);
+    idle.mesh.updateMatrixWorld(true);
+    skeleton.update();
+    offsets.set(skeleton.boneMatrices!, f * bones * 16);
+  }
+  skeleton.dispose();
+  return { bones, frames, duration, offsets, bind };
+}
