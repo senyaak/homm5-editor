@@ -129,10 +129,10 @@ export interface HeroClassSpec {
   /** Shipped perks this class may take. Ours are declared on the skills instead. */
   allowedPerks?: AllowedPerk[];
   /**
-   * What its heroes open in a battle: a spellbook (the default) or a book of
-   * warcries, as a barbarian's. Not a record's field — the engine asks
-   * "is he a barbarian" at nineteen places, and the extension answers yes
-   * for a class of warcries there (magic-kind.ts, `bin/homm5-editor-magic.txt`).
+   * Whether its heroes learn spells: `'spellbook'` (the default) or `'none'`
+   * — a class that never casts, the Heroes III yogi. Not a record's field:
+   * the engine decides by the barbarian's racial skill, and the extension
+   * answers the class instead (magic-kind.ts, `bin/homm5-editor-magic.txt`).
    */
   magic?: MagicKind;
 }

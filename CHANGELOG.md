@@ -131,16 +131,16 @@ pre-release.
   `Heroes/Any.xdb` — the two lists a random town and a random hero of a
   race are drawn from, and the only thing that makes either "of the race"
   (`test-shared-groups`). A race with no hero listed starts with nothing.
-- A faction of warcries: `TownSpec.magic: 'warcries'` makes the town's guild
-  a hall — the guild's five records Stronghold's stubs, `TB_SPECIAL_1` three
-  levels (Stronghold's own through `BuildingEdit.from`, which takes any
-  building whole from another shipped town: records, texts, grid slot) —
-  and `HeroClassSpec.magic: 'warcries'` a class that shouts. The extension
-  answers "barbarian" for the class at the nineteen places the engine asks
-  and "Stronghold" for the town at the nine about its guild
-  (`native/faction/magic-kind.c`, `bin/homm5-editor-magic.txt`); the book,
-  the hall's teaching and the AI's casting follow. Two buildings on one grid
-  cell are refused now (`test-magic-kind`, `test-town-buildings`).
+- A faction without magic: `HeroClassSpec.magic: 'none'` is a class whose
+  heroes never learn a spell — the engine decides that by the barbarian's
+  racial skill, and the extension answers the class at the two gates of
+  `CanLearnSpell` instead (`native/faction/magic-kind.c`,
+  `bin/homm5-editor-magic.txt`) — and `TownSpec.magic: 'none'` a town whose
+  guild is Stronghold's five stubs with no cell, its button dark. Warcries
+  were built first and rolled back: a warcry is a charge of rage, and rage
+  is the Horde's. `BuildingEdit.from` takes any building whole from another
+  shipped town (records, texts, grid slot); two buildings on one grid cell
+  are refused (`test-magic-kind`, `test-town-buildings`).
 - What a special building DOES is a row of one compiled table — forty-seven
   `{feature, town, building, level}` rows behind the Library, the Hall of
   Trial, the Capitol and every other shipped special — and the table is the

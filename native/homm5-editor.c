@@ -111,8 +111,8 @@
 // whose door to the map's Lua it uses, and after race-order.c, whose word
 // reader it borrows.
 #include "faction/town-button.c"
-// A faction's magic — a class that shouts, a town whose guild is a hall: after
-// detour.c, whose overwrite it uses, and after race-order.c, whose reader.
+// A class of ours without magic: after detour.c, whose overwrite it uses, and
+// after race-order.c, whose reader.
 #include "faction/magic-kind.c"
 // What a building of ours does: the town-feature table, ours, after race-order.c
 // (its reader) and log.c.
@@ -346,10 +346,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // The town screen's centre button for a building of ours, one row per faction.
   load_town_buttons();
   if (g_townButtonCount && install_town_buttons()) log_line("town buttons: the special button is ours for a town of ours");
-  // Warcries for a class of ours and a hall for a town of ours: the sites where
-  // the engine asks "barbarian?" and "Stronghold?" answer for them too.
+  // A class of ours without magic: the two gates of CanLearnSpell answer the
+  // class where the engine reads the barbarian's racial.
   load_magic_kinds();
-  if ((g_warcryClassCount || g_hallTownCount) && install_magic_kinds()) log_line("magic: warcries answer for a class and a town of ours");
+  if (install_magic_kinds()) log_line("magic: a class of ours learns no spell");
   // The effects a building grants — the engine's own forty-seven and a row per
   // building of ours — from one table that lives here.
   load_town_features();

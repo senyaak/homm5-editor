@@ -759,3 +759,39 @@ three. The 46 effects are the menu; an effect of our own is a term of the
 extension, not a row.
 
 Launch 36 pending: the same map, the hall's rows in the file.
+
+## Rolled back: a warcry is a charge of rage; a class without magic (2026-09-18, launches 36–38)
+
+Launch 36: the hall listed its warcries (the guild window, `0x8BB680`, reads
+the type into `esi` before comparing — an eleventh Stronghold site the
+first scan missed). Launch 37: nothing learnt — `CanLearnSpell` (`0xC200F0`,
+and its caller `0xC24480`) decides by ONE skill, HERO_SKILL_DEMONIC_RAGE
+(172, Blood Rage), through the hero's mastery virtual `+0x174`:
+
+```
+IsWarcry(spell)  →  Mastery(172) > 0
+anything else    →  Mastery(172) <= 0
+```
+
+— a proxy for the class, since a barbarian holds his racial from day one.
+Launch 38, with a class of ours (`HERO_CLASS_BONE_LORD`, its racial, its
+hero, all through the mod model) and the gate answering the class: still
+nothing, because every warcry has a `RequiredHeroLevel` (2, 2, 6, 6, 11,
+11) and `0xC244D3…E8` compares it with the hero's level first; at level 2
+the Bone Lord learnt his two. The whole path, read: the hero's `+0xF0`
+`LearnFromTown` (`0xC24730`) → the town's `+0x24` `GetSpellsOfLevel`
+(`0xAC7B40`, gated by `HasFeature(0x27..0x29)`) → the hero's `+0xE4` →
+`CanLearnSpell` → `+0xE8` `AddSpell` (`0xC20170`) → "WARCRY_OBTAINED".
+
+And then the finding that ended it (Senya): **a warcry is a charge of rage**
+— its point is to feed the Rage ability of the Horde's creatures, whose
+points Blood Rage governs (the other seven askers of 172). A faction with
+neither has words, not warcries. So the nineteen class sites, the eleven
+town sites and the hall are gone from the extension, and what stands is
+the other half of the same rule: **a class without magic**. `class
+<ordinal> none` in `bin/homm5-editor-magic.txt` makes the two gates answer
+"holds Blood Rage" for the class — no spell is ever learnt, the book stays
+an ordinary empty one — and `TownSpec.magic: 'none'` makes the town's guild
+Stronghold's five stubs with no cell. It is the Heroes III yogi who cannot
+cast. The feature table (previous section) and `BuildingEdit.from` are
+general and stay.

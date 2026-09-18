@@ -27,7 +27,6 @@
 import { buildingGlyph, buildingIcon, raceIcon, specialButtonSkins, textureFiles, towerIcon, townIcon } from './faction-icons.ts';
 import { captureMarkerFiles } from './capture-marker.ts';
 import type { CaptureMarkerBuild } from './capture-marker.ts';
-import { buildingOrdinal } from './town-button.ts';
 import type { TownButton } from './town-button.ts';
 import type { RaceSpec } from './town-type-info.ts';
 import type { IconTheme } from './faction-icons.ts';
@@ -80,9 +79,8 @@ export const SHIPPED_TOWN_ORDINALS: Readonly<Record<string, number>> = {
 
 /** The guild's building type, and the hall's: Stronghold teaches its warcries from `TB_SPECIAL_1`, three levels. */
 export const GUILD_BUILDING = 'TB_MAGIC_GUILD';
-export const HALL_BUILDING = 'TB_SPECIAL_1';
-export const HALL_LEVELS = 3;
-export const HALL_DONOR = 'TOWN_STRONGHOLD';
+/** Whose guild records a town without magic takes: Stronghold's, five stubs with no cell. */
+export const GUILD_STUB_DONOR = 'TOWN_STRONGHOLD';
 
 export interface TownSpec {
   /** Folder and file stem inside the mod. */
@@ -97,17 +95,14 @@ export interface TownSpec {
   magicSchools?: readonly [string, string];
   /**
    * What its heroes learn in it. `'guild'` (the default) is a magic guild
-   * teaching spells of `magicSchools`. `'warcries'` is a HALL: the guild's
-   * five records become the stubs Stronghold's are (never built, never shown
-   * — the engine wants a record per level), and `TB_SPECIAL_1` is the hall,
-   * three levels, teaching a warcry tier each — Stronghold's own through
-   * `buildings: { TB_SPECIAL_1: { from: 'TOWN_STRONGHOLD' } }`, or three
-   * levels of the donor's. The extension then answers "Stronghold" for the
-   * town wherever the engine asks whether the guild is a hall
-   * (native/faction/magic-kind.c); a hero shouts when his CLASS says so
-   * (hero-classes.ts). What needed the guild has to be re-parented.
+   * teaching spells of `magicSchools`. `'none'` is a town WITHOUT magic: the
+   * guild's five records become the stubs Stronghold's are — never built,
+   * never shown, the engine wanting a record per level — and its slot on
+   * the grid has no cell. The guild button stays dark, the window never
+   * opens. What needed the guild has to be re-parented. A hero learns no
+   * spell when his CLASS says so (hero-classes.ts, `magic: 'none'`).
    */
-  magic?: 'guild' | 'warcries';
+  magic?: 'guild' | 'none';
   /**
    * What the dwellings hire, by tier 1–7: the base creature for the dwelling
    * and its upgrade for the upgraded one (the expansion's second upgrade is
@@ -515,15 +510,9 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       if (edit !== null) continue;
       for (const b of listed) if (b.type === type && b.level >= level) dropped.add(b.path);
     }
-    // A hall's town has no guild to build: the records stay (stubs, like
-    // Stronghold's) but nothing may need them, exactly as if they were dropped.
-    const unbuildable = new Set(spec.magic === 'warcries' ? listed.filter((b) => b.type === GUILD_BUILDING).map((b) => b.path) : []);
-    if (spec.magic === 'warcries') {
-      const hall = listed.filter((b) => b.type === HALL_BUILDING && !dropped.has(b.path));
-      if (hall.length !== HALL_LEVELS) {
-        throw new Error(`${spec.file}: a hall is ${HALL_BUILDING} with ${HALL_LEVELS} levels — ${spec.donor}'s has ${hall.length}; take ${HALL_DONOR}'s (from) or give it three`);
-      }
-    }
+    // A town without magic has no guild to build: the records stay (stubs,
+    // like Stronghold's) but nothing may need them, exactly as if dropped.
+    const unbuildable = new Set(spec.magic === 'none' ? listed.filter((b) => b.type === GUILD_BUILDING).map((b) => b.path) : []);
     const keyOf = new Map(listed.map((b) => [b.path, b.key]));
     let town = donor;
     for (const b of listed) {
@@ -548,7 +537,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       }
       for (const dep of dependenciesOf(seeded.get(b.path) ?? mustRead(read, b.path), b.path)) {
         if (dropped.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which is dropped — re-parent it (requires) or drop it too`);
-        if (unbuildable.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which a town of warcries never builds — re-parent it (requires)`);
+        if (unbuildable.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which a town without magic never builds — re-parent it (requires)`);
       }
     }
     if (dropped.size) seeded.set(source, town);
@@ -579,7 +568,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     /<messagesFileRef>[\s\S]*?<\/messagesFileRef>/,
     `<messagesFileRef>${EOL}\t\t<Item href="/${p.name}"/>${EOL}\t</messagesFileRef>`,
   );
-  if (spec.magicSchools && spec.magic === 'warcries') throw new Error(`${spec.file}: a town of warcries has no guild to teach ${spec.magicSchools.join(' and ')}`);
+  if (spec.magicSchools && spec.magic === 'none') throw new Error(`${spec.file}: a town without magic has no guild to teach ${spec.magicSchools.join(' and ')}`);
   if (spec.magicSchools) {
     for (const [i, school] of spec.magicSchools.entries()) {
       town = town.replace(new RegExp(`<MagicSchool_${i}>[^<]*</MagicSchool_${i}>`), `<MagicSchool_${i}>${school}</MagicSchool_${i}>`);
@@ -655,7 +644,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
 
   // What the buildings do: a row per level of the shipped building each
   // grant names, under our slot. A building taken from another town keeps
-  // its effect unless told otherwise; a hall of warcries is Stronghold's.
+  // its effect unless told otherwise.
   const features: OwnFeature[] = [];
   for (const [key, edit] of Object.entries(edits ?? {})) {
     if (!edit) continue;
@@ -664,9 +653,6 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     if (level !== 1) throw new Error(`${key}: an effect is the whole building's — name ${type}, not a level of it`);
     if (edit.grants === null) continue;
     features.push(...grantedFeatures(type, edit.grants ?? { like: edit.from! }, `${spec.file}: ${key}`, edit.grants === undefined));
-  }
-  if (spec.magic === 'warcries' && !features.some((f) => f.building === buildingOrdinal(HALL_BUILDING))) {
-    features.push(...grantedFeatures(HALL_BUILDING, { like: HALL_DONOR }, `${spec.file}: the hall`));
   }
 
   // Models of ours in the town screen: placed, named, and every level of the
@@ -909,20 +895,20 @@ function swapListed(town: string, ours: readonly ListedBuilding[], lines: readon
 }
 
 /**
- * The spec's building edits with what `magic` implies: a town of warcries
+ * The spec's building edits with what `magic` implies: a town without magic
  * takes Stronghold's guild — five stubs and an empty slot — unless the spec
  * says where its own come from.
  */
 function buildingEdits(spec: TownSpec): Readonly<Record<BuildingKey, BuildingEdit | null>> | undefined {
-  if (spec.magic !== 'warcries') return spec.buildings;
+  if (spec.magic !== 'none') return spec.buildings;
   const guild = spec.buildings?.[GUILD_BUILDING];
-  if (guild === null) throw new Error(`${spec.file}: a town of warcries keeps the guild's records as stubs — do not drop ${GUILD_BUILDING}`);
+  if (guild === null) throw new Error(`${spec.file}: a town without magic keeps the guild's records as stubs — do not drop ${GUILD_BUILDING}`);
   // The stubs name texts the game does not ship: nothing shows them.
   for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
     if (parseBuildingKey(key).type !== GUILD_BUILDING || !edit) continue;
-    if (edit.name !== undefined || edit.description !== undefined) throw new Error(`${spec.file}: a town of warcries never shows its guild — ${key} has no name to give`);
+    if (edit.name !== undefined || edit.description !== undefined) throw new Error(`${spec.file}: a town without magic never shows its guild — ${key} has no name to give`);
   }
-  return { ...spec.buildings, [GUILD_BUILDING]: { from: HALL_DONOR, ...guild } };
+  return { ...spec.buildings, [GUILD_BUILDING]: { from: GUILD_STUB_DONOR, ...guild } };
 }
 
 /** The text without the line `at` falls on. */
