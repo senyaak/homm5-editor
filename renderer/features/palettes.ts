@@ -89,8 +89,13 @@ export function initObjectPalette(): Promise<void> {
       const r = await api.listObjects();
       catalog = r.objects;
       catGroups = r.groups;
+      // Appended, not written over: the scan is a background preload that
+      // lands after the map's own line (and after a generator's), and a
+      // warning that replaced them took the line the user was reading.
       if (!r.hasEditor) {
-        $('hud').textContent = 'no Editor folder found — objects are ungrouped and have no icons';
+        const note = 'no Editor folder found — objects are ungrouped and have no icons';
+        const hud = $('hud');
+        hud.textContent = hud.textContent ? `${hud.textContent} · ${note}` : note;
       }
       renderObjCats();
       renderObjGrid();

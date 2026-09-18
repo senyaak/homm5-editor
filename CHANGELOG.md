@@ -25,6 +25,10 @@ pre-release.
   their stage from the same cache. Every step, with its numbers and what it fixed on the way, is in
   [docs/PERFORMANCE.md](docs/PERFORMANCE.md). three.js is 0.186 now — run
   `npm install` after updating a checkout.
+- On an install without an Editor folder, the "objects are ungrouped" note no
+  longer replaces the HUD's line about the map just opened (or generated) —
+  it is added to it. The palette's background scan got fast enough to land
+  while that line was still being read.
 - Groundwork for a ninth faction: the town type table's executable ceiling
   (`TownTypesInfo`, 11 entries) is now a known table the editor can raise,
   covered by the table-limit tests. Nothing user-visible yet — the decisive
