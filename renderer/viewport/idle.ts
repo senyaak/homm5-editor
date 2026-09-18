@@ -19,7 +19,7 @@ import type { Instance, SkinnedGeom } from '#src/scene/payload.ts';
 import { worldGeos, worldMats, geomSkin } from '#viewport/geoms.ts';
 import { markShadowRoles, markShadowsDirty } from '#viewport/shadows.ts';
 import { bakeIdle } from '#viewport/bakery.ts';
-import { restTable, SkinnedInstances, TableSkeleton } from '#viewport/skinning.ts';
+import { boneAtlasTexture, restTable, skinnedGeometry, SkinnedInstances, TableSkeleton } from '#viewport/skinning.ts';
 import type { IdleBody, IdleKind } from '#viewport/skinning.ts';
 import { cam } from '#viewport/stage.ts';
 
@@ -92,7 +92,12 @@ export function advanceIdle(dt: number): void {
   if (mode === 'off' || !state.world) return;
   const fl = state.world.floors[state.world.active];
   if (!fl?.idle.length || !fl.objGroup.visible) return;
-  for (const { skel } of skeletons.values()) skel.time += dt;
+  // Every skeleton's clock, and every one's row into the shared bone
+  // texture — which then goes up once for all of them (skinning.ts).
+  let moved = false;
+  for (const { skel } of skeletons.values()) { skel.time += dt; if (skel.writeRow()) moved = true; }
+  const tex = boneAtlasTexture();
+  if (moved && tex) tex.needsUpdate = true;
   if (mode !== 'visible') {
     // Back from `visible`: whatever it hid is drawn again.
     if (hid) { for (const body of fl.idle) if (!body.shown) place(body, true); hid = false; }
@@ -188,11 +193,11 @@ export function addIdle(objGroup: THREE.Group, list: IdleBody[], kinds: Map<Skin
   if (!kind) {
     const skel = skeletonFor(skin);
     if (!skel) return false;
-    kind = { mesh: makeDraw(geo, mat, 1 + KIND_HEADROOM, skel), skel, skin, bodies: [] };
+    kind = { mesh: makeDraw(skinnedGeometry(geo, skel), mat, 1 + KIND_HEADROOM, skel), skel, skin, bodies: [], boneIndex: new Map() };
     kinds.set(skin, kind);
     objGroup.add(kind.mesh);
   } else if (kind.bodies.length === kind.mesh.instanceMatrix.count) {
-    const bigger = makeDraw(geo, kind.mesh.material as THREE.Material[], kind.bodies.length * 2, kind.skel);
+    const bigger = makeDraw(kind.mesh.geometry, kind.mesh.material as THREE.Material[], kind.bodies.length * 2, kind.skel);
     bigger.instanceMatrix.array.set(kind.mesh.instanceMatrix.array);
     bigger.count = kind.bodies.length;
     objGroup.remove(kind.mesh);

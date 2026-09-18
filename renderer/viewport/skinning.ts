@@ -137,12 +137,79 @@ export function poseIdle(idle: IdleObject, time: number, loop = true): void {
 export const TABLE_RATE = 30;
 
 /**
+ * ONE bone texture for every table skeleton there is.
+ *
+ * Three uploads a skeleton's bone texture whenever its pose changed, and a
+ * table skeleton's changes thirty times a second — which for 183 creature
+ * kinds on one map was ninety texture uploads a frame, more of the frame
+ * than their draws. So every skeleton's bone matrices are a stretch of one
+ * shared array behind one texture, written before the frame is drawn
+ * (advanceIdle), and the texture goes up once. Three's shader reads bone
+ * `i` at texel `i * 4` of whatever width the texture has, so a kind's bones
+ * are addressed by their place in the stretch: its geometry carries skin
+ * indices offset by where the stretch starts (`skinnedGeometry`).
+ *
+ * The stretches are handed out first-fit and given back on dispose; the
+ * texture doubles when a new kind does not fit, and every skeleton on it is
+ * re-pointed at the new array.
+ */
+const ATLAS_WIDTH = 1024; // texels: 256 bones a row
+const atlas = {
+  bones: 0,
+  data: new Float32Array(0),
+  texture: null as THREE.DataTexture | null,
+  free: [] as { at: number; n: number }[],
+  users: new Set<TableSkeleton>(),
+};
+
+/** A stretch of `n` bones in the atlas; the offset of its first bone. */
+function allocBones(n: number): number {
+  const i = atlas.free.findIndex((f) => f.n >= n);
+  if (i >= 0) {
+    const f = atlas.free[i]!;
+    const at = f.at;
+    if (f.n === n) atlas.free.splice(i, 1); else { f.at += n; f.n -= n; }
+    return at;
+  }
+  // Nothing free that fits: the stretch goes at the end, growing the atlas
+  // to hold it if it must.
+  const at = atlas.bones;
+  atlas.bones += n;
+  const texels = atlas.bones * 4;
+  const rows = Math.ceil(texels / ATLAS_WIDTH);
+  if (!atlas.texture || atlas.texture.image.height < rows) {
+    const newRows = Math.max(rows, (atlas.texture?.image.height ?? 0) * 2, 4);
+    const data = new Float32Array(ATLAS_WIDTH * newRows * 4);
+    data.set(atlas.data.subarray(0, Math.min(atlas.data.length, data.length)));
+    atlas.data = data;
+    atlas.texture?.dispose();
+    atlas.texture = new THREE.DataTexture(data, ATLAS_WIDTH, newRows, THREE.RGBAFormat, THREE.FloatType);
+    atlas.texture.needsUpdate = true;
+    for (const s of atlas.users) s.rebind();
+  }
+  return at;
+}
+
+function freeBones(at: number, n: number): void {
+  atlas.free.push({ at, n });
+  // Neighbours join up, so a run of released kinds is one stretch again.
+  atlas.free.sort((a, b) => a.at - b.at);
+  for (let i = 0; i + 1 < atlas.free.length;) {
+    const a = atlas.free[i]!, b = atlas.free[i + 1]!;
+    if (a.at + a.n === b.at) { a.n += b.n; atlas.free.splice(i + 1, 1); } else i++;
+  }
+}
+
+/** The bone texture every table skeleton draws from — for the upload once a frame (advanceIdle). */
+export function boneAtlasTexture(): THREE.DataTexture | null { return atlas.texture; }
+
+/**
  * A skeleton whose pose comes out of a baked table, not out of bones.
  *
- * Three calls `update()` once per frame per skeleton it draws; this one copies
- * the frame's row of offset matrices in when the frame moved and lets the bone
- * texture upload as usual. `time` is the loop's playback head, shared by every
- * body on it.
+ * Its bone matrices are its stretch of the shared atlas (above): `writeRow`
+ * copies the frame's row of offset matrices in when the frame moved, and
+ * says so, so the caller uploads the atlas once for every skeleton that
+ * moved. `time` is the loop's playback head, shared by every body on it.
  */
 export class TableSkeleton extends THREE.Skeleton {
   /** Seconds into the loop, wrapped by `advanceIdle`. */
@@ -150,17 +217,25 @@ export class TableSkeleton extends THREE.Skeleton {
   /** The row `boneMatrices` currently holds; -1 before the first update. */
   private row = -1;
   table: BoneTable;
+  /** Where the skeleton's bones start in the atlas — what its geometry's skin indices are offset by. */
+  readonly offset: number;
   constructor(table: BoneTable) {
     super([], []);
     this.table = table;
-    // Three's own layout (Skeleton.computeBoneTexture): a matrix is four RGBA
-    // texels, in a square texture sized for the bone count — which it would
-    // read off `bones`, and this skeleton has none.
-    let size = Math.sqrt(table.bones * 4);
-    size = Math.max(4, Math.ceil(size / 4) * 4);
-    this.boneMatrices = new Float32Array(size * size * 4);
-    this.boneTexture = new THREE.DataTexture(this.boneMatrices, size, size, THREE.RGBAFormat, THREE.FloatType);
-    this.boneTexture.needsUpdate = true;
+    this.offset = allocBones(table.bones);
+    atlas.users.add(this);
+    this.rebind();
+  }
+  /** Point at the atlas as it is now — after it grew, or at birth. */
+  rebind(): void {
+    this.boneMatrices = atlas.data.subarray(this.offset * 16, (this.offset + this.table.bones) * 16);
+    this.boneTexture = atlas.texture;
+    this.row = -1;
+  }
+  override dispose(): void {
+    atlas.users.delete(this);
+    freeBones(this.offset, this.table.bones);
+    // Not super.dispose(): the texture is everybody's.
   }
   /**
    * The baked table, arriving after the skeleton was made over the rest
@@ -178,13 +253,18 @@ export class TableSkeleton extends THREE.Skeleton {
     const at = ((this.time % span) + span) % span;
     return Math.min(this.table.frames - 1, Math.floor(at * TABLE_RATE));
   }
-  override update(): void {
+  /** The frame's row into the atlas, when the frame moved; whether it did. */
+  writeRow(): boolean {
     const f = this.frameAt();
-    if (f === this.row) return;
+    if (f === this.row) return false;
     this.row = f;
     const n = this.table.bones * 16;
     this.boneMatrices!.set(this.table.offsets.subarray(f * n, (f + 1) * n));
-    if (this.boneTexture) this.boneTexture.needsUpdate = true;
+    return true;
+  }
+  /** Three's per-draw call: the row is written before the frame (advanceIdle); a skeleton drawn without that catches up here. */
+  override update(): void {
+    if (this.writeRow() && this.boneTexture) this.boneTexture.needsUpdate = true;
   }
   /**
    * Where bone `b` stands at the current frame, in the body's own (model)
@@ -288,6 +368,7 @@ export class SkinnedInstances extends THREE.InstancedMesh {
   readonly bindMatrix = new THREE.Matrix4();
   readonly bindMatrixInverse = new THREE.Matrix4();
   readonly skeleton: TableSkeleton;
+  /** `geometry` is the kind's own (skinnedGeometry): the model's, with its skin indices offset into the atlas. */
   constructor(geometry: THREE.BufferGeometry, material: THREE.Material[], capacity: number, skeleton: TableSkeleton) {
     super(geometry, material, capacity);
     this.skeleton = skeleton;
@@ -299,12 +380,34 @@ export class SkinnedInstances extends THREE.InstancedMesh {
   }
 }
 
+/**
+ * The model's geometry as a kind draws it: every attribute shared with the
+ * model's own, except the skin indices, which are the model's plus the
+ * skeleton's offset in the bone atlas — 16-bit, since the atlas holds
+ * thousands of bones where a model's own count fit in a byte.
+ */
+export function skinnedGeometry(geo: THREE.BufferGeometry, skeleton: TableSkeleton): THREE.BufferGeometry {
+  const out = new THREE.BufferGeometry();
+  for (const [name, attr] of Object.entries(geo.attributes)) if (name !== 'skinIndex') out.setAttribute(name, attr);
+  out.setIndex(geo.getIndex());
+  for (const g of geo.groups) out.addGroup(g.start, g.count, g.materialIndex);
+  const own = geo.getAttribute('skinIndex') as THREE.BufferAttribute;
+  const idx = new Uint16Array(own.count * 4);
+  for (let i = 0; i < idx.length; i++) idx[i] = (own.array[i] as number) + skeleton.offset;
+  out.setAttribute('skinIndex', new THREE.BufferAttribute(idx, 4));
+  out.boundingSphere = geo.boundingSphere;
+  out.boundingBox = geo.boundingBox;
+  return out;
+}
+
 /** One creature kind on one floor: its draw, its skeleton, and its bodies in slot order. */
 export interface IdleKind {
   mesh: SkinnedInstances;
   skel: TableSkeleton;
   skin: SkinnedGeom;
   bodies: IdleBody[];
+  /** The bones the glued effects name, by name or index string, resolved once (fx.ts boneOf). */
+  boneIndex: Map<string, number>;
 }
 
 /** A map creature: which kind draws it, in which slot, and where it stands. */

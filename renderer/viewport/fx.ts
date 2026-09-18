@@ -31,6 +31,13 @@ export interface PlacedFx {
   batch: FxBatch;
   at: Instance[];
   rest: THREE.Matrix4[];
+  /**
+   * For a glued effect: the table frame each copy was last hung at, so a
+   * frame that has not moved on costs nothing — the table steps at 30 Hz
+   * and the loop runs faster. -1 = hang it again whatever the frame (the
+   * object moved, or nothing has been hung yet).
+   */
+  hungAt: number[];
 }
 
 /**
@@ -72,7 +79,7 @@ function batchFor(fl: Floor3D, f: FxInstancePayload, bank: Record<string, FxTran
   const batch = createFxBatch(f, baked, uFxTint);
   batch.mesh.userData.uid = f.uid; // for fxSystems() debugging
   batch.mesh.visible = state.showFx; // effects arrive async; respect the toggle they land under
-  const entry: PlacedFx = { batch, at: [], rest: [] };
+  const entry: PlacedFx = { batch, at: [], rest: [], hungAt: [] };
   fl.fx.push(entry);
   fl.objGroup.add(batch.mesh);
   return entry;
@@ -92,6 +99,7 @@ function addCopy(fl: Floor3D, f: FxInstancePayload, inst: Instance, bank: Record
   const slot = e.batch.addCopy();
   e.at[slot] = inst;
   e.rest[slot] = objectMatrix(inst, new THREE.Matrix4()).multiply(e.batch.local);
+  e.hungAt[slot] = -1;
   e.batch.setCopyMatrix(slot, e.rest[slot]);
   return true;
 }
@@ -132,10 +140,23 @@ export function advanceFx(dt: number): void {
   for (const e of fl.fx) {
     e.batch.update(fxClock);
     if (!e.batch.glue || !e.batch.glueLocal) continue;
-    bodies ??= new Map(fl.idle.map((i) => [i.inst, i]));
+    bodies ??= bodiesByInstance(fl);
     for (let slot = 0; slot < e.at.length; slot++) followBone(e, slot, bodies.get(e.at[slot]));
   }
 }
+
+/**
+ * The floor's animated bodies by the object they belong to — kept until the
+ * list changes, since the glued effects ask every frame and a map crowded
+ * with creatures has hundreds of them.
+ */
+function bodiesByInstance(fl: Floor3D): Map<unknown, IdleBody> {
+  if (bodyIndex.fl !== fl || bodyIndex.n !== fl.idle.length || bodyIndex.first !== fl.idle[0]) {
+    bodyIndex = { fl, n: fl.idle.length, first: fl.idle[0], map: new Map(fl.idle.map((i) => [i.inst, i])) };
+  }
+  return bodyIndex.map;
+}
+let bodyIndex: { fl: Floor3D | null; n: number; first: IdleBody | undefined; map: Map<unknown, IdleBody> } = { fl: null, n: 0, first: undefined, map: new Map() };
 
 /**
  * Hang a glued copy off the bone it names, where the bone is NOW.
@@ -155,20 +176,37 @@ export function followBone(e: PlacedFx, slot: number, body: IdleBody | undefined
   const bone = body ? boneOf(body, e.batch.glue!) : -1;
   if (bone < 0) {
     // No animated body (idle stance off, or this object has no skeleton): the
-    // bind-pose placement is the right one.
+    // bind-pose placement is the right one — written once, not every frame.
+    if (e.hungAt[slot] === -2) return;
+    e.hungAt[slot] = -2;
     e.batch.setCopyMatrix(slot, e.rest[slot]!);
     return;
   }
+  // The bone stands where it stood: the copy hangs where it hung. A write is
+  // a matrix-texture upload for the whole batch, and the table moves on at
+  // 30 Hz under a loop that runs faster than that.
+  const frame = body!.kind.skel.frameAt();
+  if (e.hungAt[slot] === frame) return;
+  e.hungAt[slot] = frame;
   _m4.multiplyMatrices(body!.matrix, body!.kind.skel.boneWorld(bone, _bone));
   e.batch.setCopyMatrix(slot, _m4.multiply(e.batch.glueLocal!));
 }
 const _bone = new THREE.Matrix4();
 
-/** The bone an effect names: `<GlueToNamedBone>` by name, `<GlueToBone>` by index; -1 when the body has no such bone. */
+/**
+ * The bone an effect names: `<GlueToNamedBone>` by name, `<GlueToBone>` by
+ * index; -1 when the body has no such bone. Answered once per kind and name
+ * — the glued effects ask every frame, and the name is a search of the
+ * skeleton.
+ */
 export function boneOf(body: IdleBody, glue: string): number {
-  const bones = body.kind.skin.bones;
-  if (/^\d+$/.test(glue)) return Number(glue) < bones.length ? Number(glue) : -1;
-  return bones.findIndex((b) => b.name === glue);
+  const kind = body.kind;
+  let known = kind.boneIndex.get(glue);
+  if (known !== undefined) return known;
+  const bones = kind.skin.bones;
+  known = /^\d+$/.test(glue) ? (Number(glue) < bones.length ? Number(glue) : -1) : bones.findIndex((b) => b.name === glue);
+  kind.boneIndex.set(glue, known);
+  return known;
 }
 
 /** An object moved or turned: its copies go with it. */
@@ -177,6 +215,7 @@ export function moveFx(fl: Floor3D, inst: Instance, objectWorld: THREE.Matrix4):
     for (let slot = 0; slot < e.at.length; slot++) {
       if (e.at[slot] !== inst) continue;
       e.rest[slot]!.multiplyMatrices(objectWorld, e.batch.local);
+      e.hungAt[slot] = -1; // a glued copy hangs itself again from the moved body
       e.batch.setCopyMatrix(slot, e.rest[slot]!);
     }
   }
@@ -202,7 +241,7 @@ export function removeFx(fl: Floor3D, inst: Instance): void {
       if (e.at[slot] !== inst) continue;
       // The batch fills the hole with its last slot; the bookkeeping follows.
       const moved = e.batch.removeCopy(slot);
-      if (moved >= 0) { e.at[slot] = e.at[moved]!; e.rest[slot] = e.rest[moved]!; }
+      if (moved >= 0) { e.at[slot] = e.at[moved]!; e.rest[slot] = e.rest[moved]!; e.hungAt[slot] = -1; }
       e.at.length--; e.rest.length--;
     }
     if (e.batch.copies) continue;
