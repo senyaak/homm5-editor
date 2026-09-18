@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 import { state, activeFloor } from '#core/state.ts';
 import { renderer } from '#viewport/stage.ts';
-import { fxTableStats } from '#viewport/particles.ts';
+import { fxAtlasStats, fxTableStats } from '#viewport/particles.ts';
 import { idleTableStats } from '#viewport/idle.ts';
 import { shadowRedraws } from '#viewport/shadows.ts';
 
@@ -79,33 +79,33 @@ function percentiles(ring: Float32Array): { p50: number; p95: number; max: numbe
   return { p50: at(0.5), p95: at(0.95), max: a[a.length - 1]! };
 }
 
-/** Sizes of a texture's image, in bytes as RGBA8 — what the canvas path uploads. */
-function textureBytes(t: THREE.Texture | null): number {
-  const img = t?.image as { width?: number; height?: number } | null | undefined;
-  return img?.width && img.height ? img.width * img.height * 4 : 0;
-}
-
-/** The particle side of the active floor, summed over its batches. */
-function fxSummary(): { batches: number; copies: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number; tables: number; tableEntries: number; tableBytes: number } {
+/**
+ * The particle side: the active floor's batches and copies, and the atlases
+ * and recording tables, which are shared across floors and counted whole —
+ * `atlases` is how many the floor's batches hold (one each), `distinctAtlases`
+ * and `atlasBytes` what actually exists.
+ */
+function fxSummary(): { batches: number; copies: number; alive: number; atlases: number; atlasBytes: number; distinctAtlases: number; frames: { refs: number; objects: number; bytes: number }; tables: number; tableEntries: number; tableBytes: number } {
   const fl = state.world ? activeFloor() : null;
   const t = fxTableStats();
-  const out = { batches: 0, copies: 0, alive: 0, atlases: 0, atlasBytes: 0, distinctAtlases: 0, tables: t.tables, tableEntries: t.entries, tableBytes: t.bytes };
+  const a = fxAtlasStats();
+  const out = { batches: 0, copies: 0, alive: 0, atlases: 0, atlasBytes: a.bytes, distinctAtlases: a.atlases, frames: { refs: 0, objects: 0, bytes: 0 }, tables: t.tables, tableEntries: t.entries, tableBytes: t.bytes };
   if (!fl) return out;
-  const seen = new Set<string>();
+  // The frames the floor's payloads hold — references against objects. One
+  // object per distinct frame is what the IPC clone is supposed to deliver
+  // (payload.ts FxFrame); the bytes are what those objects weigh in the heap.
+  const frames = new Set<object>();
   for (const { batch } of fl.fx) {
     out.batches++;
     out.copies += batch.copies;
     out.alive += batch.alive;
-    const u = (batch.mesh.material as THREE.ShaderMaterial).uniforms;
-    for (const name of ['uAtlas', 'uAlpha']) {
-      const t = u[name]?.value as THREE.Texture | null;
-      if (!t) continue;
-      out.atlases++;
-      out.atlasBytes += textureBytes(t);
-      seen.add(t.uuid);
+    if ((batch.mesh.material as THREE.ShaderMaterial).uniforms.uAtlas?.value) out.atlases++;
+    for (const f of batch.fx.textures) {
+      if (!f) continue;
+      out.frames.refs++;
+      if (!frames.has(f)) { frames.add(f); out.frames.objects++; out.frames.bytes += f.rgba.byteLength; }
     }
   }
-  out.distinctAtlases = seen.size;
   return out;
 }
 

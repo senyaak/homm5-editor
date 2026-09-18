@@ -34,10 +34,13 @@
 //
 // Textures: the instance's frame table is packed into one atlas (the baked
 // texture index picks the tile), because switching textures per particle would
-// break the single draw call.
+// break the single draw call. The atlas is one RGBA texture built straight
+// from the frames' bytes and shared by every batch whose frame table is the
+// same — the shipped effects wear a few hundred distinct frames between
+// thousands of instances.
 
 import * as THREE from 'three';
-import type { FxInstancePayload } from '#src/scene/payload.ts';
+import type { FxFrame, FxInstancePayload } from '#src/scene/payload.ts';
 import type { FxTransfer } from '#src/scene/effects.ts';
 
 /**
@@ -96,44 +99,127 @@ export interface FxSystem {
 /** Spare slots a new batch is born with, so placing a few copies does not rebuild it. */
 const COPY_HEADROOM = 8;
 
-const loadImg = (src: string): Promise<HTMLImageElement | null> =>
-  new Promise((res) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = src; });
+/** The side of an atlas cell, texels; a frame is decoded no larger (object-effects.ts PARTICLE_FRAME). */
+const CELL = 128;
 
 /**
- * The instance's frame table as two square-ish atlases (colour + alpha) and
- * their grid shape. Two, because the frames travel as separate colour/alpha
- * images: a browser canvas premultiplies, so colour under alpha 0 — which is
- * exactly what fire IS in this art — would arrive black in a single image.
+ * One frame table as a texture: the frames in a square-ish grid of CELL
+ * tiles, the baked texture index counting through it row by row. Shared by
+ * every batch that draws the same frames — the key is the frames' CONTENT,
+ * so two instances of one particle, or two loads of it, meet at one texture —
+ * and reference-counted like the recording tables.
  */
-async function buildAtlas(
-  textures: ({ c: string; a: string } | null)[], cell = 128, rawColor = false,
-): Promise<{ tex: THREE.Texture; alpha: THREE.Texture; cols: number; rows: number }> {
-  const cols = Math.max(1, Math.ceil(Math.sqrt(textures.length)));
-  const rows = Math.max(1, Math.ceil(textures.length / cols));
-  const make = async (pick: (t: { c: string; a: string }) => string, srgb: boolean): Promise<THREE.Texture> => {
-    const cv = document.createElement('canvas');
-    cv.width = cols * cell; cv.height = rows * cell;
-    const cx = cv.getContext('2d');
-    if (cx) {
-      for (let i = 0; i < textures.length; i++) {
-        const t = textures[i];
-        if (!t) continue; // empty slot stays transparent
-        const img = await loadImg(pick(t));
-        if (img) cx.drawImage(img, (i % cols) * cell, Math.floor(i / cols) * cell, cell, cell);
-      }
-    }
-    const tex = new THREE.CanvasTexture(cv);
-    if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
-    // The atlas is sampled per tile; letting mips blend neighbouring tiles in
-    // smears every frame with its neighbours at distance.
-    tex.generateMipmaps = false;
-    tex.minFilter = THREE.LinearFilter;
-    return tex;
-  };
+interface FxAtlas {
+  tex: THREE.DataTexture;
+  cols: number;
+  rows: number;
+  refs: number;
+  key: string;
+}
+const atlases = new Map<string, FxAtlas>();
+/** A frame's content key, computed once per frame object. */
+const frameKeys = new WeakMap<FxFrame, string>();
+
+/**
+ * Two FNV-1a hashes over the texels (64 bits between them: a few hundred
+ * distinct frames cannot collide by accident at that width), with the shape.
+ * The frames arrive shared — one object per distinct file per IPC message —
+ * so this runs once per distinct frame, not once per instance wearing it.
+ */
+function frameKey(f: FxFrame): string {
+  let key = frameKeys.get(f);
+  if (key !== undefined) return key;
+  const d = f.rgba;
+  let h1 = 0x811c9dc5 | 0, h2 = 0x050c5d1f | 0;
+  for (let i = 0; i < d.length; i++) {
+    h1 = Math.imul(h1 ^ d[i]!, 0x01000193);
+    h2 = Math.imul(h2 ^ d[i]!, 0x01000193) ^ (h2 >>> 15);
+  }
+  key = `${f.width}x${f.height}:${(h1 >>> 0).toString(16)}${(h2 >>> 0).toString(16)}`;
+  frameKeys.set(f, key);
+  return key;
+}
+
+/** The atlas for a frame table — built on first use, shared after. Pair with releaseAtlas. */
+function atlasFor(textures: (FxFrame | null)[], rawColor: boolean): FxAtlas {
   // A static system's colour stays RAW: its texel goes to the framebuffer
   // as-authored (the terrain's gamma convention). Decoded as sRGB it would be
   // re-encoded on the way out and the grass would brighten past the game's.
-  return { tex: await make((t) => t.c, !rawColor), alpha: await make((t) => t.a, false), cols, rows };
+  // Two colour spaces are two textures, so the flag is part of the key.
+  const key = `${rawColor ? 'raw' : 'srgb'}|${textures.map((t) => (t ? frameKey(t) : '-')).join('|')}`;
+  const have = atlases.get(key);
+  if (have) { have.refs++; return have; }
+  const cols = Math.max(1, Math.ceil(Math.sqrt(textures.length)));
+  const rows = Math.max(1, Math.ceil(textures.length / cols));
+  const width = cols * CELL, height = rows * CELL;
+  const data = new Uint8Array(width * height * 4); // an empty slot stays transparent
+  for (let i = 0; i < textures.length; i++) {
+    const t = textures[i];
+    if (t) blitCell(t, data, width, (i % cols) * CELL, Math.floor(i / cols) * CELL);
+  }
+  const tex = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.UnsignedByteType);
+  // Row 0 of a frame is its top; uploaded flipped, as the canvas path was, so
+  // v counts from the bottom and the shaders' tile arithmetic holds.
+  tex.flipY = true;
+  if (!rawColor) tex.colorSpace = THREE.SRGBColorSpace;
+  // The atlas is sampled per tile; letting mips blend neighbouring tiles in
+  // smears every frame with its neighbours at distance.
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  // Once on the GPU the bytes are not needed here: three keeps a texture's
+  // image referenced for as long as the texture lives, and a big map's
+  // atlases are hundreds of megabytes of it. (A lost and restored WebGL
+  // context re-uploads from the image, so the effects would come back blank
+  // until the map is reopened — a GPU reset in a map editor can have that.)
+  tex.onUpdate = () => { (tex.image as { data: Uint8Array | null }).data = null; };
+  const atlas: FxAtlas = { tex, cols, rows, refs: 1, key };
+  atlases.set(key, atlas);
+  return atlas;
+}
+
+function releaseAtlas(atlas: FxAtlas): void {
+  if (--atlas.refs > 0) return;
+  atlas.tex.dispose();
+  atlases.delete(atlas.key);
+}
+
+/** What the atlases hold right now — for view.perf(). */
+export function fxAtlasStats(): { atlases: number; bytes: number } {
+  let bytes = 0;
+  for (const a of atlases.values()) bytes += a.tex.image.width * a.tex.image.height * 4;
+  return { atlases: atlases.size, bytes };
+}
+
+/**
+ * A frame into its cell of the atlas, stretched to fill it — the canvas used
+ * to draw it that way, and a 64-texel puff is authored to be a full tile.
+ * Bilinear where it has to stretch (a frame never exceeds the cell), a row
+ * copy where it fits exactly, which is the common case.
+ */
+function blitCell(f: FxFrame, data: Uint8Array, width: number, x0: number, y0: number): void {
+  const src = f.rgba;
+  if (f.width === CELL && f.height === CELL) {
+    for (let y = 0; y < CELL; y++) data.set(src.subarray(y * CELL * 4, (y + 1) * CELL * 4), ((y0 + y) * width + x0) * 4);
+    return;
+  }
+  const sx = f.width / CELL, sy = f.height / CELL;
+  for (let y = 0; y < CELL; y++) {
+    const fy = Math.min(f.height - 1, Math.max(0, (y + 0.5) * sy - 0.5));
+    const iy = Math.floor(fy), ty = fy - iy, iy1 = Math.min(f.height - 1, iy + 1);
+    for (let x = 0; x < CELL; x++) {
+      const fx = Math.min(f.width - 1, Math.max(0, (x + 0.5) * sx - 0.5));
+      const ix = Math.floor(fx), tx = fx - ix, ix1 = Math.min(f.width - 1, ix + 1);
+      const a = (iy * f.width + ix) * 4, b = (iy * f.width + ix1) * 4, c = (iy1 * f.width + ix) * 4, d = (iy1 * f.width + ix1) * 4;
+      const o = ((y0 + y) * width + x0 + x) * 4;
+      for (let k = 0; k < 4; k++) {
+        const top = src[a + k]! + (src[b + k]! - src[a + k]!) * tx;
+        const bottom = src[c + k]! + (src[d + k]! - src[c + k]!) * tx;
+        data[o + k] = Math.round(top + (bottom - top) * ty);
+      }
+    }
+  }
 }
 
 /** Entries per texture row: the width is `TABLE_ROW × 3` texels, well under any GPU's limit. */
@@ -232,8 +318,7 @@ void main() {
 
 const FRAG = `
 precision highp float;
-uniform sampler2D uAtlas;  // frame colour, opaque
-uniform sampler2D uAlpha;  // frame alpha, as gray
+uniform sampler2D uAtlas;  // the frame table, straight RGBA
 uniform vec2 uGrid; // cols, rows
 uniform vec3 uTint; // scene light on an L_LIT instance; white when unlit
 in vec2 vUv;
@@ -244,10 +329,10 @@ void main() {
   if (vTex < -0.5) discard; // hidden frame
   float t = floor(vTex + 0.5);
   float col = mod(t, uGrid.x), row = floor(t / uGrid.x);
-  // Canvas row 0 is the TOP; the texture is flipY'd, so v counts from the
-  // bottom — a tile on canvas row r spans v rows [rows-1-r, rows-r].
+  // Atlas row 0 is the TOP; the texture is flipY'd, so v counts from the
+  // bottom — a tile on atlas row r spans v rows [rows-1-r, rows-r].
   vec2 uv = vec2(col + vUv.x, (uGrid.y - 1.0 - row) + vUv.y) / uGrid;
-  vec4 s = vec4(texture(uAtlas, uv).rgb, texture(uAlpha, uv).r);
+  vec4 s = texture(uAtlas, uv);
   // The era's particle pipeline in two lines. Colour: modulate-x2 (baked
   // colours are authored around 128 = full brightness — the ghost dragon's
   // mist peaks at 57), faded by the baked alpha curve. Blend (see the
@@ -271,7 +356,6 @@ void main() {
 const FRAG_STATIC = `
 precision highp float;
 uniform sampler2D uAtlas;
-uniform sampler2D uAlpha;
 uniform vec2 uGrid;
 in vec2 vUv;
 in vec4 vColor;
@@ -282,7 +366,7 @@ void main() {
   float t = floor(vTex + 0.5);
   float col = mod(t, uGrid.x), row = floor(t / uGrid.x);
   vec2 uv = vec2(col + vUv.x, (uGrid.y - 1.0 - row) + vUv.y) / uGrid;
-  vec4 s = vec4(texture(uAtlas, uv).rgb, texture(uAlpha, uv).r);
+  vec4 s = texture(uAtlas, uv);
   float a = s.a * vColor.a;
   if (a < 0.01) discard;
   outColor = vec4(s.rgb * a, a);
@@ -435,7 +519,7 @@ const WHITE_TINT = { value: new THREE.Color(1, 1, 1) };
 
 export function createFxBatch(
   fx: FxInstancePayload, baked: FxTransfer, litTint: { value: THREE.Color } = WHITE_TINT,
-): { batch: FxBatch; ready: Promise<void> } {
+): FxBatch {
   // STANDING SCENERY, derived from the bake rather than from any XML flag
   // (the instances' <Static> says P_STATIC on all 2709 shipped and separates
   // nothing): a system whose every particle exists for the whole loop and
@@ -498,14 +582,14 @@ export function createFxBatch(
   let matData = new Float32Array(capacity * 16);
   let matTex = makeMatrixTexture(matData, capacity);
 
+  const atlas = atlasFor(fx.textures, standing);
   const mat = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
     vertexShader: standing ? VERT_STATIC : VERT,
     fragmentShader: standing ? FRAG_STATIC : FRAG,
     uniforms: {
-      uAtlas: { value: null },
-      uAlpha: { value: null },
-      uGrid: { value: new THREE.Vector2(1, 1) },
+      uAtlas: { value: atlas.tex },
+      uGrid: { value: new THREE.Vector2(atlas.cols, atlas.rows) },
       // Shared by reference: the app mutates the lit tint in place when the
       // preset (or the Light toggle) changes, like the terrain uniforms.
       uTint: fx.lit ? litTint : WHITE_TINT,
@@ -542,12 +626,6 @@ export function createFxBatch(
     new THREE.Vector3(fx.scale, fx.scale, fx.scale),
   );
   mesh.renderOrder = 3; // over the water sheet and the ground overlay
-
-  const ready = buildAtlas(fx.textures, 128, standing).then(({ tex, alpha, cols, rows }) => {
-    mat.uniforms.uAtlas!.value = tex;
-    mat.uniforms.uAlpha!.value = alpha;
-    (mat.uniforms.uGrid!.value as THREE.Vector2).set(cols, rows);
-  });
 
   // A finite train fires its copies once. On a clip-hung effect the engine
   // replays the whole effect every animation cycle — `retrigger` carries the
@@ -627,8 +705,7 @@ export function createFxBatch(
       mat.dispose();
       matTex.dispose();
       releaseTable(fx.uid);
-      (mat.uniforms.uAtlas!.value as THREE.Texture | null)?.dispose();
-      (mat.uniforms.uAlpha!.value as THREE.Texture | null)?.dispose();
+      releaseAtlas(atlas);
     },
   };
 
@@ -646,7 +723,7 @@ export function createFxBatch(
     geo.instanceCount = alive * capacity;
   }
 
-  return { batch, ready };
+  return batch;
 }
 
 const IDENTITY = new THREE.Matrix4().elements;
@@ -669,9 +746,9 @@ function makeMatrixTexture(data: Float32Array, rows: number): THREE.DataTexture 
 export function createFxSystem(
   fx: FxInstancePayload, baked: FxTransfer, objectMatrix: THREE.Matrix4,
   litTint: { value: THREE.Color } = WHITE_TINT,
-): { system: FxSystem; ready: Promise<void> } {
-  const { batch, ready } = createFxBatch(fx, baked, litTint);
+): FxSystem {
+  const batch = createFxBatch(fx, baked, litTint);
   batch.addCopy();
   batch.mesh.matrix.multiplyMatrices(objectMatrix, batch.local);
-  return { system: batch, ready };
+  return batch;
 }

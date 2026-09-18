@@ -22,7 +22,7 @@ import { resampleTo, shrinkToFit } from '../format/texture.ts';
 import { resolveHref, dirOf } from './xdb.ts';
 import type { Assets } from '../game/assets.ts';
 import type { Mesh } from './geometry.ts';
-import type { AlphaMode } from './payload.ts';
+import type { AlphaMode, FxFrame } from './payload.ts';
 
 /** A material as the renderer needs it: what to draw and how to blend it. */
 export interface MaterialInfo {
@@ -290,32 +290,44 @@ export function textureDataUri(model: string, data: Assets, cap: number, href?: 
 }
 
 /**
- * A particle frame's texture as the TWO images FxInstancePayload.textures
- * documents: colour with alpha forced opaque, and the real alpha as gray.
- * A single straight-alpha PNG cannot make the trip — the renderer's canvas
- * premultiplies and a fire texel (colour under alpha 0) comes out black.
+ * Particle frames already decoded, by file and cap — the same object every
+ * time, which is what lets the renderer tell two instances wearing one frame
+ * apart from two frames (FxInstancePayload.textures). A frame is at most
+ * 64 KB and the shipped effects name about a thousand distinct ones, so the
+ * budget is generous the same way `decoded`'s is: a map never evicts inside
+ * its own build.
  */
-export function particleTextureUris(data: Assets, size: number, href: string): { c: string; a: string } | null {
+const frames = new Map<string, FxFrame | null>();
+const FRAMES_BUDGET = 96 * 1024 * 1024;
+let frameBytes = 0;
+
+/**
+ * A particle frame's texture as FxInstancePayload.textures documents it: the
+ * straight-alpha texels, no larger than `size` on either side.
+ */
+export function particleFrame(data: Assets, size: number, href: string): FxFrame | null {
   try {
     const tx = readFileSync(data.path(href.split('#')[0]!), 'utf8');
     const dest = tx.match(/<DestName href="([^"]+)"/);
     if (!dest) return null;
     const ddsPath = data.path(join(dirname(href.split('#')[0]!), dest[1]!));
     if (!existsSync(ddsPath)) return null;
+    const key = `${ddsPath}|${size}`;
+    const known = frames.get(key);
+    if (known !== undefined) return known;
     const raw = decodeDDS(ddsPath);
     // Down to the atlas cell and no further: `size` is a ceiling on each side
     // rather than the shape produced, so a small frame is not blown up into
-    // four times the bytes on its way to a canvas that would scale it anyway.
+    // four times the bytes on its way to a cell that would scale it anyway.
     const img = resampleTo(raw, Math.min(size, raw.width), Math.min(size, raw.height));
-    const n = img.width * img.height;
-    const c = new Uint8Array(n * 4);
-    const a = new Uint8Array(n * 4);
-    for (let i = 0; i < n; i++) {
-      const si = i * 4;
-      c[si] = img.rgba[si]!; c[si + 1] = img.rgba[si + 1]!; c[si + 2] = img.rgba[si + 2]!; c[si + 3] = 255;
-      const av = img.rgba[si + 3]!;
-      a[si] = av; a[si + 1] = av; a[si + 2] = av; a[si + 3] = 255;
+    const frame: FxFrame = { width: img.width, height: img.height, rgba: img.rgba };
+    frames.set(key, frame);
+    frameBytes += frame.rgba.byteLength;
+    for (const old of frames.keys()) {
+      if (frameBytes <= FRAMES_BUDGET || old === key) break;
+      frameBytes -= frames.get(old)?.rgba.byteLength ?? 0;
+      frames.delete(old);
     }
-    return { c: pngDataUri(img.width, img.height, c), a: pngDataUri(img.width, img.height, a) };
+    return frame;
   } catch { return null; }
 }

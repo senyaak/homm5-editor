@@ -158,10 +158,12 @@ its particle's `[birth, death]`.
 
 ## 5. How the editor plays it, and what is still simplified
 
-The scene payload carries only each instance's placement, texture table (data
-URIs) and uid (`FxInstancePayload`); the keys go over their own IPC (`map:fx`)
-as typed arrays — as JSON they doubled the scene payload of one map. The
-renderer (renderer/viewport/particles.ts) packs the texture table into atlases
+The scene payload carries only each instance's placement, texture table (the
+frames' RGBA texels, one shared object per distinct frame) and uid
+(`FxInstancePayload`); the keys go over their own IPC (`map:fx`) as typed
+arrays — as JSON they doubled the scene payload of one map. The renderer
+(renderer/viewport/particles.ts) packs the texture table into one RGBA atlas —
+shared by every batch whose frames are the same, keyed by their content —
 and draws each DISTINCT ParticleInstance payload as one batch of instanced
 camera-facing quads — drawn once per placed copy through a per-copy matrix
 (renderer/viewport/fx.ts keeps which object is which copy). The recording
@@ -200,8 +202,10 @@ smoke frames in the same instance. Two consequences worth knowing:
   drew nothing.
 * Colour under alpha 0 cannot ride a normal PNG through the renderer: a
   browser canvas premultiplies, so the atlas received black where the fire
-  was. Each frame therefore ships as TWO images — colour with alpha forced
-  opaque, and the real alpha as a grayscale — recombined in the shader.
+  was. For a while each frame shipped as TWO images — colour with alpha
+  forced opaque, and the real alpha as a grayscale — recombined in the
+  shader; now a frame ships as its straight-alpha texels and goes into the
+  atlas without a canvas in the way.
 
 **A frame is authored UPSIDE DOWN.** The art's "up" is the image's BOTTOM row,
 so the quad's `v` runs the other way from three.js's (which puts `v = 1` at the
