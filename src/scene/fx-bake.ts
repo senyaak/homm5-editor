@@ -67,3 +67,8 @@ export function bakedEffect(path: string): FxBaked | null {
   baked.set(path, have);
   return have;
 }
+
+/** Forget every bake — a decode process starting a new session, whose recordings may have changed. */
+export function resetBakedEffects(): void {
+  baked.clear();
+}

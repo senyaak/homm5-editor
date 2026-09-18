@@ -102,6 +102,7 @@
     "test-oodle": "node tools/test-oodle.ts",
     "test-effects": "node tools/test-effects.ts",
     "test-fx-table": "node tools/test-fx-table.ts",
+    "test-geom-cache": "node tools/test-geom-cache.ts",
     "test-idle": "node tools/test-idle.ts",
     "test-artifact-mod": "node tools/test-artifact-mod.ts",
     "test-artifact-limit": "node tools/test-artifact-limit.ts",

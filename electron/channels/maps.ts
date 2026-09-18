@@ -27,6 +27,9 @@ import { initProject, MANIFEST_NAME, openProject, packProject, pickMapRel, readM
 import { History } from '#src/map/history.ts';
 import { Registry } from '#src/schema/registry.ts';
 import { buildScene } from '#src/scene/scene.ts';
+import { loadMap } from '#src/map/map.ts';
+import { compressedTexturesOn, TEXTURE_CAP } from '#src/scene/materials.ts';
+import { decodedGeoms, pruneGeomCacheLater } from '#electron/decode.ts';
 import { packTextures } from '#src/scene/tex-table.ts';
 import { packBlobs } from '#src/scene/blob-table.ts';
 import { clearBlobs, openBlob } from '#electron/blobs.ts';
@@ -366,7 +369,16 @@ export function registerMaps(): void {
     // the setting — an animated model's payload roughly doubles, so a map opened
     // with idles off must not pay for them anywhere down the chain.
     const idleAnimation = readSettings().idleAnimation ?? 'off';
-    const { map, scene, skipped, resolver } = buildScene(data, mapPath, { animate: idleAnimation !== 'off' });
+    // The models first, ahead of the build: from the geom cache, or decoded
+    // in parallel by the decode processes (electron/decode.ts) — the build
+    // then places what it is handed and decodes only what neither had.
+    const map = loadMap(readFileSync(mapPath, 'latin1'));
+    const params = { texSize: TEXTURE_CAP, animate: idleAnimation !== 'off', animationFps: 15, compressed: compressedTexturesOn() };
+    const { geoms: decoded, report } = await decodedGeoms(data, map.objects.map((o) => o.shared).filter((s): s is string => !!s), params);
+    for (const f of report.failed) console.warn(`[decode] ${f.href}: ${f.error} — decoded in the main process`);
+    const tDecoded = performance.now();
+    pruneGeomCacheLater();
+    const { scene, skipped, resolver } = buildScene(data, mapPath, { animate: params.animate, animationFps: params.animationFps, map, decoded });
     const tScene = performance.now();
     initProject(mapDir); // ensure a manifest so status/pack work
     // Tile paths this map's terrain actually has layers for (union over floors).
@@ -405,7 +417,7 @@ export function registerMaps(): void {
     // to what they hashed when it was written.
     loadHistory(session);
     const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
-    console.log(`[perf] map:load buildScene ${(tScene - tStart) | 0}ms · total ${(performance.now() - tStart) | 0}ms · geoms ${scene.geoms.length}, placed ${placed}, skipped ${skipped.length}`);
+    console.log(`[perf] map:load models ${(tDecoded - tStart) | 0}ms (cache ${report.hits} in ${report.cacheMs | 0}ms with ${report.stats} stats, decoded ${report.decoded} in ${report.decodeMs | 0}ms by ${report.workers} decoders working ${report.workMs | 0}ms, failed ${report.failed.length}) · buildScene ${(tScene - tDecoded) | 0}ms · total ${(performance.now() - tStart) | 0}ms · geoms ${scene.geoms.length}, placed ${placed}, skipped ${skipped.length}`);
     // Named, one per line: an object that is on the map and not on the screen
     // is a bug hunt, and the href is most of the answer to it.
     for (const href of skipped) console.log(`[load] no model for ${href} — the object is on the map and not on the screen`);

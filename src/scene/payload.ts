@@ -10,7 +10,7 @@
 import type { BakedClip } from './animation.ts';
 import type { BoneTable } from './bone-table.ts';
 import type { FxBaked } from './fx-bake.ts';
-import type { MapObject, PointLightDef } from '../map/map.ts';
+import type { HommMap, MapObject, PointLightDef } from '../map/map.ts';
 
 
 /**
@@ -518,6 +518,15 @@ export interface BuildSceneOptions extends SceneAnimationOptions {
    * skipping when a shared reference leads nowhere.
    */
   extraObjects?: readonly MapObject[];
+  /**
+   * Models decoded ahead, by shared href — from the geom cache and the decode
+   * processes (electron/decode.ts) — so the build places them instead of
+   * decoding each in turn. Null marks an href known not to decode. An href not
+   * in here is decoded here, as always.
+   */
+  decoded?: ReadonlyMap<string, GeomData | null>;
+  /** The map already parsed, when the caller has it (it read the hrefs off it first). */
+  map?: HommMap;
 }
 
 /** A ground tile in the palette, previewed from its own .dds. */

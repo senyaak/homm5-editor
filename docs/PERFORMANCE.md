@@ -133,4 +133,19 @@ tried and dropped, and what is left is in [SLICE_fx_performance.md](../SLICE_fx_
   creature kind's draw geometry, the shared material cache with every
   texture ever shown, the ground-projected parts' overlay textures and the
   cliff rock texture. All four go with the world now; eight reopens hold
-  steady where four used to add 1.5 GB.
+  steady where four used to add 1.5 GB.- The creatures' idle and the effects are there with the first frame. The
+  bone tables and the particle tables were baked in the window after the map
+  was on screen, in workers of its own, with the recordings fetched over a
+  third IPC — a second or two of creatures standing at rest and silent
+  campfires on A2C1M1, ten seconds on the stress map. They are baked where
+  the scene is built now and travel with it; the window's bake workers, their
+  bundle and the `map:fx` channel are gone.
+- A map's models are decoded once and kept on disk. Every model a map places
+  is decoded by a pool of processes (as many as the machine has cores to
+  spare) and written to a cache in the editor's temp folder, one entry per
+  model with its textures and baked recordings as shared entries beside it;
+  an entry is used while every file it was made from is where it was, the
+  same size and date — a mod mounted or a texture edited decodes afresh. The
+  main process no longer decodes a map at all on the second open: A2C1M1's
+  main-side time 1.2–1.5 s → 0.65 s, the stress map's 3.4–4.3 s → 1.4 s; the
+  first open of a map costs what it did. The cache trims itself to 4 GB.

@@ -232,6 +232,8 @@ interface DecodedTexture { picture: Picture | CompressedPicture; hasAlpha: boole
  */
 let compressedTextures = false;
 export function setCompressedTextures(on: boolean): void { compressedTextures = on; }
+/** Whether textures are being shipped as their DXT blocks — what a decode process has to be told (decode-job.ts). */
+export const compressedTexturesOn = (): boolean => compressedTextures;
 
 /**
  * Textures already decoded, by file and cap.

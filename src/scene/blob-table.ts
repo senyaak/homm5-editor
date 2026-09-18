@@ -36,8 +36,13 @@ function isHandle(v: unknown): v is BlobHandle {
 /**
  * Below this a view stays in the payload: a handle is an object of four
  * fields, and a few dozen bytes of bone weights are cheaper as themselves.
+ * (A cache entry on disk passes 0: its header is JSON, which holds no typed
+ * array at all.)
  */
 const MIN_BYTES = 256;
+
+/** Every array in a blob starts on a multiple of this — Float64Array is the widest element the payload holds. */
+export const BLOB_ALIGN = 8;
 
 /** Where the packer puts bytes: one blob, its URL, and the offset each addition lands at. */
 export interface BlobSink { url: string; add(bytes: Uint8Array): number }
@@ -48,7 +53,7 @@ export interface BlobSink { url: string; add(bytes: Uint8Array): number }
  * keeps what it hands out (tex-table.ts `rebuild` says why), so the copy runs
  * along the spine down to each array that moved and shares the rest.
  */
-export function packBlobs<T>(payload: T, sink: BlobSink): { payload: T; count: number; bytes: number } {
+export function packBlobs<T>(payload: T, sink: BlobSink, minBytes = MIN_BYTES): { payload: T; count: number; bytes: number } {
   let count = 0, bytes = 0;
   const done = new Map<object, unknown>();
   const rebuild = (node: unknown): unknown => {
@@ -58,7 +63,7 @@ export function packBlobs<T>(payload: T, sink: BlobSink): { payload: T; count: n
     let out: unknown = node;
     if (ArrayBuffer.isView(node)) {
       const view = node as ArrayBufferView & { length: number };
-      if (view.byteLength >= MIN_BYTES && view.constructor.name in KINDS) {
+      if (view.byteLength >= minBytes && view.constructor.name in KINDS) {
         const handle: BlobHandle = {
           '\0blob': sink.url,
           at: sink.add(new Uint8Array(view.buffer as ArrayBuffer, view.byteOffset, view.byteLength)),
@@ -151,4 +156,46 @@ export async function unpackBlobs(
 
 function bytesPer(kind: TypedKind): number {
   return KINDS[kind].BYTES_PER_ELEMENT;
+}
+
+/**
+ * The same, with the bytes already in hand: `buffer` answers a handle's URL
+ * with the blob's bytes, and the arrays are put back as VIEWS onto it — for a
+ * reader in one process (a cache entry read off disk, geom-cache.ts), where
+ * the buffer is nobody else's and a copy would only double it.
+ */
+export function unpackBlobsSync(payload: unknown, buffer: (url: string) => ArrayBuffer): { count: number; bytes: number } {
+  const seen = new Set<object>();
+  const views = new Map<BlobHandle, Typed>();
+  const buffers = new Map<string, ArrayBuffer>();
+  let bytes = 0;
+  const bufferFor = (url: string): ArrayBuffer => {
+    let b = buffers.get(url);
+    if (!b) { b = buffer(url); buffers.set(url, b); bytes += b.byteLength; }
+    return b;
+  };
+  const walk = (node: unknown): void => {
+    if (!node || typeof node !== 'object' || ArrayBuffer.isView(node) || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      if (typeof node[0] === 'number') return;
+      for (let i = 0; i < node.length; i++) visit(node, i, node[i]);
+    } else {
+      const from = node as Record<string, unknown>;
+      for (const key of Object.keys(from)) visit(from, key, from[key]);
+    }
+  };
+  const visit = (holder: Record<string, unknown> | unknown[], key: string | number, v: unknown): void => {
+    if (!isHandle(v)) { walk(v); return; }
+    let view = views.get(v);
+    if (!view) {
+      const buf = bufferFor(v[' blob']);
+      if (v.at + v.length * bytesPer(v.kind) > buf.byteLength) throw new Error(`blob ${v[' blob']}: ${v.length} ${v.kind} at ${v.at} is past its ${buf.byteLength} bytes`);
+      view = new KINDS[v.kind](buf, v.at, v.length);
+      views.set(v, view);
+    }
+    (holder as Record<string | number, unknown>)[key] = view;
+  };
+  walk(payload);
+  return { count: views.size, bytes };
 }

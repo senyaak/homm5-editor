@@ -21,6 +21,7 @@
 // loads — the renderer binds its loader for the scheme at navigation.
 
 import { protocol } from 'electron';
+import { BLOB_ALIGN as ALIGN } from '#src/scene/blob-table.ts';
 
 export const BLOB_SCHEME = 'h5e-blob';
 
@@ -38,8 +39,6 @@ const STAGING = 1024 * 1024;
 const blobs = new Map<string, Blob>();
 let next = 1;
 
-/** Every piece starts on a multiple of this — Float64Array is the widest element the payload holds. */
-export const ALIGN = 8;
 const PAD = new Uint8Array(ALIGN);
 
 /** Before `app.whenReady`: what the scheme may do. */

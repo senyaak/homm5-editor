@@ -18,7 +18,9 @@ pre-release.
   frame's JavaScript went 18.7 → ~2.5 ms and the map is on screen in ~1.7 s
   where it took 11.5; a stress map of 2000 objects and 600 creatures draws
   in 667 calls where it took 2990, and reopening maps no longer grows the
-  editor. Every step, with its numbers and what it fixed on the way, is in
+  editor; a map's models are decoded once and kept in a cache under the
+  editor's temp folder, so the second open of a map skips the decode (the
+  first costs what it did). Every step, with its numbers and what it fixed on the way, is in
   [docs/PERFORMANCE.md](docs/PERFORMANCE.md). three.js is 0.186 now — run
   `npm install` after updating a checkout.
 - Groundwork for a ninth faction: the town type table's executable ceiling

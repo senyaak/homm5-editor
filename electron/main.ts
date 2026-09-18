@@ -27,6 +27,7 @@ import { closeSetup, runSetup } from '#electron/setup.ts';
  */
 const DEV_MODE = process.argv.includes('--dev') || process.env.HOMM5_DEV === '1';
 import { stopSceneBuilder } from '#electron/scene-jobs.ts';
+import { stopDecoders } from '#electron/geom-jobs.ts';
 import { assetRootFor, state } from '#electron/state.ts';
 import { registerBlobScheme, serveBlobs } from '#electron/blobs.ts';
 import { registerApp } from '#electron/channels/app.ts';
@@ -247,4 +248,4 @@ app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(
 // The scene builder is a child process of ours, so it goes when we do — an
 // orphan holding a 200 MB payload outliving the window is not a thing anyone
 // would think to look for.
-app.on('will-quit', () => { state.session?.watch.stop(); stopSceneBuilder(); stopRmg(); });
+app.on('will-quit', () => { state.session?.watch.stop(); stopSceneBuilder(); stopDecoders(); stopRmg(); });

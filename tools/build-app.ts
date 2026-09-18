@@ -49,7 +49,7 @@ await build({
 // electron/channels/rmg.ts), so it needs a file of its own to be forked as.
 // Beside main.js in electron/, which is where the fork path looks for it in a
 // packaged app.
-for (const worker of ['scene-worker', 'rmg-worker']) {
+for (const worker of ['scene-worker', 'rmg-worker', 'geom-worker']) {
   await build({
     entryPoints: [join(root, 'electron', `${worker}.ts`)],
     bundle: true,

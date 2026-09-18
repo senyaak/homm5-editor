@@ -158,7 +158,9 @@ export function parseFootprint(sharedXml: string): Footprint | null {
   return fp;
 }
 
-export function createGeomResolver(root: string | Assets, texSize = TEXTURE_CAP, options: SceneAnimationOptions = {}): GeomResolver {
+export function createGeomResolver(
+  root: string | Assets, texSize = TEXTURE_CAP, options: SceneAnimationOptions = {}, decoded?: ReadonlyMap<string, GeomData | null>,
+): GeomResolver {
   const data = toAssets(root);
   const readXdb: ReadXdb = (href) => data.text(href.split('#')[0]!);
   const geoms: GeomData[] = [];
@@ -166,6 +168,13 @@ export function createGeomResolver(root: string | Assets, texSize = TEXTURE_CAP,
   const resolve = (sharedHref: string): number => {
     const hit = geomIndex.get(sharedHref);
     if (hit !== undefined) return hit;
+    // Decoded ahead (the cache, the decode processes): placed, not decoded again.
+    const ahead = decoded?.get(sharedHref);
+    if (ahead !== undefined) {
+      const at = ahead ? geoms.push(ahead) - 1 : -1;
+      geomIndex.set(sharedHref, at);
+      return at;
+    }
     let idx = -1;
     try {
       const shared = readXdb(sharedHref);
@@ -276,7 +285,7 @@ export function buildScene(
   const readXdb: ReadXdb = (href) => data.text(href.split('#')[0]!);
 
   // --- map model ---
-  const map = loadMap(readFileSync(mapXdbPath, 'latin1'));
+  const map = opt.map ?? loadMap(readFileSync(mapXdbPath, 'latin1'));
 
   // --- terrains, one per floor (surface = 0, underground = 1) ---
   const mapDir = dirname(mapXdbPath);
@@ -317,7 +326,7 @@ export function buildScene(
   };
 
   // --- geometry/texture resolution (cached per Shared href) ---
-  const resolver = createGeomResolver(data, texSize, { animate: opt.animate, animationFps: opt.animationFps });
+  const resolver = createGeomResolver(data, texSize, { animate: opt.animate, animationFps: opt.animationFps }, opt.decoded);
   const geoms = resolver.geoms;
   const resolveGeom = resolver.resolve;
 

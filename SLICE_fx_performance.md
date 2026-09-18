@@ -537,6 +537,58 @@ What it says, in the order it matters:
   GPU ~520–550, main ~720 — the step over the first open is allocator
   retention, not objects. The picture after a reopen matches a single
   open's.
+* **Done — the decode leaves the main process, and stays on disk**
+  (2026-09-18/19). With the IPC out of the way the open was main's own
+  `buildScene`: 1.2–1.5 s on A2C1M1, 3.4–4.3 s on the mix map, one
+  process, every other channel behind it — and the window still baked the
+  bone and effect tables afterwards in workers of its own (creatures at rest
+  and silent fires for a second or two, ten on the stress map). Three steps.
+  (1) The bakes move to the build: the pure halves come out of the renderer
+  (`src/scene/bone-table.ts`, `src/scene/fx-table.ts`), `skin.ts` bakes the
+  bone table where it attaches the clip (`SkinnedGeom.table`),
+  `object-effects.ts` bakes the recording where it makes a particle instance
+  (`FxInstancePayload.baked`, once per file for the process — `fx-bake.ts`);
+  the renderer reads them; `bakery.ts`, `bake-worker.js` and `map:fx` are
+  gone. Measured alone: effects and idle with the first frame; main's
+  build 1.4 → 2.4 s (the bakes), the blob 50 → 92 MB (the tables) — the
+  price the next two steps pay back. (2) A decode is one shared href to one
+  `GeomData` — `resolve()` was self-contained already — so it is a JOB
+  (`src/scene/decode-job.ts`) run by a pool of `utilityProcess` children
+  (`electron/geom-jobs.ts`, cores − 2, at most six, kept for the session,
+  the same fallback the scene builder has) and (3) its result is a CACHE
+  ENTRY on disk (`src/scene/geom-cache.ts`, under the app's temp):
+  `[u32][JSON header][arrays]`, the header being the geom with every typed
+  array a handle into the file, read back as views over one read. The
+  entry remembers every file the decode READ, through a recording wrapper
+  over the asset chain — the path it resolved to and its size and mtime —
+  and is valid while each resolves and stats the same (a mod mounting is a
+  path resolving elsewhere; an edit is an mtime), a stat per dependency and
+  no hash of anything; `DECODER_VERSION` is in every key. What a model
+  SHARES is not in its entry: the first cut wrote each model's textures and
+  recordings into its own file and read 340 MB where the payload was 92 —
+  a picture (keyed by its file and cap) and a baked recording (by uid) are
+  shared entries beside the models', referenced, and resolved once per
+  open, so fifty trees are one bark object again. Two things the first
+  runs taught: the decode processes did not know the window's GPU takes
+  S3TC — the flag is main's — and decoded RGBA (93 MB of textures where DXT
+  is 35), so `compressed` rides in the job and in the key; and on Windows a
+  rename over a shared entry another decoder had just written is refused,
+  which is fine when the target is there (same bytes whoever wrote it).
+  The dependency stats are memoised per open (a texture's document is a
+  dependency of every model wearing it): 1766 stats on A2C1M1, 5200 on
+  mix. Measured (`_tmp/ipc-share.ts`): A2C1M1 warm main **1.2–1.5 → 0.64 s**
+  (cache 176 in 0.42, build 0.16), cold 2.2 s (176 decodes by 6 processes,
+  6.3 s of work in 1.8 of wall — each process decodes the shared textures
+  it meets itself); mix warm **3.4–4.3 → 1.4 s** (cache 652 in 1.29), cold
+  4.0 (568 decodes, 14.7 s of work in 3.5); renderer side to a built world,
+  mix ~5.0 → ~3.8 s. Cache on disk after both maps 347 MB, trimmed to 4 GB
+  oldest-written first, after the open. `tools/test-geom-cache.ts` covers
+  the round trip, the sharing, the dependency record and the trim. The
+  picture from the cache matches the previous build's (masks, grass,
+  statics). Left: the warm cache read is stats plus reading every entry
+  whole — a header-first read would skip the bodies of invalid ones, and
+  the payload's blob could be composed from the entry files' array
+  sections without passing through main's memory at all.
 * ~~**Placing an object costs what the map weighs.** Every edit is recorded
   for undo by serialising the whole map document before and after and
   diffing (electron/edits.ts `record`): the 2400th placement took ~115 ms,
