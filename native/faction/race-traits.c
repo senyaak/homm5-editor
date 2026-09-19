@@ -279,7 +279,7 @@ static int install_dwellings_switch(void) {
 
 /** `push esi / mov esi,ecx / push edi / test esi,esi` — six bytes; the `je`
  *  after them reads the test's flags. */
-#define SKILL_VALUE_RVA 0x596bb0u
+#define SKILL_VALUE_RVA 0x996bb0u
 static const BYTE SKILL_VALUE_HEAD[6] = { 0x56, 0x8B, 0xF1, 0x57, 0x85, 0xF6 };
 /** The skill record getter — `mov eax,[table] / imul ecx,0FCh`; the global's
  *  address is the loader's, so only the opcode and the stride are compared. */
