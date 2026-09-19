@@ -274,12 +274,18 @@ export const factionScriptPath = (file: string): string => `${SCRIPT_DIR}/factio
  * The faction's script file: the extension's prelude, then the author's Lua
  * verbatim — where the button's function is defined.
  */
-export function factionScriptFile(file: string, lua: string): ModFile {
+export function factionScriptFile(file: string, lua: string, type?: { name: string; number: number }): ModFile {
   const text = [
     `-- ${file}: the faction's adventure-map Lua, loaded on every map by advmap-common.lua.`,
     '-- The map introduces itself to the extension, so a click on the town',
     "-- screen's centre button can reach the map's Lua (native/faction/town-button.c).",
     'H5ETownButtons();',
+    // The game's Lua numbers towns from zero — advmap-startup.lua's
+    // TOWN_HEAVEN = 0 … TOWN_STRONGHOLD = 7 — and GetTownRace (0x5FE540)
+    // answers the type less three (0xB4E720). Ours by the same rule, under
+    // the same name, so a script compares `GetTownRace(town) == TOWN_TEST`
+    // the way it does for a shipped one.
+    ...(type ? [`${type.name} = ${type.number - 3};`] : []),
     '',
     ...lua.split(/\r?\n/),
     '',

@@ -208,7 +208,7 @@ export function buildFactions(
     // The centre button and the faction's Lua.
     if (town.button) buttons.push({ ...town.button, town: f.number });
     features.push(...featureLines(f.number, town.features));
-    files.push(factionScriptFile(f.file, f.script ?? ''));
+    files.push(factionScriptFile(f.file, f.script ?? '', { name: f.type, number: f.number }));
   }
 
   files.push(

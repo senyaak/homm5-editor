@@ -150,6 +150,7 @@ let one: BuildReport;
   check('TownSpecs: two named towns', count(text(TOWN_SPECS), /<ID>TOWNSPEC_TEST_RANDOM_/g) === 2);
   check('UIGameRoot: town_buildings_8', text(UI_ROOT).includes('<ID>town_buildings_8</ID>'));
   check('the script is loaded on every map', has(factionScriptPath('Test')) && text(COMMON_SCRIPT).includes(`doFile("/${factionScriptPath('Test')}");`));
+  check("the script names the type the way the game's Lua numbers towns (type - 3)", text(factionScriptPath('Test')).includes('\nTOWN_TEST = 8;\n'));
   check('the town files are the faction\'s', has('Factions/Test/Test.(AdvMapTownShared).xdb') && has('Factions/Test/race.txt'));
   check('the rows: the picker, nine wide, ours last', one.factions?.picker.length === 9 && one.factions.picker[8]!.name === 'TOWN_TEST' && one.factions.picker[8]!.town === 11);
   check('the rows: the button', one.factions?.buttons.length === 1 && one.factions.buttons[0]!.lua === 'BonePit' && one.factions.buttons[0]!.town === 11);

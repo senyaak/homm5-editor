@@ -170,7 +170,13 @@ static AlignmentFn g_alignment = NULL;
 
 static int __fastcall alignment_hook(int town) {
   RaceTrait *t = trait_of(town);
-  if (t && t->alignment >= 0) return t->alignment;
+  if (t && t->alignment >= 0) {
+    // Asked to speak: who asks about a race of ours, and what it was told.
+    // The return address is the caller — the morale, the joining, a bonus.
+    log_hex("race traits: alignment of ours asked from ", (DWORD)__builtin_return_address(0));
+    log_num("  answered ", t->alignment);
+    return t->alignment;
+  }
   return g_alignment(town);
 }
 
