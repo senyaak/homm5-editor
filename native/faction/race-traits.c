@@ -349,6 +349,49 @@ static int __fastcall skill_value_hook(void *hero, int skill) {
 }
 
 // ---------------------------------------------------------------------------
+// A probe on the army's morale, in a build that asks (`--log faction/race-traits`).
+//
+// Launch 40 read every stack's morale as 0 under a hero of a race of ours
+// with creatures of the race, where 0xB45C80 as read — +1 for a stack of the
+// hero's race — says otherwise. So the function itself is watched: what race
+// it is handed for the hero, and what race each stack answers (0xAB98B0:
+// the creature record's +0x98). Nothing is changed; the engine's runs after.
+
+/** `sub esp,18h / push ebx / push ebp / push esi` — six bytes, four instructions. */
+#define ARMY_MORALE_RVA 0x745c80u
+static const BYTE ARMY_MORALE_HEAD[6] = { 0x83, 0xEC, 0x18, 0x53, 0x55, 0x56 };
+/** `mov ecx,[ecx+1Ch] / call <record>` — the stack's creature race. */
+#define STACK_RACE_RVA 0x6b98b0u
+static const BYTE STACK_RACE_HEAD[3] = { 0x8B, 0x49, 0x1C };
+
+typedef void (__fastcall *ArmyMoraleFn)(void *army, int heroRace, int base);
+typedef int (__fastcall *StackRaceFn)(void *stack);
+static ArmyMoraleFn g_armyMorale = NULL;
+static StackRaceFn g_stackRace = NULL;
+
+static void __fastcall army_morale_probe(void *army, int heroRace, int base) {
+  log_num("morale: hero race ", heroRace);
+  log_num("  base ", base);
+  if (readable_bytes(army, 8) >= 8) {
+    void **from = *(void ***)army, **to = *(void ***)((BYTE *)army + 4);
+    for (int i = 0; from + i < to && i < 16; i++) {
+      if (!from[i] || readable_bytes(from[i], 0x20) < 0x20) { log_num("  slot empty ", i); continue; }
+      log_num("  stack race ", g_stackRace(from[i]));
+    }
+  }
+  g_armyMorale(army, heroRace, base);
+}
+
+static int install_morale_probe(void) {
+  if (!LOG_ON) return 0;
+  g_stackRace = (StackRaceFn)code_at(STACK_RACE_RVA, STACK_RACE_HEAD, sizeof STACK_RACE_HEAD, "stack race");
+  if (!g_stackRace) return 0;
+  g_armyMorale = (ArmyMoraleFn)detour(ARMY_MORALE_RVA, ARMY_MORALE_HEAD, sizeof ARMY_MORALE_HEAD,
+                                      &army_morale_probe, "army morale probe");
+  return g_armyMorale != NULL;
+}
+
+// ---------------------------------------------------------------------------
 
 static int install_race_traits(void) {
   if (!g_traitCount) return 0;
@@ -366,6 +409,7 @@ static int install_race_traits(void) {
     g_alignment = (AlignmentFn)detour(ALIGNMENT_RVA, ALIGNMENT_HEAD, sizeof ALIGNMENT_HEAD,
                                       &alignment_hook, "race alignment");
     if (g_alignment) { log_num("race traits: alignments of ours: ", aligned); done++; }
+    if (install_morale_probe()) log_line("race traits: the army's morale is being watched");
   }
 
   if (housed && g_stringCtor) {
