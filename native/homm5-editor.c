@@ -117,6 +117,10 @@
 // What a building of ours does: the town-feature table, ours, after race-order.c
 // (its reader) and log.c.
 #include "faction/town-features.c"
+// What the engine compiled per race — alignment, the dwellings group, the AI's
+// worth of a skill — answered from a row: after race-order.c (its reader, its
+// string constructor) and call.c (the vtable walk).
+#include "faction/race-traits.c"
 #include "net/ubi-log.c"
 #include "net/ubi-module-probe.c"
 #include "net/ubi-friends-probe.c"
@@ -354,6 +358,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // building of ours — from one table that lives here.
   load_town_features();
   if (g_ownFeatureCount && install_town_features()) log_line("town features: a building of ours grants what its row says");
+  // What the engine compiled per race, for a race of ours: its alignment, the
+  // group its random dwellings are drawn from, what its AI thinks a skill is worth.
+  load_race_traits();
+  if (install_race_traits()) log_line("race traits: a race of ours answers what the engine compiled per race");
   // A probe, in a build that asks — `--log faction/start-probe`: what a race's
   // player, town and hero come out as at the start of a game.
   if (install_start_probe()) log_line("the start of a game is being watched");

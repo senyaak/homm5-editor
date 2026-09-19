@@ -795,3 +795,115 @@ an ordinary empty one — and `TownSpec.magic: 'none'` makes the town's guild
 Stronghold's five stubs with no cell. It is the Heroes III yogi who cannot
 cast. The feature table (previous section) and `BuildingEdit.from` are
 general and stay.
+
+## What the executable compiled per race (2026-09-19, read only)
+
+The question left open at §4 of the plan: which structures are compiled
+EIGHT wide by race, and which of them a twelfth race reads past the end of.
+Answered by a sweep of `.text` for the shape every such site has — the
+enum's `TownType - 3` (`add reg,-3` / `lea reg,[reg-3]`) followed within
+six instructions by a bound of 7 or 8, a scaling or an indexed load — 143
+sites, of which the race-shaped ones are below (the rest are the Lua VM's
+16-byte values, vector arithmetic, other enums with a 3 in them). Every one
+is a `switch` with a default arm, and the default is what a race of ours
+gets. What each default does decided what to do about it.
+
+**Read by the AI, and wrong for us:**
+
+- `0xD96BB0` `SkillValueForHero(hero, skill)` — the AI's worth of a skill at
+  a level-up (`"available skill/perk: %s (mastery %d, value %d)"`,
+  `0xD85086`; chosen by `0xD84730`, called from `0xBF9834`). The skill's
+  record (`0xB1EF90`, `table + 8 + id·0xFC`) holds `AIRacesValues` at
+  `+0x6C`: eight named blocks of 0x10 — Haven's at `+0x70`, then Sylvan,
+  Academy, Dungeon, Necropolis, Inferno, Fortress, Stronghold, the enum's
+  order — each `{?, CommanderValue, CollectorSupplierValue, FreelancerValue}`.
+  The hero's race (vtable `+0x254`) picks the block, his AI role (vtable
+  `+0x2BC`: 0 Freelancer → `+0xC`, 1 Commander → `+4`, 2 Collector and
+  3 Supplier → `+8`) the field. **Default: −1 for every skill.** A hero of
+  ours levelled up blind. This is the ONLY reader of the block: the
+  getter's 46 direct callers touch nothing past `+0x64`; this one reaches
+  the getter through the thunk `0xB41E30`, whose ten callers a search for
+  the getter's callers does not show — the lesson of the day.
+
+**Read by the rules, and a default that is a rule of its own:**
+
+- `0xB43E80` `Alignment(town)` — 1 for Haven, Sylvan, Academy, Fortress
+  (a byte table at `0xB43EB0`), 2 for Dungeon, Necropolis, Inferno,
+  Stronghold, **0 for anything else**. Eighteen callers: the army's morale
+  (`0xB45C80` — a hero and a creature of opposite non-zero alignments cost
+  two, the same race as the hero gives one), the chance a neutral stack
+  joins (`0xD0CC10`, `"Calculating chance to join"`), six creature-stat
+  helpers gated on it (`0xAB9920`… — a bonus for an artifact/skill 0x3F or
+  0x4C against alignment 1 or 2), the hero screen (`0x76951C`, evil → a
+  different panel), the AI (`0xC2EE80`), and the combat side
+  (`0xD0AE10`, `0xDAE400`, `0xDAE4B0`). A race of ours is NEUTRAL: nobody's
+  enemy, nobody's friend — a legitimate answer, but one the faction should
+  give itself.
+
+**Read when a random thing of the race is placed, and a default that is nothing:**
+
+- `0xB4F130` `DwellingsGroupName(out, town)` — `"DWELLINGS_HAVEN"` …
+  `"DWELLINGS_STRONGHOLD"`, the id `RPGRoot`'s `<SharedGroups>` maps to a
+  group document (`MapObjects/_(AdvMapSharedGroup)/Dwellings/<Race>.xdb`,
+  a list of `AdvMapDwellingShared` hrefs), looked up by `0xAB8B20`. Two
+  callers: a map's random dwelling (`0x5D6DD0`) and the walk over every race
+  (`0xD0F9B0` — one of the two `RaceCount` callers the first survey left
+  unnamed; the other is its second loop). **Default: the empty name**, which
+  finds no group.
+- `0xB53E04` — the same switch inline in the dwelling resolver `0xB53D30`
+  (owner's race / linked player's / linked town's / the draw, after the
+  index→type clamp `0xB4E730`), eight arms `push "DWELLINGS_…" / lea
+  ecx,[esp+14h] / call String::String / jmp 0xB53EB3` and a default that
+  builds `""` the same way. Not a function head to detour.
+
+**Read and harmless — the default is what a shipped race gets too, or nobody plays:**
+
+- `0xC035D0`, `0xC032F0` — `CPlayer` vtable `+0x24`/`+0x10`: recounts of a
+  player's towns and buildings; the race switch sets one of `+0x1A0…+0x1C4`
+  for Haven, Sylvan, Necropolis, Stronghold only — Academy, Dungeon,
+  Inferno and Fortress fall out of it exactly as ours does.
+- `0xC8F540`, `0xC8FD50`, `0xC8FE60` — `CPlayersStatsAccumulator` (vtable
+  `0xFCB058`): race → an index or a stats key; `0x5BE330` — the
+  `"%s,%s,%d,%d,%d,%d"` W/L record with a two-letter race code (`HE`, `PR`,
+  `AC`, `DU`, `NE`, `IN`, `FO`, `ST`); the four `W_`/`L_`/`H_`/`G_` key sets
+  at `0xFE5D78`… (`W_HEAVEN` … `W_ORCS`). Ubi.com statistics. Our race
+  reports as nothing / −1.
+- `0xEB5182`, `0xEC0AD0` — the engine's generator (`CGameZone` and kin,
+  `NRMG`): a zone's race outside the eight becomes `TOWN_RANDOM_TYPE`.
+- `0x84D690`, `0x8541B0`, `0x850AF0`/`0x84CC31` — the town screen: the
+  `enter_special` dispatch, the button's building, the button's skin index
+  (unknown → 3, Dungeon's). All three already ours — `town-button.c`.
+- `0xB4E710` `IsRealTown` — ours since the picker (`race-order.c`).
+- `0xC01CA0` — race → 1…8 in another order; no reference anywhere in the
+  image (dead).
+- `0x1091FC8` — a table of 1…12, read at `0xD3BDFC`: a skill draw, not a race.
+
+And the one the plan named that turned out not to exist: **there is no
+"morale between races" table** — the morale is the alignment above plus a
+same-race test, both compiled; and the tavern's order is the enum's.
+
+What is done about it — `native/faction/race-traits.c`, rows in
+`bin/homm5-editor-races.txt` (`src/mods/race-order.ts`), fields of
+`FactionSpec` (`alignment`, `mapDwellings`, `ai.skillsLike`,
+`ai.skillValues`):
+
+- alignment: `0xB43E80` detoured whole (six-byte head, two instructions;
+  the `ja` after them reads the compare's flags, which the trampoline's
+  jump leaves alone); a row answers, anything else falls through.
+- the dwellings group: `0xB4F130` detoured the same way, a row's name built
+  with the engine's own `String::String`; the inline switch has its TABLE
+  moved out — the compare's bound and the table's address are the site's
+  two operands, and a table of ours holds the engine's eight arms and then,
+  per race of ours, nineteen bytes generated at load that do what the
+  eight do with a name of ours. The group document and its `RPGRoot` entry
+  are the faction build's (`faction-files.ts`), listing the mod's own
+  dwellings the faction names.
+- the AI's skill values: `0xD96BB0` detoured whole; for a race with a row
+  the same walk with a shipped race's block (`ai-skills-like`), a
+  `skillvalue` row for one skill first, −1 when the row says nothing.
+
+Not launched yet: an AI player of the race, which was Senya's half of §4
+from the start. What the launch should show: an AI hero of the race
+choosing skills (the log line above, with values), a random dwelling of
+the race standing on a map that has one, and a Haven hero's army with a
+creature of the race costing morale when the row says `evil`.

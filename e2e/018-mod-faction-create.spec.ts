@@ -212,6 +212,10 @@ test('a town without magic, a named town, a script — and it saves', { tag: '@g
   const { page } = ed;
   await page.locator('#fac-magic').selectOption('none');
   await expect(page.locator('#fac-schools-row')).toBeHidden();
+  // What the engine compiled per race: the side the morale reads, and whose
+  // skill values the AI levels a hero of the race up by.
+  await page.locator('#fac-alignment').selectOption('evil');
+  await page.locator('#fac-ai-like').selectOption('TOWN_NECROMANCY');
 
   await press(page, page.locator('#fac-town-add'));
   await expect(page.locator('#fac-towns .fc-town-row')).toHaveCount(1);
@@ -264,6 +268,9 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.buildings?.TB_DWELLING_5).toEqual({ requires: [] });
   expect(f!.script).toContain('function BonePit');
   expect(f!.icons?.field).toEqual([58, 28, 66, 255]);
+  expect(f!.alignment).toBe('evil');
+  expect(f!.ai).toEqual({ skillsLike: 'TOWN_NECROMANCY' });
+  expect(f!.mapDwellings).toBeUndefined();
 
   const names = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM))).map((e) => e.name.split('\\').join('/'));
   const has = (p: string | RegExp): boolean => names.some((n) => (typeof p === 'string' ? n === p : p.test(n)));
@@ -284,6 +291,9 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   const races = readFileSync(join(GAME, RACES_FILE), 'latin1');
   expect(races.split('\n').filter((l) => l.startsWith('race ')).length).toBe(9);
   expect(races).toContain(`race 11 ${TYPE} race_e2ebone race_tooltip_e2ebone`);
+  expect(races).toMatch(/^trait 11 alignment evil$/m);
+  expect(races).toMatch(/^trait 11 ai-skills-like 7$/m);
+  expect(races).not.toContain('trait 11 dwellings');
   const buildings = readFileSync(join(GAME, BUILDINGS_FILE), 'latin1');
   expect(buildings).toMatch(/^button 11 \d+ \d+ BonePit$/m);
   expect(exeNumbers()).toEqual({ towns: 12, specs: 256, clamp: 8 });
@@ -298,6 +308,8 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await expect(page.locator('#fac-file')).toHaveAttribute('readonly', '');
   await expect(page.locator('#fac-editing')).toContainText('ordinal 11');
   await expect(page.locator('#fac-magic')).toHaveValue('none');
+  await expect(page.locator('#fac-alignment')).toHaveValue('evil');
+  await expect(page.locator('#fac-ai-like')).toHaveValue('TOWN_NECROMANCY');
   await expect(page.locator('#fac-donor-note')).toContainText('building records of TOWN_HEAVEN');
   await expect(cell(page, 5, 5)).toHaveClass(/dropped/);
   await expect(cell(page, 5, 3)).toContainText('Bone Pit');

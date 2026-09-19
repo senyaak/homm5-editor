@@ -32,8 +32,10 @@ import { RACE_MUSIC, TOWN_TYPES_INFO, musicFiles, patchRaceMusic, patchTownTypes
 import type { LooseFile } from './town-type-info.ts';
 import { PLAYER_COLOUR_SCHEMES, patchColourSchemes } from './capture-marker.ts';
 import { HERO_GROUP, TOWN_GROUP, addGroupMember } from './shared-groups.ts';
+import { dwellingPaths, DWELLING_CLASS } from './dwellings.ts';
+import type { DwellingSpec } from './dwellings.ts';
 import { SHIPPED_PICKER_ORDER } from './race-order.ts';
-import type { PickerRace } from './race-order.ts';
+import type { PickerRace, RaceTraits } from './race-order.ts';
 import { SPECIAL_BUTTON, SPECIAL_BUTTON_SHARED, addTownButtons, factionScriptFile, factionScriptPath } from './town-button.ts';
 import type { TownButton, TownButtonRow } from './town-button.ts';
 import { featureLines } from './town-features.ts';
@@ -42,7 +44,7 @@ import type { HeroSpec } from './heroes.ts';
 import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
 import type { DataReader, ModFile } from './mod-files.ts';
 import { EOL, insertAfterLine, insertBeforeLine, once, retune } from './xml-edit.ts';
-import { LAST_SHIPPED_RACE, LAST_SHIPPED_TOWN_TYPE, SHIPPED_RMG_PRESETS, SHIPPED_TOWN_TYPES, raceFor } from './factions.ts';
+import { LAST_SHIPPED_RACE, LAST_SHIPPED_TOWN_TYPE, SHIPPED_RMG_PRESETS, SHIPPED_TOWN_TYPES, dwellingsGroupFor, raceFor } from './factions.ts';
 import type { ModFaction } from './factions.ts';
 
 /** The race picker's item folder: its two lists and its texts. */
@@ -99,6 +101,8 @@ export function buildFactions(
   /** The mod's creatures' Character and Shot, by id — what a `shooter` resolves to. */
   shooters: ReadonlyMap<string, { character: string; shot: string }>,
   read: DataReader,
+  /** The mod's dwellings — what a faction's `mapDwellings` names. */
+  dwellings: readonly DwellingSpec[] = [],
 ): FactionBuild {
   const files: ModFile[] = [];
   const stopped: string[] = [];
@@ -116,6 +120,7 @@ export function buildFactions(
   let townGroup = mustRead(read, TOWN_GROUP);
   let heroGroup = mustRead(read, HERO_GROUP);
   let townSpecs = mustRead(read, TOWN_SPECS);
+  let rpgRoot = mustRead(read, RPG_ROOT);
   const buttons: TownButton[] = [];
   const features: string[] = [];
   const loose: LooseFile[] = [];
@@ -165,7 +170,26 @@ export function buildFactions(
     ]);
     files.push({ path: `${PICKER_DIR}/${names.texture}.txt`, data: utf16(f.race.name) });
     files.push({ path: `${PICKER_DIR}/${names.tooltip}.txt`, data: utf16(f.race.tooltip ?? f.race.name) });
-    picker.push({ name: f.type, town: f.number, texture: names.texture, tooltip: names.tooltip });
+    const traits: RaceTraits = {};
+    if (f.alignment) traits.alignment = f.alignment;
+    if (f.ai?.skillsLike) traits.aiSkillsLike = shippedOrdinal(f.ai.skillsLike);
+    if (f.ai?.skillValues && Object.keys(f.ai.skillValues).length) traits.skillValues = f.ai.skillValues;
+    // The random-dwelling group: a document of ours listing the mod's
+    // dwellings the faction names, registered in RPGRoot under the id the
+    // extension answers for the race.
+    if (f.mapDwellings?.length) {
+      const group = dwellingsGroupFor(f.type);
+      const hrefs = f.mapDwellings.map((file) => {
+        const d = dwellings.find((x) => x.file === file);
+        if (!d) throw new Error(`${f.file}: the map dwelling ${file} is not a dwelling of the mod`);
+        return `/${dwellingPaths(d).shared}#xpointer(/${DWELLING_CLASS})`;
+      });
+      const path = `${DWELLING_GROUP_DIR}/${f.file}.xdb`;
+      files.push({ path, data: latin1(sharedGroupDoc(hrefs)) });
+      rpgRoot = addSharedGroup(rpgRoot, group, `/${path}#xpointer(/AdvMapSharedGroup)`);
+      traits.dwellings = group;
+    }
+    picker.push({ name: f.type, town: f.number, texture: names.texture, tooltip: names.tooltip, ...(Object.keys(traits).length ? { traits } : {}) });
 
     if (town.towerIcon) towerIcons = patchTowerIcons(towerIcons, f.type, town.towerIcon);
     if (town.captureMarker) schemes = patchColourSchemes(schemes, f, town.captureMarker);
@@ -198,6 +222,7 @@ export function buildFactions(
     { path: TOWN_GROUP, data: latin1(townGroup) },
     { path: HERO_GROUP, data: latin1(heroGroup) },
     { path: TOWN_SPECS, data: latin1(townSpecs) },
+    { path: RPG_ROOT, data: latin1(rpgRoot) },
   );
   let rows: TownButtonRow[] = [];
   if (buttons.length) {
@@ -222,6 +247,34 @@ export function buildFactions(
 }
 
 const latin1 = (s: string): Buffer => Buffer.from(s, 'latin1');
+
+/** The registry of shared groups by id — `DWELLINGS_HAVEN` names its document here. */
+export const RPG_ROOT = 'GameMechanics/RPGStats/RPGRoot.xdb';
+/** Where the shipped dwelling groups live, and ours beside them. */
+export const DWELLING_GROUP_DIR = 'MapObjects/_(AdvMapSharedGroup)/Dwellings';
+
+/** An `AdvMapSharedGroup` document of these members, shaped as the shipped ones are. */
+export function sharedGroupDoc(hrefs: readonly string[]): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<AdvMapSharedGroup ObjectRecordID="1">',
+    '\t<links>',
+    ...hrefs.map((h) => `\t\t<Item href="${h}"/>`),
+    '\t</links>',
+    '</AdvMapSharedGroup>',
+    '',
+  ].join(EOL);
+}
+
+/**
+ * `RPGRoot` with a shared group registered under `id` — unchanged when the id
+ * is there already, so a mod built twice registers it once.
+ */
+export function addSharedGroup(root: string, id: string, href: string): string {
+  if (root.includes(`<ID>${id}</ID>`)) return root;
+  const close = once(root, '</SharedGroups>', 'RPGRoot shared groups');
+  return insertBeforeLine(root, close, ['<Item>', `\t<ID>${id}</ID>`, `\t<Group href="${href}"/>`, '</Item>']);
+}
 
 /** A shipped type's ordinal: `TOWN_HEAVEN` is 3. */
 function shippedOrdinal(name: string): number {

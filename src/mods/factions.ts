@@ -49,6 +49,54 @@ export interface FactionSpec extends TownSpec {
    * `siegeShooter` holds; a spec that gives `siegeShooter` outright keeps it.
    */
   shooter?: string;
+  /**
+   * Good, evil or neither. The engine compiled it per race (0xB43E80 —
+   * Haven, Sylvan, Academy and Fortress good, the other four evil) and reads
+   * it eighteen times over: a hero and a creature of opposite alignments cost
+   * the army two morale, a neutral stack of the other side joins less
+   * readily, six creature bonuses are gated on it, the AI weighs it. A race
+   * of ours that says nothing is neutral — nobody's enemy and nobody's friend.
+   */
+  alignment?: 'good' | 'evil' | 'neutral';
+  /**
+   * The mod's dwellings, by file, a RANDOM dwelling of the race may become —
+   * a map's `AdvMapDwelling` with a random race, and the generator's. The
+   * engine draws them from the `DWELLINGS_<RACE>` shared group, which is
+   * written from this list; the group's name is compiled per race, so the
+   * extension answers ours (native/faction/race-traits.c). Without it a
+   * random dwelling of the race never stands.
+   */
+  mapDwellings?: string[];
+  /** The AI's side of the race — what it thinks a skill is worth. */
+  ai?: FactionAi;
+}
+
+/**
+ * The AI's worth of every skill at a level-up is data — `AIRacesValues` in
+ * `Skills.xdb`, three values per skill per race, by the hero's role
+ * (commander, collector/supplier, freelancer) — but compiled EIGHT wide: a
+ * block per shipped race, read by 0xD96BB0 for the hero's race, and -1 for
+ * any other. So a hero of ours would level up blind. `skillsLike` names the
+ * shipped race whose block answers for ours; `skillValues` answers for one
+ * skill first, by the skill's ordinal.
+ */
+export interface FactionAi {
+  /** A shipped `TOWN_*` whose skill values ours borrows. */
+  skillsLike?: string;
+  /** Per skill ordinal: what a commander, a collector/supplier and a freelancer think it is worth. */
+  skillValues?: Record<number, SkillValues>;
+}
+
+export interface SkillValues {
+  commander: number;
+  collectorSupplier: number;
+  freelancer: number;
+}
+
+/** The shared group a random dwelling of the type is drawn from: `TOWN_TEST` → `DWELLINGS_TEST`. */
+export function dwellingsGroupFor(type: string): string {
+  if (!type.startsWith('TOWN_')) throw new Error(`${type} is not a TownType name`);
+  return `DWELLINGS_${type.slice('TOWN_'.length)}`;
 }
 
 /** One in a mod: a spec plus the ordinal it holds. */
@@ -99,6 +147,14 @@ export function factionProblems(spec: FactionSpec): string[] {
     if (!d) continue;
     if (!(Number(tier) >= 1 && Number(tier) <= 7)) out.push(`dwelling tier ${tier}: tiers are 1–7`);
     if (!d.base || !d.upgrade) out.push(`dwelling tier ${tier}: names a base creature and its upgrade`);
+  }
+  if (spec.alignment && !['good', 'evil', 'neutral'].includes(spec.alignment)) out.push(`alignment is good, evil or neutral, not ${spec.alignment}`);
+  if (spec.ai?.skillsLike && !SHIPPED_TOWN_ORDINALS[spec.ai.skillsLike]) out.push(`${spec.ai.skillsLike} is not a shipped town — the AI's skill values come from one of ${Object.keys(SHIPPED_TOWN_ORDINALS).join(', ')}`);
+  for (const [skill, v] of Object.entries(spec.ai?.skillValues ?? {})) {
+    if (!/^\d+$/.test(skill)) out.push(`skill value "${skill}": a skill is named by its ordinal`);
+    for (const k of ['commander', 'collectorSupplier', 'freelancer'] as const) {
+      if (!Number.isInteger(v?.[k])) out.push(`skill ${skill}: ${k} is a whole number`);
+    }
   }
   return out;
 }

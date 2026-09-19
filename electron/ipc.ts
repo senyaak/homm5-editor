@@ -1753,6 +1753,8 @@ export interface ModsFactionDataResult {
   masteries: string[];
   /** The mod's own creatures, for the dwellings and the towers. */
   creatures: RosterEntryDTO[];
+  /** The mod's own dwellings, by file — what a random dwelling of the race may become. */
+  dwellings: RosterEntryDTO[];
   /** The ten exterior stages, in the engine's order. */
   exteriorStages: string[];
 }

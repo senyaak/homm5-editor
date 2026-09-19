@@ -216,7 +216,7 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   // types.xml, UIGameRoot, the global script — are patched below, on the one
   // copy of each the mod carries (faction-files.ts).
   const factionBuild: FactionBuild | null = (mod.factions ?? []).length
-    ? buildFactions(mod.factions!, mod.heroes ?? [], shooters, read)
+    ? buildFactions(mod.factions!, mod.heroes ?? [], shooters, read, mod.dwellings)
     : null;
   if (factionBuild) {
     files.push(...factionBuild.files);

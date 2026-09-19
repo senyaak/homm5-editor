@@ -9,7 +9,10 @@
 //     the random-town group, the hero pool, TownSpecs, UIGameRoot's grid,
 //     the global script's doFile — and two factions do not fight over any of
 //     them;
-//   the install's rows: the picker's order, the buttons, the features.
+//   the install's rows: the picker's order, the buttons, the features;
+//   what the engine compiled per race: the alignment, the AI's skill values
+//     and the random-dwelling group as rows of the races file, the group
+//     document and its RPGRoot entry.
 //
 //   node tools/test-faction-mod.ts [dataRoot]
 
@@ -18,11 +21,12 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MOD_MANIFEST, dataReader, TYPES, UI_ROOT } from '../src/mods/mod-files.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
-import { addFaction, newCreatureMod, removeFaction, updateFaction } from '../src/mods/mod-model.ts';
+import { addDwelling, addFaction, newCreatureMod, removeFaction, updateFaction } from '../src/mods/mod-model.ts';
 import type { CreatureMod } from '../src/mods/mod-model.ts';
-import { GRID, SHIPPED_TOWN_TYPES, factionProblems, raceFor, townTypeFor } from '../src/mods/factions.ts';
+import { GRID, SHIPPED_TOWN_TYPES, dwellingsGroupFor, factionProblems, raceFor, townTypeFor } from '../src/mods/factions.ts';
 import type { FactionSpec } from '../src/mods/factions.ts';
-import { PICKER_DIR, PICKER_TEXTS, PICKER_TEXTURES, RMG_PRESETS, pickerNames } from '../src/mods/faction-files.ts';
+import { DWELLING_GROUP_DIR, PICKER_DIR, PICKER_TEXTS, PICKER_TEXTURES, RMG_PRESETS, RPG_ROOT, pickerNames } from '../src/mods/faction-files.ts';
+import { racesFileText } from '../src/mods/race-order.ts';
 import { TOWN_SPECS } from '../src/mods/town-files.ts';
 import { RACE_MUSIC, TOWN_TYPES_INFO } from '../src/mods/town-type-info.ts';
 import { HERO_GROUP, TOWN_GROUP, groupMembers } from '../src/mods/shared-groups.ts';
@@ -262,6 +266,43 @@ console.log('the build, two factions');
   check('the picker is ten wide', two.factions?.picker.length === 10);
   check('the second town is Necropolis\'s copy', two.files.some((f) => f.path.startsWith('Factions/Two/town/') && /Necro/i.test(f.path)));
   check('the hero pool is the shipped one without heroes of ours', groupMembers(text(HERO_GROUP)).length === groupMembers(read(HERO_GROUP)!.toString('latin1')).length);
+}
+
+console.log('what the engine compiled per race — the rows and the group');
+{
+  const mod: CreatureMod = newCreatureMod();
+  addDwelling(mod, {
+    file: 'BoneGlade', creatures: ['CREATURE_UNICORN'], guards: ['CREATURE_UNICORN'],
+    model: '/_(Model)/Buildings/MisticalGarden.(Model).xdb', icon: '/UI/TownHall/preserve/128/d6.xdb',
+    type: 'BUILDING_PRESERVE_MILITARY_POST', name: '/Text/Game/TownBuildings/Preserve/Dwelling_5/Name.txt',
+    description: '/Text/Game/TownBuildings/Preserve/Dwelling_5/Description.txt', firstVisit: 'x',
+  });
+  addFaction(mod, spec('Traits', {
+    alignment: 'evil', mapDwellings: ['BoneGlade'],
+    ai: { skillsLike: 'TOWN_NECROMANCY', skillValues: { 5: { commander: 3000, collectorSupplier: 100, freelancer: 1000 } } },
+  }));
+  addFaction(mod, spec('Plain'));
+  const built = buildCreatureMod(mod, read);
+  const text = (path: string): string => {
+    const f = built.files.find((x) => x.path === path);
+    if (!f) throw new Error(`no ${path} in the build`);
+    return f.data.toString('latin1');
+  };
+  const traits = built.factions!.picker.find((r) => r.name === 'TOWN_TRAITS')!.traits!;
+  check('the picker row carries the traits', traits.alignment === 'evil' && traits.dwellings === 'DWELLINGS_TRAITS' && traits.aiSkillsLike === 7 && traits.skillValues?.[5]?.commander === 3000);
+  check('a faction that says nothing carries none', built.factions!.picker.find((r) => r.name === 'TOWN_PLAIN')!.traits === undefined);
+  const file = racesFileText(built.factions!.picker);
+  check('the races file: the trait lines', file.includes('\ntrait 11 alignment evil\n') && file.includes('\ntrait 11 dwellings DWELLINGS_TRAITS\n') && file.includes('\ntrait 11 ai-skills-like 7\n'));
+  check('the races file: the skill value line', file.includes('\nskillvalue 11 5 3000 100 1000\n'));
+  check('the races file: nothing for the plain one, nothing for the shipped', !/\n(trait|skillvalue) (?!11 )/.test(file));
+  const group = text(`${DWELLING_GROUP_DIR}/Traits.xdb`);
+  check("the group lists the mod's dwelling", groupMembers(group).join() === '/Dwellings/BoneGlade/BoneGlade.(AdvMapDwellingShared).xdb#xpointer(/AdvMapDwellingShared)');
+  const root = text(RPG_ROOT);
+  check('RPGRoot registers it under the id, once, beside the shipped eight', count(root, /<ID>DWELLINGS_TRAITS<\/ID>/g) === 1 && count(root, /<ID>DWELLINGS_/g) === 9 && root.includes(`<Group href="/${DWELLING_GROUP_DIR}/Traits.xdb#xpointer(/AdvMapSharedGroup)"/>`));
+  check('RPGRoot registers nothing for the plain one', !root.includes('DWELLINGS_PLAIN'));
+  check('the group id is the type\'s', dwellingsGroupFor('TOWN_BONE_COURT') === 'DWELLINGS_BONE_COURT');
+  throws('a map dwelling the mod lacks is refused', () => { const m = newCreatureMod(); addFaction(m, spec('Lost', { mapDwellings: ['Nowhere'] })); buildCreatureMod(m, read); }, 'not a dwelling of the mod');
+  check('the checks: a skill by name, a race that is not shipped', factionProblems({ ...spec('X'), ai: { skillsLike: 'TOWN_X', skillValues: { ['HERO_SKILL_LOGISTICS' as unknown as number]: { commander: 1, collectorSupplier: 1, freelancer: 1 } } } }).length === 2);
 }
 
 if (failures) {

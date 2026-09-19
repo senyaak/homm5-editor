@@ -311,10 +311,22 @@ they are a faction's AI PARAMETERS — what it builds and when, what it
 values — and a field of the faction entity (§5) later, editable like the
 rest.
 
-- 8-wide compiled arrays indexed by race (`AIRacesValues`, morale between
-  races, the tavern's order): which ones a twelfth race reads past the end
-  of, and which the DLL has to own. The players-state builder and the
-  hero lists are already read; the AI's valuation is not.
+- 8-wide compiled arrays indexed by race — **SWEPT 2026-09-19** (FACTIONS.md,
+  "What the executable compiled per race"): every `switch (type - 3)` in
+  the image, with what its default arm hands a ninth race. Three matter
+  and are rows of the races file now (`native/faction/race-traits.c`,
+  fields of `FactionSpec`): the AI's worth of a skill (`0xD96BB0` reads
+  `AIRacesValues` for the hero's race, −1 for ours → `ai.skillsLike`, and
+  `ai.skillValues` per skill), the race's alignment (`0xB43E80`, 18
+  callers — morale, joining, six creature bonuses; ours neutral →
+  `alignment`), the random-dwelling group (`DWELLINGS_<RACE>`, two
+  compiled switches, empty for ours → `mapDwellings`, the group document
+  and its `RPGRoot` entry written). There is no "morale between races"
+  table — the morale is the alignment plus a same-race test — and the
+  tavern's order is the enum's. Everything else the sweep found is stats
+  (Ubi.com W/L keys), the engine's own generator (an unknown race becomes
+  random), or the town screen (already ours). Not launched: an AI player
+  of the race (Senya's half).
 - The generator with nine races: `RMGPresetTable` is widened, the port
   (`src/rmg/`) reads the table — does a zone of race 11 come out?
 - Multiplayer: the races file and the mod must match on every client;

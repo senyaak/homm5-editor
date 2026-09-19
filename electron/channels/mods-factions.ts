@@ -71,6 +71,9 @@ function factionSpecOf(p: ModsFactionPayload): FactionSpec {
   if (p.pictures && Object.keys(p.pictures).length) spec.pictures = p.pictures;
   if (p.buildings && Object.keys(p.buildings).length) spec.buildings = p.buildings;
   if (p.script?.trim()) spec.script = p.script;
+  if (p.alignment) spec.alignment = p.alignment;
+  if (p.mapDwellings?.length) spec.mapDwellings = p.mapDwellings;
+  if (p.ai && (p.ai.skillsLike || Object.keys(p.ai.skillValues ?? {}).length)) spec.ai = p.ai;
   return spec;
 }
 
@@ -97,6 +100,7 @@ export function registerModFactions(): void {
       spells: r.spells(),
       masteries: ['MASTERY_NONE', 'MASTERY_BASIC', 'MASTERY_ADVANCED', 'MASTERY_EXPERT'],
       creatures: (mod?.creatures ?? []).map((c) => ({ id: c.id, name: c.name })),
+      dwellings: (mod?.dwellings ?? []).map((d) => ({ id: d.file })),
       exteriorStages: [...EXTERIOR_STAGES],
     };
   });

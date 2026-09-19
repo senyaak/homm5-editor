@@ -60,7 +60,14 @@ pre-release.
   pictures — one pair for every player colour, or a pair per colour. The town's
   ambient loop and the clicks of its buildings as .wav or .ogg files of your
   own, carried inside the mod. Nothing of a faction is the donor's now unless
-  you leave it so. A model of yours that
+  you leave it so. And what the game compiled per race, which no file could
+  say: the race's alignment (good or evil — the army's morale, a neutral
+  stack's will to join and six creature bonuses read it; a race that says
+  nothing is neutral), whose skill values the AI levels a hero of the race
+  up by (the shipped eight are compiled into `Skills.xdb`'s reader; without
+  a choice an AI hero of the race chose blind), and which of the mod's own
+  dwellings a random dwelling of the race becomes on a map — each a row
+  the extension answers where the game's own switch runs out. A model of yours that
   names a document its folder has not is refused by name, not shipped without
   it.
   A building's model can be a file of

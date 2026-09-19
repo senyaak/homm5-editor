@@ -27,6 +27,7 @@ import type { TreeBuilding } from '#src/mods/town-tree.ts';
 import type { MoatSpell, OwnSounds, OwnTracks, SoundSlot, TrackSlot } from '#src/mods/town-type-info.ts';
 import type { IconPictures } from '#src/mods/faction-icons.ts';
 import type { OwnSiegePart, SiegePartName } from '#src/mods/siege-parts.ts';
+import type { FactionAi, SkillValues } from '#src/mods/factions.ts';
 
 const RESOURCES: readonly Resource[] = ['Wood', 'Ore', 'Mercury', 'Crystal', 'Sulfur', 'Gem', 'Gold'];
 const COLUMNS = 5;
@@ -39,6 +40,8 @@ const factionData = async (): Promise<ModsFactionDataResult> => (facData ??= awa
 
 /** The file stem being edited, or '' when the form is making a new one. */
 let editingFile = '';
+/** The AI's per-skill values of the faction being edited — kept as they were; the form has no widget for them yet. */
+let keptSkillValues: Record<number, SkillValues> | undefined;
 /** The donor's tree, once filled; the grid is drawn from it. */
 let tree: FactionTreeDTO | null = null;
 /** Trees of the towns buildings were taken from (`from`), by type. */
@@ -345,6 +348,16 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   fillSelect($select('fac-school-1'), SCHOOLS.map((s) => ({ id: s, label: s.replace('MAGIC_SCHOOL_', '').toLowerCase() })), existing?.magicSchools?.[0] ?? SCHOOLS[2]!);
   fillSelect($select('fac-school-2'), SCHOOLS.map((s) => ({ id: s, label: s.replace('MAGIC_SCHOOL_', '').toLowerCase() })), existing?.magicSchools?.[1] ?? SCHOOLS[1]!);
   showSchools();
+  $select('fac-alignment').value = existing?.alignment ?? '';
+  keptSkillValues = existing?.ai?.skillValues;
+  fillSelect($select('fac-ai-like'), [{ id: '', label: 'none — an AI hero of the race levels up blind' }, ...data.donors.map((d) => ({ id: d.type, label: `${d.label}'s` }))], existing?.ai?.skillsLike ?? '');
+  {
+    const list = $select('fac-map-dwellings');
+    list.replaceChildren(...data.dwellings.map((d) => { const o = document.createElement('option'); o.value = d.id; o.textContent = d.id; return o; }));
+    const want = new Set(existing?.mapDwellings ?? []);
+    for (const o of list.options) o.selected = want.has(o.value);
+    if (!data.dwellings.length) list.title = 'the mod has no dwellings yet — add one under Dwellings… first';
+  }
 
   drawDwellings(data, existing?.dwellings ?? {});
   fillSelect($select('fac-shooter'), [{ id: '', label: 'the donor\'s' }, ...data.creatures.map((c) => ({ id: c.id, label: c.name ? `${c.name} (${c.id})` : c.id }))], existing?.shooter ?? '');
@@ -1178,6 +1191,14 @@ function readPayload(): ModsFactionPayload {
   if (pics) p.pictures = pics;
   const script = (document.getElementById('fac-script') as HTMLTextAreaElement).value;
   if (script.trim()) p.script = script;
+  const alignment = $select('fac-alignment').value;
+  if (alignment === 'good' || alignment === 'evil') p.alignment = alignment;
+  const mapDwellings = [...$select('fac-map-dwellings').selectedOptions].map((o) => o.value);
+  if (mapDwellings.length) p.mapDwellings = mapDwellings;
+  const ai: FactionAi = {};
+  if ($select('fac-ai-like').value) ai.skillsLike = $select('fac-ai-like').value;
+  if (keptSkillValues && Object.keys(keptSkillValues).length) ai.skillValues = keptSkillValues;
+  if (ai.skillsLike || ai.skillValues) p.ai = ai;
   return p;
 }
 
