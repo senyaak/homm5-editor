@@ -323,15 +323,23 @@ static int __fastcall skill_value_hook(void *hero, int skill) {
   int field = role_field(roleOf(hero));
   if (field < 0) return -1;
 
+  int value = -1;
+  int fromRow = 0;
   for (int i = 0; i < g_skillValueCount; i++) {
-    if (g_skillValues[i].town == town && g_skillValues[i].skill == skill) return g_skillValues[i].values[field];
+    if (g_skillValues[i].town == town && g_skillValues[i].skill == skill) { value = g_skillValues[i].values[field]; fromRow = 1; break; }
   }
-  if (t->aiLike < 0) return -1;
-  if (skill < 0 || skill >= *(int *)(g_skillCount + 1)) return -1;
-  BYTE *record = g_skillRecord(skill);
-  if (!record) return -1;
-  int *block = (int *)(record + RECORD_RACE_BLOCKS + (DWORD)(t->aiLike - TOWN_HEAVEN) * RACE_BLOCK_LEN);
-  return block[field + 1];
+  if (!fromRow && t->aiLike >= 0 && skill >= 0 && skill < *(int *)(g_skillCount + 1)) {
+    BYTE *record = g_skillRecord(skill);
+    if (record) {
+      int *block = (int *)(record + RECORD_RACE_BLOCKS + (DWORD)(t->aiLike - TOWN_HEAVEN) * RACE_BLOCK_LEN);
+      value = block[field + 1];
+    }
+  }
+  // Every answer, when asked to speak: a level-up asks about every skill,
+  // and which value won is the whole question a launch has to settle.
+  log_num("race traits: skill ", skill);
+  log_num(fromRow ? "  a row of ours says " : "  the borrowed block says ", value);
+  return value;
 }
 
 // ---------------------------------------------------------------------------
