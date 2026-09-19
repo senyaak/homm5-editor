@@ -15,7 +15,7 @@ import { childText, find, findAll, parse } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
 import { readText } from './data.ts';
 import type { DataRoot } from './data.ts';
-import { RACE_BY_NAME } from './load-template.ts';
+import { raceByName } from './races.ts';
 
 /** A terrain tile document, reduced to what the painter reads. */
 export interface TerrainTileInfo {
@@ -190,9 +190,12 @@ export function readPresets(dataRoot: DataRoot): Map<number, RacePreset> {
         guardStrenght: Number.parseInt(childText(i, 'GuardStrenght'), 10) || 0,
       })).filter((p) => p.href !== '')
     : [];
+  // The rows are keyed by the race enum's names — the install's, so a row a
+  // faction of ours added (`RACE_TEST`) is read like the shipped eight.
+  const races = raceByName(dataRoot);
   for (const item of findAll(objects, 'Item')) {
     const id = childText(item, 'ID');
-    const race = RACE_BY_NAME[id];
+    const race = races[id];
     if (race === undefined) continue;
     const obj = find(item, 'obj');
     const tiles = obj ? find(obj, 'Tiles') : null;

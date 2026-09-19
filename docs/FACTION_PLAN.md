@@ -327,8 +327,18 @@ rest.
   (Ubi.com W/L keys), the engine's own generator (an unknown race becomes
   random), or the town screen (already ours). Not launched: an AI player
   of the race (Senya's half).
-- The generator with nine races: `RMGPresetTable` is widened, the port
-  (`src/rmg/`) reads the table — does a zone of race 11 come out?
+- The generator with nine races — **DONE 2026-09-19** (`src/rmg/races.ts`).
+  Where a ninth race enters the engine's generator: a player's slot (the
+  lobby's list, `RaceCount()` — both the extension's file with the DLL in),
+  a template's `<Setting>` naming it, and the random town's and dwelling's
+  draws over `RaceCount`; NOT the surface/underground zone lists, which are
+  eight constants pushed in `LoadTemplate` (a non-player zone is never ours,
+  in the game or in the port). The port now takes the enum from the
+  install's `types.xml` (`RACE_TEST`, its `TOWN_TEST`) and the slot list
+  from `bin/homm5-editor-races.txt` when the executable imports the
+  extension, so the dialog offers the ninth race and a generation with it
+  matches the game's. The preset row is the faction build's clone of the
+  donor's.
 - Multiplayer: the races file and the mod must match on every client;
   what the lobby compares.
 - Lua: scripts name types by number; `TOWN_TEST` exists in `types.xml`

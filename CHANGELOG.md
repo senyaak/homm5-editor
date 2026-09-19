@@ -67,7 +67,10 @@ pre-release.
   up by (the shipped eight are compiled into `Skills.xdb`'s reader; without
   a choice an AI hero of the race chose blind), and which of the mod's own
   dwellings a random dwelling of the race becomes on a map — each a row
-  the extension answers where the game's own switch runs out. A model of yours that
+  the extension answers where the game's own switch runs out. The random
+  map generator knows the race too: it is offered as a player's race, a
+  template may name it, and a random town or dwelling may draw it, the way
+  the game's own generator does with the extension in. A model of yours that
   names a document its folder has not is refused by name, not shipped without
   it.
   A building's model can be a file of

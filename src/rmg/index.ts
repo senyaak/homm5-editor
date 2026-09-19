@@ -13,11 +13,12 @@ import { join } from 'node:path';
 
 import type { Assets } from '../game/assets.ts';
 import { initProject, packProject } from '../map/project.ts';
-import { TOWN_BY_RACE, buildMapFiles, mapSizes } from './build.ts';
+import { buildMapFiles, mapSizes } from './build.ts';
 import type { MapFile } from './build.ts';
 import type { ChainOptions } from './chain.ts';
 import { toAssets, enumNames } from './data.ts';
 import { installTables } from './install.ts';
+import { slotRaceList, townByRace } from './races.ts';
 import type { RmgInstall } from './install.ts';
 import { runFull } from './run.ts';
 import { availableHeroes, hireableHeroes } from './heroes.ts';
@@ -97,7 +98,7 @@ export function dialogChoices(install: RmgInstall): DialogChoices {
     monsterLevels: enumNames(data, 'MonsterLevel'),
     resourceMultipliers: enumNames(data, 'ResourceMultiplier'),
     expMultipliers: enumNames(data, 'ExpMultiplier'),
-    races: installTables(install).slotRaceList.map((r) => TOWN_BY_RACE[r]).filter((t): t is string => !!t),
+    races: slotRaceList(install).map((r) => townByRace(install.data)[r]).filter((t): t is string => !!t),
     heroes: hireableHeroes(data),
   };
 }
@@ -218,7 +219,8 @@ export function generateMap(install: RmgInstall, order: RmgOrder): GeneratedMap 
   }
   // A NAMED RACE IS THE PLAYER'S: the concrete slot a lobby would have set
   // wins over the draw (`load-template.ts`), and the draw is spent either way.
-  const raceOfTown = new Map(Object.entries(TOWN_BY_RACE).map(([race, town]) => [town, Number(race)]));
+  const towns = townByRace(install.data);
+  const raceOfTown = new Map(Object.entries(towns).map(([race, town]) => [town, Number(race)]));
   const asked = order.races?.slice(0, order.players) ?? [];
   for (const r of asked) {
     if (r !== 'random' && !raceOfTown.has(r)) throw new Error(`${r} is not a race a player can be set to`);
@@ -237,7 +239,7 @@ export function generateMap(install: RmgInstall, order: RmgOrder): GeneratedMap 
   // The heroes, after the run and outside its stream: the players' races
   // are known now, and the engine's stream is what it was with none asked.
   const playerTowns = Array.from({ length: order.players }, (_, i) =>
-    TOWN_BY_RACE[run.c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!);
+    towns[run.c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!);
   let heroes: string[] = [];
   if (order.heroesOfRaces || order.heroes?.length) {
     const offered = availableHeroes({

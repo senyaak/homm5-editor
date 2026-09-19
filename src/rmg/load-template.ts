@@ -55,6 +55,11 @@ export const RACE = {
   DUNGEON: 6, NECROMANCY: 7, INFERNO: 8, DWARF: 9, STRONGHOLD: 10,
 } as const;
 
+/**
+ * The shipped names, for a caller with no data root at hand. A template's
+ * `<Setting>` is resolved against the INSTALL's enum (`races.ts`), which a
+ * faction of ours extends past these.
+ */
 export const RACE_BY_NAME: Record<string, number> = {
   RACE_SPECIAL: 0, RACE_RANDOM_TYPE: 1, RACE_NO_TYPE: 2, RACE_HEAVEN: 3,
   RACE_PRESERVE: 4, RACE_ACADEMY: 5, RACE_DUNGEON: 6, RACE_NECROMANCY: 7,
@@ -149,6 +154,8 @@ export interface LoadTemplateOptions {
     surfaceRaceWhenOneFloor: number | null;
     undergroundRaces: readonly number[];
   };
+  /** `RACE_*` name → value, the install's `types.xml` — a faction of ours is in it. Shipped names when left out. */
+  raceByName?: Record<string, number>;
 }
 
 export interface LoadedTemplate {
@@ -198,7 +205,7 @@ export function loadTemplate(template: RmgTemplate, options: LoadTemplateOptions
   const zones: LoadedZone[] = [];
   const warnings: string[] = [];
   for (const t of byIndex) {
-    const setting = RACE_BY_NAME[t.item.setting];
+    const setting = (options.raceByName ?? RACE_BY_NAME)[t.item.setting];
     if (setting === undefined) throw new Error(`loadTemplate: unknown Setting "${t.item.setting}"`);
 
     let race: number;

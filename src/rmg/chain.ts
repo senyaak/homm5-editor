@@ -15,6 +15,7 @@ import { objectName, withoutPointer } from './exe.ts';
 import type { RmgExeTables } from './exe.ts';
 import { installTables } from './install.ts';
 import type { RmgInstall } from './install.ts';
+import { raceByName, slotRaceList } from './races.ts';
 
 import { readArmyTemplates } from './armies.ts';
 import type { GuardTables } from './armies.ts';
@@ -313,8 +314,10 @@ export interface Chain {
  */
 export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain {
   const dir = toAssets(install.data);
-  // The executable's tables — the install's, read once.
-  const exe = installTables(install);
+  // The executable's tables — the install's, read once. The slot race list
+  // is the install's too, and with the extension in it is the extension's
+  // file, not the compiled eight (races.ts).
+  const exe: RmgExeTables = { ...installTables(install), slotRaceList: slotRaceList(install) };
   // The port names the races symbolically; the numbers behind the names are
   // the image's, checked here so a build that renumbers them fails out loud.
   for (const [name, value] of Object.entries(RACE)) {
@@ -385,6 +388,7 @@ export function runChain(install: RmgInstall, options: ChainOptions = {}): Chain
     playerCount: made.players, mapSize: size, pointLightZoneRadius: params.pointLightParams.zoneRadius,
     players: options.playerRaces ? [...options.playerRaces] : undefined,
     races: exe,
+    raceByName: raceByName(dir),
   }, rng);
   warnings.push(...loaded.warnings);
   phase('loadTemplate');

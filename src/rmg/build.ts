@@ -28,7 +28,7 @@ import { tr24 } from '../exe/x87.ts';
 import { installTables } from './install.ts';
 import type { RmgInstall } from './install.ts';
 import { enumNames, readEnumValues } from './data.ts';
-import { RACE } from './load-template.ts';
+import { townByRace } from './races.ts';
 import { templateFile } from './template-files.ts';
 import { drawMinimap, drawTerrainLayer, waterTile, type MinimapFloor, type WaterTileInput } from './minimap.ts';
 import {
@@ -86,11 +86,8 @@ export interface MapFile {
   data: Buffer;
 }
 
-export const TOWN_BY_RACE: Record<number, string> = {
-  [RACE.HEAVEN]: 'TOWN_HEAVEN', [RACE.PRESERVE]: 'TOWN_PRESERVE', [RACE.ACADEMY]: 'TOWN_ACADEMY',
-  [RACE.DUNGEON]: 'TOWN_DUNGEON', [RACE.NECROMANCY]: 'TOWN_NECROMANCY', [RACE.INFERNO]: 'TOWN_INFERNO',
-  [RACE.DWARF]: 'TOWN_FORTRESS', [RACE.STRONGHOLD]: 'TOWN_STRONGHOLD',
-};
+// The town of a race is the install's enum's (`races.ts`), not a table here:
+// a faction of ours has a race and a town past the shipped eight.
 // The engine's own table, kept where the engine keeps it.
 /** The tile counts by size index, out of the install's executable. */
 export function mapSizes(install: RmgInstall): readonly number[] {
@@ -287,8 +284,9 @@ export function buildMapFiles(
   latePass(run.heightPlane, heightsInput(run), undefined, run.c.arith);
 
   const sizeIndex = c.exe.mapSizes.indexOf(c.size);
+  const towns = townByRace(install.data);
   const races = Array.from({ length: order.players }, (_, i) =>
-    TOWN_BY_RACE[c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!);
+    towns[c.loaded.zones.find((z) => z.playerNo === i + 1)!.race]!);
   const files: MapFile[] = [
     {
       name: 'map.xdb',

@@ -136,6 +136,7 @@
     "test-doc-addresses": "node tools/test-doc-addresses.ts",
     "test-rmg-log-sites": "node tools/reverse/rmg-log-sites.ts --check",
     "test-rmg-tables": "node tools/test-rmg-tables.ts",
+    "test-rmg-races": "node tools/test-rmg-races.ts",
     "test-rmg-random": "node tools/test-rmg-random.ts",
     "test-rmg-template": "node tools/test-rmg-template.ts",
     "test-rmg-write-template": "node tools/test-rmg-write-template.ts",
