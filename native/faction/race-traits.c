@@ -69,6 +69,8 @@
 // skill first. Nothing in the executable is extended in place.
 
 #define MAX_SKILL_VALUE_ROWS 1024
+/** The races the engine compiled its switches for: Haven ... Stronghold. */
+#define SHIPPED_RACES 8
 #define DWELLINGS_NAME_LEN 64
 
 typedef struct {
@@ -181,6 +183,103 @@ static int __fastcall alignment_hook(int town) {
 }
 
 // ---------------------------------------------------------------------------
+// Alignment, the three inline copies in the army's morale.
+//
+// Launch 41 (a probe on the function, since removed) settled it: 0xB45C80 is
+// handed our race and our stacks, but never asks 0xB43E80 — the compiler
+// inlined the switch three times, each with its own byte table and two-arm
+// jump table:
+//
+//   0xB45D05  the hero's side      cmp eax,7 / ja +1C / movzx eax,[eax+B45F30] / jmp [eax*4+B45F28]
+//   0xB45D2B  the stack's side     … B45F40 … B45F38
+//   0xB45DE0  the other stacks'    … B45F50 … B45F48
+//
+// The byte table says 0 (good) or 1 (evil) per shipped race, the jump table
+// the arm for each; a race past the eight takes the `ja` — neutral, which is
+// a different arm at each site (0xB45D26 `xor ecx,ecx`; 0xB45D59 skip the
+// stack; 0xB45E01 `xor ebx,ebx`). So each site gets tables of ours: the
+// compare's bound raised, the byte table with a byte per race of ours (2 for
+// neutral), the jump table with the engine's two arms and the site's own
+// neutral arm third. The four operands are the site's; the arms and the
+// arithmetic stay the engine's.
+
+typedef struct {
+  DWORD cmpRva;        /* `cmp eax,7` */
+  DWORD byteTableRva;  /* the operand of the movzx, as measured */
+  DWORD jumpTableRva;  /* the operand of the jmp, as measured */
+  DWORD neutralRva;    /* the site's `ja` target — the arm a neutral race takes */
+} InlineAlignmentSite;
+
+static const InlineAlignmentSite ALIGNMENT_SITES[3] = {
+  { 0x745d05u, 0x745f30u, 0x745f28u, 0x745d26u },
+  { 0x745d2bu, 0x745f40u, 0x745f38u, 0x745d59u },
+  { 0x745de0u, 0x745f50u, 0x745f48u, 0x745e01u },
+};
+
+static int move_alignment_site(const InlineAlignmentSite *s) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  BYTE *site = base + s->cmpRva;
+  // 83 F8 07 | 77 xx | 0F B6 80 <byte table> | FF 24 85 <jump table>
+  if (site[0] != 0x83 || site[1] != 0xF8 || site[2] != 0x07 || site[3] != 0x77 ||
+      site[5] != 0x0F || site[6] != 0xB6 || site[7] != 0x80 ||
+      site[12] != 0xFF || site[13] != 0x24 || site[14] != 0x85) {
+    log_line("race traits: a morale alignment site is not the one measured - not moving it");
+    return 0;
+  }
+  if (site + 5 + site[4] != base + s->neutralRva) {
+    log_line("race traits: a morale alignment site's neutral arm is not where it was measured");
+    return 0;
+  }
+  BYTE **byteOperand = (BYTE **)(site + 8);
+  DWORD **jumpOperand = (DWORD **)(site + 15);
+  if (*byteOperand != base + s->byteTableRva || *jumpOperand != (DWORD *)(base + s->jumpTableRva)) {
+    log_line("race traits: a morale alignment site's tables are not where they were measured");
+    return 0;
+  }
+
+  int maxIndex = SHIPPED_RACES - 1;
+  for (int i = 0; i < g_traitCount; i++) {
+    if (g_traits[i].alignment >= 0 && g_traits[i].town - TOWN_HEAVEN > maxIndex) maxIndex = g_traits[i].town - TOWN_HEAVEN;
+  }
+  if (maxIndex == SHIPPED_RACES - 1 || maxIndex > 127) return 0;
+
+  int entries = maxIndex + 1;
+  BYTE *page = (BYTE *)VirtualAlloc(NULL, 3 * 4 + (DWORD)entries, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+  if (!page) { log_line("race traits: no memory for a morale table"); return 0; }
+  DWORD *jump = (DWORD *)page;
+  BYTE *bytes = page + 12;
+  jump[0] = *(DWORD *)(base + s->jumpTableRva);
+  jump[1] = *(DWORD *)(base + s->jumpTableRva + 4);
+  jump[2] = (DWORD)(base + s->neutralRva);
+  for (int i = 0; i < SHIPPED_RACES; i++) bytes[i] = *(base + s->byteTableRva + i);
+  for (int i = SHIPPED_RACES; i < entries; i++) bytes[i] = 2;
+  for (int i = 0; i < g_traitCount; i++) {
+    if (g_traits[i].alignment < 0) continue;
+    // 1 good -> arm 0, 2 evil -> arm 1, 0 neutral -> arm 2
+    bytes[g_traits[i].town - TOWN_HEAVEN] = (BYTE)(g_traits[i].alignment ? g_traits[i].alignment - 1 : 2);
+  }
+
+  DWORD old = 0;
+  if (!VirtualProtect(site, 19, PAGE_EXECUTE_READWRITE, &old)) {
+    log_line("race traits: could not make a morale alignment site writable");
+    return 0;
+  }
+  site[2] = (BYTE)maxIndex;
+  *byteOperand = bytes;
+  *jumpOperand = jump;
+  VirtualProtect(site, 19, old, &old);
+  FlushInstructionCache(GetCurrentProcess(), site, 19);
+  return 1;
+}
+
+static int install_morale_alignment(void) {
+  int moved = 0;
+  for (int i = 0; i < 3; i++) moved += move_alignment_site(&ALIGNMENT_SITES[i]);
+  if (moved) log_num("race traits: morale alignment sites moved: ", moved);
+  return moved == 3;
+}
+
+// ---------------------------------------------------------------------------
 // The dwellings group, the function.
 
 /** `add edx,-3 / push esi / mov esi,ecx` — six bytes, three instructions. */
@@ -222,7 +321,6 @@ static const BYTE DWELLINGS_SWITCH_HEAD[12] = {
 #define DWELLINGS_TABLE_RVA 0x753fb4u
 #define DWELLINGS_DEFAULT_RVA 0x753e97u
 #define DWELLINGS_TAIL_RVA 0x753eb3u
-#define SHIPPED_RACES 8
 #define ARM_LEN 19
 
 static int install_dwellings_switch(void) {
@@ -349,49 +447,6 @@ static int __fastcall skill_value_hook(void *hero, int skill) {
 }
 
 // ---------------------------------------------------------------------------
-// A probe on the army's morale, in a build that asks (`--log faction/race-traits`).
-//
-// Launch 40 read every stack's morale as 0 under a hero of a race of ours
-// with creatures of the race, where 0xB45C80 as read — +1 for a stack of the
-// hero's race — says otherwise. So the function itself is watched: what race
-// it is handed for the hero, and what race each stack answers (0xAB98B0:
-// the creature record's +0x98). Nothing is changed; the engine's runs after.
-
-/** `sub esp,18h / push ebx / push ebp / push esi` — six bytes, four instructions. */
-#define ARMY_MORALE_RVA 0x745c80u
-static const BYTE ARMY_MORALE_HEAD[6] = { 0x83, 0xEC, 0x18, 0x53, 0x55, 0x56 };
-/** `mov ecx,[ecx+1Ch] / call <record>` — the stack's creature race. */
-#define STACK_RACE_RVA 0x6b98b0u
-static const BYTE STACK_RACE_HEAD[3] = { 0x8B, 0x49, 0x1C };
-
-typedef void (__fastcall *ArmyMoraleFn)(void *army, int heroRace, int base);
-typedef int (__fastcall *StackRaceFn)(void *stack);
-static ArmyMoraleFn g_armyMorale = NULL;
-static StackRaceFn g_stackRace = NULL;
-
-static void __fastcall army_morale_probe(void *army, int heroRace, int base) {
-  log_num("morale: hero race ", heroRace);
-  log_num("  base ", base);
-  if (readable_bytes(army, 8) >= 8) {
-    void **from = *(void ***)army, **to = *(void ***)((BYTE *)army + 4);
-    for (int i = 0; from + i < to && i < 16; i++) {
-      if (!from[i] || readable_bytes(from[i], 0x20) < 0x20) { log_num("  slot empty ", i); continue; }
-      log_num("  stack race ", g_stackRace(from[i]));
-    }
-  }
-  g_armyMorale(army, heroRace, base);
-}
-
-static int install_morale_probe(void) {
-  if (!LOG_ON) return 0;
-  g_stackRace = (StackRaceFn)code_at(STACK_RACE_RVA, STACK_RACE_HEAD, sizeof STACK_RACE_HEAD, "stack race");
-  if (!g_stackRace) return 0;
-  g_armyMorale = (ArmyMoraleFn)detour(ARMY_MORALE_RVA, ARMY_MORALE_HEAD, sizeof ARMY_MORALE_HEAD,
-                                      &army_morale_probe, "army morale probe");
-  return g_armyMorale != NULL;
-}
-
-// ---------------------------------------------------------------------------
 
 static int install_race_traits(void) {
   if (!g_traitCount) return 0;
@@ -409,7 +464,8 @@ static int install_race_traits(void) {
     g_alignment = (AlignmentFn)detour(ALIGNMENT_RVA, ALIGNMENT_HEAD, sizeof ALIGNMENT_HEAD,
                                       &alignment_hook, "race alignment");
     if (g_alignment) { log_num("race traits: alignments of ours: ", aligned); done++; }
-    if (install_morale_probe()) log_line("race traits: the army's morale is being watched");
+    // The morale never asks the function: its three inlined copies get tables of ours.
+    if (install_morale_alignment()) done++;
   }
 
   if (housed && g_stringCtor) {
