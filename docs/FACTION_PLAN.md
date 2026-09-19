@@ -262,6 +262,21 @@ a random creature. The shape is the extension's: the building is data
 one), the effect a term of the DLL — `OnBuildingBuilt` says it stands, the
 new-week hook puts a stack into the town's hire slots, the hire screen shows
 it. Done after §3–4, and if it works, any faction can be made for real.
+
+Read 2026-09-19, the doors (not launched): a town's hire slots are a vector of
+16-byte entries `{count, vector<creature>}` on the town's base subobject
+(`+0xF8` of the whole; the vector at base `+0x50`, a sibling at `+0x5C`).
+`SetDwellingCreatures(creature, count)` is the base's virtual `+0xFC`
+(`0xACBB70`: find the entry whose list holds the creature, set its count —
+a creature no entry lists is silently nothing, which is what Lua's
+`SetObjectDwellingCreatures` reaches through `CSetDwellingCreaturesCmd`).
+An entry is ADDED by `0xAC39C0(town, &vector<int>)` — the build function
+`0xAC7FF0` calls it for a dwelling's creatures (`0xAC3320`) and again for
+the upgrade (record `+0xA8`); an entry whose first creature is already
+listed is not added twice. So the camp is: `OnBuildingBuilt` for our
+special → `0xAC39C0` with one random creature; the new-week hook → write
+the entry's creature and count in place. Whether the hire screen draws an
+eighth entry is the launch's first question.
 ### 2c. A stage per building — later (Senya, 2026-09-19)
 
 The exterior has ten stages, chosen by the engine from the hall, the walls
@@ -340,9 +355,23 @@ rest.
   matches the game's. The preset row is the faction build's clone of the
   donor's.
 - Multiplayer: the races file and the mod must match on every client;
-  what the lobby compares.
-- Lua: scripts name types by number; `TOWN_TEST` exists in `types.xml`
-  only for the serializer.
+  what the lobby compares. STILL OPEN — it is the lobby's business
+  (h5e-lobby, the agent in native/net/): a client whose races file is one
+  row short seats a different picker, and a client without the mod has no
+  town for the type. The cheap answer is the mod archive's hash and the
+  races file's hash carried in the room's description, compared by our
+  lobby before a game starts; not begun.
+- Lua — DONE 2026-09-19: the faction's script defines `TOWN_<NAME>` as the
+  game's Lua numbers towns (from zero: `GetTownRace` answers the type less
+  three), so a map script compares `GetTownRace(t) == TOWN_TEST` like any
+  shipped one.
+- The launch of 2026-09-19 (an AI player of the race, two weeks): the AI's
+  level-ups ask the hook skill by skill and get Necropolis's values; every
+  stack's morale under a hero of the race read 0, which the morale function
+  (`0xB45C80`, per stack: +1 the hero's race, −2 the opposite side, −1 for
+  an opposite stack in the army, +1 an army of one race, −1 three races)
+  does not predict — the alignment hook logs its askers now; the next
+  launch says whether the morale ever asks about race 11.
 
 ### 5. The faction entity in the editor — started 2026-09-19
 
