@@ -900,7 +900,13 @@ What is done about it — `native/faction/race-traits.c`, rows in
   dwellings the faction names.
 - the AI's skill values: `0xD96BB0` detoured whole; for a race with a row
   the same walk with a shipped race's block (`ai-skills-like`), a
-  `skillvalue` row for one skill first, −1 when the row says nothing.
+  `skillvalue` row for one skill first, −1 when the row says nothing. The
+  window shows the whole table (`src/mods/skill-values.ts` reads
+  `AIRacesValues` off `Skills.xdb`, the mod's own skills after it, the
+  ordinal being the table's place — types.xml lists `SkillID` in the same
+  order, verified by `tools/test-faction-mod.ts`); a race's column is
+  copied in with one press and any cell edited, and a row left blank is
+  the `ai-skills-like` race's.
 
 Not launched yet: an AI player of the race, which was Senya's half of §4
 from the start. What the launch should show: an AI hero of the race

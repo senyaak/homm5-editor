@@ -65,7 +65,10 @@ pre-release.
   stack's will to join and six creature bonuses read it; a race that says
   nothing is neutral), whose skill values the AI levels a hero of the race
   up by (the shipped eight are compiled into `Skills.xdb`'s reader; without
-  a choice an AI hero of the race chose blind), and which of the mod's own
+  a choice an AI hero of the race chose blind) — skill by skill in a table
+  of every skill and perk, the mod's own included, filled from any shipped
+  race's column and edited cell by cell, with a shipped race answering for
+  the rows left blank — and which of the mod's own
   dwellings a random dwelling of the race becomes on a map — each a row
   the extension answers where the game's own switch runs out. The random
   map generator knows the race too: it is offered as a player's race, a

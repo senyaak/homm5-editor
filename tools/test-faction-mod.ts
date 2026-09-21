@@ -27,7 +27,7 @@ import { GRID, SHIPPED_TOWN_TYPES, dwellingsGroupFor, factionProblems, raceFor, 
 import type { FactionSpec } from '../src/mods/factions.ts';
 import { DWELLING_GROUP_DIR, PICKER_DIR, PICKER_TEXTS, PICKER_TEXTURES, RMG_PRESETS, RPG_ROOT, pickerNames } from '../src/mods/faction-files.ts';
 import { racesFileText } from '../src/mods/race-order.ts';
-import { TOWN_SPECS } from '../src/mods/town-files.ts';
+import { SHIPPED_TOWN_ORDINALS, TOWN_SPECS } from '../src/mods/town-files.ts';
 import { RACE_MUSIC, TOWN_TYPES_INFO } from '../src/mods/town-type-info.ts';
 import { HERO_GROUP, TOWN_GROUP, groupMembers } from '../src/mods/shared-groups.ts';
 import { COMMON_SCRIPT } from '../src/mods/artifact-scripts.ts';
@@ -37,6 +37,11 @@ import { readTownTree } from '../src/mods/town-tree.ts';
 import { dataDir } from './game-dir.ts';
 import { pngDataUri } from '../src/format/png.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
+import { SHIPPED_SKILLS, SKILL_TABLE } from '../src/mods/hero-skills.ts';
+import type { ModHeroSkill } from '../src/mods/hero-skills.ts';
+import { readSkillAiRows } from '../src/mods/skill-values.ts';
+import { gameText } from '../src/schema/registry.ts';
+import { assets } from '../src/game/assets.ts';
 import type { BuildReport } from '../src/mods/mod-files.ts';
 
 let failures = 0;
@@ -304,6 +309,27 @@ console.log('what the engine compiled per race — the rows and the group');
   check('the group id is the type\'s', dwellingsGroupFor('TOWN_BONE_COURT') === 'DWELLINGS_BONE_COURT');
   throws('a map dwelling the mod lacks is refused', () => { const m = newCreatureMod(); addFaction(m, spec('Lost', { mapDwellings: ['Nowhere'] })); buildCreatureMod(m, read); }, 'not a dwelling of the mod');
   check('the checks: a skill by name, a race that is not shipped', factionProblems({ ...spec('X'), ai: { skillsLike: 'TOWN_X', skillValues: { ['HERO_SKILL_LOGISTICS' as unknown as number]: { commander: 1, collectorSupplier: 1, freelancer: 1 } } } }).length === 2);
+}
+
+console.log("the AI's skill table — what the window's rows are read from");
+{
+  const table = read(SKILL_TABLE)!.toString('utf8');
+  const textOf = (href: string): string => gameText(assets([dataRoot]), href);
+  const ours: ModHeroSkill = { id: 'HERO_SKILL_BONE_LORE', kind: 'racial', heroClass: 'HERO_CLASS_BONE_LORD', name: 'Bone lore', description: '', aiRace: 'Necropolis', number: SHIPPED_SKILLS };
+  const rows = readSkillAiRows(table, textOf, [ours]);
+  check('every shipped skill but NONE, then ours', rows.length === SHIPPED_SKILLS && rows[0]!.id === 'HERO_SKILL_LOGISTICS' && rows.at(-1)!.id === ours.id);
+  // The ordinal is the enum value: types.xml's map says what it is.
+  const types = read(TYPES)!.toString('utf8');
+  const at = types.indexOf('<TypeName>SkillID</TypeName>');
+  const map = types.slice(at, types.indexOf('</Entries>', at));
+  const ordinalOf = (id: string): number => Number(new RegExp(`<Name>${id}</Name>\\s*<Value>(\\d+)</Value>`).exec(map)?.[1] ?? -1);
+  check('the ordinal is the enum value', rows.every((r) => r.id === ours.id ? r.ordinal === SHIPPED_SKILLS : r.ordinal === ordinalOf(r.id)));
+  const archery = rows.find((r) => r.id === 'HERO_SKILL_ARCHERY')!;
+  check('a perk is marked and named', archery.perk && archery.name === 'Стрельба');
+  check("a race's three, as the record holds them", archery.values.TOWN_PRESERVE!.commander === 4000 && archery.values.TOWN_PRESERVE!.collectorSupplier === 1000 && archery.values.TOWN_DUNGEON!.freelancer === 100);
+  check('a skill is not a perk, and every row is named', !rows.find((r) => r.id === 'HERO_SKILL_LOGISTICS')!.perk && rows.every((r) => r.name));
+  check("ours: its aiRace's numbers and nobody else's", rows.at(-1)!.values.TOWN_NECROMANCY!.commander === 1000 && rows.at(-1)!.values.TOWN_HEAVEN!.commander === 0 && !rows.at(-1)!.perk);
+  check("the eight columns are the shipped towns, in the ordinals' order",Object.keys(archery.values).join() === Object.keys(SHIPPED_TOWN_ORDINALS).join());
 }
 
 if (failures) {

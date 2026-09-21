@@ -188,8 +188,24 @@ export interface ModHeroSkill extends HeroSkillSpec {
   number: number;
 }
 
-/** The eight races the AI values are keyed by, in the shipped order. */
-const AI_RACES = ['Haven', 'Sylvan', 'Academy', 'Dungeon', 'Necropolis', 'Inferno', 'Fortress', 'Stronghold'];
+/**
+ * The eight races the AI values are keyed by, in the shipped order — which is
+ * the town types' order, so the field's place is the race the executable reads
+ * the block by (the record's block is `0x10` per race from Haven's; see
+ * native/faction/race-traits.c).
+ */
+export const AI_RACES: readonly { field: string; town: string }[] = [
+  { field: 'Haven', town: 'TOWN_HEAVEN' }, { field: 'Sylvan', town: 'TOWN_PRESERVE' },
+  { field: 'Academy', town: 'TOWN_ACADEMY' }, { field: 'Dungeon', town: 'TOWN_DUNGEON' },
+  { field: 'Necropolis', town: 'TOWN_NECROMANCY' }, { field: 'Inferno', town: 'TOWN_INFERNO' },
+  { field: 'Fortress', town: 'TOWN_FORTRESS' }, { field: 'Stronghold', town: 'TOWN_STRONGHOLD' },
+];
+
+/** What a shipped race's AI thinks a skill of ours is worth: the Avenger's own numbers for `aiRace`, nothing for the rest. */
+export function skillAiValues(skill: HeroSkillSpec, race: string): { commander: number; collectorSupplier: number; freelancer: number } {
+  const wanted = race === skill.aiRace;
+  return { commander: wanted ? 1000 : 0, collectorSupplier: wanted ? 100 : 0, freelancer: wanted ? 1000 : 0 };
+}
 
 /**
  * Where a skill's own icon is built, and the href the record points at it by.
@@ -355,14 +371,14 @@ export function patchSkillTable(table: string, skills: readonly ModHeroSkill[]):
         '\t\t</SkillPrerequisites>',
       ] : ['\t\t<SkillPrerequisites/>']),
       '\t\t<AIRacesValues>',
-      ...AI_RACES.flatMap((race) => {
-        const wanted = race === s.aiRace;
+      ...AI_RACES.flatMap(({ field }) => {
+        const v = skillAiValues(s, field);
         return [
-          `\t\t\t<${race}>`,
-          `\t\t\t\t<CommanderValue>${wanted ? 1000 : 0}</CommanderValue>`,
-          `\t\t\t\t<CollectorSupplierValue>${wanted ? 100 : 0}</CollectorSupplierValue>`,
-          `\t\t\t\t<FreelancerValue>${wanted ? 1000 : 0}</FreelancerValue>`,
-          `\t\t\t</${race}>`,
+          `\t\t\t<${field}>`,
+          `\t\t\t\t<CommanderValue>${v.commander}</CommanderValue>`,
+          `\t\t\t\t<CollectorSupplierValue>${v.collectorSupplier}</CollectorSupplierValue>`,
+          `\t\t\t\t<FreelancerValue>${v.freelancer}</FreelancerValue>`,
+          `\t\t\t</${field}>`,
         ];
       }),
       '\t\t</AIRacesValues>',

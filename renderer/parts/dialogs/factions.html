@@ -62,14 +62,34 @@
             <!-- What the engine compiled per race and the extension answers
                  from a row: the morale, the joining and six creature bonuses
                  read the alignment; the AI's level-up reads a skill's worth
-                 for the hero's race, which for ours is a shipped race's. -->
+                 for the hero's race, which for ours is the fieldset below. -->
             <label class="on-row"><span>Alignment</span><select id="fac-alignment" title="good or evil: a hero and a creature of opposite sides cost the army two morale, a neutral stack of the other side joins less readily, and six creature bonuses are gated on it; neutral is nobody's side">
               <option value="">neutral</option>
               <option value="good">good — with Haven, Sylvan, Academy, Fortress</option>
               <option value="evil">evil — with Inferno, Necropolis, Dungeon, Stronghold</option>
             </select></label>
-            <label class="on-row"><span>AI values</span><select id="fac-ai-like" title="whose skill values the AI uses for a hero of the race at a level-up (AIRacesValues in Skills.xdb is compiled eight wide); without one an AI hero of the race levels up blind"></select></label>
           </div>
+        </fieldset>
+
+        <!-- AIRacesValues in Skills.xdb is compiled eight wide, so a hero of
+             ours would level up blind: the extension answers a skill's worth
+             from the table below, and for a skill the table leaves blank from
+             the shipped race chosen beside it (native/faction/race-traits.c). -->
+        <fieldset>
+          <legend>The AI — what a hero of the race thinks a skill is worth</legend>
+          <div class="um-note">Three numbers per skill, by the hero's role: a commander fights, a collector/supplier gathers, a freelancer roams. A row left blank is answered by the race chosen here; without one, a blank row is worth nothing. “Fill from” copies a race's whole column so it can be edited.</div>
+          <div class="on-body um-form">
+            <label class="on-row"><span>Blank rows</span><select id="fac-ai-like" title="whose values answer for a skill the table leaves blank"></select></label>
+            <div class="on-row um-span">
+              <span>Fill from</span>
+              <select id="fac-ai-fill-from" title="the shipped race whose column is copied into every row"></select>
+              <button id="fac-ai-fill" class="ghost" title="copy the race's values into every row — they stay editable">Fill</button>
+              <button id="fac-ai-clear" class="ghost" title="blank every row">Clear</button>
+              <input id="fac-ai-filter" type="search" placeholder="find a skill" spellcheck="false" style="flex:1;min-width:0">
+              <span id="fac-ai-count" class="um-note" style="flex:0 0 auto"></span>
+            </div>
+          </div>
+          <div id="fac-ai-table" class="fc-ai"></div>
         </fieldset>
 
         <fieldset>

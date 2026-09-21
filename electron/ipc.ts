@@ -23,6 +23,7 @@ import type { RmgResolvedOrder, RmgWish } from '../src/rmg/service.ts';
 import type { RmgTemplate } from '../src/rmg/template.ts';
 import type { FactionSpec } from '../src/mods/factions.ts';
 import type { TownTree } from '../src/mods/town-tree.ts';
+import type { SkillAiRow } from '../src/mods/skill-values.ts';
 export type { PlaceableObject } from '../src/map/objects.ts';
 
 /**
@@ -1757,7 +1758,14 @@ export interface ModsFactionDataResult {
   dwellings: RosterEntryDTO[];
   /** The ten exterior stages, in the engine's order. */
   exteriorStages: string[];
+  /**
+   * Every skill and perk, the mod's own after the shipped, with what each
+   * shipped race's AI thinks it is worth — the table a race of ours is given a
+   * column of (`ai.skillValues`, by the skill's ordinal).
+   */
+  skillValues: SkillAiRowDTO[];
 }
+export type SkillAiRowDTO = SkillAiRow;
 
 /** Payload of `mods:faction-tree`: a shipped town's building tree, for "fill from donor". */
 export interface ModsFactionTreePayload { donor: string; }

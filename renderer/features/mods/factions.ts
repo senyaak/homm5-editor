@@ -40,8 +40,12 @@ const factionData = async (): Promise<ModsFactionDataResult> => (facData ??= awa
 
 /** The file stem being edited, or '' when the form is making a new one. */
 let editingFile = '';
-/** The AI's per-skill values of the faction being edited — kept as they were; the form has no widget for them yet. */
-let keptSkillValues: Record<number, SkillValues> | undefined;
+/** The three roles a skill is valued by, in the order the record and the `skillvalue` line hold them. */
+const AI_ROLES: readonly { key: keyof SkillValues; label: string; title: string }[] = [
+  { key: 'commander', label: 'commander', title: 'a hero that fights' },
+  { key: 'collectorSupplier', label: 'collector', title: 'a hero that gathers and supplies' },
+  { key: 'freelancer', label: 'freelancer', title: 'a hero that roams' },
+];
 /** The donor's tree, once filled; the grid is drawn from it. */
 let tree: FactionTreeDTO | null = null;
 /** Trees of the towns buildings were taken from (`from`), by type. */
@@ -349,8 +353,9 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   fillSelect($select('fac-school-2'), SCHOOLS.map((s) => ({ id: s, label: s.replace('MAGIC_SCHOOL_', '').toLowerCase() })), existing?.magicSchools?.[1] ?? SCHOOLS[1]!);
   showSchools();
   $select('fac-alignment').value = existing?.alignment ?? '';
-  keptSkillValues = existing?.ai?.skillValues;
-  fillSelect($select('fac-ai-like'), [{ id: '', label: 'none — an AI hero of the race levels up blind' }, ...data.donors.map((d) => ({ id: d.type, label: `${d.label}'s` }))], existing?.ai?.skillsLike ?? '');
+  fillSelect($select('fac-ai-like'), [{ id: '', label: 'nobody — a blank row is worth nothing' }, ...data.donors.map((d) => ({ id: d.type, label: `${d.label}'s` }))], existing?.ai?.skillsLike ?? '');
+  fillSelect($select('fac-ai-fill-from'), data.donors.map((d) => ({ id: d.type, label: d.label })), existing?.ai?.skillsLike || existing?.donor || data.donors[0]!.type);
+  drawSkillValues(data, existing?.ai?.skillValues ?? {});
   {
     const list = $select('fac-map-dwellings');
     list.replaceChildren(...data.dwellings.map((d) => { const o = document.createElement('option'); o.value = d.id; o.textContent = d.id; return o; }));
@@ -419,6 +424,89 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
 
 function showSchools(): void {
   $('fac-schools-row').style.display = $select('fac-magic').value === 'guild' ? '' : 'none';
+}
+
+/**
+ * The AI's skill table: every skill and perk, three numbers each. A blank cell
+ * is nothing said; a row with a number in it is said whole, its blanks as
+ * zero — the `skillvalue` line takes three numbers or none.
+ */
+function drawSkillValues(data: ModsFactionDataResult, current: Record<number, SkillValues>): void {
+  const table = document.createElement('table');
+  const head = table.createTHead().insertRow();
+  head.append(Object.assign(document.createElement('th'), { textContent: 'skill' }));
+  for (const role of AI_ROLES) head.append(Object.assign(document.createElement('th'), { textContent: role.label, title: role.title, className: 'n' }));
+  const body = table.createTBody();
+  for (const row of data.skillValues) {
+    const tr = body.insertRow();
+    tr.dataset.ordinal = String(row.ordinal);
+    tr.dataset.text = `${row.name ?? ''} ${row.id}`.toLowerCase();
+    if (row.perk) tr.classList.add('perk');
+    const skill = tr.insertCell();
+    skill.className = 'skill';
+    skill.title = `${row.id} — ordinal ${row.ordinal}`;
+    skill.append(row.name ?? row.id, Object.assign(document.createElement('small'), { textContent: row.id.replace('HERO_SKILL_', '').toLowerCase() }));
+    const said = current[row.ordinal];
+    for (const role of AI_ROLES) {
+      const td = tr.insertCell();
+      td.className = 'n';
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = '1';
+      input.dataset.role = role.key;
+      input.value = said ? String(said[role.key]) : '';
+      input.oninput = () => { markSaidRow(tr); countSaidRows(); };
+      td.append(input);
+    }
+    markSaidRow(tr);
+  }
+  $('fac-ai-table').replaceChildren(table);
+  filterSkillRows();
+  countSaidRows();
+}
+
+/** A row is said when any of its three has a number. */
+function markSaidRow(tr: HTMLTableRowElement): void {
+  tr.classList.toggle('said', [...tr.querySelectorAll('input')].some((i) => i.value.trim() !== ''));
+}
+
+function countSaidRows(): void {
+  const rows = $('fac-ai-table').querySelectorAll('tbody tr');
+  const said = $('fac-ai-table').querySelectorAll('tbody tr.said').length;
+  $('fac-ai-count').textContent = `${said} of ${rows.length} said`;
+}
+
+function filterSkillRows(): void {
+  const q = $input('fac-ai-filter').value.trim().toLowerCase();
+  for (const tr of $('fac-ai-table').querySelectorAll<HTMLTableRowElement>('tbody tr')) {
+    tr.classList.toggle('hidden', !!q && !(tr.dataset.text ?? '').includes(q));
+  }
+}
+
+/** Every row takes the chosen race's three — or blanks, when `town` is empty. */
+function fillSkillRows(town: string): void {
+  if (!facData) return;
+  const byOrdinal = new Map(facData.skillValues.map((r) => [r.ordinal, r.values[town]]));
+  for (const tr of $('fac-ai-table').querySelectorAll<HTMLTableRowElement>('tbody tr')) {
+    const v = byOrdinal.get(Number(tr.dataset.ordinal));
+    for (const input of tr.querySelectorAll('input')) {
+      input.value = v ? String(v[input.dataset.role as keyof SkillValues]) : '';
+    }
+    markSaidRow(tr);
+  }
+  countSaidRows();
+  formGate().check();
+}
+
+/** What the table says, by ordinal — said rows only, their blanks as zero. */
+function readSkillValues(): Record<number, SkillValues> {
+  const out: Record<number, SkillValues> = {};
+  for (const tr of $('fac-ai-table').querySelectorAll<HTMLTableRowElement>('tbody tr.said')) {
+    const v: SkillValues = { commander: 0, collectorSupplier: 0, freelancer: 0 };
+    for (const input of tr.querySelectorAll('input')) v[input.dataset.role as keyof SkillValues] = Math.trunc(Number(input.value) || 0);
+    out[Number(tr.dataset.ordinal)] = v;
+  }
+  return out;
 }
 
 /** The seven tiers: base and upgrade, out of the mod's creatures. */
@@ -1197,7 +1285,8 @@ function readPayload(): ModsFactionPayload {
   if (mapDwellings.length) p.mapDwellings = mapDwellings;
   const ai: FactionAi = {};
   if ($select('fac-ai-like').value) ai.skillsLike = $select('fac-ai-like').value;
-  if (keptSkillValues && Object.keys(keptSkillValues).length) ai.skillValues = keptSkillValues;
+  const skillValues = readSkillValues();
+  if (Object.keys(skillValues).length) ai.skillValues = skillValues;
   if (ai.skillsLike || ai.skillValues) p.ai = ai;
   return p;
 }
@@ -1258,4 +1347,7 @@ export function initFactionsMod(): void {
     });
   };
   $('fac-moat-add').onclick = () => { if (facData) addMoatSpellRow(facData); };
+  $('fac-ai-fill').onclick = (ev) => { ev.preventDefault(); fillSkillRows($select('fac-ai-fill-from').value); };
+  $('fac-ai-clear').onclick = (ev) => { ev.preventDefault(); fillSkillRows(''); };
+  $('fac-ai-filter').addEventListener('input', filterSkillRows);
 }

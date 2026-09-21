@@ -23,7 +23,10 @@ import type { FactionSpec } from '#src/mods/factions.ts';
 import { EXTERIOR_STAGES, SHIPPED_TOWN_ORDINALS } from '#src/mods/town-files.ts';
 import { readTownTree } from '#src/mods/town-tree.ts';
 import { TOWN_BUILDINGS } from '#src/mods/town-button.ts';
-import { Registry } from '#src/schema/registry.ts';
+import { Registry, gameText } from '#src/schema/registry.ts';
+import { assets } from '#src/game/assets.ts';
+import { SKILL_TABLE } from '#src/mods/hero-skills.ts';
+import { readSkillAiRows } from '#src/mods/skill-values.ts';
 import type { ModFaction } from '#src/mods/factions.ts';
 import type { Installed } from '#src/mods/mod-archive.ts';
 
@@ -91,6 +94,10 @@ export function registerModFactions(): void {
     const r = new Registry(gameData());
     const g = gameRoot();
     const mod = g ? ourMod(g) : null;
+    // The shipped table and the mod's own skills after it, the way the class
+    // form reads them (mods-heroes.ts): the game's data root knows nothing of
+    // a skill of ours, and the manifest holds its number.
+    const data = assets([gameData()]);
     return {
       donors: factionDonors(),
       buildingTypes: [...TOWN_BUILDINGS],
@@ -102,6 +109,7 @@ export function registerModFactions(): void {
       creatures: (mod?.creatures ?? []).map((c) => ({ id: c.id, name: c.name })),
       dwellings: (mod?.dwellings ?? []).map((d) => ({ id: d.file })),
       exteriorStages: [...EXTERIOR_STAGES],
+      skillValues: readSkillAiRows(data.text(SKILL_TABLE) ?? '', (href) => gameText(data, href), mod?.skills ?? []),
     };
   });
 
