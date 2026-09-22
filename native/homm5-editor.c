@@ -121,6 +121,7 @@
 // worth of a skill — answered from a row: after race-order.c (its reader, its
 // string constructor) and call.c (the vtable walk).
 #include "faction/race-traits.c"
+#include "faction/refugee-camp.c"
 #include "net/ubi-log.c"
 #include "net/ubi-module-probe.c"
 #include "net/ubi-friends-probe.c"
@@ -253,6 +254,10 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // A map with a button of ours calls this once at its start, so the map is
   // known here by the time the button is clicked (native/faction/town-button.c).
   add_town_button_map_functions();
+  // And the camp of a faction of ours, for the same reason: four rows the
+  // map calls (native/faction/refugee-camp.c), which have to be in the table
+  // before it is handed over.
+  add_refugee_camp_map_functions();
   install_lua_functions();
   // The same argument, one context over — and the one thing here that a battle
   // has to answer for itself, so it says what it saw whether or not anything

@@ -188,6 +188,7 @@
     "test-shared-groups": "node tools/test-shared-groups.ts",
     "test-magic-kind": "node tools/test-magic-kind.ts",
     "test-town-features": "node tools/test-town-features.ts",
+    "test-camp-script": "node tools/test-camp-script.ts",
     "test-faction-mod": "node tools/test-faction-mod.ts",
     "test-faction-limit": "node tools/test-faction-limit.ts",
     "test-large-address": "node tools/test-large-address.ts",
