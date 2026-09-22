@@ -277,6 +277,66 @@ listed is not added twice. So the camp is: `OnBuildingBuilt` for our
 special → `0xAC39C0` with one random creature; the new-week hook → write
 the entry's creature and count in place. Whether the hire screen draws an
 eighth entry is the launch's first question.
+
+**Read 2026-09-22 — the game's own refugee camp, and the shape decided
+(Senya: a hire screen of our own, its data in a store of ours, not the
+town's hire vector; so no eighth slot at all).**
+
+The shipped camp is `MapObjects/Special/RefugeeCamp.xdb`, an
+`AdvMapDwellingShared` of `Type BUILDING_REFUGEE_CAMP` (94) with a POOL of
+38 creatures (`creatures`, record `+0xFC`), `RandomType` specific. Its
+init (`0xD0E2D0`) builds NO hire entries from the pool for types 0x54,
+0x5E (camp) and 0x5F (conflux) — the other dwellings get one entry per
+listed creature (`0xD0E4C0`, with the race filter at `+0x128` and the
+random-level dice). The camp's entry is rolled by `0xD0E610(fraction,
+flag)`: the world's RNG (`dwelling+0x10 → vt+0x20`, scaled to [0,1) at
+`0xD0EBE8`) picks `pool[int(n·fraction)]`, the entries vector
+(`dwelling+0x11C`, 16-byte `{count, vector<creature>}`) is cleared and
+given that one, its count = the creature record's weekly growth
+(`record+0xA8`). Caller `0xD0E870`, the new-week refresh (four callers).
+The random-RACE dwelling resolution (`0xD0F9B0`) rolls a race out of
+`0xB4E700` = `mov eax,8` — a random-race dwelling on a map never rolls a
+race of ours (a dwelling of a SET race does, through `DWELLINGS_<RACE>`).
+
+The hire screen is ONE screen for towns, dwellings and caravans:
+`HIRE_CREATURES` in `UIGameRoot`'s `<screens>` (`UI/HireCreatures/`, the
+entries in a scrollable `ElementsContainer` — as many as the source
+gives). It is asked for with `CCreateHireScreen` (`0x838700`, `ret 24h`:
+`ecx` = the screen's `+0x5F4` object's `vt[0]()`, `edx` = its `+0x1C`,
+then the HIRE SOURCE, the hero, the army, an `int*`, the sound-screen
+builder (`0x6F1710` a dwelling's, `0x6F1740(shared)` a town's), a pointer
+and three bools) — the dwelling visit at `0x767107` and the town's hire
+at `0x7875B0` and `0x84FB60` build it. The source is a VIRTUAL BASE both
+`CAdvMapTown` and `CAdvMapDwelling` have: `obj + 4 + vbtable[0xC]` (the
+town's at 852, the dwelling's at 352), five slots, the dwelling's real
+functions behind adjustor thunks:
+
+| slot | dwelling | what |
+|---|---|---|
+| +0x00 | `0xD0FFE0` | `vector<Entry>* Entries()` — `this-0x44` |
+| +0x04 | `0xD0FFF0` | `CopyEntries(vector<Entry>* out)` |
+| +0x08 | `0xD100D0` | `Take(creature, count)` — the entry listing it, minus count, floor 0, then `0xBB49C0(this)` |
+| +0x0C | `0xD10150` | `Available(creature)` — the entry's count |
+| +0x10 | `0xD101B0` | `Items(vector<Item44>* out)` — the screen's lines, 0x2C bytes each |
+
+`CHireWindow::Init` (`0x83E340`, arg4 = the source) calls +0x00 and
++0x10; the buy is `CHireCreaturesCmd` (`0x8456F0`: player, hero, army,
+source, creature, count, bool — refcounted pointers), whose Execute
+(`0xC60240`) asks the source `Available(creature) ≥ count`, `0xB433E0(army,
+creature)` for room, pays through the player (`vt+0x94/+0x138/+0x180`),
+`Take`s, and adds the stack (`0xAB9790`) to the army (`vt+0xC`). Before
+that it walks `source+4+vbtable[8]` (the object base) → `vt+4` → `vt+4`
+and compares with the hero's owner (`vt+0x2C`) — the refcount/owner shape
+a source of ours has to carry, as the count window's controller carries
+its (`native/ui/count-window.c`). The command's serializer (`0x797F30`)
+writes the four objects by id — a source without a world id is a
+single-player thing, which Lua already is.
+
+So the camp of ours: a hire-source object of ours (five slots + the base
+shape), its entries from a store of ours keyed by town (game vars, or the
+DLL's), the screen asked for exactly as the dwelling visit asks, from the
+town button (Lua → `H5ECampScreen(town)`); the weekly roll ours. The
+town's own hire vector is never touched.
 ### 2c. A stage per building — later (Senya, 2026-09-19)
 
 The exterior has ten stages, chosen by the engine from the hall, the walls
