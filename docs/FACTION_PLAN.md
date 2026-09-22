@@ -337,6 +337,31 @@ shape), its entries from a store of ours keyed by town (game vars, or the
 DLL's), the screen asked for exactly as the dwelling visit asks, from the
 town button (Lua → `H5ECampScreen(town)`); the weekly roll ours. The
 town's own hire vector is never touched.
+
+**The pieces (Senya, 2026-09-22):** the roll is FULL RANDOM over every
+creature the game has — the mod's own included, read off the creature
+table at its ceiling, not a list — with filters as arguments (the
+building's camp will ask tiers 3–6 later). So:
+
+1. DLL → Lua: `H5ECreatures([minTier, maxTier, …])` — the ids of every
+   creature there is, filtered; Lua rolls from it.
+2. DLL → Lua: `H5ECampScreen(town, creature, count, price?)` — the hire
+   screen on a source of ours; and the readback after it closes
+   (`H5ECampOpen()` / `H5ECampLeft()`, the count window's pattern), because
+   the store has to be the Lua's game vars — the DLL's memory is not in a
+   save, `SetGameVar` is.
+3. The faction's Lua: the camp with three levels for the test town — new
+   week (NEW_DAY, day 1): per town with the building, roll and stock;
+   the button → the screen → write the count back; the level of the
+   building sets the stock (or the tiers).
+
+**TODO, after the camp (Senya, 2026-09-22): the shipped refugee camp's
+pool.** `MapObjects/Special/RefugeeCamp.xdb` lists 38 creatures by name
+(tiers 3–6 of the six original races; Fortress and Stronghold were never
+added), and the roll is `pool[int(38·r)]` — a creature the mod adds never
+shows up there. Fix: the mod build writes its own copy of the record with
+the pool extended, through the same `H5ECreatures` filter (tiers 3–6),
+once that function exists.
 ### 2c. A stage per building — later (Senya, 2026-09-19)
 
 The exterior has ten stages, chosen by the engine from the hall, the walls
