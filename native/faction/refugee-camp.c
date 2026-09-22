@@ -48,13 +48,10 @@
 // id, which ours has none of — so this is a single-player thing, which a map's
 // Lua already is (docs/engineInternals: "Lua в мультиплеере выключен").
 //
-// THE STORE. The stock lives in the map's Lua (game variables are saved, the
-// DLL's memory is not), and the DLL holds a copy per town while the town
-// screen is up: `H5ECampScreen` is told the stock, `Take` changes the copy and
-// marks it, `H5ECampOffers` reads it back and clears the mark. While the mark
-// stands, a stock the Lua repeats is stale and is ignored — the Lua's threads
-// do not run under the town screen (native/faction/town-button.c), so the
-// script cannot have seen the purchase yet.
+// THE STORE IS THE MAP'S GAME VARIABLES, written by this file rather than by
+// the script. They are what a save carries, and a purchase writes its number
+// the moment it happens — see "the store" below for why nothing here waits for
+// the map's Lua to come round: under the town screen it never does.
 
 /** `CCreateHireScreen`'s constructor: `push ebx; push esi; push edi; push 30h; mov edi,edx; mov ebx,ecx`.
  *  (ecx, edx, source, object, army, int*, sound, pointer, bool, bool, bool), `ret 24h`, answers the request. */
@@ -130,41 +127,113 @@ static void *g_sourceEntries = NULL;
 static void *g_sourceCopy = NULL;
 static void *g_sourceItems = NULL;
 
-// --- the store ----------------------------------------------------------------
+// --- the store: the map's own game variables ------------------------------------
+//
+// THE STOCK IS THE MAP'S, not the DLL's, and it is written the moment a
+// purchase happens rather than when a script next gets a turn. The first
+// version of this kept the numbers here and let the map's Lua collect them
+// when the screen closed — and the Lua could not collect them, because the
+// world's scheduler does not run while the town screen is up. A save taken in
+// the town after a purchase would then have carried the stock as it was BEFORE
+// it. So the extension writes the variables itself, through the same table
+// `SetGameVar` writes to: the adventure map's `vt+0x08` is the variables
+// table, and its own `vt+0x08` sets a name to a value (0x5F3E10), `vt+0x04`
+// reads one back (0x5F3C00).
+//
+// The names are the extension's: `h5e.camp.<town>.c1` and `.n1` for each of
+// the three offers. A script that wants them reads them through
+// `H5ECampOffers`, so the spelling is nobody else's business.
 
 #define CAMP_OFFERS 3
-#define CAMP_TOWNS 32
 #define CAMP_NAME_ROOM 64
+#define CAMP_VAR_ROOM (CAMP_NAME_ROOM + 32)
 
-typedef struct {
-  char town[CAMP_NAME_ROOM];
-  int creature[CAMP_OFFERS];
-  int count[CAMP_OFFERS];
-  /** A purchase changed it since the Lua last read it. */
-  int dirty;
-} CampStock;
+/** The adventure map's slot that answers with the variables table. */
+#define VT_MAP_VARIABLES 0x08u
+/** The table's own slots, as `GetGameVar`/`SetGameVar` call them. */
+#define VT_VARS_GET 0x04u
+#define VT_VARS_SET 0x08u
 
-static CampStock g_camps[CAMP_TOWNS];
-static int g_campCount = 0;
+typedef void *(__thiscall *VarsGetFn)(void *table, const NameString *name);
+typedef void (__thiscall *VarsSetFn)(void *table, const NameString *name, const NameString *value);
 
 /* Ours rather than the runtime's: the DLL imports the C library because Zig
-   serves `windows.h` as part of it, and calls none of it (src/mods/extension.ts).
-   Two names and a copy are not worth being the first. */
+   serves `windows.h` as part of it, and calls none of it (src/mods/extension.ts). */
 static int same_name(const char *a, const char *b) {
   for (; *a && *a == *b; a++, b++) { }
   return *a == *b;
 }
 
-static CampStock *camp_of(const char *town, int make) {
-  for (int i = 0; i < g_campCount; i++) if (same_name(g_camps[i].town, town)) return &g_camps[i];
-  if (!make || g_campCount >= CAMP_TOWNS) return NULL;
-  CampStock *c = &g_camps[g_campCount++];
-  for (int i = 0; i < (int)sizeof *c; i++) ((BYTE *)c)[i] = 0;
-  int n = 0;
-  while (town[n] && n < CAMP_NAME_ROOM - 1) { c->town[n] = town[n]; n++; }
-  c->town[n] = 0;
-  return c;
+static void append_text(char *out, int *at, int room, const char *text) {
+  while (*text && *at < room - 1) out[(*at)++] = *text++;
+  out[*at] = 0;
 }
+
+/** `h5e.camp.<town>.<what>`, the name one number of a town's stock is kept under. */
+static void camp_var_name(const char *town, const char *what, char *out, int room) {
+  int at = 0;
+  out[0] = 0;
+  append_text(out, &at, room, "h5e.camp.");
+  append_text(out, &at, room, town);
+  append_text(out, &at, room, ".");
+  append_text(out, &at, room, what);
+}
+
+/** The map's variables table, or nothing when no script has fetched the map yet. */
+static void *camp_variables(void) {
+  void *map = map_without_context();
+  if (!map) return NULL;
+  ObjectSlotFn vars_of = (ObjectSlotFn)vtable_entry(map, VT_MAP_VARIABLES);
+  void *table = vars_of ? vars_of(map) : NULL;
+  return table && town_alive(table) ? table : NULL;
+}
+
+/** One number into the map's variables, as the text a script would have written. */
+static void camp_store_set(const char *town, const char *what, int value) {
+  void *table = camp_variables();
+  if (!table || !g_stringCtor || !g_engineFree) { log_line("refugee camp: nowhere to write the stock"); return; }
+  VarsSetFn set = (VarsSetFn)vtable_entry(table, VT_VARS_SET);
+  if (!set) { log_line("refugee camp: the variables table has no setter where we measured one"); return; }
+  char name[CAMP_VAR_ROOM];
+  camp_var_name(town, what, name, sizeof name);
+  char text[16];
+  int len = 0;
+  num_to_dec(value, text, &len);
+  text[len] = 0;
+  NameString key = { NULL, NULL, NULL };
+  NameString said = { NULL, NULL, NULL };
+  g_stringCtor(&key, NULL, name);
+  g_stringCtor(&said, NULL, text);
+  set(table, &key, &said);
+  if (key.begin) g_engineFree((void *)key.begin);
+  if (said.begin) g_engineFree((void *)said.begin);
+}
+
+/** And back: the number a variable holds, or 0 when it holds nothing readable. */
+static int camp_store_get(const char *town, const char *what) {
+  void *table = camp_variables();
+  if (!table || !g_stringCtor || !g_engineFree) return 0;
+  VarsGetFn get = (VarsGetFn)vtable_entry(table, VT_VARS_GET);
+  if (!get) return 0;
+  char name[CAMP_VAR_ROOM];
+  camp_var_name(town, what, name, sizeof name);
+  NameString key = { NULL, NULL, NULL };
+  g_stringCtor(&key, NULL, name);
+  const NameString *said = (const NameString *)get(table, &key);
+  if (key.begin) g_engineFree((void *)key.begin);
+  if (!readable(said, sizeof *said) || !readable(said->begin, 1) || said->end <= said->begin) return 0;
+  const char *p = said->begin;
+  int value = 0;
+  return read_int(&p, said->end, &value) ? value : 0;
+}
+
+/** Which variable one offer's creature and count are kept under: `c1`/`n1`… */
+static const char *const CAMP_CREATURE_VARS[CAMP_OFFERS] = { "c1", "c2", "c3" };
+static const char *const CAMP_COUNT_VARS[CAMP_OFFERS] = { "n1", "n2", "n3" };
+
+/** The town whose stock is on screen, so a purchase knows which variables to write. */
+static char g_shownTown[CAMP_NAME_ROOM];
+static int g_shownCreature[CAMP_OFFERS];
 
 // --- the source -----------------------------------------------------------------
 //
@@ -194,8 +263,6 @@ static void *g_sourceVtableWithLocator[1 + SOURCE_SLOTS];
 /** `[0]` the vbptr's offset within the object, `[4]` our reference words, `[8]` the town's object base. */
 static int g_sourceVbtable[4];
 
-/** The stock the source is showing, by town, so `Take` knows what to change. */
-static CampStock *g_shown = NULL;
 /** The screen of ours that is up, or nothing — for `H5ECampOpen`. */
 static int g_campOpen = 0;
 
@@ -214,20 +281,20 @@ static void source_free_entries(void) {
  * because the engine copies them with its own vector code and frees what it
  * copied with its own free, and a static of ours handed to that is a crash.
  */
-static int source_fill(const CampStock *stock) {
+static int source_fill(const int *creature, const int *count) {
   source_free_entries();
   int n = 0;
-  for (int i = 0; i < CAMP_OFFERS; i++) if (stock->creature[i] > 0) n++;
+  for (int i = 0; i < CAMP_OFFERS; i++) if (creature[i] > 0) n++;
   if (!n) return 0;
   HireEntry *entries = (HireEntry *)g_allocate(sizeof(HireEntry) * (SIZE_T)n);
   if (!entries) return 0;
   int at = 0;
   for (int i = 0; i < CAMP_OFFERS; i++) {
-    if (stock->creature[i] <= 0) continue;
+    if (creature[i] <= 0) continue;
     int *id = (int *)g_allocate(sizeof(int));
     if (!id) { g_engineFree(entries); return 0; }
-    *id = stock->creature[i];
-    entries[at].count = stock->count[i] < 0 ? 0 : stock->count[i];
+    *id = creature[i];
+    entries[at].count = count[i] < 0 ? 0 : count[i];
     entries[at].begin = id;
     entries[at].end = id + 1;
     entries[at].cap = id + 1;
@@ -249,16 +316,22 @@ static HireEntry *source_entry_of(int creature) {
   return NULL;
 }
 
-/** Slot +0x08: a purchase. The engine's own subtracts and floors at zero; ours also writes the stock down. */
+/**
+ * Slot +0x08: a purchase. The engine's own subtracts and floors at zero; ours
+ * also writes the number into the map's variables THERE AND THEN, so a save
+ * taken without leaving the town screen has it.
+ */
 static void __fastcall source_take(void *self, void *edx, int creature, int count) {
   (void)self; (void)edx;
   HireEntry *e = source_entry_of(creature);
   if (!e) { log_num("refugee camp: a purchase of a creature the stock lacks, ", creature); return; }
   e->count -= count;
   if (e->count < 0) e->count = 0;
-  if (g_shown) {
-    for (int i = 0; i < CAMP_OFFERS; i++) if (g_shown->creature[i] == creature) g_shown->count[i] = e->count;
-    g_shown->dirty = 1;
+  if (g_shownTown[0]) {
+    for (int i = 0; i < CAMP_OFFERS; i++) {
+      if (g_shownCreature[i] != creature) continue;
+      camp_store_set(g_shownTown, CAMP_COUNT_VARS[i], e->count);
+    }
   }
   log_num("refugee camp: bought ", count);
   log_num("              of creature ", creature);
@@ -370,7 +443,7 @@ static BYTE *screen_up_of(DWORD vtableRva) {
  * hero is in; handed to the queue when there is one, to the interface stack
  * otherwise; the town screen told a child is up.
  */
-static int open_camp_screen(CampStock *stock) {
+static int open_camp_screen(const char *townName, const int *creature, const int *count) {
   BYTE *screen = screen_up_of(TOWN_SCREEN_VTABLE_RVA);
   if (!screen) { log_line("H5ECampScreen: the town screen is not the screen on screen"); return 0; }
   if (!readable(screen + TOWN_SCREEN_CHILD_UP, 1) || !readable(screen + TOWN_SCREEN_QUEUE, 4)) return 0;
@@ -379,7 +452,7 @@ static int open_camp_screen(CampStock *stock) {
   if (!town) { log_line("H5ECampScreen: the town screen shows no town"); return 0; }
   char name[CAMP_NAME_ROOM];
   town_name_of(town, name, sizeof name);
-  if (!same_name(name, stock->town)) {
+  if (!same_name(name, townName)) {
     log_text("H5ECampScreen: the screen shows another town: ", name);
     return 0;
   }
@@ -404,8 +477,11 @@ static int open_camp_screen(CampStock *stock) {
   void *army = garrison_of ? garrison_of(owner) : NULL;
   if (!army || !town_alive(army)) { log_line("H5ECampScreen: the town has no garrison to sell into"); return 0; }
   if (!source_build(town)) { log_line("H5ECampScreen: the town's object base is out of reach"); return 0; }
-  if (!source_fill(stock)) { log_line("H5ECampScreen: the stock is empty, nothing to show"); return 0; }
-  g_shown = stock;
+  if (!source_fill(creature, count)) { log_line("H5ECampScreen: the stock is empty, nothing to show"); return 0; }
+  int at = 0;
+  while (townName[at] && at < CAMP_NAME_ROOM - 1) { g_shownTown[at] = townName[at]; at++; }
+  g_shownTown[at] = 0;
+  for (int i = 0; i < CAMP_OFFERS; i++) g_shownCreature[i] = creature[i];
 
   void *sound = g_townSoundBuilder(town_type_of(town));
   int number = 0;
@@ -465,10 +541,13 @@ static void *__fastcall lua_creature_growth(void *ctx) {
 }
 
 /**
- * `H5ECampScreen(town, creature1, count1 [, creature2, count2 [, creature3, count3]])`
- * — the hire screen over that stock, on the town screen that is up. A stock a
- * purchase has changed since the script last read it is kept over what the
- * script says (see THE STORE above).
+ * `H5ECampScreen(town [, creature1, count1, creature2, count2, creature3, count3])`
+ * — the hire screen over the town's stock, on the town screen that is up.
+ *
+ * WITH the pairs it is a fresh stock: they are written into the map's
+ * variables and shown. WITHOUT them the stock already in those variables is
+ * shown — which is what a second visit in the same week is, and what a visit
+ * after a purchase is, without the script having to know either.
  */
 static void *__fastcall lua_camp_screen(void *ctx) {
   if (!refugee_camp_ready()) return NULL;
@@ -478,17 +557,25 @@ static void *__fastcall lua_camp_screen(void *ctx) {
     log_line("H5ECampScreen: takes the town's name first");
     return NULL;
   }
-  CampStock *stock = camp_of(town, 1);
-  if (!stock) { log_line("H5ECampScreen: no room for another town's stock"); return NULL; }
-  if (stock->dirty) {
-    log_text("H5ECampScreen: a purchase the script has not read yet stands, its stock is kept for ", town);
+  int creature[CAMP_OFFERS];
+  int count[CAMP_OFFERS];
+  int said = 0;
+  for (int i = 0; i < CAMP_OFFERS; i++) {
+    creature[i] = 0;
+    count[i] = 0;
+    if (lua_arg_int(ctx, 2 + i * 2, &creature[i]) && lua_arg_int(ctx, 3 + i * 2, &count[i])) said = 1;
+    if (creature[i] < 0) creature[i] = 0;
+    if (count[i] < 0) count[i] = 0;
+  }
+  if (said) {
+    for (int i = 0; i < CAMP_OFFERS; i++) {
+      camp_store_set(town, CAMP_CREATURE_VARS[i], creature[i]);
+      camp_store_set(town, CAMP_COUNT_VARS[i], count[i]);
+    }
   } else {
     for (int i = 0; i < CAMP_OFFERS; i++) {
-      int creature = 0, count = 0;
-      (void)lua_arg_int(ctx, 2 + i * 2, &creature);
-      (void)lua_arg_int(ctx, 3 + i * 2, &count);
-      stock->creature[i] = creature > 0 ? creature : 0;
-      stock->count[i] = count > 0 ? count : 0;
+      creature[i] = camp_store_get(town, CAMP_CREATURE_VARS[i]);
+      count[i] = camp_store_get(town, CAMP_COUNT_VARS[i]);
     }
   }
   if (g_campOpen && screen_up_of(HIRE_SCREEN_VTABLE_RVA)) {
@@ -496,22 +583,20 @@ static void *__fastcall lua_camp_screen(void *ctx) {
     return NULL;
   }
   g_campOpen = 0;
-  (void)open_camp_screen(stock);
+  (void)open_camp_screen(town, creature, count);
   return NULL;
 }
 
-/** `H5ECampOffers(town)` — creature and count, three pairs; and the script has seen every purchase. */
+/** `H5ECampOffers(town)` — what the map's variables say the stock is: creature and count, three pairs. */
 static void *__fastcall lua_camp_offers(void *ctx) {
   void *nameObject = lua_arg_string(ctx, 1);
   char town[CAMP_NAME_ROOM];
   if (!nameObject || !name_string_into((const NameString *)nameObject, town, sizeof town)) return NULL;
-  CampStock *stock = camp_of(town, 0);
   int pushed = 0;
   for (int i = 0; i < CAMP_OFFERS; i++) {
-    pushed += lua_push_int(ctx, stock ? stock->creature[i] : 0);
-    pushed += lua_push_int(ctx, stock ? stock->count[i] : 0);
+    pushed += lua_push_int(ctx, camp_store_get(town, CAMP_CREATURE_VARS[i]));
+    pushed += lua_push_int(ctx, camp_store_get(town, CAMP_COUNT_VARS[i]));
   }
-  if (stock) stock->dirty = 0;
   return (void *)(INT_PTR)pushed;
 }
 
