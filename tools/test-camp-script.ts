@@ -30,10 +30,11 @@ console.log('what it asks the extension for');
   check('the pool is every creature of the tiers, the mod\'s own included', lua.includes('H5ECreatures(BonePit_MIN_TIER, BonePit_MAX_TIER)'));
   check('the tiers are the ones asked for', lua.includes('BonePit_MIN_TIER = 3;') && lua.includes('BonePit_MAX_TIER = 6;'));
   check('a week of the creature is what it stocks', lua.includes('H5ECreatureGrowth(creature)'));
-  check('a fresh stock is handed over whole', lua.includes('H5ECampScreen(town, c1, n1, c2, n2, c3, n3);'));
-  // The store is the extension's, written at the purchase: a second visit in
-  // the same week says nothing and gets what is left.
-  check('a second visit asks for what is kept', lua.includes('H5ECampScreen(town);'));
+  check('the stock it shows is the one it keeps', /H5ECampScreen\(town,[\s\S]*"c3"\), BonePit_Get\(town, "n3"\)\);/.test(lua));
+  // The extension keeps no stock: a purchase is an EVENT, and the arithmetic
+  // that follows it is the script's.
+  check('a purchase is heard and subtracted here', lua.includes('function H5ECampBought(town, creature, count)')
+    && lua.includes('local left = BonePit_Get(town, "n" .. i) - count;'));
   check('nothing waits for a thread that cannot run', !lua.includes('sleep(') && !lua.includes('H5ECampOpen'));
   check('the function the button calls is the building\'s', /\nfunction BonePit\(town\)\n/.test(lua));
   check('the level is the building\'s', lua.includes('GetTownBuildingLevel(town, TB_SPECIAL_1)'));
@@ -53,8 +54,8 @@ console.log('the levels');
 console.log('the stock is the map\'s, per town');
 {
   check('kept in game variables under the town\'s name', lua.includes('"h5e.BonePit." .. town .. "." .. what'));
-  check('a week already rolled is not rolled again', lua.includes('BonePit_Get(town, "week") == week'));
-  check('the week is the only number the script keeps', !/_Set\(town, "[cn]/.test(lua));
+  check('a week already rolled is not rolled again', lua.includes('BonePit_Get(town, "week") ~= week'));
+  check("the stock is the script's own to write",/_Set\(town, "c1", c1\);/.test(lua) && /_Set\(town, "n" \.\. i, left\);/.test(lua));
   check('and a month is four weeks on, so the week is not four forever', lua.includes('GetDate(WEEK) + GetDate(MONTH) * 4'));
 }
 
