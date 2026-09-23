@@ -200,6 +200,10 @@ static int source_fill(const int *creature, const int *count, int offers) {
   v->begin = entries;
   v->end = entries + n;
   v->cap = entries + n;
+  for (HireEntry *e = v->begin; e < v->end; e++) {
+    log_num("hire screen: the list holds creature ", *e->begin);
+    log_num("hire screen:                    count ", e->count);
+  }
   return n;
 }
 
@@ -225,7 +229,15 @@ static void __fastcall source_take(void *self, void *edx, int creature, int coun
 static int __fastcall source_available(void *self, void *edx, int creature) {
   (void)self; (void)edx;
   HireEntry *e = source_entry_of(creature);
+  log_num("hire screen: asked how many of creature ", creature);
+  log_num("hire screen:                    answered ", e ? e->count : 0);
   return e ? e->count : 0;
+}
+
+/** Slot +0x10: the screen's lines, the engine's own — with a word about being asked. */
+static int __fastcall source_items(void *self, void *edx, void *out) {
+  log_line("hire screen: the screen asked for the lines");
+  return ((int(__fastcall *)(void *, void *, void *))g_sourceItems)(self, edx, out);
 }
 
 /** A slot the engine asked that was not measured — named, so the run says which. */
@@ -260,7 +272,7 @@ static int source_build(BYTE *townInterface) {
   g_sourceVtable[0x04 / 4] = g_sourceCopy;
   g_sourceVtable[0x08 / 4] = (void *)&source_take;
   g_sourceVtable[0x0C / 4] = (void *)&source_available;
-  g_sourceVtable[0x10 / 4] = g_sourceItems;
+  g_sourceVtable[0x10 / 4] = (void *)&source_items;
   g_sourceVtableWithLocator[0] = NULL;
 
   BYTE *self = SOURCE_OBJECT;
@@ -306,6 +318,20 @@ static int __fastcall hire_execute_hook(void *cmd, void *edx) {
   if (readable(cmd, CMD_COUNT + 4) && *(void **)((BYTE *)cmd + CMD_SOURCE) == (void *)SOURCE_OBJECT) {
     int creature = *(int *)((BYTE *)cmd + CMD_CREATURE);
     int count = *(int *)((BYTE *)cmd + CMD_COUNT);
+    /* THE ENGINE'S OWN GUARD WAS IN WHAT WE SKIPPED: its Execute refuses a
+       purchase bigger than `Available`, and ours did not — launch 44 bought
+       ten swordsmen twice out of a list that held ten. What is left is the
+       list's, and nothing else may be sold. */
+    HireEntry *e = source_entry_of(creature);
+    int left = e ? e->count : 0;
+    if (left <= 0) {
+      log_num("hire screen: nothing left of creature ", creature);
+      return 0;
+    }
+    if (count > left) {
+      log_num("hire screen: asked for more than there is, giving what is left of creature ", creature);
+      count = left;
+    }
     log_num("hire screen: the player bought ", count);
     log_num("             of creature ", creature);
     source_take(NULL, NULL, creature, count);
