@@ -35,7 +35,10 @@ console.log('what it asks the extension for — two doors and no more');
   check("the pool is every creature of the tiers, the mod's own included", lua.includes('H5ECreatures(BonePit_MIN_TIER, BonePit_MAX_TIER)'));
   check('the tiers are the ones asked for', lua.includes('BonePit_MIN_TIER = 3;') && lua.includes('BonePit_MAX_TIER = 6;'));
   check('a week of the creature is what it stocks', lua.includes('H5ECreatureGrowth(creature)'));
-  check('the screen is given a list and nothing else', lua.includes('H5EHireScreen(\n') && !lua.includes('H5EHireScreen(town'));
+  check('the screen is given a list and nothing else', lua.includes('H5EHireScreen(c1, n1, c2, n2, c3, n3);') && !lua.includes('H5EHireScreen(town'));
+  // The week rolls all three; the level only opens them.
+  check('the week rolls the whole stock', lua.includes('function BonePit_Roll(town)') && !lua.includes('BonePit_Roll(town, rule.offers)'));
+  check('the level opens what the week rolled', lua.includes('if rule.offers > 1 then') && lua.includes('if rule.offers > 2 then'));
   check('nothing waits for a thread that cannot run', !lua.includes('sleep(') && !lua.includes('H5EHireOpen'));
   check("the function the button calls is the building's", /\nfunction BonePit\(town\)\n/.test(lua));
   check("the level is the building's", lua.includes('GetTownBuildingLevel(town, TOWN_BUILDING_SPECIAL_1)'));
@@ -93,7 +96,10 @@ console.log("every name of the game's the script reads is declared");
     // unknown name H5EC and the check drowns in its own noise. It was written
     // through a heredoc once, which ate the escape and left a real backspace
     // byte — the check then matched nothing at all and passed everything.
-    const used = new Set([...lua.matchAll(/\b([A-Z][A-Z0-9_]{2,})\b/g)].map((m) => m[1]!));
+    // COMMENTS ARE NOT CODE: a sentence in capitals inside one is not a name
+    // the game has to know (it read "ALL THREE" as two of them).
+    const code = lua.split(String.fromCharCode(10)).map((l) => l.replace(/--.*$/, '')).join(String.fromCharCode(10));
+    const used = new Set([...code.matchAll(/\b([A-Z][A-Z0-9_]{2,})\b/g)].map((m) => m[1]!));
     const unknown = [...used].filter((name) => !declared.has(name) && !ours.has(name));
     check('no name the game has never heard of', unknown.length === 0, unknown.join(', '));
     check('the building is named the way a map names one', lua.includes(`GetTownBuildingLevel(town, ${luaBuildingName('TB_SPECIAL_1')})`));
