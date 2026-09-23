@@ -88,6 +88,7 @@
 #include "lua/hero-spells.c"
 #include "lua/adv-cast.c"
 #include "ui/count-window.c"
+#include "lua/creatures.c"
 #include "qol/quick-split-gestures.c"
 #include "qol/stack-plates.c"
 #include "qol/combat-ai.c"
@@ -121,7 +122,7 @@
 // worth of a skill — answered from a row: after race-order.c (its reader, its
 // string constructor) and call.c (the vtable walk).
 #include "faction/race-traits.c"
-#include "faction/refugee-camp.c"
+#include "ui/hire-screen.c"
 #include "net/ubi-log.c"
 #include "net/ubi-module-probe.c"
 #include "net/ubi-friends-probe.c"
@@ -227,6 +228,9 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // Rows first, then the copy: what a feature further down the file adds to the
   // table has to be in it before the engine is handed the table.
   install_count_window();
+  // The purchase in a hire screen of ours is the script's, not the engine's
+  // (native/ui/hire-screen.c).
+  install_hire_screen();
   install_hero_specialization();
   // BEFORE the table is copied, not after: this adds a row of its own
   // (H5EAnswer, which is how a script's verdict comes back), and a row added
@@ -254,10 +258,11 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // A map with a button of ours calls this once at its start, so the map is
   // known here by the time the button is clicked (native/faction/town-button.c).
   add_town_button_map_functions();
-  // And the camp of a faction of ours, for the same reason: four rows the
-  // map calls (native/faction/refugee-camp.c), which have to be in the table
-  // before it is handed over.
-  add_refugee_camp_map_functions();
+  // The creatures a script may choose from, and the hire screen it may put
+  // up over a list of them — rows like the rest, in the table before it is
+  // handed over (native/lua/creatures.c, native/ui/hire-screen.c).
+  add_creature_map_functions();
+  add_hire_screen_map_functions();
   install_lua_functions();
   // The same argument, one context over — and the one thing here that a battle
   // has to answer for itself, so it says what it saw whether or not anything

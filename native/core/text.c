@@ -35,6 +35,21 @@ static void num_to_dec(int v, char *out, int *len) {
   *len = i;
 }
 
+/** Append text to a line being built, stopping at the room there is. */
+static void append_text(char *out, int *at, int room, const char *text) {
+  while (*text && *at < room - 1) out[(*at)++] = *text++;
+  out[*at] = 0;
+}
+
+/** The same, for a number — what a line of Lua of ours writes its arguments with. */
+static void append_num(char *out, int *at, int room, int value) {
+  char text[12];
+  int len = 0;
+  num_to_dec(value, text, &len);
+  text[len] = 0;
+  append_text(out, at, room, text);
+}
+
 /**
  * Match `word` at `p` and step past it and its spaces. Returns 0 if it is not
  * there, leaving `p` where it was — so a line can be tried against several.

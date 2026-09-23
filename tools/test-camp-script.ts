@@ -25,19 +25,25 @@ console.log('the camp script');
   check('no `false` — this dialect has none', !/\bfalse\b/.test(lua));
 }
 
-console.log('what it asks the extension for');
+console.log('what it asks the extension for — two doors and no more');
 {
-  check('the pool is every creature of the tiers, the mod\'s own included', lua.includes('H5ECreatures(BonePit_MIN_TIER, BonePit_MAX_TIER)'));
+  check("the pool is every creature of the tiers, the mod's own included", lua.includes('H5ECreatures(BonePit_MIN_TIER, BonePit_MAX_TIER)'));
   check('the tiers are the ones asked for', lua.includes('BonePit_MIN_TIER = 3;') && lua.includes('BonePit_MAX_TIER = 6;'));
   check('a week of the creature is what it stocks', lua.includes('H5ECreatureGrowth(creature)'));
-  check('the stock it shows is the one it keeps', /H5ECampScreen\(town,[\s\S]*"c3"\), BonePit_Get\(town, "n3"\)\);/.test(lua));
-  // The extension keeps no stock: a purchase is an EVENT, and the arithmetic
-  // that follows it is the script's.
-  check('a purchase is heard and subtracted here', lua.includes('function H5ECampBought(town, creature, count)')
-    && lua.includes('local left = BonePit_Get(town, "n" .. i) - count;'));
-  check('nothing waits for a thread that cannot run', !lua.includes('sleep(') && !lua.includes('H5ECampOpen'));
-  check('the function the button calls is the building\'s', /\nfunction BonePit\(town\)\n/.test(lua));
-  check('the level is the building\'s', lua.includes('GetTownBuildingLevel(town, TB_SPECIAL_1)'));
+  check('the screen is given a list and nothing else', lua.includes('H5EHireScreen(\n') && !lua.includes('H5EHireScreen(town'));
+  check('nothing waits for a thread that cannot run', !lua.includes('sleep(') && !lua.includes('H5EHireOpen'));
+  check("the function the button calls is the building's", /\nfunction BonePit\(town\)\n/.test(lua));
+  check("the level is the building's", lua.includes('GetTownBuildingLevel(town, TB_SPECIAL_1)'));
+}
+
+console.log("the purchase is the script's whole business");
+{
+  check('it hears the event', lua.includes('function H5EHireBought(creature, count)'));
+  check('it charges the price, by the level', lua.includes('H5ECreatureCost(creature) * count * BonePit_PRICE')
+    && lua.includes('SetPlayerResource(player, GOLD, purse - price);'));
+  check('it refuses what the player cannot afford', lua.includes('if purse < price then'));
+  check('it gives the creatures to the town', lua.includes('AddObjectCreatures(town, creature, count);'));
+  check('and writes down what is left', lua.includes('local left = BonePit_Get(town, "n" .. i) - count;'));
 }
 
 console.log('the levels');
@@ -55,7 +61,7 @@ console.log('the stock is the map\'s, per town');
 {
   check('kept in game variables under the town\'s name', lua.includes('"h5e.BonePit." .. town .. "." .. what'));
   check('a week already rolled is not rolled again', lua.includes('BonePit_Get(town, "week") ~= week'));
-  check("the stock is the script's own to write",/_Set\(town, "c1", c1\);/.test(lua) && /_Set\(town, "n" \.\. i, left\);/.test(lua));
+  check("the stock is the script's own to write", /_Set\(town, "c" \.\. i, creature\);/.test(lua) && /_Set\(town, "n" \.\. i, left\);/.test(lua));
   check('and a month is four weeks on, so the week is not four forever', lua.includes('GetDate(WEEK) + GetDate(MONTH) * 4'));
 }
 

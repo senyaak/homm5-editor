@@ -704,9 +704,8 @@ static const BYTE SIGN_NUMBER_HEAD[6] = { 0x81, 0xEC, 0x80, 0x00, 0x00, 0x00 };
 // Three steps and the last one picks which of four pictures by `edx`; the
 // necromancer's sign uses 0, so ours does.
 
-/** A creature's record from its number — `__fastcall(creature)`. */
-#define CREATURE_RECORD_RVA 0x727630u
-static const BYTE CREATURE_RECORD_HEAD[5] = { 0x56, 0x8B, 0xF1, 0x85, 0xF6 };
+/* A creature's record from its number: `CREATURE_RECORD_RVA` is anchored by
+   native/lua/creatures.c, which this file follows. */
 /** What holds its pictures, from `record + 0xF4` — `__fastcall(that)`. */
 #define CREATURE_VISUALS_RVA 0x1c8ad0u
 static const BYTE CREATURE_VISUALS_HEAD[5] = { 0xA0, 0x8E, 0xBC, 0x10, 0x01 };

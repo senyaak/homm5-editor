@@ -1,34 +1,40 @@
-// The refugee camp's Lua: a building of a faction that hires whatever it rolled.
+// The refugee camp's Lua — the whole feature, written where a feature belongs.
 //
 // The engine's own camp is a POOL of 38 creatures written into
-// `MapObjects/Special/RefugeeCamp.xdb`, rolled once a week, sold through the
-// hire screen (docs/FACTION_PLAN.md §2b). A camp of ours is the same idea with
-// none of the data: the roll is over every creature the game has — the mod's
-// own included — because the extension reads the creature table to its ceiling
-// (`H5ECreatures`), and the screen is the game's own over a source of ours
-// (`H5ECampScreen`, native/faction/refugee-camp.c).
+// `MapObjects/Special/RefugeeCamp.xdb`, rolled once a week and sold through
+// the hire screen (docs/FACTION_PLAN.md §2b). A camp of ours is the same idea
+// and none of the same data: what the extension lends is two doors the map's
+// Lua does not have —
 //
-// WHERE THE STOCK LIVES. In the map's game variables, which a save carries, and
-// THIS SCRIPT writes them — the extension keeps no stock of its own. It only
-// opens the screen and says what happened in it: every purchase comes back as
-// `H5ECampBought(town, creature, count)` while the screen is still up, which is
-// what makes the arithmetic the script's and lets a save taken in the town have
-// the true numbers. Nothing here waits for a thread to be resumed; under a town
-// screen the map's scheduler does not run.
+//   H5ECreatures(minTier, maxTier)   every creature the table holds, the mod's
+//                                    own included, so a roll is not a list
+//                                    somebody has to keep up to date;
+//   H5EHireScreen(creature, count,…) the game's own hire screen over a list of
+//                                    ours, and `H5EHireBought(creature, count)`
+//                                    back when the player buys.
+//
+// — and everything else is here: the week, the roll, the stock, the price, who
+// pays and who receives. The extension holds no state and knows nothing about
+// camps; the same two doors serve a caravan, a black market or a quest reward
+// written tomorrow, in Lua, without a new DLL.
+//
+// WHERE THE STOCK LIVES. In the map's game variables, which a save carries.
+// The purchase event arrives while the screen is still up (the extension runs
+// the line and ticks the scheduler once, as the town button does), so what is
+// left is written down at the moment it changes — a save taken in the town has
+// the true numbers.
 //
 // WHY THE WEEK IS CHECKED ON THE CLICK, not on a new-day trigger. The stock is
 // only ever looked at through the building, so rolling when it is opened is the
 // same stock the player would have seen, and it needs no list of the towns on
-// the map — the click brings the town's name. A week that has already been
-// rolled is read back, so two clicks in a week show one stock.
+// the map — the click brings the town's name.
 //
-// THE LEVELS. The building has three, and the level decides HOW MANY offers
-// there are and what the price is worth: one at double, two at the ordinary
-// price, three at half (Senya, 2026-09-22). The price is the creature's own
-// until the extension can multiply it — a term of its own, next — so the
-// multiplier is written down here and does nothing yet.
+// THE LEVELS. The building has three, and the level decides how many offers
+// there are and what they cost: one at double price, two at the ordinary one,
+// three at half (Senya, 2026-09-22). The price is the script's now — the
+// engine pays nothing for a screen of ours — so the multiplier is real.
 
-/** What a camp of that level offers: how many creatures, and the price they go at. */
+/** What a camp of that level offers: how many creatures, and what they cost. */
 export interface CampLevel {
   offers: number;
   price: number;
@@ -61,42 +67,46 @@ export interface CampScript {
  *
  * Written in Lua 4's own grammar: no `return` on its own, the comma inside a
  * table constructor, `nil` where a modern dialect would say `false` (there is
- * no `false` here — see docs/NAMES_AND_SCRIPTING.md and src/script/lua-lint.ts).
+ * no `false` here), and none of the standard library — this engine registers
+ * almost none of it (docs/NAMES_AND_SCRIPTING.md, src/script/lua-lint.ts).
  */
 export function campScript(spec: CampScript): string {
   const min = spec.minTier ?? 1;
   const max = spec.maxTier ?? 7;
   const levels = CAMP_LEVELS.map((l) => `{ offers = ${l.offers}, price = ${l.price} }`).join(', ');
+  const n = spec.lua;
   return [
-    `-- The refugee camp of ${spec.lua}: what it sells, rolled once a week.`,
-    `${spec.lua}_LEVELS = { ${levels} };`,
-    `${spec.lua}_MIN_TIER = ${min};`,
-    `${spec.lua}_MAX_TIER = ${max};`,
+    `-- The refugee camp of ${n}: what it sells, rolled once a week.`,
+    `${n}_LEVELS = { ${levels} };`,
+    `${n}_MIN_TIER = ${min};`,
+    `${n}_MAX_TIER = ${max};`,
+    '-- The town whose camp is open, and its price, for the purchase that comes back.',
+    `${n}_TOWN = "";`,
+    `${n}_PRICE = 1;`,
     '',
-    '-- One number of the town\'s stock, and where it is kept.',
-    `function ${spec.lua}_Var(town, what)`,
-    `  return "h5e.${spec.lua}." .. town .. "." .. what;`,
+    "-- One number of the town's stock, and where it is kept.",
+    `function ${n}_Var(town, what)`,
+    `  return "h5e.${n}." .. town .. "." .. what;`,
     'end;',
     '',
-    `function ${spec.lua}_Get(town, what)`,
-    `  local said = GetGameVar(${spec.lua}_Var(town, what));`,
+    `function ${n}_Get(town, what)`,
+    `  local said = GetGameVar(${n}_Var(town, what));`,
     // NO `tonumber`: this engine registers almost none of the standard library
-    // and that is one of the names it does not have (src/script/lua-lint.ts).
-    // A variable never set answers with the empty string — what the shipped
-    // scripts test for — and arithmetic on a numeric string is the dialect's
-    // own coercion.
+    // and that is one of the names it does not have. A variable never set
+    // answers with the empty string — what the shipped scripts test for — and
+    // arithmetic on a numeric string is the dialect's own coercion.
     '  if said == "" then',
     '    return 0;',
     '  end;',
     '  return said + 0;',
     'end;',
     '',
-    `function ${spec.lua}_Set(town, what, value)`,
-    `  SetGameVar(${spec.lua}_Var(town, what), value);`,
+    `function ${n}_Set(town, what, value)`,
+    `  SetGameVar(${n}_Var(town, what), value);`,
     'end;',
     '',
-    '-- One creature of the tiers this camp draws from, and how many of it a week brings.',
-    `function ${spec.lua}_One(pool, poolSize)`,
+    '-- One creature of the tiers this camp draws from, and a week of it.',
+    `function ${n}_One(pool, poolSize)`,
     '  local at = random(poolSize) + 1;',
     '  local creature = pool[at];',
     '  local count = H5ECreatureGrowth(creature);',
@@ -106,10 +116,10 @@ export function campScript(spec: CampScript): string {
     '  return creature, count;',
     'end;',
     '',
-    '-- A new week replaces the stock, and the script writes it down.',
-    `function ${spec.lua}_Roll(town, offers)`,
-    `  local pool = { H5ECreatures(${spec.lua}_MIN_TIER, ${spec.lua}_MAX_TIER) };`,
-    // No `getn` in this engine's Lua either, so the pool is counted by walking it.
+    '-- A new week replaces the stock.',
+    `function ${n}_Roll(town, offers)`,
+    `  local pool = { H5ECreatures(${n}_MIN_TIER, ${n}_MAX_TIER) };`,
+    // No `getn` here either, so the pool is counted by walking it.
     '  local poolSize = 0;',
     '  while pool[poolSize + 1] ~= nil do',
     '    poolSize = poolSize + 1;',
@@ -117,54 +127,63 @@ export function campScript(spec: CampScript): string {
     '  if poolSize < 1 then',
     '    return nil;',
     '  end;',
-    '  local c1, n1 = 0, 0;',
-    '  local c2, n2 = 0, 0;',
-    '  local c3, n3 = 0, 0;',
-    `  c1, n1 = ${spec.lua}_One(pool, poolSize);`,
-    '  if offers > 1 then',
-    `    c2, n2 = ${spec.lua}_One(pool, poolSize);`,
+    '  local i = 1;',
+    '  while i <= 3 do',
+    '    local creature = 0;',
+    '    local count = 0;',
+    '    if i <= offers then',
+    `      creature, count = ${n}_One(pool, poolSize);`,
+    '    end;',
+    `    ${n}_Set(town, "c" .. i, creature);`,
+    `    ${n}_Set(town, "n" .. i, count);`,
+    '    i = i + 1;',
     '  end;',
-    '  if offers > 2 then',
-    `    c3, n3 = ${spec.lua}_One(pool, poolSize);`,
-    '  end;',
-    `  ${spec.lua}_Set(town, "c1", c1);`,
-    `  ${spec.lua}_Set(town, "n1", n1);`,
-    `  ${spec.lua}_Set(town, "c2", c2);`,
-    `  ${spec.lua}_Set(town, "n2", n2);`,
-    `  ${spec.lua}_Set(town, "c3", c3);`,
-    `  ${spec.lua}_Set(town, "n3", n3);`,
     'end;',
     '',
     '-- The click: a stock for this week if there is none, then the screen.',
-    `function ${spec.lua}(town)`,
+    `function ${n}(town)`,
     `  local level = GetTownBuildingLevel(town, ${spec.building});`,
-    `  local rule = ${spec.lua}_LEVELS[level];`,
+    `  local rule = ${n}_LEVELS[level];`,
     '  if rule == nil then',
     '    return nil;',
     '  end;',
     '  local week = GetDate(WEEK) + GetDate(MONTH) * 4;',
-    `  if ${spec.lua}_Get(town, "week") ~= week then`,
-    `    ${spec.lua}_Set(town, "week", week);`,
-    `    ${spec.lua}_Roll(town, rule.offers);`,
+    `  if ${n}_Get(town, "week") ~= week then`,
+    `    ${n}_Set(town, "week", week);`,
+    `    ${n}_Roll(town, rule.offers);`,
     '  end;',
-    '  H5ECampScreen(town,',
-    `    ${spec.lua}_Get(town, "c1"), ${spec.lua}_Get(town, "n1"),`,
-    `    ${spec.lua}_Get(town, "c2"), ${spec.lua}_Get(town, "n2"),`,
-    `    ${spec.lua}_Get(town, "c3"), ${spec.lua}_Get(town, "n3"));`,
+    `  ${n}_TOWN = town;`,
+    `  ${n}_PRICE = rule.price;`,
+    '  H5EHireScreen(',
+    `    ${n}_Get(town, "c1"), ${n}_Get(town, "n1"),`,
+    `    ${n}_Get(town, "c2"), ${n}_Get(town, "n2"),`,
+    `    ${n}_Get(town, "c3"), ${n}_Get(town, "n3"));`,
     'end;',
     '',
-    '-- A purchase, said by the extension while the screen is still up. The',
-    '-- creature says which offer it was; what is left is written down at once,',
-    '-- so a save taken in the town has it.',
-    'function H5ECampBought(town, creature, count)',
+    '-- The purchase, said by the extension while the screen is still up. The',
+    '-- engine pays nothing and gives nothing for a screen of ours, so this is',
+    '-- the whole transaction: the gold, the creatures, and what is left.',
+    'function H5EHireBought(creature, count)',
+    `  local town = ${n}_TOWN;`,
+    '  if town == "" then',
+    '    return nil;',
+    '  end;',
+    '  local player = GetObjectOwner(town);',
+    `  local price = H5ECreatureCost(creature) * count * ${n}_PRICE;`,
+    '  local purse = GetPlayerResource(player, GOLD);',
+    '  if purse < price then',
+    '    return nil;',
+    '  end;',
+    '  SetPlayerResource(player, GOLD, purse - price);',
+    '  AddObjectCreatures(town, creature, count);',
     '  local i = 1;',
     '  while i <= 3 do',
-    `    if ${spec.lua}_Get(town, "c" .. i) == creature then`,
-    `      local left = ${spec.lua}_Get(town, "n" .. i) - count;`,
+    `    if ${n}_Get(town, "c" .. i) == creature then`,
+    `      local left = ${n}_Get(town, "n" .. i) - count;`,
     '      if left < 0 then',
     '        left = 0;',
     '      end;',
-    `      ${spec.lua}_Set(town, "n" .. i, left);`,
+    `      ${n}_Set(town, "n" .. i, left);`,
     '    end;',
     '    i = i + 1;',
     '  end;',
