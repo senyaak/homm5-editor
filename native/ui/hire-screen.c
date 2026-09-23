@@ -76,6 +76,26 @@ static const BYTE HIRE_EXECUTE_HEAD[HIRE_EXECUTE_HEAD_LEN] = { 0x83, 0xEC, 0x54,
 #define CMD_CREATURE 0x1Cu
 #define CMD_COUNT 0x20u
 
+/**
+ * A PROBE, for one launch, and not a part of the feature.
+ *
+ * A screen of ours hires its whole stock the moment it opens, with nobody
+ * touching anything (launches 44-46: the lines are asked for, `Available`
+ * answers ten, and a purchase of ten follows). The command has only two makers
+ * in the whole image — `CHireWindow`'s first two virtuals of the interface at
+ * its +0x40 — and both take `(object, creature, count)` and end in a hire.
+ * These two say WHICH of them fires and, more to the point, WHO called it; the
+ * caller is the gesture, and the gesture is what we have been guessing at.
+ *
+ * Both heads are the same nine bytes: `sub esp,18h; push ebx; push ebp; mov
+ * ebp,ecx; xor ebx,ebx`.
+ */
+#define HIRE_WINDOW_HIRE_RVA 0x43e9f0u
+#define HIRE_WINDOW_HIRE2_RVA 0x43ed70u
+#define HIRE_WINDOW_HIRE_HEAD_LEN 9
+static const BYTE HIRE_WINDOW_HIRE_HEAD[HIRE_WINDOW_HIRE_HEAD_LEN] =
+    { 0x83, 0xEC, 0x18, 0x53, 0x55, 0x8B, 0xE9, 0x33, 0xDB };
+
 /** The two screens' main vtables — what the screen on screen is compared with. */
 #define TOWN_SCREEN_VTABLE_RVA 0xb73418u
 #define HIRE_SCREEN_VTABLE_RVA 0xb72b8cu
@@ -108,11 +128,15 @@ typedef void *(__fastcall *TownSoundBuilderFn)(int townType);
 typedef void *(__thiscall *ObjectSlotFn)(void *self);
 typedef int (__thiscall *QueueTakeFn)(void *queue, void *request);
 typedef int (__fastcall *HireExecuteFn)(void *cmd, void *edx);
+/** The probe's two: `__thiscall(object, creature, count)`, `ret 0Ch`. */
+typedef int (__fastcall *HireWindowHireFn)(void *self, void *edx, void *object, int creature, int count);
 
 static CreateHireScreenFn g_createHireScreen = NULL;
 static PushScreenRequestFn g_pushScreenRequest = NULL;
 static TownSoundBuilderFn g_townSoundBuilder = NULL;
 static HireExecuteFn g_hireExecute = NULL;
+static HireWindowHireFn g_hireWindowHire = NULL;
+static HireWindowHireFn g_hireWindowHire2 = NULL;
 static void *g_sourceEntries = NULL;
 static void *g_sourceCopy = NULL;
 static void *g_sourceItems = NULL;
@@ -341,6 +365,23 @@ static int __fastcall hire_execute_hook(void *cmd, void *edx) {
   return g_hireExecute(cmd, edx);
 }
 
+/** The probe: one line per hire the window asks for, and the address that asked. */
+static int __fastcall hire_window_hire_hook(void *self, void *edx, void *object, int creature, int count) {
+  log_hex("hire screen: the window's hire, asked from +", (DWORD)((BYTE *)__builtin_return_address(0)
+                                                                  - (BYTE *)GetModuleHandleW(NULL)));
+  log_num("hire screen:   of creature ", creature);
+  log_num("hire screen:   this many ", count);
+  return g_hireWindowHire(self, edx, object, creature, count);
+}
+
+static int __fastcall hire_window_hire2_hook(void *self, void *edx, void *object, int creature, int count) {
+  log_hex("hire screen: the window's second hire, asked from +", (DWORD)((BYTE *)__builtin_return_address(0)
+                                                                         - (BYTE *)GetModuleHandleW(NULL)));
+  log_num("hire screen:   of creature ", creature);
+  log_num("hire screen:   this many ", count);
+  return g_hireWindowHire2(self, edx, object, creature, count);
+}
+
 // --- opening it ----------------------------------------------------------------------
 
 static int hire_screen_ready(void) {
@@ -496,4 +537,9 @@ static void install_hire_screen(void) {
   g_hireExecute = (HireExecuteFn)detour(HIRE_EXECUTE_RVA, HIRE_EXECUTE_HEAD, HIRE_EXECUTE_HEAD_LEN,
                                         (void *)&hire_execute_hook, "a creature purchase");
   if (!g_hireExecute) log_line("hire screen: a purchase in a screen of ours will be the engine's, which is wrong");
+  /* THE PROBE — take it out once the launch has answered. */
+  g_hireWindowHire = (HireWindowHireFn)detour(HIRE_WINDOW_HIRE_RVA, HIRE_WINDOW_HIRE_HEAD, HIRE_WINDOW_HIRE_HEAD_LEN,
+                                              (void *)&hire_window_hire_hook, "the hire window's first hire");
+  g_hireWindowHire2 = (HireWindowHireFn)detour(HIRE_WINDOW_HIRE2_RVA, HIRE_WINDOW_HIRE_HEAD, HIRE_WINDOW_HIRE_HEAD_LEN,
+                                               (void *)&hire_window_hire2_hook, "the hire window's second hire");
 }
