@@ -34,6 +34,8 @@
 // three at half (Senya, 2026-09-22). The price is the script's now — the
 // engine pays nothing for a screen of ours — so the multiplier is real.
 
+import { TOWN_BUILDINGS } from './town-button.ts';
+
 /** What a camp of that level offers: how many creatures, and what they cost. */
 export interface CampLevel {
   offers: number;
@@ -52,10 +54,26 @@ export function campOffers(level: number): number {
   return level >= 1 && level <= CAMP_LEVELS.length ? CAMP_LEVELS[level - 1]!.offers : 0;
 }
 
+/**
+ * The name the map's Lua knows a building by — NOT the one the data does.
+ *
+ * The xdb and this repo say `TB_SPECIAL_1`; `advmap-startup.lua` declares
+ * `TOWN_BUILDING_SPECIAL_1`, and the two lists are the same enum in the same
+ * order, so the ordinal converts one to the other. Launch 42 said what the
+ * other spelling costs: "Value was NIL when getting global with name
+ * 'TB_SPECIAL_1'", then "Wrong type of argument 2" from
+ * `GetTownBuildingLevel`, once per click.
+ */
+export function luaBuildingName(building: string): string {
+  const at = TOWN_BUILDINGS.indexOf(building);
+  if (at < 0) throw new Error(`${building} is not an ETownBuilding`);
+  return `TOWN_BUILDING_${building.slice('TB_'.length)}`;
+}
+
 export interface CampScript {
   /** The building whose click opens it (`TB_SPECIAL_1`…), as the button's Lua is named after. */
   lua: string;
-  /** The building the level is read from — the same one. */
+  /** The building the level is read from — the same one, by its `TB_*` name. */
   building: string;
   /** The tiers the roll draws from. The shipped camp's pool is tiers three to six. */
   minTier?: number;
@@ -75,6 +93,7 @@ export function campScript(spec: CampScript): string {
   const max = spec.maxTier ?? 7;
   const levels = CAMP_LEVELS.map((l) => `{ offers = ${l.offers}, price = ${l.price} }`).join(', ');
   const n = spec.lua;
+  const building = luaBuildingName(spec.building);
   return [
     `-- The refugee camp of ${n}: what it sells, rolled once a week.`,
     `${n}_LEVELS = { ${levels} };`,
@@ -142,7 +161,7 @@ export function campScript(spec: CampScript): string {
     '',
     '-- The click: a stock for this week if there is none, then the screen.',
     `function ${n}(town)`,
-    `  local level = GetTownBuildingLevel(town, ${spec.building});`,
+    `  local level = GetTownBuildingLevel(town, ${building});`,
     `  local rule = ${n}_LEVELS[level];`,
     '  if rule == nil then',
     '    return nil;',

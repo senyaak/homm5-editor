@@ -1,9 +1,14 @@
-// The refugee camp's Lua — that it is Lua 4, and that it says what it must.
+// The refugee camp's Lua — that it is Lua 4, that every name in it exists, and
+// that it says what it must.
 //
 //   node tools/test-camp-script.ts
 
-import { campScript, campOffers, CAMP_LEVELS } from '../src/mods/camp-script.ts';
+// needs: data
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { campScript, campOffers, CAMP_LEVELS, luaBuildingName } from '../src/mods/camp-script.ts';
 import { luaDiagnostics } from '../src/script/lua-lint.ts';
+import { dataDir } from './game-dir.ts';
 
 let failures = 0;
 function check(name: string, ok: boolean, detail = ''): void {
@@ -33,7 +38,7 @@ console.log('what it asks the extension for — two doors and no more');
   check('the screen is given a list and nothing else', lua.includes('H5EHireScreen(\n') && !lua.includes('H5EHireScreen(town'));
   check('nothing waits for a thread that cannot run', !lua.includes('sleep(') && !lua.includes('H5EHireOpen'));
   check("the function the button calls is the building's", /\nfunction BonePit\(town\)\n/.test(lua));
-  check("the level is the building's", lua.includes('GetTownBuildingLevel(town, TB_SPECIAL_1)'));
+  check("the level is the building's", lua.includes('GetTownBuildingLevel(town, TOWN_BUILDING_SPECIAL_1)'));
 }
 
 console.log("the purchase is the script's whole business");
@@ -63,6 +68,37 @@ console.log('the stock is the map\'s, per town');
   check('a week already rolled is not rolled again', lua.includes('BonePit_Get(town, "week") ~= week'));
   check("the stock is the script's own to write", /_Set\(town, "c" \.\. i, creature\);/.test(lua) && /_Set\(town, "n" \.\. i, left\);/.test(lua));
   check('and a month is four weeks on, so the week is not four forever', lua.includes('GetDate(WEEK) + GetDate(MONTH) * 4'));
+}
+
+console.log("every name of the game's the script reads is declared");
+{
+  // WHAT THIS CATCHES, and it caught it the expensive way first: the data
+  // calls a building `TB_SPECIAL_1` and the map's Lua calls it
+  // `TOWN_BUILDING_SPECIAL_1`. The script said the data's name, the engine
+  // answered "Value was NIL when getting global with name 'TB_SPECIAL_1'" and
+  // then "Wrong type of argument 2" once per click, and the structural linter
+  // had nothing to say — it checks grammar, not vocabulary.
+  //
+  // So: every SHOUTED name the script READS has to be declared by
+  // `advmap-startup.lua`, which is the vocabulary a map is written against.
+  // Ours are the ones the script assigns itself.
+  const startup = join(dataDir(), 'scripts', 'advmap-startup.lua');
+  if (!existsSync(startup)) {
+    console.log(`  skip  no unpacked data at ${dataDir()} — the game's vocabulary is not here to check against`);
+  } else {
+    const text = readFileSync(startup, 'latin1');
+    const declared = new Set([...text.matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*=/gm)].map((m) => m[1]!));
+    const ours = new Set([...lua.matchAll(/^([A-Za-z_][A-Za-z0-9_]*)\s*=/gm)].map((m) => m[1]!));
+    // WHOLE WORDS: a word boundary each side, or H5ECreatures reads as the
+    // unknown name H5EC and the check drowns in its own noise. It was written
+    // through a heredoc once, which ate the escape and left a real backspace
+    // byte — the check then matched nothing at all and passed everything.
+    const used = new Set([...lua.matchAll(/\b([A-Z][A-Z0-9_]{2,})\b/g)].map((m) => m[1]!));
+    const unknown = [...used].filter((name) => !declared.has(name) && !ours.has(name));
+    check('no name the game has never heard of', unknown.length === 0, unknown.join(', '));
+    check('the building is named the way a map names one', lua.includes(`GetTownBuildingLevel(town, ${luaBuildingName('TB_SPECIAL_1')})`));
+    check("and that name is the game's own", declared.has('TOWN_BUILDING_SPECIAL_1'));
+  }
 }
 
 if (failures) {
