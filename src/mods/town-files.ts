@@ -1039,17 +1039,45 @@ export function dropGridCell(build: string, type: string, level: number): string
   return build.slice(0, s) + (slot.includes('<Upgrade>') ? slot : '') + build.slice(e);
 }
 
-/** The grid with the cell for `type` at `level` moved to `to`. */
+/** Where a cell sits, out of its own text. */
+function cellPosition(cell: string): string | null {
+  const m = /<XSlotPos>(\d+)<\/XSlotPos>\s*<YSlotPos>(\d+)<\/YSlotPos>/.exec(cell);
+  return m ? `${m[1]},${m[2]}` : null;
+}
+
+/**
+ * The grid with the cell for `type` at `level` moved to `to` — AND WITH THE
+ * LEVELS THAT STOOD ON IT, because they are the same building.
+ *
+ * A building's upgrades either stack on its cell (Stronghold's Hall of Trial:
+ * three levels, all at 4,2) or take cells of their own down a column (Haven's
+ * town hall). Moving the building means moving the pile; moving one level of a
+ * building whose levels stand apart means moving that one. Both come out of
+ * the same rule: the cells that shared this one's place go with it.
+ *
+ * Launch 44 is why the rule is written down. `slot` moved level one and left
+ * levels two and three at the donor's coordinates, where the magic guild
+ * stood; the build refused, the probe's town lost those cells, and the camp
+ * could be built and never upgraded — the screen had nowhere to click.
+ */
 export function moveGridCell(build: string, type: string, level: number, to: { x: number; y: number }): string {
   const span = gridSlot(build, type);
   if (!span) throw new Error(`build grid: no slot for ${type}`);
   const [s, e] = span;
-  const slot = build.slice(s, e);
+  let slot = build.slice(s, e);
   const [cs, ce] = gridCell(slot, type, level);
-  const cell = slot.slice(cs, ce)
+  const was = cellPosition(slot.slice(cs, ce));
+  const moved = (cell: string): string => cell
     .replace(/<XSlotPos>\d+<\/XSlotPos>/, `<XSlotPos>${to.x}</XSlotPos>`)
     .replace(/<YSlotPos>\d+<\/YSlotPos>/, `<YSlotPos>${to.y}</YSlotPos>`);
-  return build.slice(0, s) + slot.slice(0, cs) + cell + slot.slice(ce) + build.slice(e);
+  slot = slot.slice(0, cs) + moved(slot.slice(cs, ce)) + slot.slice(ce);
+  for (const other of [...slot.matchAll(/<Upgrade>BLD_UPG_(\d)<\/Upgrade>/g)].map((m) => Number(m[1]))) {
+    if (other === level) continue;
+    const [os, oe] = gridCell(slot, type, other);
+    if (cellPosition(slot.slice(os, oe)) !== was) continue;
+    slot = slot.slice(0, os) + moved(slot.slice(os, oe)) + slot.slice(oe);
+  }
+  return build.slice(0, s) + slot + build.slice(e);
 }
 
 /** A grid's slot for `type` as text, lines and all; null when it has none. */

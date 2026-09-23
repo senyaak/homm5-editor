@@ -27,7 +27,7 @@ import { GRID, SHIPPED_TOWN_TYPES, dwellingsGroupFor, factionProblems, raceFor, 
 import type { FactionSpec } from '../src/mods/factions.ts';
 import { DWELLING_GROUP_DIR, PICKER_DIR, PICKER_TEXTS, PICKER_TEXTURES, RMG_PRESETS, RPG_ROOT, pickerNames } from '../src/mods/faction-files.ts';
 import { racesFileText } from '../src/mods/race-order.ts';
-import { SHIPPED_TOWN_ORDINALS, TOWN_SPECS } from '../src/mods/town-files.ts';
+import { SHIPPED_TOWN_ORDINALS, TOWN_SPECS, gridSlotText } from '../src/mods/town-files.ts';
 import { RACE_MUSIC, TOWN_TYPES_INFO } from '../src/mods/town-type-info.ts';
 import { HERO_GROUP, TOWN_GROUP, groupMembers } from '../src/mods/shared-groups.ts';
 import { COMMON_SCRIPT } from '../src/mods/artifact-scripts.ts';
@@ -162,6 +162,31 @@ let one: BuildReport;
   check('the manifest carries the faction', text(MOD_MANIFEST).includes('"factions"'));
 }
 
+console.log('a building taken from another town keeps all its levels, on one cell');
+{
+  // LAUNCH 44: the camp is Stronghold's three-level Hall of Trial, moved to a
+  // cell of ours. `slot` moved level one and left two and three at
+  // Stronghold's coordinates — on top of Haven's magic guild — so the build
+  // refused, the probe lost those cells, and the camp could be built and
+  // never upgraded.
+  const mod: CreatureMod = newCreatureMod();
+  addFaction(mod, spec('Levels', {
+    buildings: {
+      'TB_SHIPYARD': null,
+      'TB_SPECIAL_1': { from: 'TOWN_STRONGHOLD', grants: null, slot: { x: 5, y: 5 } },
+      'TB_SPECIAL_1/2': { cost: { Gold: 4000 } },
+      'TB_SPECIAL_1/3': { cost: { Gold: 8000 } },
+    },
+  }));
+  const built = buildCreatureMod(mod, read);
+  const def = built.files.find((f) => /Levels\.\(TownBuildDefinition\)/.test(f.path));
+  const slot = def ? gridSlotText(def.data.toString('latin1'), 'TB_SPECIAL_1') ?? '' : '';
+  const cells = [...slot.matchAll(/<Upgrade>BLD_UPG_(\d)<\/Upgrade>\s*<XSlotPos>(\d+)<\/XSlotPos>\s*<YSlotPos>(\d+)<\/YSlotPos>/g)]
+    .map((m) => `${m[1]}:${m[2]},${m[3]}`);
+  check('every level has a cell, and they are all the one we asked for', cells.join(' ') === '1:5,5 2:5,5 3:5,5', cells.join(' '));
+  const levels = built.files.filter((f) => /TownBuildingSharedStats.*Special_1/.test(f.path)).length;
+  check('and its three records came with it', levels === 3, String(levels));
+}
 console.log('pictures of our own for the icons');
 {
   // A 16×16 magenta PNG for every slot: read, grown, fitted — and the DDS
