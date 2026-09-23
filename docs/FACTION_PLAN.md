@@ -362,6 +362,22 @@ added), and the roll is `pool[int(38·r)]` — a creature the mod adds never
 shows up there. Fix: the mod build writes its own copy of the record with
 the pool extended, through the same `H5ECreatures` filter (tiers 3–6),
 once that function exists.
+
+**TODO (Senya, 2026-09-23): the Lua linter should know the game's
+constants.** `src/script/lua-lint.ts` checks GRAMMAR — blocks, `return;`,
+`false`, the library names this engine does not register — and knows
+nothing of the vocabulary a map is written against. So
+`GetTownBuildingLevel(town, TB_SPECIAL_1)` passed it and the game said
+"Value was NIL when getting global with name 'TB_SPECIAL_1'" at every
+click (the Lua name is `TOWN_BUILDING_SPECIAL_1`; `luaBuildingName()` in
+src/mods/camp-script.ts converts one to the other). The check exists for
+the camp's script only — `tools/test-camp-script.ts` reads
+`scripts/advmap-startup.lua` and refuses a shouted name it does not
+declare. It belongs in the linter, for every script the editor writes or
+lints: read the declarations out of the mounted `advmap-startup.lua`
+(they are data, so a mod or a map may add to them), warn on an ALL-CAPS
+name that is neither declared nor assigned in the file, and keep it a
+WARNING — the vocabulary is the install's, not ours.
 ### 2c. A stage per building — later (Senya, 2026-09-19)
 
 The exterior has ten stages, chosen by the engine from the hall, the walls

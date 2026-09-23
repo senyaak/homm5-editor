@@ -36,14 +36,12 @@
 // five read nothing but that vector, so the engine's own code answers them on
 // an object of ours laid out the same way.
 //
-// WHAT THE ENGINE ASKS OF THE OBJECT BESIDES ITS SLOTS. Two things, both read
-// off `[obj+4]`, the vbtable: `vbtable[4]` is the displacement to a base whose
-// `+8` is a liveness count and whose `+0xC` is a reference count; `vbtable[8]`
-// is the displacement to the object base whose virtuals answer who owns it.
-// The first is ours, held out of reach of zero the way the count window's
-// controller is held (native/ui/count-window.c); the second is THE TOWN'S OWN
-// — a displacement is only a difference of two addresses, so the vbtable of
-// ours points at the base the town already has.
+// WHAT THE ENGINE ASKS OF THE OBJECT BESIDES ITS SLOTS: one thing, `[obj+4]`,
+// the vbtable, whose entries are the way to the object base — the liveness
+// word, the reference count, who owns the goods, and the cast that asks
+// whether the seller is a town. All of that is THE TOWN'S, because a
+// displacement is only the difference of two addresses and ours are the
+// town's own base (see `g_sourceVbtable`).
 //
 // AND THE PURCHASE IS NOT THE ENGINE'S. `CHireCreaturesCmd::Execute` pays the
 // player and adds the stack to an army; for a source of OURS it is detoured to
@@ -135,19 +133,31 @@ typedef struct { int count; int *begin; int *end; int *cap; } HireEntry;
 typedef struct { HireEntry *begin; HireEntry *end; HireEntry *cap; } HireVector;
 
 #define SOURCE_VECTOR_BACK 0x44u
-#define SOURCE_VB_REFS 0x10u
-#define SOURCE_ALIVE_AT (SOURCE_VB_REFS + 8)
-#define SOURCE_HELD_AT (SOURCE_VB_REFS + 12)
-#define SOURCE_BYTES (SOURCE_HELD_AT + 4)
+#define SOURCE_BYTES 8
 #define SOURCE_SLOTS 16
-#define SOURCE_HELD 0x40000000
 
 static BYTE g_sourceBlock[SOURCE_VECTOR_BACK + SOURCE_BYTES];
 #define SOURCE_OBJECT (g_sourceBlock + SOURCE_VECTOR_BACK)
-/** A NULL where a complete-object locator would be, so a reader of `[vtable-4]` finds nothing rather than something. */
+/** A NULL where a complete-object locator would be: nothing casts the source ITSELF — see the vbtable below. */
 static void *g_sourceVtableWithLocator[1 + SOURCE_SLOTS];
 #define g_sourceVtable (g_sourceVtableWithLocator + 1)
-/** `[0]` the vbptr's offset within the object, `[4]` our reference words, `[8]` the town's object base. */
+/**
+ * `[0]` the vbptr's own offset; `[1]` and `[2]` the way to the object the
+ * engine asks everything else of — THE TOWN'S OWN BASE, both of them.
+ *
+ * Launch 43 crashed on this and it is worth the paragraph. Every "is it still
+ * alive" the engine makes is `[[obj+4]+4]` — vbtable[1] — plus eight, and the
+ * screen goes further: it takes `obj + 4 + vbtable[1]` and hands THAT to
+ * `__RTDynamicCast(…, CObjectBase, IAdvMapTown)` to ask whether the seller is
+ * a town (0x840833). So vbtable[1] does not point at "some words of ours with
+ * a refcount in them" — it points at a CObjectBase, with RTTI. Ours pointed at
+ * a block of ours, the cast read a vtable that was not one, and the run died
+ * in VCRUNTIME with our own address in ecx.
+ *
+ * Pointing both entries at the town's base answers all of it with the truth:
+ * the town is alive, the town is who owns the goods, and the refcount raised
+ * and lowered around the screen is the town's, which the world holds anyway.
+ */
 static int g_sourceVbtable[4];
 /** The screen of ours that is up, or nothing — for `H5EHireOpen`. */
 static int g_hireOpen = 0;
@@ -254,14 +264,13 @@ static int source_build(BYTE *townInterface) {
   g_sourceVtableWithLocator[0] = NULL;
 
   BYTE *self = SOURCE_OBJECT;
+  int toTown = (int)(townBase - (self + 4));
   g_sourceVbtable[0] = -4;
-  g_sourceVbtable[1] = (int)SOURCE_VB_REFS;
-  g_sourceVbtable[2] = (int)(townBase - (self + 4));
+  g_sourceVbtable[1] = toTown;
+  g_sourceVbtable[2] = toTown;
   g_sourceVbtable[3] = 0;
   *(void ***)(self + 0) = g_sourceVtable;
   *(int **)(self + 4) = g_sourceVbtable;
-  *(int *)(self + SOURCE_ALIVE_AT) = 0;
-  *(int *)(self + SOURCE_HELD_AT) = SOURCE_HELD;
   return 1;
 }
 
