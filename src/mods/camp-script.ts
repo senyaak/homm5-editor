@@ -148,6 +148,13 @@ export function campScript(spec: CampScript): string {
     '  if poolSize < 1 then',
     '    return nil;',
     '  end;',
+    // WHILE THIS IS BEING MADE TO WORK: how big the pool actually is, and one
+    // raw draw. Launch 47 drew the same creature three times running out of a
+    // hundred and nineteen, which is either a generator that does not advance
+    // or a table that holds one element — `H5ECreatures` pushes 119 values and
+    // `{ … }` has to keep them all. These two lines say which.
+    '  H5ELog(poolSize);',
+    '  H5ELog(random(100));',
     '  local i = 1;',
     '  while i <= 3 do',
     '    local creature = 0;',

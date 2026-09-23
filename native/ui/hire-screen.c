@@ -356,6 +356,11 @@ static int __fastcall hire_execute_hook(void *cmd, void *edx) {
       log_num("hire screen: asked for more than there is, giving what is left of creature ", creature);
       count = left;
     }
+    /* PART OF THE PROBE: the address the purchase came from. Launch 47 had one
+       run before the window's own hire was ever entered, so the command has a
+       maker we have not found by reading. */
+    log_hex("hire screen: the purchase was run from +", (DWORD)((BYTE *)__builtin_return_address(0)
+                                                                - (BYTE *)GetModuleHandleW(NULL)));
     log_num("hire screen: the player bought ", count);
     log_num("             of creature ", creature);
     source_take(NULL, NULL, creature, count);
@@ -542,4 +547,10 @@ static void install_hire_screen(void) {
                                               (void *)&hire_window_hire_hook, "the hire window's first hire");
   g_hireWindowHire2 = (HireWindowHireFn)detour(HIRE_WINDOW_HIRE2_RVA, HIRE_WINDOW_HIRE_HEAD, HIRE_WINDOW_HIRE_HEAD_LEN,
                                                (void *)&hire_window_hire2_hook, "the hire window's second hire");
+  /* Silence would read as "it never fired", which is the one thing the probe
+     must not be able to say by accident. */
+  log_line(g_hireWindowHire ? "hire screen: the probe watches the window's first hire"
+                            : "hire screen: the probe is NOT on the window's first hire");
+  log_line(g_hireWindowHire2 ? "hire screen: the probe watches the window's second hire"
+                             : "hire screen: the probe is NOT on the window's second hire");
 }
