@@ -25,8 +25,18 @@
 #define RECORD_TIER 0x8Cu
 #define RECORD_TOWN 0x98u
 #define RECORD_GROWTH 0xA8u
-/** `Cost`, seven resources in the shipped order — gold is the last of them. */
-#define RECORD_COST 0xACu
+/**
+ * `Cost`, seven resources in the shipped order — gold is the last of them.
+ *
+ * THE STRUCT BEGINS AT 0xAC AND ITS RESOURCES DO NOT. Its own serializer
+ * (0xA82480, reached from the record's at 0xA862D0 with `lea ecx,[ebx+0ACh]`)
+ * writes Wood at `+4`, Ore at `+8`, … Gem at `+0x18` and Gold at `+0x1C`; the
+ * first word of the struct is not one of them. Counting from 0xAC read Gem
+ * where gold is and zero where Gem is, which is why launch 46 sold ten footmen
+ * for nothing at all — `H5ECreatureCost` answered 0 and the script's
+ * `purse < price` was never true.
+ */
+#define RECORD_COST 0xB0u
 #define COST_RESOURCES 7
 #define COST_GOLD 6
 

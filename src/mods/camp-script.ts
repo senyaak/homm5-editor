@@ -155,6 +155,11 @@ export function campScript(spec: CampScript): string {
     `    creature, count = ${n}_One(pool, poolSize);`,
     `    ${n}_Set(town, "c" .. i, creature);`,
     `    ${n}_Set(town, "n" .. i, count);`,
+    // WHILE THIS IS BEING MADE TO WORK: the three creatures the week drew.
+    // Launch 46 showed the same footman every game, and a camp built at level
+    // one only ever SHOWS the first of the three — so whether the roll is stuck
+    // or only its first draw is, the other two say it in one launch.
+    '    H5ELog(creature);',
     '    i = i + 1;',
     '  end;',
     'end;',
@@ -185,6 +190,16 @@ export function campScript(spec: CampScript): string {
     '  if rule.offers > 2 then',
     `    c3, n3 = ${n}_Get(town, "c3"), ${n}_Get(town, "n3");`,
     '  end;',
+    // WHILE THIS IS BEING MADE TO WORK: what the town already holds of the
+    // creature on offer. It is read HERE and not after the purchase because
+    // `AddObjectCreatures` does not add — it queues a command on the adventure
+    // map (0x5DAA50 ends by handing one to the map's `vt+0x04`), and the world
+    // does not run its queue while a screen is up. Asked a line later it always
+    // answers with the old number; asked on the next visit it answers with the
+    // truth about the last one.
+    '  if c1 > 0 then',
+    '    H5ELog(GetObjectCreatures(town, c1));',
+    '  end;',
     '  H5EHireScreen(c1, n1, c2, n2, c3, n3);',
     'end;',
     '',
@@ -210,7 +225,6 @@ export function campScript(spec: CampScript): string {
     '  end;',
     '  SetPlayerResource(player, GOLD, purse - price);',
     '  AddObjectCreatures(town, creature, count);',
-    '  H5ELog(GetObjectCreatures(town, creature));',
     '  local i = 1;',
     '  while i <= 3 do',
     `    if ${n}_Get(town, "c" .. i) == creature then`,
