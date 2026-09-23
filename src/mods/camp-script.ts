@@ -167,8 +167,13 @@ export function campScript(spec: CampScript): string {
     '    return nil;',
     '  end;',
     '  local week = GetDate(WEEK) + GetDate(MONTH) * 4;',
-    `  if ${n}_Get(town, "week") ~= week then`,
+    // A NEW WEEK OR A NEW LEVEL. The week is the camp's own rhythm; the level
+    // is the player having just paid for more, and a stock rolled when the
+    // camp was smaller would make that purchase do nothing until the week
+    // turned (launch 45: the second level added no second creature).
+    `  if ${n}_Get(town, "week") ~= week or ${n}_Get(town, "level") ~= level then`,
     `    ${n}_Set(town, "week", week);`,
+    `    ${n}_Set(town, "level", level);`,
     `    ${n}_Roll(town, rule.offers);`,
     '  end;',
     `  ${n}_TOWN = town;`,
@@ -190,11 +195,18 @@ export function campScript(spec: CampScript): string {
     '  local player = GetObjectOwner(town);',
     `  local price = H5ECreatureCost(creature) * count * ${n}_PRICE;`,
     '  local purse = GetPlayerResource(player, GOLD);',
+    // WHILE THIS IS BEING MADE TO WORK: the three numbers that decide the
+    // purchase, into the extension's log, because a script that quietly does
+    // nothing looks exactly like a screen that quietly sold nothing.
+    '  H5ELog(price);',
+    '  H5ELog(purse);',
     '  if purse < price then',
+    '    H5ELog(-1);',
     '    return nil;',
     '  end;',
     '  SetPlayerResource(player, GOLD, purse - price);',
     '  AddObjectCreatures(town, creature, count);',
+    '  H5ELog(GetObjectCreatures(town, creature));',
     '  local i = 1;',
     '  while i <= 3 do',
     `    if ${n}_Get(town, "c" .. i) == creature then`,

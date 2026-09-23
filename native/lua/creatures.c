@@ -88,6 +88,7 @@ static void *__fastcall lua_creatures(void *ctx) {
     if (!lua_push_int(ctx, id)) break;
     pushed++;
   }
+  log_num("H5ECreatures: creatures of the tiers asked: ", pushed);
   return (void *)(INT_PTR)pushed;
 }
 
