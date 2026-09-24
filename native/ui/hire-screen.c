@@ -44,8 +44,11 @@
 // town's own base (see `g_sourceVbtable`).
 //
 // AND THE PURCHASE IS NOT THE ENGINE'S. `CHireCreaturesCmd::Execute` pays the
-// player and adds the stack to an army; for a source of OURS it is detoured to
-// do neither — it subtracts what was bought from the list and tells the map.
+// player and adds the stack to an army; for a source of OURS it is refused
+// outright. The sale is heard one step earlier, at the gesture — the window's
+// own "the player pressed hire" — because the window reaches that same command
+// to ask "may he?" as well, and a question answered by selling is how a screen
+// of ours came to empty itself on opening (see THE TWO GESTURES below).
 // A script that wants the shipped behaviour writes it in three lines
 // (`GetPlayerResource`, `SetPlayerResource`, `AddObjectCreatures`) and a script
 // that wants something else is not fighting the engine for it.
@@ -77,24 +80,44 @@ static const BYTE HIRE_EXECUTE_HEAD[HIRE_EXECUTE_HEAD_LEN] = { 0x83, 0xEC, 0x54,
 #define CMD_COUNT 0x20u
 
 /**
- * A PROBE, for one launch, and not a part of the feature.
+ * THE TWO GESTURES, which is where a purchase of ours is decided.
  *
- * A screen of ours hires its whole stock the moment it opens, with nobody
- * touching anything (launches 44-46: the lines are asked for, `Available`
- * answers ten, and a purchase of ten follows). The command has only two makers
- * in the whole image — `CHireWindow`'s first two virtuals of the interface at
- * its +0x40 — and both take `(object, creature, count)` and end in a hire.
- * These two say WHICH of them fires and, more to the point, WHO called it; the
- * caller is the gesture, and the gesture is what we have been guessing at.
+ * `CHireWindow` carries an interface at its +0x40 whose first two virtuals both
+ * read `(object, creature, count)` and both build a `CHireCreaturesCmd`. They
+ * are NOT the same thing:
+ *
+ *   +0x00  the deed     — hands the command to `Do` (`manager->vt[0]`), and is
+ *                         called from the OK button's handler (+0x4422CF);
+ *   +0x04  the question — hands it to `CanDo` (`manager->vt[8]`) and answers in
+ *                         `al` whether the button may be enabled. The window's
+ *                         refresh asks it over and over (+0x43F5DC), counting
+ *                         down from the stock to find the largest allowed.
+ *
+ * Launch 48 showed the town's own screen asking the question eleven times in a
+ * row — ten, ten, nine, eight … one — and buying nothing, and then, when the
+ * player did press hire, the deed once. A screen of OURS bought its whole stock
+ * the moment it opened, because we had detoured the COMMAND's `Execute` and
+ * called every arrival at it a sale. One of those two paths reaches Execute for
+ * a source of ours; which one hardly matters now, because a question is not a
+ * purchase and the command is the wrong place to listen.
+ *
+ * So the extension listens where the gesture is: the deed is our sale, the
+ * question is ours to answer out of the stock, and the engine's own purchase of
+ * a source of ours is refused outright — nothing of ours is ever bought by the
+ * engine's own hand (see `hire_execute_hook`).
  *
  * Both heads are the same nine bytes: `sub esp,18h; push ebx; push ebp; mov
- * ebp,ecx; xor ebx,ebx`.
+ * ebp,ecx; xor ebx,ebx`. Where the interface keeps the source it is selling:
+ * `+0x1C` is one when there is one, `+0x20` is the source itself — read by both
+ * virtuals at 0x83EA2F and 0x83EDAF to fill the command.
  */
 #define HIRE_WINDOW_HIRE_RVA 0x43e9f0u
 #define HIRE_WINDOW_HIRE2_RVA 0x43ed70u
 #define HIRE_WINDOW_HIRE_HEAD_LEN 9
 static const BYTE HIRE_WINDOW_HIRE_HEAD[HIRE_WINDOW_HIRE_HEAD_LEN] =
     { 0x83, 0xEC, 0x18, 0x53, 0x55, 0x8B, 0xE9, 0x33, 0xDB };
+#define WINDOW_HAS_SOURCE 0x1Cu
+#define WINDOW_SOURCE 0x20u
 
 /** The two screens' main vtables — what the screen on screen is compared with. */
 #define TOWN_SCREEN_VTABLE_RVA 0xb73418u
@@ -334,57 +357,72 @@ static void hire_say_bought(int creature, int count) {
 }
 
 /**
- * The engine's purchase, for a source of ours: nothing is paid and nothing is
- * given — the list is decremented and the map is told. For every other source
- * this is the engine's own function, untouched.
+ * The engine's own purchase, which for a source of ours never happens.
+ *
+ * It used to be where we heard a sale, and that was the bug: the window reaches
+ * the same command for its "may he?" as for its "he did", so every enable pass
+ * over a stock of ten sold ten. Now a sale is heard at the gesture and this is
+ * only a wall — with a line saying who walked into it, because a wall nobody
+ * ever hits and a wall nobody ever logs look the same.
  */
 static int __fastcall hire_execute_hook(void *cmd, void *edx) {
   if (readable(cmd, CMD_COUNT + 4) && *(void **)((BYTE *)cmd + CMD_SOURCE) == (void *)SOURCE_OBJECT) {
-    int creature = *(int *)((BYTE *)cmd + CMD_CREATURE);
-    int count = *(int *)((BYTE *)cmd + CMD_COUNT);
-    /* THE ENGINE'S OWN GUARD WAS IN WHAT WE SKIPPED: its Execute refuses a
-       purchase bigger than `Available`, and ours did not — launch 44 bought
-       ten swordsmen twice out of a list that held ten. What is left is the
-       list's, and nothing else may be sold. */
-    HireEntry *e = source_entry_of(creature);
-    int left = e ? e->count : 0;
-    if (left <= 0) {
-      log_num("hire screen: nothing left of creature ", creature);
-      return 0;
-    }
-    if (count > left) {
-      log_num("hire screen: asked for more than there is, giving what is left of creature ", creature);
-      count = left;
-    }
-    /* PART OF THE PROBE: the address the purchase came from. Launch 47 had one
-       run before the window's own hire was ever entered, so the command has a
-       maker we have not found by reading. */
-    log_hex("hire screen: the purchase was run from +", (DWORD)((BYTE *)__builtin_return_address(0)
-                                                                - (BYTE *)GetModuleHandleW(NULL)));
-    log_num("hire screen: the player bought ", count);
-    log_num("             of creature ", creature);
-    source_take(NULL, NULL, creature, count);
-    hire_say_bought(creature, count);
-    return 1;
+    log_hex("hire screen: the engine would run a purchase of its own, from +",
+            (DWORD)((BYTE *)__builtin_return_address(0) - (BYTE *)GetModuleHandleW(NULL)));
+    log_num("hire screen:   of creature ", *(int *)((BYTE *)cmd + CMD_CREATURE));
+    log_num("hire screen:   this many ", *(int *)((BYTE *)cmd + CMD_COUNT));
+    log_line("hire screen:   refused — a screen of ours is the script's to sell");
+    return 0;
   }
   return g_hireExecute(cmd, edx);
 }
 
-/** The probe: one line per hire the window asks for, and the address that asked. */
-static int __fastcall hire_window_hire_hook(void *self, void *edx, void *object, int creature, int count) {
-  log_hex("hire screen: the window's hire, asked from +", (DWORD)((BYTE *)__builtin_return_address(0)
-                                                                  - (BYTE *)GetModuleHandleW(NULL)));
-  log_num("hire screen:   of creature ", creature);
-  log_num("hire screen:   this many ", count);
-  return g_hireWindowHire(self, edx, object, creature, count);
+/** Is this window selling the list of ours, or something of the engine's? */
+static int window_sells_ours(void *self) {
+  BYTE *sub = (BYTE *)self;
+  if (!readable(sub + WINDOW_SOURCE, 4)) return 0;
+  return *(int *)(sub + WINDOW_HAS_SOURCE) == 1 && *(void **)(sub + WINDOW_SOURCE) == (void *)SOURCE_OBJECT;
 }
 
+/**
+ * THE DEED: the player pressed hire. For a list of ours this is the whole sale
+ * — what is left is decremented and the map is told — and the engine's command
+ * is never built, so nothing is paid or given behind the script's back.
+ */
+static int __fastcall hire_window_hire_hook(void *self, void *edx, void *object, int creature, int count) {
+  if (!window_sells_ours(self)) return g_hireWindowHire(self, edx, object, creature, count);
+  HireEntry *e = source_entry_of(creature);
+  int left = e ? e->count : 0;
+  if (left <= 0) {
+    log_num("hire screen: hire pressed with nothing left of creature ", creature);
+    return 0;
+  }
+  if (count > left) {
+    log_num("hire screen: hire pressed for more than there is, giving what is left of creature ", creature);
+    count = left;
+  }
+  log_num("hire screen: the player bought ", count);
+  log_num("             of creature ", creature);
+  source_take(NULL, NULL, creature, count);
+  hire_say_bought(creature, count);
+  return 0; /* the engine's own path answers with nothing the caller reads */
+}
+
+/**
+ * THE QUESTION: may he hire that many? Asked over and over while the window is
+ * up, so it says nothing and builds nothing — the stock is the whole answer.
+ *
+ * NOT THE PRICE, yet. What a creature costs is the script's (the level's
+ * multiplier is not the engine's to know), so the button is enabled by what is
+ * left and a player who cannot pay is turned away by the script, which leaves
+ * the line looking sold until the screen is opened again. When that matters,
+ * the script will hand the screen a price with the list rather than the
+ * extension guessing one.
+ */
 static int __fastcall hire_window_hire2_hook(void *self, void *edx, void *object, int creature, int count) {
-  log_hex("hire screen: the window's second hire, asked from +", (DWORD)((BYTE *)__builtin_return_address(0)
-                                                                         - (BYTE *)GetModuleHandleW(NULL)));
-  log_num("hire screen:   of creature ", creature);
-  log_num("hire screen:   this many ", count);
-  return g_hireWindowHire2(self, edx, object, creature, count);
+  if (!window_sells_ours(self)) return g_hireWindowHire2(self, edx, object, creature, count);
+  HireEntry *e = source_entry_of(creature);
+  return e && count > 0 && count <= e->count ? 1 : 0;
 }
 
 // --- opening it ----------------------------------------------------------------------
@@ -542,15 +580,15 @@ static void install_hire_screen(void) {
   g_hireExecute = (HireExecuteFn)detour(HIRE_EXECUTE_RVA, HIRE_EXECUTE_HEAD, HIRE_EXECUTE_HEAD_LEN,
                                         (void *)&hire_execute_hook, "a creature purchase");
   if (!g_hireExecute) log_line("hire screen: a purchase in a screen of ours will be the engine's, which is wrong");
-  /* THE PROBE — take it out once the launch has answered. */
+  /* The two gestures. Without the first there is no sale at all; without the
+     second the button is the engine's to enable, which for a source of ours it
+     cannot do. Both say so, because silence reads as "it never happened". */
   g_hireWindowHire = (HireWindowHireFn)detour(HIRE_WINDOW_HIRE_RVA, HIRE_WINDOW_HIRE_HEAD, HIRE_WINDOW_HIRE_HEAD_LEN,
-                                              (void *)&hire_window_hire_hook, "the hire window's first hire");
+                                              (void *)&hire_window_hire_hook, "the hire window's deed");
   g_hireWindowHire2 = (HireWindowHireFn)detour(HIRE_WINDOW_HIRE2_RVA, HIRE_WINDOW_HIRE_HEAD, HIRE_WINDOW_HIRE_HEAD_LEN,
-                                               (void *)&hire_window_hire2_hook, "the hire window's second hire");
-  /* Silence would read as "it never fired", which is the one thing the probe
-     must not be able to say by accident. */
-  log_line(g_hireWindowHire ? "hire screen: the probe watches the window's first hire"
-                            : "hire screen: the probe is NOT on the window's first hire");
-  log_line(g_hireWindowHire2 ? "hire screen: the probe watches the window's second hire"
-                             : "hire screen: the probe is NOT on the window's second hire");
+                                               (void *)&hire_window_hire2_hook, "the hire window's question");
+  log_line(g_hireWindowHire ? "hire screen: a sale of ours is heard at the window's own hire"
+                            : "hire screen: the window's hire is NOT hooked, so nothing of ours can be bought");
+  log_line(g_hireWindowHire2 ? "hire screen: and the window's question is answered out of the list"
+                             : "hire screen: the window's question is NOT hooked, so its button is the engine's");
 }
