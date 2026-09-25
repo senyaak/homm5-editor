@@ -14,9 +14,15 @@
 //                                    out of one call's many results keeps only
 //                                    the first of them in this dialect (launch
 //                                    49: 119 ids pushed, a pool of 1 counted);
-//   H5EHireScreen(creature, count,…) the game's own hire screen over a list of
-//                                    ours, and `H5EHireBought(creature, count)`
-//                                    back when the player buys.
+//   H5EHireScreen(creature, count, price, …) the game's own hire screen over
+//                                    a list of ours, each line at its own price
+//                                    (percent of the creature's cost), and
+//                                    `H5EHireBought(creature, count)` back when
+//                                    the player presses hire — the screen has
+//                                    already checked the stock, the room in the
+//                                    army and the money, the engine's own way;
+//   H5EHireCost / H5EHireLeft        what the screen charged, per resource, and
+//                                    what the script says is left after it sold.
 //
 // — and everything else is here: the week, the roll, the stock, the price, who
 // pays and who receives. The extension holds no state and knows nothing about
@@ -36,22 +42,26 @@
 //
 // THE LEVELS. The building has three, and the level decides how many offers
 // there are and what they cost: one at double price, two at the ordinary one,
-// three at half (Senya, 2026-09-22). The price is the script's now — the
-// engine pays nothing for a screen of ours — so the multiplier is real.
+// three at half (Senya, 2026-09-22). The price is the script's — handed to the
+// screen with each line, which shows it, paints it red and refuses a purchase
+// the player cannot pay, as the engine's own screen does (launch 51 bought five
+// executioners the script then refused to sell). A line could as well be free
+// for a hero with some skill: the script decides per opening.
 
 import { TOWN_BUILDINGS } from './town-button.ts';
 
 /** What a camp of that level offers: how many creatures, and what they cost. */
 export interface CampLevel {
   offers: number;
+  /** In percent of the creature's own cost — the screen's unit (native/ui/hire-screen.c). */
   price: number;
 }
 
 /** The three levels, in order. A building at level N takes `CAMP_LEVELS[N - 1]`. */
 export const CAMP_LEVELS: readonly CampLevel[] = [
-  { offers: 1, price: 2 },
-  { offers: 2, price: 1 },
-  { offers: 3, price: 0.5 },
+  { offers: 1, price: 200 },
+  { offers: 2, price: 100 },
+  { offers: 3, price: 50 },
 ];
 
 /** How many offers a camp of that level makes — 0 when it is not built. */
@@ -104,9 +114,8 @@ export function campScript(spec: CampScript): string {
     `${n}_LEVELS = { ${levels} };`,
     `${n}_MIN_TIER = ${min};`,
     `${n}_MAX_TIER = ${max};`,
-    '-- The town whose camp is open, and its price, for the purchase that comes back.',
+    '-- The town whose camp is open, for the purchase that comes back.',
     `${n}_TOWN = "";`,
-    `${n}_PRICE = 1;`,
     '',
     "-- One number of the town's stock, and where it is kept.",
     `function ${n}_Var(town, what)`,
@@ -201,7 +210,7 @@ export function campScript(spec: CampScript): string {
     `    ${n}_Roll(town);`,
     '  end;',
     `  ${n}_TOWN = town;`,
-    `  ${n}_PRICE = rule.price;`,
+    '  local p = rule.price;',
     // The level OPENS what the week rolled — one, two or all three — so an
     // upgrade shows one more of the same stock rather than rolling a new one
     // (Senya, launch 45).
@@ -214,12 +223,14 @@ export function campScript(spec: CampScript): string {
     '  if rule.offers > 2 then',
     `    c3, n3 = ${n}_Get(town, "c3"), ${n}_Get(town, "n3");`,
     '  end;',
-    '  H5EHireScreen(c1, n1, c2, n2, c3, n3);',
+    '  H5EHireScreen(c1, n1, p, c2, n2, p, c3, n3, p);',
     'end;',
     '',
-    '-- The purchase, said by the extension while the screen is still up. The',
-    '-- engine pays nothing and gives nothing for a screen of ours, so this is',
-    '-- the whole transaction: the gold, the creatures, and what is left.',
+    '-- The purchase, said by the extension while the screen is still up — the',
+    '-- screen has already asked what is left, the room in the army and the',
+    '-- money, with the price it showed. This is the whole transaction: that',
+    '-- price, in every resource it names (0 WOOD … 6 GOLD); the creatures; and',
+    '-- what is left, written down and told back to the screen.',
     '-- The creatures are QUEUED, not added: `AddObjectCreatures` hands the map',
     '-- a command, and the world runs its queue once the screen is closed.',
     'function H5EHireBought(creature, count)',
@@ -228,12 +239,21 @@ export function campScript(spec: CampScript): string {
     '    return nil;',
     '  end;',
     '  local player = GetObjectOwner(town);',
-    `  local price = H5ECreatureCost(creature) * count * ${n}_PRICE;`,
-    '  local purse = GetPlayerResource(player, GOLD);',
-    '  if purse < price then',
-    '    return nil;',
+    '  local r = 0;',
+    '  while r <= 6 do',
+    '    if GetPlayerResource(player, r) < H5EHireCost(creature, count, r) then',
+    '      return nil;',
+    '    end;',
+    '    r = r + 1;',
     '  end;',
-    '  SetPlayerResource(player, GOLD, purse - price);',
+    '  r = 0;',
+    '  while r <= 6 do',
+    '    local cost = H5EHireCost(creature, count, r);',
+    '    if cost > 0 then',
+    '      SetPlayerResource(player, r, GetPlayerResource(player, r) - cost);',
+    '    end;',
+    '    r = r + 1;',
+    '  end;',
     '  AddObjectCreatures(town, creature, count);',
     // The FIRST slot of that creature only. The roll draws three different
     // ones, but a stock written down before it did (launch 49) holds the same
@@ -246,6 +266,9 @@ export function campScript(spec: CampScript): string {
     '        left = 0;',
     '      end;',
     `      ${n}_Set(town, "n" .. i, left);`,
+    // The screen's own list, in the same breath: the window reads it again
+    // the moment this event returns.
+    '      H5EHireLeft(creature, left);',
     '      i = 3;',
     '    end;',
     '    i = i + 1;',

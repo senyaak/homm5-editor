@@ -10,17 +10,21 @@
 
 // ---------------------------------------------------------------------------
 // WHAT THIS IS, AND WHAT IT IS NOT. It is the game's own hire screen, shown
-// over a list a script hands over: `H5EHireScreen(creature, count, creature,
-// count, …)`. It is NOT a refugee camp, not a dwelling and not a shop — it
-// knows nothing about where the creatures came from, who is paying, or where
-// they go. Every purchase comes back to the map's Lua as an event:
+// over a list a script hands over: `H5EHireScreen(creature, count, price,
+// …)`, the price in percent of the creature's own cost. It is NOT a refugee
+// camp, not a dwelling and not a shop — it knows nothing about where the
+// creatures came from, who is paying, or where they go. It asks what the
+// engine's own screen asks before a purchase (what is left, room in the army,
+// the money at the line's price) and every purchase that passes comes back to
+// the map's Lua as an event:
 //
 //     H5EHireBought(creature, count)
 //
-// and what that means — the gold, the army, a caravan, a quest — is the
-// script's, written where the feature is written. That division is the whole
-// design: the extension opens doors the Lua does not have, and holds no
-// state of its own.
+// and what that means — the gold (`H5EHireCost` says what the screen showed),
+// the army, a caravan, a quest — is the script's, written where the feature
+// is written, down to what is left (`H5EHireLeft`). That division is the
+// whole design: the extension opens doors the Lua does not have, and holds no
+// state past the screen.
 //
 // THE SCREEN IS ONE SCREEN. `HIRE_CREATURES` serves towns, map dwellings and
 // caravans alike, and what tells them apart is an interface each seller
@@ -119,6 +123,41 @@ static const BYTE HIRE_WINDOW_HIRE_HEAD[HIRE_WINDOW_HIRE_HEAD_LEN] =
 #define WINDOW_HAS_SOURCE 0x1Cu
 #define WINDOW_SOURCE 0x20u
 
+/**
+ * THE QUESTION, ANSWERED THE ENGINE'S WAY. `Execute` (0xC60240) decides a
+ * purchase with three calls, and a list of ours is asked the same three:
+ *
+ *   what is left    the source's `Available` ≥ count            (0xC6030E)
+ *   room            `0xB433E0(army, creature)`, answers in al    (0xC60320)
+ *   money           the payer's `vt+0xE0(int cost[7])`, al       (0xC6037B)
+ *
+ * — unless the command's free byte is set, which skips the money (0xC6032D).
+ * The command gets all three from the words the two virtuals read around the
+ * interface (0x83EA56…0x83EA88): the payer from `-0x0C` (the command's
+ * `+0x10`), the army from `-0x04` (`+0x14`), the free byte at `+0x08`
+ * (`+0x24`). Launch 51 is why: an army with seven stacks took the purchase,
+ * the script's `AddObjectCreatures` found no slot, and the creatures were
+ * simply gone — where the engine's own screen says "your army is full".
+ */
+#define WINDOW_PAYER_BACK 0x0Cu
+#define WINDOW_ARMY_BACK 0x04u
+#define WINDOW_FREE 0x08u
+#define VT_CAN_PAY 0xE0u
+/** Room for a stack of a creature in an army: `push esi; mov esi,ecx; call` — `__fastcall(army, creature)`, `ret`. */
+#define ARMY_ROOM_RVA 0x7433e0u
+static const BYTE ARMY_ROOM_HEAD[6] = { 0x56, 0x8B, 0xF1, 0xE8, 0x88, 0xFE };
+/**
+ * A line's price, as the window draws it (the refresh, 0x83F6F9, on the
+ * selected line at `window+0x1A0`): `__thiscall(line, int out[7])`, `ret 4` —
+ * the creature at `line+0x1C`, its record's `Cost` unpacked by `0xA458C0` into
+ * seven resources. Detoured and REPLACED, never called through: the head is
+ * `mov ecx,[ecx+1Ch]` and a relative call, which a trampoline cannot carry.
+ */
+#define LINE_COST_RVA 0x6ba5a0u
+#define LINE_COST_HEAD_LEN 8
+static const BYTE LINE_COST_HEAD[LINE_COST_HEAD_LEN] = { 0x8B, 0x49, 0x1C, 0xE8, 0x88, 0xD0, 0x06, 0x00 };
+#define LINE_CREATURE 0x1Cu
+
 /** The two screens' main vtables — what the screen on screen is compared with. */
 #define TOWN_SCREEN_VTABLE_RVA 0xb73418u
 #define HIRE_SCREEN_VTABLE_RVA 0xb72b8cu
@@ -153,6 +192,8 @@ typedef int (__thiscall *QueueTakeFn)(void *queue, void *request);
 typedef int (__fastcall *HireExecuteFn)(void *cmd, void *edx);
 /** The probe's two: `__thiscall(object, creature, count)`, `ret 0Ch`. */
 typedef int (__fastcall *HireWindowHireFn)(void *self, void *edx, void *object, int creature, int count);
+typedef int (__fastcall *ArmyRoomFn)(void *army, int creature);
+typedef int (__thiscall *CanPayFn)(void *payer, const int *cost);
 
 static CreateHireScreenFn g_createHireScreen = NULL;
 static PushScreenRequestFn g_pushScreenRequest = NULL;
@@ -160,6 +201,7 @@ static TownSoundBuilderFn g_townSoundBuilder = NULL;
 static HireExecuteFn g_hireExecute = NULL;
 static HireWindowHireFn g_hireWindowHire = NULL;
 static HireWindowHireFn g_hireWindowHire2 = NULL;
+static ArmyRoomFn g_armyRoom = NULL;
 static void *g_sourceEntries = NULL;
 static void *g_sourceCopy = NULL;
 static void *g_sourceItems = NULL;
@@ -208,6 +250,15 @@ static void *g_sourceVtableWithLocator[1 + SOURCE_SLOTS];
 static int g_sourceVbtable[4];
 /** The screen of ours that is up, or nothing — for `H5EHireOpen`. */
 static int g_hireOpen = 0;
+/**
+ * Each line's price, in percent of the creature's own cost — beside the
+ * entries rather than in them, because an entry is the engine's sixteen bytes.
+ * Same index as the entry. The SCRIPT's number: a tier half price, a first
+ * tier free, free for a hero with some skill — whatever it decided at opening.
+ */
+static int g_hirePercent[HIRE_MOST];
+/** The hire screen that shows the list of ours, caught when it asks the list something; nothing when another is up. */
+static void *g_ourHireScreen = NULL;
 
 static HireVector *source_vector(void) { return (HireVector *)g_sourceBlock; }
 
@@ -224,7 +275,7 @@ static void source_free_entries(void) {
  * because the engine copies them with its own vector code and frees what it
  * copied with its own free, and a static of ours handed to that is a crash.
  */
-static int source_fill(const int *creature, const int *count, int offers) {
+static int source_fill(const int *creature, const int *count, const int *percent, int offers) {
   source_free_entries();
   int n = 0;
   for (int i = 0; i < offers; i++) if (creature[i] > 0) n++;
@@ -248,6 +299,7 @@ static int source_fill(const int *creature, const int *count, int offers) {
     if (!id) { g_engineFree(entries); return 0; }
     *id = creature[i];
     entries[at].count = count[i] < 0 ? 0 : count[i];
+    g_hirePercent[at] = percent[i] < 0 ? 0 : percent[i];
     entries[at].begin = id;
     entries[at].end = id + 1;
     entries[at].cap = id + 1;
@@ -260,6 +312,7 @@ static int source_fill(const int *creature, const int *count, int offers) {
   for (HireEntry *e = v->begin; e < v->end; e++) {
     log_num("hire screen: the list holds creature ", *e->begin);
     log_num("hire screen:                    count ", e->count);
+    log_num("hire screen:                    price % ", g_hirePercent[e - v->begin]);
   }
   return at;
 }
@@ -269,6 +322,52 @@ static HireEntry *source_entry_of(int creature) {
   HireVector *v = source_vector();
   for (HireEntry *e = v->begin; e < v->end; e++) {
     for (int *c = e->begin; c < e->end; c++) if (*c == creature) return e;
+  }
+  return NULL;
+}
+
+/** The screen on top, as its whole object, or nothing. */
+static void *top_screen(void) {
+  if (!g_currentScreen) return NULL;
+  void *top = g_currentScreen();
+  return top ? whole_object_of(top) : NULL;
+}
+
+/**
+ * What `count` of a creature cost on the open list, the seven resources in the
+ * record's order (Wood … Gold, the Lua's WOOD … GOLD): the creature's own cost
+ * times the line's percent, rounded down. 0 when the list does not hold it.
+ */
+static int hire_cost(int creature, int count, int out[COST_RESOURCES]) {
+  for (int i = 0; i < COST_RESOURCES; i++) out[i] = 0;
+  HireEntry *e = source_entry_of(creature);
+  BYTE *record = creature_record(creature);
+  if (!e || !record) return 0;
+  long long percent = g_hirePercent[e - source_vector()->begin];
+  for (int i = 0; i < COST_RESOURCES; i++) {
+    out[i] = (int)((long long)*(int *)(record + RECORD_COST + i * 4) * count * percent / 100);
+  }
+  return 1;
+}
+
+/**
+ * Why the window may NOT hire that many of a creature from the list of ours, or
+ * nothing when it may — the engine's three questions (THE QUESTION, above),
+ * asked with the line's own price.
+ */
+static const char *hire_refusal(void *self, int creature, int count) {
+  HireEntry *e = source_entry_of(creature);
+  if (!e || count <= 0 || count > e->count) return "not that many left";
+  BYTE *sub = (BYTE *)self;
+  if (!readable(sub - WINDOW_PAYER_BACK, WINDOW_PAYER_BACK + WINDOW_FREE + 1)) return "the window is not shaped as measured";
+  void *army = *(void **)(sub - WINDOW_ARMY_BACK);
+  if (g_armyRoom && army && town_alive(army) && !(g_armyRoom(army, creature) & 0xFF)) return "no room in the army";
+  if (!sub[WINDOW_FREE]) {
+    void *payer = *(void **)(sub - WINDOW_PAYER_BACK);
+    CanPayFn can = payer && town_alive(payer) ? (CanPayFn)vtable_entry(payer, VT_CAN_PAY) : NULL;
+    int cost[COST_RESOURCES];
+    hire_cost(creature, count, cost);
+    if (can && !(can(payer, cost) & 0xFF)) return "the player cannot pay";
   }
   return NULL;
 }
@@ -285,6 +384,7 @@ static void __fastcall source_take(void *self, void *edx, int creature, int coun
 /** Slot +0x0C: what is left of a creature. */
 static int __fastcall source_available(void *self, void *edx, int creature) {
   (void)self; (void)edx;
+  g_ourHireScreen = top_screen(); /* only a screen of ours asks the list anything */
   HireEntry *e = source_entry_of(creature);
   log_num("hire screen: asked how many of creature ", creature);
   log_num("hire screen:                    answered ", e ? e->count : 0);
@@ -294,6 +394,7 @@ static int __fastcall source_available(void *self, void *edx, int creature) {
 /** Slot +0x10: the screen's lines, the engine's own — with a word about being asked. */
 static int __fastcall source_items(void *self, void *edx, void *out) {
   log_line("hire screen: the screen asked for the lines");
+  g_ourHireScreen = top_screen();
   return ((int(__fastcall *)(void *, void *, void *))g_sourceItems)(self, edx, out);
 }
 
@@ -395,44 +496,68 @@ static int window_sells_ours(void *self) {
 }
 
 /**
- * THE DEED: the player pressed hire. For a list of ours this is the whole sale
- * — what is left is decremented and the map is told — and the engine's command
- * is never built, so nothing is paid or given behind the script's back.
+ * THE DEED: the player pressed hire. For a list of ours the extension decides
+ * nothing: it asks the engine's three questions once more (the state can have
+ * moved since the button was lit) and, if they all say yes, tells the map. The
+ * SCRIPT sells — takes the money, gives the creatures — and says what is left
+ * with `H5EHireLeft`, which it does inside this very call (the event is run by
+ * one tick of the scheduler before this returns); the window reads the list
+ * again right after (`Available`, launch 50), so the screen shows what the
+ * script decided. A script that refuses leaves the line as it was — launch 51
+ * sold five executioners out of the screen that the script had refused.
  */
 static int __fastcall hire_window_hire_hook(void *self, void *edx, void *object, int creature, int count) {
   if (!window_sells_ours(self)) return g_hireWindowHire(self, edx, object, creature, count);
-  HireEntry *e = source_entry_of(creature);
-  int left = e ? e->count : 0;
-  if (left <= 0) {
-    log_num("hire screen: hire pressed with nothing left of creature ", creature);
+  const char *why = hire_refusal(self, creature, count);
+  if (why) {
+    log_num("hire screen: hire pressed and refused, creature ", creature);
+    log_text("hire screen:   because ", why);
     return 0;
   }
-  if (count > left) {
-    log_num("hire screen: hire pressed for more than there is, giving what is left of creature ", creature);
-    count = left;
-  }
-  log_num("hire screen: the player bought ", count);
+  log_num("hire screen: the player hires ", count);
   log_num("             of creature ", creature);
-  source_take(NULL, NULL, creature, count);
   hire_say_bought(creature, count);
   return 0; /* the engine's own path answers with nothing the caller reads */
 }
 
 /**
  * THE QUESTION: may he hire that many? Asked over and over while the window is
- * up, so it says nothing and builds nothing — the stock is the whole answer.
- *
- * NOT THE PRICE, yet. What a creature costs is the script's (the level's
- * multiplier is not the engine's to know), so the button is enabled by what is
- * left and a player who cannot pay is turned away by the script, which leaves
- * the line looking sold until the screen is opened again. When that matters,
- * the script will hand the screen a price with the list rather than the
- * extension guessing one.
+ * up, so it says nothing and builds nothing — the engine's three questions,
+ * with the line's price, are the whole answer. The button goes dark exactly
+ * where the engine's own would: nothing left, no room, no money.
  */
 static int __fastcall hire_window_hire2_hook(void *self, void *edx, void *object, int creature, int count) {
-  if (!window_sells_ours(self)) return g_hireWindowHire2(self, edx, object, creature, count);
-  HireEntry *e = source_entry_of(creature);
-  return e && count > 0 && count <= e->count ? 1 : 0;
+  if (!window_sells_ours(self)) {
+    g_ourHireScreen = NULL; /* a window of the engine's is the one up now */
+    return g_hireWindowHire2(self, edx, object, creature, count);
+  }
+  g_ourHireScreen = top_screen();
+  return hire_refusal(self, creature, count) ? 0 : 1;
+}
+
+/** Is the screen on top the one showing the list of ours? */
+static int our_screen_on_top(void) {
+  BYTE *top = (BYTE *)top_screen();
+  return top && top == g_ourHireScreen && readable(top, 4)
+      && *(BYTE **)top == (BYTE *)GetModuleHandleW(NULL) + HIRE_SCREEN_VTABLE_RVA;
+}
+
+/**
+ * A line's price, REPLACING the engine's (LINE_COST_RVA): the record's cost,
+ * unpacked as `0xA458C0` does — and for a line of ours, times its percent, so
+ * the price the window shows (and paints red when it is too much) is the one
+ * the script will charge.
+ */
+static int *__fastcall line_cost_hook(void *line, void *edx, int *out) {
+  (void)edx;
+  int creature = *(int *)((BYTE *)line + LINE_CREATURE);
+  if (our_screen_on_top() && source_entry_of(creature)) {
+    hire_cost(creature, 1, out);
+    return out;
+  }
+  BYTE *record = creature_record(creature);
+  for (int i = 0; i < COST_RESOURCES; i++) out[i] = record ? *(int *)(record + RECORD_COST + i * 4) : 0;
+  return out;
 }
 
 // --- opening it ----------------------------------------------------------------------
@@ -485,7 +610,7 @@ static BYTE *screen_up_of(DWORD vtableRva) {
  * building on the map or a spell would want; when it is written, this function
  * grows a second half and the script's call does not change.
  */
-static int open_hire_screen(const int *creature, const int *count, int offers) {
+static int open_hire_screen(const int *creature, const int *count, const int *percent, int offers) {
   BYTE *screen = screen_up_of(TOWN_SCREEN_VTABLE_RVA);
   if (!screen) { log_line("H5EHireScreen: the town screen is not the screen on screen"); return 0; }
   if (!readable(screen + TOWN_SCREEN_CHILD_UP, 1) || !readable(screen + TOWN_SCREEN_QUEUE, 4)) return 0;
@@ -513,7 +638,7 @@ static int open_hire_screen(const int *creature, const int *count, int offers) {
   void *army = garrison_of ? garrison_of(owner) : NULL;
   if (!army || !town_alive(army)) { log_line("H5EHireScreen: the town has no army to show beside the offers"); return 0; }
   if (!source_build(town)) { log_line("H5EHireScreen: the town's object base is out of reach"); return 0; }
-  int shown = source_fill(creature, count, offers);
+  int shown = source_fill(creature, count, percent, offers);
   if (!shown) { log_line("H5EHireScreen: the list is empty, nothing to show"); return 0; }
 
   void *sound = g_townSoundBuilder(town_type_of(town));
@@ -540,29 +665,41 @@ static int open_hire_screen(const int *creature, const int *count, int offers) {
 // --- and what a script sees ------------------------------------------------------------
 
 /**
- * `H5EHireScreen(creature, count, creature, count, …)` — the hire screen over
- * that list, on the town screen that is up.
+ * `H5EHireScreen(creature, count, price, creature, count, price, …)` — the hire
+ * screen over that list, on the town screen that is up.
  *
- * The pairs are read until they run out, so a list of one and a list of twenty
- * are the same call; the ORDER is the list's, the screen sorts nothing. A pair
+ * THREE A LINE: the creature, how many are on offer, and its PRICE in percent
+ * of the creature's own cost (all seven resources scaled alike, rounded down):
+ * 100 the ordinary, 200 double, 50 half, 0 free. The price is the script's to
+ * decide per line and per opening — a tier cheaper, a first tier free, free for
+ * a hero with some skill (Senya, 2026-09-25) — and the screen shows it, paints
+ * it red when the player cannot pay, and refuses the purchase as the engine's
+ * own screen would. A last line without its price is at 100.
+ *
+ * The lines are read until they run out, so a list of one and a list of twenty
+ * are the same call; the ORDER is the list's, the screen sorts nothing. A line
  * whose creature is zero is skipped, which is what a script's empty slot is.
  */
 static void *__fastcall lua_hire_screen(void *ctx) {
   if (!hire_screen_ready()) return NULL;
   int creature[HIRE_MOST];
   int count[HIRE_MOST];
+  int percent[HIRE_MOST];
   int offers = 0;
   for (int i = 0; i < HIRE_MOST; i++) {
     int id = 0;
     int many = 0;
-    if (!lua_arg_int(ctx, 1 + i * 2, &id)) break;
-    (void)lua_arg_int(ctx, 2 + i * 2, &many);
+    int price = 100;
+    if (!lua_arg_int(ctx, 1 + i * 3, &id)) break;
+    (void)lua_arg_int(ctx, 2 + i * 3, &many);
+    (void)lua_arg_int(ctx, 3 + i * 3, &price);
     creature[offers] = id > 0 ? id : 0;
     count[offers] = many > 0 ? many : 0;
+    percent[offers] = price > 0 ? price : 0;
     offers++;
   }
   if (!offers) {
-    log_line("H5EHireScreen: takes pairs of creature and count, and was given none");
+    log_line("H5EHireScreen: takes lines of creature, count and price, and was given none");
     return NULL;
   }
   if (g_hireOpen && screen_up_of(HIRE_SCREEN_VTABLE_RVA)) {
@@ -570,7 +707,8 @@ static void *__fastcall lua_hire_screen(void *ctx) {
     return NULL;
   }
   g_hireOpen = 0;
-  (void)open_hire_screen(creature, count, offers);
+  g_ourHireScreen = NULL;
+  (void)open_hire_screen(creature, count, percent, offers);
   return NULL;
 }
 
@@ -580,12 +718,54 @@ static void *__fastcall lua_hire_open(void *ctx) {
   return (void *)(INT_PTR)lua_push_int(ctx, g_hireOpen);
 }
 
+/**
+ * `H5EHireLeft(creature, count)` — how many of a creature the open screen has
+ * left: what a script says after it sold (or did not). Called from
+ * `H5EHireBought`, it lands before the window reads the list again, so the
+ * screen shows the script's answer at once. A creature the list does not hold
+ * is nothing.
+ */
+static void *__fastcall lua_hire_left(void *ctx) {
+  int creature = 0;
+  int left = 0;
+  if (!lua_arg_int(ctx, 1, &creature) || !lua_arg_int(ctx, 2, &left)) {
+    log_line("H5EHireLeft: takes a creature and how many are left");
+    return NULL;
+  }
+  HireEntry *e = source_entry_of(creature);
+  if (!e) { log_num("H5EHireLeft: the list does not hold creature ", creature); return NULL; }
+  e->count = left < 0 ? 0 : left;
+  log_num("H5EHireLeft: creature ", creature);
+  log_num("             now left ", e->count);
+  return NULL;
+}
+
+/**
+ * `H5EHireCost(creature, count [, resource])` — what that many cost on the open
+ * screen, in one resource (the Lua's WOOD … GOLD; gold without it): exactly the
+ * number the screen showed and checked, so the script charges what the player
+ * saw. Nothing for a creature the list does not hold.
+ */
+static void *__fastcall lua_hire_cost(void *ctx) {
+  int creature = 0;
+  int count = 0;
+  int resource = COST_GOLD;
+  if (!lua_arg_int(ctx, 1, &creature) || !lua_arg_int(ctx, 2, &count)) return NULL;
+  (void)lua_arg_int(ctx, 3, &resource);
+  if (resource < 0 || resource >= COST_RESOURCES) return NULL;
+  int cost[COST_RESOURCES];
+  if (!hire_cost(creature, count, cost)) return NULL;
+  return (void *)(INT_PTR)lua_push_int(ctx, cost[resource]);
+}
+
 static void add_hire_screen_map_functions(void) {
   add_map_function("H5EHireScreen", (void *)&lua_hire_screen);
   add_map_function("H5EHireOpen", (void *)&lua_hire_open);
+  add_map_function("H5EHireLeft", (void *)&lua_hire_left);
+  add_map_function("H5EHireCost", (void *)&lua_hire_cost);
 }
 
-/** The purchase is only ours when the source is: the detour is installed once, at start-up. */
+/** The purchase is only ours when the source is: the detours are installed once, at start-up. */
 static void install_hire_screen(void) {
   g_hireExecute = (HireExecuteFn)detour(HIRE_EXECUTE_RVA, HIRE_EXECUTE_HEAD, HIRE_EXECUTE_HEAD_LEN,
                                         (void *)&hire_execute_hook, "a creature purchase");
@@ -599,6 +779,12 @@ static void install_hire_screen(void) {
                                                (void *)&hire_window_hire2_hook, "the hire window's question");
   log_line(g_hireWindowHire ? "hire screen: a sale of ours is heard at the window's own hire"
                             : "hire screen: the window's hire is NOT hooked, so nothing of ours can be bought");
-  log_line(g_hireWindowHire2 ? "hire screen: and the window's question is answered out of the list"
+  log_line(g_hireWindowHire2 ? "hire screen: and the window's question is answered the engine's way"
                              : "hire screen: the window's question is NOT hooked, so its button is the engine's");
+  /* The room question is called, never hooked; the price is replaced whole. */
+  g_armyRoom = (ArmyRoomFn)code_at(ARMY_ROOM_RVA, ARMY_ROOM_HEAD, sizeof ARMY_ROOM_HEAD, "an army's room for a stack");
+  if (!g_armyRoom) log_line("hire screen: a full army is not asked about, so a purchase can find no room");
+  if (!detour(LINE_COST_RVA, LINE_COST_HEAD, LINE_COST_HEAD_LEN, (void *)&line_cost_hook, "a hire line's price")) {
+    log_line("hire screen: the window shows the creature's own price, not the list's");
+  }
 }

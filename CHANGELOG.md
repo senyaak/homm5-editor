@@ -140,14 +140,19 @@ pre-release.
   mod's under `scripts/homm5-editor/`, loaded by the mod's global script on
   every map — where the button's function lives.
 - A hire screen of our own contents for a map's Lua: `H5EHireScreen(creature,
-  count, …)` opens the game's own screen over the script's list, and
-  `H5EHireBought(creature, count)` comes back when the player presses hire —
-  paying and giving are the script's. With `H5ECreatureCount`/`H5ECreatureAt`
-  (every creature of some tiers, the mod's own included) and
-  `H5ECreatureCost`/`Growth`/`Tier`/`Town`, a faction's refugee camp is a
-  generated Lua file: three levels, three different creatures a week, one to
-  three of them on offer at double, full or half price
-  (`src/mods/camp-script.ts`; the whole story in docs/FACTION_PLAN.md §2b).
+  count, price, …)` opens the game's own screen over the script's list, each
+  line at a price of the script's (percent of the creature's cost — a tier
+  cheaper, a first tier free, free for a hero with a skill). The screen shows
+  that price, paints it red, and refuses what the engine's own screen refuses
+  — nothing left, no room in the army, no money — and `H5EHireBought(creature,
+  count)` comes back when the player presses hire: paying (`H5EHireCost`, what
+  the screen showed), giving and what is left (`H5EHireLeft`) are the
+  script's. With `H5ECreatureCount`/`H5ECreatureAt` (every creature of some
+  tiers, the mod's own included) and `H5ECreatureCost`/`Growth`/`Tier`/`Town`,
+  a faction's refugee camp is a generated Lua file: three levels, three
+  different creatures a week, one to three of them on offer at double, full or
+  half price (`src/mods/camp-script.ts`; the whole story in
+  docs/FACTION_PLAN.md §2b).
 - A faction's upgraded dwellings hired the DONOR's second upgrade (the
   expansion's third creature of a tier): only the first creature of each
   dwelling was rewritten, so a Haven-based town sold Zealots and Seraphs, and

@@ -42,7 +42,10 @@ console.log('what it asks the extension for — two doors and no more');
   check('no probe left in the script', !lua.includes('H5ELog('));
   check('the tiers are the ones asked for', lua.includes('BonePit_MIN_TIER = 3;') && lua.includes('BonePit_MAX_TIER = 6;'));
   check('a week of the creature is what it stocks', lua.includes('H5ECreatureGrowth(creature)'));
-  check('the screen is given a list and nothing else', lua.includes('H5EHireScreen(c1, n1, c2, n2, c3, n3);') && !lua.includes('H5EHireScreen(town'));
+  // Three a line: the creature, how many, and its price in percent — the
+  // level's, the same for every line of one opening.
+  check('the screen is given a list and nothing else', lua.includes('H5EHireScreen(c1, n1, p, c2, n2, p, c3, n3, p);') && !lua.includes('H5EHireScreen(town'));
+  check("and the price is the level's", lua.includes('local p = rule.price;'));
   // The week rolls all three; the level only opens them.
   check('the week rolls the whole stock', lua.includes('function BonePit_Roll(town)') && !lua.includes('BonePit_Roll(town, rule.offers)'));
   check('the level opens what the week rolled', lua.includes('if rule.offers > 1 then') && lua.includes('if rule.offers > 2 then'));
@@ -54,13 +57,18 @@ console.log('what it asks the extension for — two doors and no more');
 console.log("the purchase is the script's whole business");
 {
   check('it hears the event', lua.includes('function H5EHireBought(creature, count)'));
-  check('it charges the price, by the level', lua.includes('H5ECreatureCost(creature) * count * BonePit_PRICE')
-    && lua.includes('SetPlayerResource(player, GOLD, purse - price);'));
-  check('it refuses what the player cannot afford', lua.includes('if purse < price then'));
+  // Launch 51: the script priced one way and the screen another, and the
+  // screen sold what the script refused. It charges what the screen showed.
+  check('it charges what the screen showed, in every resource', lua.includes('local cost = H5EHireCost(creature, count, r);')
+    && lua.includes('SetPlayerResource(player, r, GetPlayerResource(player, r) - cost);') && lua.includes('while r <= 6 do'));
+  check('its own price is gone', !lua.includes('BonePit_PRICE') && !lua.includes('H5ECreatureCost('));
+  check('it refuses what the player cannot afford', lua.includes('if GetPlayerResource(player, r) < H5EHireCost(creature, count, r) then'));
   check('it gives the creatures to the town', lua.includes('AddObjectCreatures(town, creature, count);'));
   check('and writes down what is left', lua.includes('local left = BonePit_Get(town, "n" .. i) - count;'));
   // Launch 49: the same creature in two slots, one purchase taken from both.
-  check('out of the first slot of that creature only', /BonePit_Set\(town, "n" \.\. i, left\);\n\s*i = 3;/.test(lua));
+  check('out of the first slot of that creature only', /BonePit_Set\(town, "n" \.\. i, left\);\n\s*H5EHireLeft\(creature, left\);\n\s*i = 3;/.test(lua));
+  // And the screen hears it at once — it reads the list again when the event returns.
+  check('and tells the screen what is left', lua.includes('H5EHireLeft(creature, left);'));
 }
 
 console.log('the week draws three different creatures');
@@ -110,10 +118,10 @@ console.log('the levels');
   check('three of them, more offers and a lower price each time',
     CAMP_LEVELS.length === 3
     && CAMP_LEVELS.every((l, i) => l.offers === i + 1)
-    && CAMP_LEVELS[0]!.price === 2 && CAMP_LEVELS[1]!.price === 1 && CAMP_LEVELS[2]!.price === 0.5);
+    && CAMP_LEVELS[0]!.price === 200 && CAMP_LEVELS[1]!.price === 100 && CAMP_LEVELS[2]!.price === 50);
   check('a building not built offers nothing', campOffers(0) === 0 && campOffers(4) === 0);
   check('and a built one offers its level\'s', campOffers(1) === 1 && campOffers(3) === 3);
-  check('the table is in the script', lua.includes('BonePit_LEVELS = { { offers = 1, price = 2 }, { offers = 2, price = 1 }, { offers = 3, price = 0.5 } };'));
+  check('the table is in the script', lua.includes('BonePit_LEVELS = { { offers = 1, price = 200 }, { offers = 2, price = 100 }, { offers = 3, price = 50 } };'));
 }
 
 console.log('the stock is the map\'s, per town');

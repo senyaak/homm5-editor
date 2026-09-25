@@ -377,9 +377,11 @@ serve a caravan, a black market or a quest reward written tomorrow.
 | `H5ECreatureAt(n [, minTier, maxTier])` | the id of the Nth of them, 1-based, table order; nothing past the last |
 | `H5ECreatureTier(c)`, `H5ECreatureGrowth(c)`, `H5ECreatureTown(c)` | record `+0x8C`, `+0xA8`, `+0x98` |
 | `H5ECreatureCost(c [, resource])` | the price of one; gold by default (resources at record `+0xB0`, see below) |
-| `H5EHireScreen(creature, count, creature, count, …)` | the game's own hire screen over that list, on the town screen that is up; pairs until they run out, the order the script's, one line per creature |
+| `H5EHireScreen(creature, count, price, …)` | the game's own hire screen over that list, on the town screen that is up; THREE a line — the price in percent of the creature's own cost, all seven resources scaled alike, rounded down (100 ordinary, 200 double, 0 free); lines until they run out, the order the script's, one line per creature |
 | `H5EHireOpen()` | 1 while a screen of ours is up |
-| event `H5EHireBought(creature, count)` | said to the map (one line + one scheduler tick, as the town button does) when the player presses hire — the script pays, gives, writes down what is left |
+| event `H5EHireBought(creature, count)` | said to the map (one line + one scheduler tick, as the town button does) when the player presses hire AND the screen's checks passed — the script pays, gives, writes down what is left |
+| `H5EHireCost(creature, count [, resource])` | what that many cost on the open screen in one resource (WOOD 0 … GOLD 6, gold by default) — the number the screen showed and checked |
+| `H5EHireLeft(creature, count)` | what the open screen has left of a creature — the script says it after it sold; the window reads the list again the moment the event returns |
 
 **The camp (src/mods/camp-script.ts → `TownSpec.script`):** the button's
 function `BonePit(town)` reads the building's level
@@ -389,10 +391,13 @@ at once — three DIFFERENT creatures of tiers 3–6, drawn without putting back
 (each draw picks among the indices left and steps over the taken ones),
 count = the creature's weekly growth — and keeps them in game vars under
 `h5e.<fn>.<town>.c1/n1…c3/n3`, so a save carries them. The level only OPENS
-one, two or three of them (an upgrade never re-rolls) and sets the price:
-×2, ×1, ×0.5. `H5EHireBought` checks the purse, `SetPlayerResource`,
-`AddObjectCreatures(town, …)` (the garrison, hero or not), and takes the
-count off the first slot of that creature. `tools/test-camp-script.ts`
+one, two or three of them (an upgrade never re-rolls) and sets the price
+it hands the screen with every line: 200, 100, 50 percent. `H5EHireBought`
+charges `H5EHireCost` in all seven resources (refusing if any falls short),
+`AddObjectCreatures(town, …)` (the garrison, hero or not), takes the count off
+the first slot of that creature and says `H5EHireLeft`. A price per line is
+the point (Senya, 2026-09-25): a tier cheaper, a first tier free, free for a
+hero with some skill — the script decides at each opening. `tools/test-camp-script.ts`
 lints it, checks every name it shouts against `advmap-startup.lua`, and
 tries every outcome of the draw for pools of one to eight.
 
@@ -418,8 +423,17 @@ interface at `+0x40` whose first two virtuals both build the same
   counting down from the stock (`+0x43F5DC`: 10, 10, 9, 8 … 1).
 
 Both are detoured: for a window whose source (interface `+0x1C` == 1,
-`+0x20`) is ours, the deed is our sale — clamp to what is left, `Take`, say
-`H5EHireBought` — and the question is answered from the list. The command's
+`+0x20`) is ours, the question is answered THE ENGINE'S WAY — the three
+calls `Execute` makes (`0xC6030E` what is left, `0xB433E0(army, creature)`
+room, the payer's `vt+0xE0(int cost[7])` money unless the free byte is set),
+fed from the words around the interface (payer `-0x0C`, army `-0x04`, free
+byte `+0x08`) and the LINE's price — so the button goes dark where the
+engine's own would. The deed asks the same once more and, if it passes,
+only says `H5EHireBought`: the script sells and says what is left. The
+price the window draws comes from `0xABA5A0(line, int out[7])` (the refresh,
+`0x83F6F9`, on the selected line at `window+0x1A0`), which is replaced whole
+— for a line of ours on our screen it is the line's price, so the panel shows
+it and paints it red when it is too much. The command's
 own `Execute` (`0xC60240`) is detoured too, as a WALL: a source of ours is
 never bought by the engine's hand, and whoever walks into it is logged
 (it happens — `CanDo` does reach Execute, from `+0x7F8C08`).
@@ -465,12 +479,17 @@ never bought by the engine's hand, and whoever walks into it is logged
    no second one), the Factions window has a third selector per tier, and
    `test-town-buildings` checks all three. Neutrals (the elementals) are
    townless by right and keep the random picture.
+10. *The screen sold what the script refused* (launch 51: five executioners
+    at double price, 1000 each with 959 in the purse — the screen counted
+    5 → 0, the script took nothing and gave nothing). The deed took from the
+    list before the script decided, and the screen priced by the record. Now
+    the script says what is left, and the screen knows the line's price.
+11. *A full army swallowed the purchase* (launch 51: seven stacks, the
+    purchase went through, the creatures were gone). The engine asks
+    `0xB433E0` for room; our question did not. It does now.
 
-**Open:** the question does not know the price (the script's multiplier) —
-the button goes by what is left, a player who cannot pay is turned away by
-the script and the line looks sold until the screen reopens; when that
-matters the script hands the screen a price with the list. The screen's
-left tabs (caravans…) show; hiding them is a flag on `H5EHireScreen`, later.
+**Open:** the screen's left tabs (caravans…) show; hiding them is a flag
+on `H5EHireScreen`, later.
 Opening from the adventure map (a dwelling's visit, `0x767107`) is not
 written — only from the town screen.
 
