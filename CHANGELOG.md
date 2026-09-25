@@ -159,6 +159,11 @@ pre-release.
   started: the extension learned where a map keeps its scripts only from a
   script of ours run at the map's start, which a loaded save never runs. It
   now takes the map from the map's own script tick.
+- The game's own refugee camp never offered a creature of a mod: its pool is
+  thirty-eight names written into `MapObjects/Special/RefugeeCamp.xdb`, and
+  the weekly roll draws from that list. A mod with creatures of tiers three
+  to six now carries its own copy of the record with them appended, so every
+  camp on every map draws from the whole table.
 - The script editor warns on an ALL-CAPS name the game does not declare —
   `TB_SPECIAL_1` where the Lua says `TOWN_BUILDING_SPECIAL_1` passed every
   check and read as nil once per click in game. The vocabulary is the

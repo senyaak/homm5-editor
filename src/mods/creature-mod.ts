@@ -85,6 +85,7 @@ import { buildDwellings } from './dwelling-files.ts';
 import { buildHeroes, texturePair } from './hero-files.ts';
 import { buildFactions } from './faction-files.ts';
 import type { FactionBuild } from './faction-files.ts';
+import { REFUGEE_CAMP, campPoolAdditions, patchRefugeeCamp } from './refugee-camp.ts';
 import { patchSpecializationTypes } from './specializations.ts';
 import {
   CLASS_TABLE, classNameFile, patchClassTable, patchClassTypes, patchSkillPrerequisites,
@@ -299,6 +300,12 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
   }
   if (mod.creatures.length) {
     files.push({ path: REF_TABLE, data: Buffer.from(patchRefTable(mustRead(read, REF_TABLE), mod, read), 'latin1') });
+    // The shipped refugee camp rolls from a list of thirty-eight names written
+    // into its record, so a creature of ours of the pool's tiers is never
+    // offered by a camp on the map unless the record says so (refugee-camp.ts).
+    if (campPoolAdditions(mod.creatures).length) {
+      files.push({ path: REFUGEE_CAMP, data: Buffer.from(patchRefugeeCamp(mustRead(read, REFUGEE_CAMP), mod.creatures), 'latin1') });
+    }
   }
   // ONE UIGameRoot: the hire camera for the creatures, a build grid per
   // faction — both on the same text, or the archive would carry two.

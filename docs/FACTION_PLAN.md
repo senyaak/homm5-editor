@@ -543,13 +543,17 @@ on `H5EHireScreen`, later.
 Opening from the adventure map (a dwelling's visit, `0x767107`) is not
 written — only from the town screen.
 
-**TODO, after the camp (Senya, 2026-09-22): the shipped refugee camp's
-pool.** `MapObjects/Special/RefugeeCamp.xdb` lists 38 creatures by name
+**The shipped refugee camp's pool — DONE 2026-09-26 (Senya's TODO of
+09-22).** `MapObjects/Special/RefugeeCamp.xdb` lists 38 creatures by name
 (tiers 3–6 of the six original races; Fortress and Stronghold were never
-added), and the roll is `pool[int(38·r)]` — a creature the mod adds never
-shows up there. Fix: the mod build writes its own copy of the record with
-the pool extended, through the same tier filter the extension's
-`H5ECreatureCount`/`H5ECreatureAt` apply (tiers 3–6).
+added), and the roll is `pool[int(n·r)]` over the vector — a creature the mod
+adds never showed up there. Now the mod carries its own copy of the record
+with the pool extended by every creature of the mod whose tier is 3–6 (the
+same filter the extension's `H5ECreatureCount`/`H5ECreatureAt` apply for the
+camp of ours), appended after the shipped names, once (`src/mods/refugee-camp.ts`,
+written by `buildCreatureMod` beside the creature table; `test-creature-mod`).
+The vector's size is read at run time, so nothing else is retuned; a map's
+archive mounts over the game's file, so every camp on every map draws from it.
 
 **The Lua linter knows the game's constants — DONE 2026-09-26 (Senya's
 TODO of 09-23).** `luaConstantWarnings(src, known)` in `src/script/lua-lint.ts`:

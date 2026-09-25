@@ -22,6 +22,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
 import { buildCreatureMod, creaturePaths } from '../src/mods/creature-mod.ts';
+import { REFUGEE_CAMP, campPool, patchRefugeeCamp } from '../src/mods/refugee-camp.ts';
 import { addCreature, creatureLimit, newCreatureMod } from '../src/mods/mod-model.ts';
 import { packCreatureMod, readCreatureModBuffer, writeCreatureMod } from '../src/mods/mod-archive.ts';
 import { dataPath } from '../src/mods/mod-art.ts';
@@ -61,9 +62,11 @@ const NONE_XDB = `<?xml version="1.0" encoding="UTF-8"?>\r
 \t<Exp>0</Exp>\r
 \t<Power>0</Power>\r
 \t<TimeToCommand>7</TimeToCommand>\r
+\t<PairCreature>CREATURE_UNKNOWN</PairCreature>\r
 \t<CreatureTier>1</CreatureTier>\r
 \t<CreatureTown>TOWN_HEAVEN</CreatureTown>\r
 \t<WeeklyGrowth>0</WeeklyGrowth>\r
+\t<BaseCreature>CREATURE_UNKNOWN</BaseCreature>\r
 \t<Cost>\r
 \t\t<Wood>0</Wood>\r
 \t\t<Ore>0</Ore>\r
@@ -197,6 +200,20 @@ function miniature(): Map<string, Buffer> {
 \t<AnimShot href="/GameMechanics/Shot/Arrow.xdb#xpointer(/Shot)"/>\r
 </CreatureVisual>`,
 
+    // The shipped refugee camp's pool, two names of it: a creature of ours of
+    // tiers three to six has to be appended to it, or no camp on any map ever
+    // offers it (refugee-camp.ts).
+    'MapObjects/Special/RefugeeCamp.xdb': `<?xml version="1.0" encoding="UTF-8"?>\r
+<AdvMapDwellingShared ObjectRecordID="1000007">\r
+\t<Type>BUILDING_REFUGEE_CAMP</Type>\r
+\t<guards/>\r
+\t<creatures>\r
+\t\t<Item>CREATURE_ARCH_MAGI</Item>\r
+\t\t<Item>CREATURE_GENIE</Item>\r
+\t</creatures>\r
+\t<RandomType>DWELLING_TYPE_SPECIFIC</RandomType>\r
+</AdvMapDwellingShared>`,
+
     'MapObjects/Elf.(AdvMapMonsterShared).xdb': `<?xml version="1.0" encoding="UTF-8"?>\r
 <AdvMapMonsterShared>\r
 \t<Model href="/Art/Char.xdb#xpointer(/Model)"/>\r
@@ -314,6 +331,27 @@ check('the name→number map gained it', /<Name>CREATURE_TEST_SNIPER<\/Name>\r?\
 check('ref_table_num_objs was retuned', types.includes('<Data>3</Data>'));
 check('MaxElements was retuned', types.includes('<MaxElements>3</MaxElements>'));
 check('MinElements was left alone (it is a floor)', types.includes('<MinElements>2</MinElements>'));
+
+// The shipped refugee camp's pool: the tier-4 sniper joins it, at the end and
+// once; a creature outside tiers 3–6 does not, and a mod of none writes no copy.
+{
+  const camp = asText(files, REFUGEE_CAMP);
+  check('the refugee camp record is carried', files.has(REFUGEE_CAMP));
+  check('with the shipped pool intact and ours after it',
+    JSON.stringify(campPool(camp)) === JSON.stringify(['CREATURE_ARCH_MAGI', 'CREATURE_GENIE', 'CREATURE_TEST_SNIPER']), campPool(camp).join(','));
+  check('the rest of the record is untouched', camp.includes('<Type>BUILDING_REFUGEE_CAMP</Type>') && camp.includes('<RandomType>DWELLING_TYPE_SPECIFIC</RandomType>'));
+  const shipped = data.get(REFUGEE_CAMP)!.toString('latin1');
+  const giant = { id: 'CREATURE_TEST_GIANT', stats: { ...c.stats, tier: 7 } };
+  const imp = { id: 'CREATURE_TEST_IMP', stats: { ...c.stats, tier: 2 } };
+  check('a tier outside the pool\'s is left out', patchRefugeeCamp(shipped, [giant, imp]) === shipped);
+  check('and the pool\'s edges are in', campPool(patchRefugeeCamp(shipped, [{ ...giant, stats: { ...c.stats, tier: 6 } }, { ...imp, stats: { ...c.stats, tier: 3 } }])).length === 4);
+  check('a creature already listed is refused, not doubled',
+    throws(() => patchRefugeeCamp(shipped, [{ id: 'CREATURE_GENIE', stats: c.stats }])));
+  const low = miniatureMod();
+  low.creatures[0]!.stats.tier = 2;
+  check('a mod whose creatures are all outside the pool\'s tiers writes no camp',
+    !byPath(buildCreatureMod(low, (rel) => data.get(rel) ?? null).files).has(REFUGEE_CAMP));
+}
 
 // The editor's own abilities: tags, which cost the same three things an
 // artifact costs and no executable at all. Shipped with any mod that has

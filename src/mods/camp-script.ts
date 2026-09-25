@@ -2,9 +2,10 @@
 //
 // The engine's own camp is a POOL of 38 creatures written into
 // `MapObjects/Special/RefugeeCamp.xdb`, rolled once a week and sold through
-// the hire screen (docs/FACTION_PLAN.md §2b). A camp of ours is the same idea
-// and none of the same data: what the extension lends is two doors the map's
-// Lua does not have —
+// the hire screen (docs/FACTION_PLAN.md §2b; the mod's creatures join that
+// pool through refugee-camp.ts). A camp of ours is the same idea and none of
+// the same data: what the extension lends is two doors the map's Lua does not
+// have —
 //
 //   H5ECreatureCount(minTier, maxTier) and H5ECreatureAt(n, minTier, maxTier)
 //                                    every creature the table holds, the mod's
