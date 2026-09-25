@@ -144,7 +144,8 @@ pre-release.
   line at a price of the script's (percent of the creature's cost — a tier
   cheaper, a first tier free, free for a hero with a skill). The screen shows
   that price, paints it red, and refuses what the engine's own screen refuses
-  — nothing left, no room in the army, no money — and `H5EHireBought(creature,
+  — nothing left, no room in the army, no money — for one line and for "hire
+  all" alike, and `H5EHireBought(creature,
   count)` comes back when the player presses hire: paying (`H5EHireCost`, what
   the screen showed), giving and what is left (`H5EHireLeft`) are the
   script's. With `H5ECreatureCount`/`H5ECreatureAt` (every creature of some

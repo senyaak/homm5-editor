@@ -79,9 +79,12 @@ static const BYTE SOURCE_ITEMS_HEAD[8] = { 0x83, 0xEC, 0x40, 0x53, 0x8B, 0x5C, 0
 #define HIRE_EXECUTE_HEAD_LEN 6
 static const BYTE HIRE_EXECUTE_HEAD[HIRE_EXECUTE_HEAD_LEN] = { 0x83, 0xEC, 0x54, 0x53, 0x8B, 0xD9 };
 /** Its fields, as its constructor (0x8456F0) fills them and Execute reads them. */
+#define CMD_PAYER 0x10u
+#define CMD_ARMY 0x14u
 #define CMD_SOURCE 0x18u
 #define CMD_CREATURE 0x1Cu
 #define CMD_COUNT 0x20u
+#define CMD_FREE 0x24u
 
 /**
  * THE TWO GESTURES, which is where a purchase of ours is decided.
@@ -122,6 +125,25 @@ static const BYTE HIRE_WINDOW_HIRE_HEAD[HIRE_WINDOW_HIRE_HEAD_LEN] =
     { 0x83, 0xEC, 0x18, 0x53, 0x55, 0x8B, 0xE9, 0x33, 0xDB };
 #define WINDOW_HAS_SOURCE 0x1Cu
 #define WINDOW_SOURCE 0x20u
+
+/**
+ * "HIRE ALL", the third gesture: the interface's `+0x10` (0x83E7F0), `(manager,
+ * vector<{creature, count}>*)`, `ret 8`. It builds ONE
+ * `CHireMultipleCreaturesCmd` (vtable 0xF72C84) out of the plan the window made
+ * and hands it to `Do`; that command's Execute (0xC604C0) runs a
+ * `CHireCreaturesCmd` per line through the generic runner (0xBF8BF0) — straight
+ * into the Execute of ours. So for a list of ours it is taken here, like the
+ * single hire: each line asked the three questions afresh (the money the line
+ * before it spent is gone by then — `SetPlayerResource` is immediate) and, when
+ * they pass, told to the map. Head: `sub esp,0Ch; push ebx; push edi; mov
+ * edi,ecx; xor ebx,ebx`.
+ */
+#define HIRE_WINDOW_HIRE_ALL_RVA 0x43e7f0u
+static const BYTE HIRE_WINDOW_HIRE_ALL_HEAD[HIRE_WINDOW_HIRE_HEAD_LEN] =
+    { 0x83, 0xEC, 0x0C, 0x53, 0x57, 0x8B, 0xF9, 0x33, 0xDB };
+/** One line of that plan, and the plan: the engine's vector of eight-byte pairs (copied by 0x70F4B0). */
+typedef struct { int creature; int count; } HirePlanLine;
+typedef struct { HirePlanLine *begin; HirePlanLine *end; HirePlanLine *cap; } HirePlan;
 
 /**
  * THE QUESTION, ANSWERED THE ENGINE'S WAY. `Execute` (0xC60240) decides a
@@ -193,6 +215,7 @@ typedef int (__fastcall *HireExecuteFn)(void *cmd, void *edx);
 /** The probe's two: `__thiscall(object, creature, count)`, `ret 0Ch`. */
 typedef int (__fastcall *HireWindowHireFn)(void *self, void *edx, void *object, int creature, int count);
 typedef int (__fastcall *ArmyRoomFn)(void *army, int creature);
+typedef int (__fastcall *HireAllFn)(void *self, void *edx, void *manager, const HirePlan *plan);
 typedef int (__thiscall *CanPayFn)(void *payer, const int *cost);
 
 static CreateHireScreenFn g_createHireScreen = NULL;
@@ -202,6 +225,7 @@ static HireExecuteFn g_hireExecute = NULL;
 static HireWindowHireFn g_hireWindowHire = NULL;
 static HireWindowHireFn g_hireWindowHire2 = NULL;
 static ArmyRoomFn g_armyRoom = NULL;
+static HireAllFn g_hireWindowHireAll = NULL;
 static void *g_sourceEntries = NULL;
 static void *g_sourceCopy = NULL;
 static void *g_sourceItems = NULL;
@@ -355,21 +379,25 @@ static int hire_cost(int creature, int count, int out[COST_RESOURCES]) {
  * nothing when it may — the engine's three questions (THE QUESTION, above),
  * asked with the line's own price.
  */
-static const char *hire_refusal(void *self, int creature, int count) {
+static const char *hire_refusal_of(void *payer, void *army, int free, int creature, int count) {
   HireEntry *e = source_entry_of(creature);
   if (!e || count <= 0 || count > e->count) return "not that many left";
-  BYTE *sub = (BYTE *)self;
-  if (!readable(sub - WINDOW_PAYER_BACK, WINDOW_PAYER_BACK + WINDOW_FREE + 1)) return "the window is not shaped as measured";
-  void *army = *(void **)(sub - WINDOW_ARMY_BACK);
   if (g_armyRoom && army && town_alive(army) && !(g_armyRoom(army, creature) & 0xFF)) return "no room in the army";
-  if (!sub[WINDOW_FREE]) {
-    void *payer = *(void **)(sub - WINDOW_PAYER_BACK);
+  if (!free) {
     CanPayFn can = payer && town_alive(payer) ? (CanPayFn)vtable_entry(payer, VT_CAN_PAY) : NULL;
     int cost[COST_RESOURCES];
     hire_cost(creature, count, cost);
     if (can && !(can(payer, cost) & 0xFF)) return "the player cannot pay";
   }
   return NULL;
+}
+
+/** The same, for a window: the payer, the army and the free byte from the words around its interface. */
+static const char *hire_refusal(void *self, int creature, int count) {
+  BYTE *sub = (BYTE *)self;
+  if (!readable(sub - WINDOW_PAYER_BACK, WINDOW_PAYER_BACK + WINDOW_FREE + 1)) return "the window is not shaped as measured";
+  return hire_refusal_of(*(void **)(sub - WINDOW_PAYER_BACK), *(void **)(sub - WINDOW_ARMY_BACK),
+                         sub[WINDOW_FREE], creature, count);
 }
 
 /** Slot +0x08: what is left after a purchase. */
@@ -468,22 +496,27 @@ static void hire_say_bought(int creature, int count) {
 }
 
 /**
- * The engine's own purchase, which for a source of ours never happens.
+ * The engine's own purchase, which for a source of ours never happens — and
+ * which answers the questions put to it.
  *
  * It used to be where we heard a sale, and that was the bug: the window reaches
  * the same command for its "may he?" as for its "he did", so every enable pass
- * over a stock of ten sold ten. Now a sale is heard at the gesture and this is
- * only a wall — with a line saying who walked into it, because a wall nobody
- * ever hits and a wall nobody ever logs look the same.
+ * over a stock of ten sold ten. Then it was a wall answering "no" to all, and
+ * that left "hire all" dead (launch 52). A sale is heard at the gestures now,
+ * so what reaches here is a question, and it gets the true answer.
  */
 static int __fastcall hire_execute_hook(void *cmd, void *edx) {
-  if (readable(cmd, CMD_COUNT + 4) && *(void **)((BYTE *)cmd + CMD_SOURCE) == (void *)SOURCE_OBJECT) {
-    log_hex("hire screen: the engine would run a purchase of its own, from +",
-            (DWORD)((BYTE *)__builtin_return_address(0) - (BYTE *)GetModuleHandleW(NULL)));
-    log_num("hire screen:   of creature ", *(int *)((BYTE *)cmd + CMD_CREATURE));
-    log_num("hire screen:   this many ", *(int *)((BYTE *)cmd + CMD_COUNT));
-    log_line("hire screen:   refused — a screen of ours is the script's to sell");
-    return 0;
+  BYTE *c = (BYTE *)cmd;
+  if (readable(c, CMD_FREE + 1) && *(void **)(c + CMD_SOURCE) == (void *)SOURCE_OBJECT) {
+    /* ONLY A QUESTION REACHES HERE — both purchases of a screen of ours are
+       taken at the gesture (the single one and "hire all") and never build a
+       command that runs. What still arrives is the window asking the manager
+       "could this be done": "hire all" checks its plan this way before it
+       lights (launch 52: a wall answering no left the button dead). So it is
+       answered — the engine's three questions, with the command's own payer,
+       army and free byte — and nothing is sold. */
+    return hire_refusal_of(*(void **)(c + CMD_PAYER), *(void **)(c + CMD_ARMY), c[CMD_FREE],
+                           *(int *)(c + CMD_CREATURE), *(int *)(c + CMD_COUNT)) ? 0 : 1;
   }
   return g_hireExecute(cmd, edx);
 }
@@ -533,6 +566,25 @@ static int __fastcall hire_window_hire2_hook(void *self, void *edx, void *object
   }
   g_ourHireScreen = top_screen();
   return hire_refusal(self, creature, count) ? 0 : 1;
+}
+
+/** "HIRE ALL" for a list of ours: every line of the window's plan, one after another, as the deed. */
+static int __fastcall hire_window_hire_all_hook(void *self, void *edx, void *manager, const HirePlan *plan) {
+  if (!window_sells_ours(self)) return g_hireWindowHireAll(self, edx, manager, plan);
+  if (!readable(plan, sizeof *plan)) return 0;
+  for (const HirePlanLine *line = plan->begin; line && line < plan->end; line++) {
+    if (!readable(line, sizeof *line)) break;
+    const char *why = hire_refusal(self, line->creature, line->count);
+    if (why) {
+      log_num("hire screen: hire all, a line refused, creature ", line->creature);
+      log_text("hire screen:   because ", why);
+      continue;
+    }
+    log_num("hire screen: hire all: the player hires ", line->count);
+    log_num("             of creature ", line->creature);
+    hire_say_bought(line->creature, line->count);
+  }
+  return 0; /* as the single hire: the caller reads nothing */
 }
 
 /** Is the screen on top the one showing the list of ours? */
@@ -781,6 +833,9 @@ static void install_hire_screen(void) {
                             : "hire screen: the window's hire is NOT hooked, so nothing of ours can be bought");
   log_line(g_hireWindowHire2 ? "hire screen: and the window's question is answered the engine's way"
                              : "hire screen: the window's question is NOT hooked, so its button is the engine's");
+  g_hireWindowHireAll = (HireAllFn)detour(HIRE_WINDOW_HIRE_ALL_RVA, HIRE_WINDOW_HIRE_ALL_HEAD, HIRE_WINDOW_HIRE_HEAD_LEN,
+                                          (void *)&hire_window_hire_all_hook, "the hire window's hire all");
+  if (!g_hireWindowHireAll) log_line("hire screen: \"hire all\" is NOT hooked, so it cannot buy from a list of ours");
   /* The room question is called, never hooked; the price is replaced whole. */
   g_armyRoom = (ArmyRoomFn)code_at(ARMY_ROOM_RVA, ARMY_ROOM_HEAD, sizeof ARMY_ROOM_HEAD, "an army's room for a stack");
   if (!g_armyRoom) log_line("hire screen: a full army is not asked about, so a purchase can find no room");

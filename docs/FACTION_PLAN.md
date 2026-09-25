@@ -433,10 +433,20 @@ only says `H5EHireBought`: the script sells and says what is left. The
 price the window draws comes from `0xABA5A0(line, int out[7])` (the refresh,
 `0x83F6F9`, on the selected line at `window+0x1A0`), which is replaced whole
 — for a line of ours on our screen it is the line's price, so the panel shows
-it and paints it red when it is too much. The command's
-own `Execute` (`0xC60240`) is detoured too, as a WALL: a source of ours is
-never bought by the engine's hand, and whoever walks into it is logged
-(it happens — `CanDo` does reach Execute, from `+0x7F8C08`).
+it and paints it red when it is too much. The third gesture
+is "hire all" — the interface's `+0x10` (`0x83E7F0`, `(manager,
+vector<{creature, count}>*)`, `ret 8`), which builds one
+`CHireMultipleCreaturesCmd` (vtable `0xF72C84`) whose Execute (`0xC604C0`)
+runs a `CHireCreaturesCmd` per line through the generic runner `0xBF8BF0`.
+For a list of ours it is taken like the single hire: each line of the plan
+asked afresh (the money the line before spent is already gone —
+`SetPlayerResource` is immediate) and told to the map. The command's own
+`Execute` (`0xC60240`) is detoured too, and since neither purchase of ours
+ever builds a command that runs, what reaches it is a QUESTION — the
+window's plan for "hire all" is checked through `CanDo`, which runs Execute
+(via `0xBF8BF0`) — and it is answered, with the command's own payer
+(`+0x10`), army (`+0x14`) and free byte (`+0x24`). A wall answering "no" to
+everything left "hire all" dead (launch 52).
 
 **The traps, each paid for by a launch:**
 
@@ -487,6 +497,13 @@ never bought by the engine's hand, and whoever walks into it is logged
 11. *A full army swallowed the purchase* (launch 51: seven stacks, the
     purchase went through, the creatures were gone). The engine asks
     `0xB433E0` for room; our question did not. It does now.
+12. *"Hire all" did nothing* (launch 52). It is a gesture of its own and a
+    command of its own, and its plan is checked through Execute — which our
+    wall answered "no". Taken at the gesture; Execute answers questions.
+13. *An install that did not happen* (launches 51–52): the installer cannot
+    replace `bin/homm5-editor.dll` while the game is open (EBUSY), and a
+    launch then tests yesterday's DLL. The load report's own lines say which
+    build is in (`answered out of the list` vs `the engine's way`).
 
 **Open:** the screen's left tabs (caravans…) show; hiding them is a flag
 on `H5EHireScreen`, later.
