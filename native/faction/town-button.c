@@ -269,6 +269,14 @@ static int tick_the_map_scripts(void) {
   if (!map || !readable((BYTE *)map + WORLD_SCRIPTS, 4)) return 0;
   void *scripts = *(void **)((BYTE *)map + WORLD_SCRIPTS);
   ScriptsTickFn tick = (ScriptsTickFn)vtable_entry(scripts, SCRIPTS_TICK);
+  /* The slot is OURS since the map watch took it (lua/hero-specialization.c),
+     and `vtable_entry` answers only with code inside the executable — so it
+     answered nothing, and launch 57 said every click to the map with no tick
+     to run it. The engine's own tick is kept; call that. */
+  if (!tick && g_engineTick && readable(scripts, 4)
+      && *(BYTE **)scripts == (BYTE *)GetModuleHandleW(NULL) + SCRIPT_ENGINE_VTABLE_RVA) {
+    tick = (ScriptsTickFn)(void *)g_engineTick;
+  }
   if (!tick) return 0;
   tick(scripts);
   return 1;

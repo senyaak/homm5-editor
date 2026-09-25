@@ -532,6 +532,11 @@ everything left "hire all" dead (launch 52).
     The lines the extension says now end in `else H5ENoSuchFunction();`,
     which logs "the map has no function for this line", so a missing
     function no longer looks like one that ran and did nothing.
+    And the watch broke the one call that needs the slot it took:
+    `tick_the_map_scripts` reads the tick through `vtable_entry`, which
+    answers only with code inside the executable — the slot held ours, so
+    every line to the map waited unrun under the town screen (launch 57).
+    It calls the engine's own tick, kept by the watch, when the slot is ours.
 
 **Open:** the screen's left tabs (caravans…) show; hiding them is a flag
 on `H5EHireScreen`, later.
