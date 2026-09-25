@@ -159,6 +159,14 @@ pre-release.
   started: the extension learned where a map keeps its scripts only from a
   script of ours run at the map's start, which a loaded save never runs. It
   now takes the map from the map's own script tick.
+- `H5EHireScreen` takes options: a string among its arguments that is not a
+  line. `"notabs"` hides the three caravan tabs on the screen's left, which
+  a list of ours has nothing to offer through (the list and creature tabs
+  stay). Any other string names the HERO who buys, and the screen then opens
+  on the adventure map — his army beside the offers, the room question asked
+  of it — the way a dwelling's visit opens it, so an object on the map, a
+  spell or a quest can sell from a script's list; without a hero named it
+  opens on the town screen as before. Not yet seen in game.
 - The game's own refugee camp never offered a creature of a mod: its pool is
   thirty-eight names written into `MapObjects/Special/RefugeeCamp.xdb`, and
   the weekly roll draws from that list. A mod with creatures of tiers three

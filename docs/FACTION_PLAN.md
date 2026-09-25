@@ -377,7 +377,7 @@ serve a caravan, a black market or a quest reward written tomorrow.
 | `H5ECreatureAt(n [, minTier, maxTier])` | the id of the Nth of them, 1-based, table order; nothing past the last |
 | `H5ECreatureTier(c)`, `H5ECreatureGrowth(c)`, `H5ECreatureTown(c)` | record `+0x8C`, `+0xA8`, `+0x98` |
 | `H5ECreatureCost(c [, resource])` | the price of one; gold by default (resources at record `+0xB0`, see below) |
-| `H5EHireScreen(creature, count, price, …)` | the game's own hire screen over that list, on the town screen that is up; THREE a line — the price in percent of the creature's own cost, all seven resources scaled alike, rounded down (100 ordinary, 200 double, 0 free); lines until they run out, the order the script's, one line per creature |
+| `H5EHireScreen([options,] creature, count, price, …)` | the game's own hire screen over that list; THREE a line — the price in percent of the creature's own cost, all seven resources scaled alike, rounded down (100 ordinary, 200 double, 0 free); lines until they run out, the order the script's, one line per creature. A STRING among the arguments is an option: `"notabs"` hides the three caravan tabs; any other string is the script name of the HERO who buys, which opens the screen on the ADVENTURE MAP (his army beside the offers) instead of the town screen — `H5EHireScreen("Isabell", "notabs", CREATURE_PEASANT, 12, 50)` |
 | `H5EHireOpen()` | 1 while a screen of ours is up |
 | event `H5EHireBought(creature, count)` | said to the map (one line + one scheduler tick, as the town button does) when the player presses hire AND the screen's checks passed — the script pays, gives, writes down what is left |
 | `H5EHireCost(creature, count [, resource])` | what that many cost on the open screen in one resource (WOOD 0 … GOLD 6, gold by default) — the number the screen showed and checked |
@@ -538,10 +538,44 @@ everything left "hire all" dead (launch 52).
     every line to the map waited unrun under the town screen (launch 57).
     It calls the engine's own tick, kept by the watch, when the slot is ours.
 
-**Open:** the screen's left tabs (caravans…) show; hiding them is a flag
-on `H5EHireScreen`, later.
-Opening from the adventure map (a dwelling's visit, `0x767107`) is not
-written — only from the town screen.
+**The tabs (2026-09-26, written, not yet launched).** The screen's left
+column is five buttons in one `tabs` window, found by name and cast to
+IButton by the tabs controller's Init (`0x838FC0`, `(window, screen)`,
+`ret 8`, the controller at the screen's `+0x1AC`, its five buttons a vector
+at `+0x18` in the xdb's order): `dwellings` and `creature` — the list and
+the creature's page — then `hire_from_castles`, `hire_from_dwellings`,
+`caravans_info`. Init itself disables and hides the last three
+(`vt+0x3C(0)`, `vt+0x44(0)` on each button's interface, `+4+vbtable[8]`)
+when the game's caravans option (the byte at `0x108F430`) is off — a global,
+not a per-seller decision, which is why they showed over a list of ours.
+`H5EHireScreen("notabs", …)` does to the three what the option does: Init
+is detoured, and after it has found the buttons, for a screen whose source
+(`+0x194`) is ours, they are disabled and hidden. The list and creature
+tabs stay; they belong to the list.
+
+**Opening from the adventure map (2026-09-26, written, not yet launched).**
+The dwelling visit (`0x7674FE…0x76756D`, a method of `NUI::CAdventureScreen`
+whose main vtable RTTI puts at `0xF5CF34`) builds the request as: `p0` =
+the screen's `+0x5F4` object's first slot (`0x6ADFF0` is exactly `mov
+ecx,[ecx+5F4h]; mov eax,[ecx]; jmp [eax]`), `p1` = that object's `+0x1C`,
+source = the dwelling's hire interface, object = the visiting HERO (the
+visit's second argument), army = his `vt+0x48`, sound = a dwelling's builder
+(`0x6F1710`, takes nothing), the pointer 0, bools 1, 1, 1; pushed on the
+interface stack (`0x5BA210`). Ours is asked for by NAMING THE HERO — a string
+among `H5EHireScreen`'s arguments that is not `"notabs"` — found with
+`IAdvMapWorld::FindObjectByName` as every hero function of ours finds one;
+the source's object base (the words the screen reads liveness, the refcount
+and the owner from) is the hero's `CObjectBase`, by the engine's own
+`__RTDynamicCast` from the whole object's own type (`object_base_of`, so no
+vbtable index measured on one class is trusted for another). The last bool
+is passed as 0, as the town screen's second opener (`0x787732`) passes it:
+set, the screen's Init casts the source's base to a town and, failing that,
+asks it for a DWELLING TYPE (`vt+0xA4`, `0x84086C`) — a hero's slot there is
+something else; clear, the screen takes the generic `HIRE_CREATURES` layout
+by name (`0x84090B`). The purchase then runs exactly as on the town screen
+(the gestures, the three questions, `H5EHireBought`, `H5EHirePay`); the
+script gives to the hero (`AddHeroCreatures`) rather than to a town.
+Each step is a named log line, so the first launch says which reading is off.
 
 **The shipped refugee camp's pool — DONE 2026-09-26 (Senya's TODO of
 09-22).** `MapObjects/Special/RefugeeCamp.xdb` lists 38 creatures by name

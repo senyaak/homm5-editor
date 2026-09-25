@@ -67,6 +67,59 @@ static const BYTE PUSH_SCREEN_REQUEST_HEAD[8] = { 0x57, 0x8B, 0xF9, 0x85, 0xFF, 
 /** The town's sound-screen builder, out of its town type: `push esi; push 10h; mov esi,ecx; call`. */
 #define TOWN_SOUND_BUILDER_RVA 0x2f1740u
 static const BYTE TOWN_SOUND_BUILDER_HEAD[8] = { 0x56, 0x6A, 0x10, 0x8B, 0xF1, 0xE8, 0x86, 0xBB };
+/** A dwelling's: `push 0Ch; call <new>; add esp,4` — twelve bytes with a vtable, out of nothing. */
+#define DWELLING_SOUND_BUILDER_RVA 0x2f1710u
+static const BYTE DWELLING_SOUND_BUILDER_HEAD[8] = { 0x6A, 0x0C, 0xE8, 0xB9, 0xBB, 0xDE, 0xFF, 0x83 };
+/**
+ * THE ADVENTURE MAP'S OPENER — the dwelling visit (0x7674FE…0x76756D), which is
+ * the one an object on the map, a spell or a quest wants:
+ *
+ *   p0      the screen's `+0x5F4` object's first slot: `0x6ADFF0` is exactly
+ *           `mov ecx,[ecx+5F4h]; mov eax,[ecx]; jmp [eax]`, called here rather
+ *           than copied;
+ *   p1      that object's `+0x1C`;
+ *   source  the dwelling's hire interface — ours;
+ *   object  the visiting HERO (the visit's second argument), army his `vt+0x48`;
+ *   sound   the dwelling's builder, the pointer 0, the bools 1, 1, 1.
+ *
+ * The last bool is passed as 0 here, as the town screen's second opener
+ * (0x787732) passes it: set, the screen's Init casts the source's object base
+ * to a town and, failing that, asks it for a DWELLING TYPE (`vt+0xA4`, 0x84086C)
+ * — and the base a list of ours stands on out here is the hero's, whose slot
+ * there is something else. Clear, the screen takes its generic `HIRE_CREATURES`
+ * layout by name (0x84090B), which the engine itself ships and uses.
+ *
+ * `NUI::CAdventureScreen`'s main vtable is RTTI's answer (tools/reverse/vtable.ts).
+ */
+#define ADVENTURE_SCREEN_VTABLE_RVA 0xb5cf34u
+#define ADVENTURE_MANAGER_RVA 0x2adff0u
+static const BYTE ADVENTURE_MANAGER_HEAD[10] = { 0x8B, 0x89, 0xF4, 0x05, 0x00, 0x00, 0x8B, 0x01, 0xFF, 0x20 };
+#define ADVENTURE_SCREEN_UI 0x5F4u
+#define ADVENTURE_UI_STACK 0x1Cu
+/** `NWorld::CObjectBase`'s type descriptor — the source type every cast of the engine's names (0x10A79F8). */
+#define OBJECT_BASE_TYPE_RVA 0xca79f8u
+/**
+ * THE TABS. The screen's left column is five buttons in one `tabs` window,
+ * found by name and cast to IButton by the tabs controller's Init (0x838FC0,
+ * `(window, screen)`, `ret 8`; the controller sits at the screen's `+0x1AC`):
+ * `dwellings` and `creature` — the list and the creature's page — and then
+ * `hire_from_castles`, `hire_from_dwellings`, `caravans_info`, the caravan
+ * tabs, which Init itself disables and hides (`vt+0x3C(0)`, `vt+0x44(0)` on
+ * each button's interface, `+4+vbtable[8]`) when the game's caravans option
+ * (the byte at 0x108F430) is off. A list of ours has no caravans to offer, so
+ * `H5EHireScreen("notabs", …)` does to the three what that option does, after
+ * Init has found them — the five are its vector at `+0x18`, in that order.
+ */
+#define TABS_INIT_RVA 0x438fc0u
+#define TABS_INIT_HEAD_LEN 9
+static const BYTE TABS_INIT_HEAD[TABS_INIT_HEAD_LEN] = { 0x83, 0xEC, 0x3C, 0x53, 0x55, 0x56, 0x57, 0x8B, 0xF9 };
+#define TABS_BUTTONS 0x18u
+#define TABS_COUNT 5
+#define TABS_FIRST_CARAVAN 2
+/** The hire screen's source, as its Init (0x840650) keeps its third argument. */
+#define SCREEN_SOURCE 0x194u
+#define VT_BUTTON_ENABLE 0x3Cu
+#define VT_WINDOW_VISIBLE 0x44u
 /** The three slots the engine answers on a vector at `this-0x44` — a dwelling's. */
 #define SOURCE_ENTRIES_RVA 0x90ffe0u
 static const BYTE SOURCE_ENTRIES_HEAD[4] = { 0x8D, 0x41, 0xBC, 0xC3 };
@@ -236,10 +289,19 @@ typedef int (__fastcall *HireWindowHireFn)(void *self, void *edx, void *object, 
 typedef int (__fastcall *ArmyRoomFn)(void *army, int creature);
 typedef int (__thiscall *PayIfYouCanFn)(void *payer, const int *cost);
 typedef int (__fastcall *HireAllFn)(void *self, void *edx, void *manager, const HirePlan *plan);
+typedef void *(__fastcall *AdventureManagerFn)(void *screen, void *edx);
+typedef void *(__cdecl *DwellingSoundBuilderFn)(void);
+typedef int (__fastcall *TabsInitFn)(void *self, void *edx, void *window, void *screen);
+typedef void (__fastcall *ButtonSetFn)(void *iface, void *edx, int on);
 
 static CreateHireScreenFn g_createHireScreen = NULL;
 static PushScreenRequestFn g_pushScreenRequest = NULL;
 static TownSoundBuilderFn g_townSoundBuilder = NULL;
+static AdventureManagerFn g_adventureManager = NULL;
+static DwellingSoundBuilderFn g_dwellingSoundBuilder = NULL;
+static TabsInitFn g_tabsInit = NULL;
+/** "notabs" was said for the screen being opened; read once by the tabs' Init and cleared. */
+static int g_hideTabs = 0;
 static HireExecuteFn g_hireExecute = NULL;
 static HireWindowHireFn g_hireWindowHire = NULL;
 static HireWindowHireFn g_hireWindowHire2 = NULL;
@@ -462,18 +524,13 @@ SOURCE_EVERY_SLOT(SOURCE_STUB)
 static void *const g_sourceStubs[SOURCE_SLOTS] = { SOURCE_EVERY_SLOT(SOURCE_STUB_NAME) };
 
 /**
- * The object, built over the town whose screen is up: its own five slots, its
- * own reference words, and the town's object base where the engine looks for
- * an owner. `townInterface` is the base the town's holder hands out (+0xF8 of
- * the whole town), whose vbtable knows the way to that base.
+ * The object, built over a seller's object base: its own five slots, its own
+ * reference words, and that base where the engine looks for liveness, a
+ * reference count and an owner (see `g_sourceVbtable`). On the town screen
+ * the base is the town's; on the adventure map, the buying hero's.
  */
-static int source_build(BYTE *townInterface) {
-  if (!readable(townInterface + 4, 4)) return 0;
-  const int *townVb = *(const int **)(townInterface + 4);
-  if (!readable(townVb, VB_OBJECT_BASE + 4)) return 0;
-  BYTE *townBase = townInterface + 4 + townVb[VB_OBJECT_BASE / 4];
-  if (!readable(townBase, 4)) return 0;
-
+static int source_build_on(BYTE *base) {
+  if (!readable(base, 4)) return 0;
   for (int i = 0; i < SOURCE_SLOTS; i++) g_sourceVtable[i] = g_sourceStubs[i];
   g_sourceVtable[0x00 / 4] = g_sourceEntries;
   g_sourceVtable[0x04 / 4] = g_sourceCopy;
@@ -483,14 +540,101 @@ static int source_build(BYTE *townInterface) {
   g_sourceVtableWithLocator[0] = NULL;
 
   BYTE *self = SOURCE_OBJECT;
-  int toTown = (int)(townBase - (self + 4));
+  int toBase = (int)(base - (self + 4));
   g_sourceVbtable[0] = -4;
-  g_sourceVbtable[1] = toTown;
-  g_sourceVbtable[2] = toTown;
+  g_sourceVbtable[1] = toBase;
+  g_sourceVbtable[2] = toBase;
   g_sourceVbtable[3] = 0;
   *(void ***)(self + 0) = g_sourceVtable;
   *(int **)(self + 4) = g_sourceVbtable;
   return 1;
+}
+
+/**
+ * The same, over the town whose screen is up. `townInterface` is the base the
+ * town's holder hands out (+0xF8 of the whole town), whose vbtable knows the
+ * way to the town's object base.
+ */
+static int source_build(BYTE *townInterface) {
+  if (!readable(townInterface + 4, 4)) return 0;
+  const int *townVb = *(const int **)(townInterface + 4);
+  if (!readable(townVb, VB_OBJECT_BASE + 4)) return 0;
+  return source_build_on(townInterface + 4 + townVb[VB_OBJECT_BASE / 4]);
+}
+
+/**
+ * Any object's `CObjectBase` — the subobject the screen reads liveness, the
+ * reference count and the owner from — by the engine's own cast rather than
+ * by a vbtable index measured on one class: the whole object (RTTI's locator
+ * says how far in a base pointer sits), its own type (the locator's
+ * descriptor, at `+0xC`), `__RTDynamicCast` from that to CObjectBase.
+ */
+static BYTE *object_base_of(void *obj) {
+  if (!g_rtDynamicCast) return NULL;
+  BYTE *whole = (BYTE *)whole_object_of(obj);
+  if (!readable(whole, 4)) return NULL;
+  BYTE *vtable = *(BYTE **)whole;
+  if (!readable(vtable - 4, 4)) return NULL;
+  BYTE *locator = *(BYTE **)(vtable - 4);
+  if (!readable(locator, 0x10)) return NULL;
+  void *type = *(void **)(locator + 0xC);
+  if (!readable(type, 4)) return NULL;
+  void *base = g_rtDynamicCast(whole, 0, type, (BYTE *)GetModuleHandleW(NULL) + OBJECT_BASE_TYPE_RVA, 0);
+  return readable(base, 4) ? (BYTE *)base : NULL;
+}
+
+/** Does one of the engine's string objects read as `lit`, case blind? Its first word points at the characters (log_hero_name). */
+static int engine_string_is(void *s, const char *lit) {
+  for (int word = 0; word < 2; word++) {
+    if (!readable((BYTE *)s + word * 4, 4)) return 0;
+    const char *text = *(const char **)((BYTE *)s + word * 4);
+    if (!readable(text, 1)) continue;
+    int i = 0;
+    int same = 1;
+    for (; lit[i] && same; i++) {
+      if (!readable(text + i, 1)) { same = 0; break; }
+      char c = text[i];
+      if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+      if (c != lit[i]) same = 0;
+    }
+    if (same && readable(text + i, 1) && text[i] == 0) return 1;
+  }
+  return 0;
+}
+
+// --- the tabs -------------------------------------------------------------------------
+
+/**
+ * The tabs controller's Init, with "notabs" heard: the engine finds the five
+ * buttons, and then the three caravan tabs of a screen showing OUR list are
+ * disabled and hidden the way the caravans option hides them. The screen is
+ * known by its source; anything else on the way in is left exactly as it was.
+ */
+static int __fastcall tabs_init_hook(void *self, void *edx, void *window, void *screen) {
+  int r = g_tabsInit(self, edx, window, screen);
+  if (!g_hideTabs) return r;
+  BYTE *s = (BYTE *)screen;
+  if (!readable(s + SCREEN_SOURCE, 4) || *(void **)(s + SCREEN_SOURCE) != (void *)SOURCE_OBJECT) return r;
+  g_hideTabs = 0;
+  if (!readable((BYTE *)self + TABS_BUTTONS, 4)) return r;
+  void **buttons = *(void ***)((BYTE *)self + TABS_BUTTONS);
+  if (!readable(buttons, TABS_COUNT * sizeof *buttons)) { log_line("hire screen: the tabs are not where they were measured"); return r; }
+  int hidden = 0;
+  for (int i = TABS_FIRST_CARAVAN; i < TABS_COUNT; i++) {
+    BYTE *b = (BYTE *)buttons[i];
+    if (!readable(b, 8)) continue;
+    const int *vb = *(const int **)(b + 4);
+    if (!readable(vb, VB_OBJECT_BASE + 4)) continue;
+    BYTE *iface = b + 4 + vb[VB_OBJECT_BASE / 4];
+    ButtonSetFn enable = (ButtonSetFn)vtable_entry(iface, VT_BUTTON_ENABLE);
+    ButtonSetFn visible = (ButtonSetFn)vtable_entry(iface, VT_WINDOW_VISIBLE);
+    if (!enable || !visible) continue;
+    enable(iface, NULL, 0);
+    visible(iface, NULL, 0);
+    hidden++;
+  }
+  log_num("hire screen: caravan tabs hidden: ", hidden);
+  return r;
 }
 
 // --- the purchase, which is the script's --------------------------------------------
@@ -662,6 +806,16 @@ static int hire_screen_ready(void) {
   g_sourceItems = code_at(SOURCE_ITEMS_RVA, SOURCE_ITEMS_HEAD, sizeof SOURCE_ITEMS_HEAD, "a source's items");
   if (!g_engineFree || !g_objectRelease || !create || !g_pushScreenRequest || !g_townSoundBuilder
       || !g_sourceEntries || !g_sourceCopy || !g_sourceItems) return 0;
+  /* The adventure map's half. Missing, the town screen still works and the
+     map path says which door was not found. */
+  g_adventureManager = (AdventureManagerFn)code_at(ADVENTURE_MANAGER_RVA, ADVENTURE_MANAGER_HEAD,
+                                                   sizeof ADVENTURE_MANAGER_HEAD, "the adventure screen's manager");
+  g_dwellingSoundBuilder = (DwellingSoundBuilderFn)code_at(DWELLING_SOUND_BUILDER_RVA, DWELLING_SOUND_BUILDER_HEAD,
+                                                           sizeof DWELLING_SOUND_BUILDER_HEAD, "a dwelling's sound builder");
+  if (!g_rtDynamicCast) {
+    g_rtDynamicCast = (RtDynamicCastFn)code_at(RT_DYNAMIC_CAST_RVA, RT_DYNAMIC_CAST_HEAD, sizeof RT_DYNAMIC_CAST_HEAD,
+                                               "the runtime cast");
+  }
   g_createHireScreen = create;
   return 1;
 }
@@ -682,10 +836,8 @@ static BYTE *screen_up_of(DWORD vtableRva) {
  * of ours where the town would stand; handed to the queue when there is one,
  * to the interface stack otherwise; the town screen told a child is up.
  *
- * ONLY FROM THE TOWN SCREEN for now — that is the opener that was read. The
- * adventure map has its own (a dwelling's visit, 0x767107), which is what a
- * building on the map or a spell would want; when it is written, this function
- * grows a second half and the script's call does not change.
+ * FROM THE TOWN SCREEN; the adventure map's half is `open_hire_screen_on_map`,
+ * asked for by naming the hero who buys.
  */
 static int open_hire_screen(const int *creature, const int *count, const int *percent, int offers) {
   BYTE *screen = screen_up_of(TOWN_SCREEN_VTABLE_RVA);
@@ -739,6 +891,58 @@ static int open_hire_screen(const int *creature, const int *count, const int *pe
   return 1;
 }
 
+/**
+ * The screen on the ADVENTURE MAP, for a named hero — asked for as the
+ * dwelling visit asks (see ADVENTURE_MANAGER_RVA): the request out of the
+ * adventure screen's fields, the hero as the object, his army beside the
+ * offers, a list of ours where the dwelling's would stand, the source's
+ * object base the hero's own. Handed to the interface stack, as the visit
+ * hands it. Each step named, so one launch says which is not what it was read
+ * to be.
+ */
+static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creature, const int *count,
+                                   const int *percent, int offers) {
+  BYTE *screen = screen_up_of(ADVENTURE_SCREEN_VTABLE_RVA);
+  if (!screen) { log_line("H5EHireScreen: a hero is named, and the adventure map is not the screen on screen"); return 0; }
+  if (!g_adventureManager || !g_dwellingSoundBuilder || !g_rtDynamicCast) {
+    log_line("H5EHireScreen: the adventure map's doors were not all found (see the load report)");
+    return 0;
+  }
+  void *map = adventure_map(ctx);
+  if (!map) { log_line("H5EHireScreen: no adventure map to find the hero on"); return 0; }
+  FindByNameFn find = (FindByNameFn)vtable_entry(map, VT_FIND_BY_NAME);
+  if (!find) { log_line("H5EHireScreen: the map has no lookup where we measured one"); return 0; }
+  void *hero = find(map, NULL, heroName);
+  if (!hero || !pointer_alive(hero)) { log_hero_name("H5EHireScreen: no living hero called ", heroName); return 0; }
+  ArmyOfFn armyOf = (ArmyOfFn)vtable_entry(hero, VT_ARMY_OF);
+  void *army = armyOf ? armyOf(hero, NULL) : NULL;
+  if (!army || !town_alive(army)) { log_line("H5EHireScreen: the hero has no army to show beside the offers"); return 0; }
+  BYTE *base = object_base_of(hero);
+  if (!base) { log_line("H5EHireScreen: the hero's object base is out of reach"); return 0; }
+  if (!readable(screen + ADVENTURE_SCREEN_UI, 4)) { log_line("H5EHireScreen: the adventure screen is not shaped as measured"); return 0; }
+  BYTE *ui = *(BYTE **)(screen + ADVENTURE_SCREEN_UI);
+  if (!readable(ui, ADVENTURE_UI_STACK + 4)) { log_line("H5EHireScreen: the adventure screen's UI object is out of reach"); return 0; }
+  void *p0 = g_adventureManager(screen, NULL);
+  void *p1 = *(void **)(ui + ADVENTURE_UI_STACK);
+  if (!p0 || !p1) { log_line("H5EHireScreen: the adventure screen answers with nothing to build the request on"); return 0; }
+  if (!source_build_on(base)) { log_line("H5EHireScreen: the hero's object base does not read"); return 0; }
+  int shown = source_fill(creature, count, percent, offers);
+  if (!shown) { log_line("H5EHireScreen: the list is empty, nothing to show"); return 0; }
+
+  void *sound = g_dwellingSoundBuilder();
+  int number = 0;
+  void *request = g_createHireScreen(p0, p1, SOURCE_OBJECT, hero, army, &number, sound, NULL, 1, 1, 0);
+  if (!request) { log_line("H5EHireScreen: the request would not be built"); return 0; }
+  *(int *)((BYTE *)request + 8) += 1;
+  g_pushScreenRequest(request);
+  *(int *)((BYTE *)request + 8) -= 1;
+  if (*(int *)((BYTE *)request + 8) == 0) g_objectRelease(request);
+  g_hireOpen = 1;
+  log_hero_name("H5EHireScreen: the screen goes up on the adventure map for ", heroName);
+  log_num("H5EHireScreen:   with offers: ", shown);
+  return 1;
+}
+
 // --- and what a script sees ------------------------------------------------------------
 
 /**
@@ -756,6 +960,19 @@ static int open_hire_screen(const int *creature, const int *count, const int *pe
  * The lines are read until they run out, so a list of one and a list of twenty
  * are the same call; the ORDER is the list's, the screen sorts nothing. A line
  * whose creature is zero is skipped, which is what a script's empty slot is.
+ *
+ * A STRING among the arguments is an option, wherever it stands:
+ *
+ *   "notabs"       the three caravan tabs on the left are hidden — a list of
+ *                  ours has no caravans to send; the list and creature tabs stay;
+ *   anything else  the script name of the HERO who buys, which opens the screen
+ *                  on the adventure map (his army beside the offers, the room
+ *                  question asked of it) rather than on the town screen — what
+ *                  an object on the map, a spell or a quest wants:
+ *
+ *     H5EHireScreen("Isabell", "notabs", CREATURE_PEASANT, 12, 50);
+ *
+ * With no hero named, the town screen has to be up and the town buys, as before.
  */
 static void *__fastcall lua_hire_screen(void *ctx) {
   if (!hire_screen_ready()) return NULL;
@@ -763,17 +980,27 @@ static void *__fastcall lua_hire_screen(void *ctx) {
   int count[HIRE_MOST];
   int percent[HIRE_MOST];
   int offers = 0;
-  for (int i = 0; i < HIRE_MOST; i++) {
+  void *heroName = NULL;
+  int hideTabs = 0;
+  for (int at = 1; offers < HIRE_MOST;) {
+    void *word = lua_arg_string(ctx, at);
+    if (word) {
+      if (engine_string_is(word, "notabs")) hideTabs = 1;
+      else heroName = word;
+      at++;
+      continue;
+    }
     int id = 0;
     int many = 0;
     int price = 100;
-    if (!lua_arg_int(ctx, 1 + i * 3, &id)) break;
-    (void)lua_arg_int(ctx, 2 + i * 3, &many);
-    (void)lua_arg_int(ctx, 3 + i * 3, &price);
+    if (!lua_arg_int(ctx, at, &id)) break;
+    (void)lua_arg_int(ctx, at + 1, &many);
+    (void)lua_arg_int(ctx, at + 2, &price);
     creature[offers] = id > 0 ? id : 0;
     count[offers] = many > 0 ? many : 0;
     percent[offers] = price > 0 ? price : 0;
     offers++;
+    at += 3;
   }
   if (!offers) {
     log_line("H5EHireScreen: takes lines of creature, count and price, and was given none");
@@ -785,7 +1012,11 @@ static void *__fastcall lua_hire_screen(void *ctx) {
   }
   g_hireOpen = 0;
   g_ourHireScreen = NULL;
-  (void)open_hire_screen(creature, count, percent, offers);
+  g_hideTabs = hideTabs && g_tabsInit;
+  if (hideTabs && !g_tabsInit) log_line("H5EHireScreen: \"notabs\" was asked, but the tabs' Init is not hooked (see the load report)");
+  int up = heroName ? open_hire_screen_on_map(ctx, heroName, creature, count, percent, offers)
+                    : open_hire_screen(creature, count, percent, offers);
+  if (!up) g_hideTabs = 0;
   return NULL;
 }
 
@@ -889,6 +1120,10 @@ static void install_hire_screen(void) {
   g_hireWindowHireAll = (HireAllFn)detour(HIRE_WINDOW_HIRE_ALL_RVA, HIRE_WINDOW_HIRE_ALL_HEAD, HIRE_WINDOW_HIRE_HEAD_LEN,
                                           (void *)&hire_window_hire_all_hook, "the hire window's hire all");
   if (!g_hireWindowHireAll) log_line("hire screen: \"hire all\" is NOT hooked, so it cannot buy from a list of ours");
+  /* The tabs: only heard after Init has found them, and only for a screen of ours. */
+  g_tabsInit = (TabsInitFn)detour(TABS_INIT_RVA, TABS_INIT_HEAD, TABS_INIT_HEAD_LEN, (void *)&tabs_init_hook,
+                                  "the hire screen's tabs");
+  if (!g_tabsInit) log_line("hire screen: the tabs' Init is NOT hooked, so \"notabs\" cannot hide them");
   /* The room question is called, never hooked; the price is replaced whole. */
   g_armyRoom = (ArmyRoomFn)code_at(ARMY_ROOM_RVA, ARMY_ROOM_HEAD, sizeof ARMY_ROOM_HEAD, "an army's room for a stack");
   if (!g_armyRoom) log_line("hire screen: a full army is not asked about, so a purchase can find no room");
