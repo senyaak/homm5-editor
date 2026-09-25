@@ -15,11 +15,16 @@
 // to carry its own list — which a mod's own creatures are not in, and which
 // goes stale the moment anything is added.
 //
-// These three read the engine's own table, to the ceiling the installer set
+// These read the engine's own table, to the ceiling the installer set
 // (src/exe/creature-limit.ts), so a creature added yesterday is in the answer
-// today. A filter that leaves nothing answers with nothing, which in Lua is a
-// call that returned no values — `{ H5ECreatures(9, 9) }` is an empty table,
-// not an error.
+// today.
+//
+// A COUNT AND AN INDEX, NOT A LIST OF RESULTS. The first shape was one call
+// answering every id at once, for `{ H5ECreatures(3, 6) }` to gather — and in
+// this dialect the table keeps ONE of them. Launch 49 said so in two lines: the
+// extension pushed 119 ids, the script counted a pool of 1, and every roll of a
+// perfectly live `random` (23, then 38) picked the only footman there was. So
+// the list is asked the way this Lua can ask: how many, and which is the Nth.
 
 /** The record's fields, as its own serializer names them (0xA85F80…). */
 #define RECORD_TIER 0x8Cu
@@ -76,30 +81,58 @@ static BYTE *creature_record(int creature) {
 }
 
 /**
- * `H5ECreatures([minTier, maxTier])` — the id of every creature there is, the
- * mod's own included, within the tiers asked.
- *
- * One result per creature, so `{ H5ECreatures(3, 6) }` is the table to roll
- * from. Without arguments it is every creature in the table.
+ * The creatures of tiers `lo`…`hi`, in id order: how many there are, and the
+ * id of the `nth` (the first is 1) — 0 when there is no such.
  */
-static void *__fastcall lua_creatures(void *ctx) {
-  if (!creatures_ready()) return NULL;
-  int lo = 0;
-  int hi = 99;
-  (void)lua_arg_int(ctx, 1, &lo);
-  (void)lua_arg_int(ctx, 2, &hi);
+static int creatures_of_tiers(int lo, int hi, int nth, int *id) {
+  int seen = 0;
+  *id = 0;
   int n = g_creatureCount();
-  int pushed = 0;
-  for (int id = 1; id < n; id++) {
-    BYTE *record = creature_record(id);
+  for (int c = 1; c < n; c++) {
+    BYTE *record = creature_record(c);
     if (!record) continue;
     int tier = *(int *)(record + RECORD_TIER);
     if (tier < lo || tier > hi) continue;
-    if (!lua_push_int(ctx, id)) break;
-    pushed++;
+    seen++;
+    if (seen == nth) *id = c;
   }
-  log_num("H5ECreatures: creatures of the tiers asked: ", pushed);
-  return (void *)(INT_PTR)pushed;
+  return seen;
+}
+
+/** The tier filter every one of these takes: both optional, all tiers without them. */
+static void tier_args(void *ctx, int first, int *lo, int *hi) {
+  *lo = 0;
+  *hi = 99;
+  (void)lua_arg_int(ctx, first, lo);
+  (void)lua_arg_int(ctx, first + 1, hi);
+}
+
+/**
+ * `H5ECreatureCount([minTier, maxTier])` — how many creatures there are, the
+ * mod's own included, within the tiers asked. 0 when the filter leaves none.
+ */
+static void *__fastcall lua_creature_count(void *ctx) {
+  if (!creatures_ready()) return NULL;
+  int lo, hi, id;
+  tier_args(ctx, 1, &lo, &hi);
+  int count = creatures_of_tiers(lo, hi, 0, &id);
+  log_num("H5ECreatureCount: creatures of the tiers asked: ", count);
+  return (void *)(INT_PTR)lua_push_int(ctx, count);
+}
+
+/**
+ * `H5ECreatureAt(n [, minTier, maxTier])` — the id of the Nth of them (the
+ * first is 1), in the table's own order; nothing past the last. A roll is
+ * `H5ECreatureAt(random(count) + 1, min, max)`.
+ */
+static void *__fastcall lua_creature_at(void *ctx) {
+  if (!creatures_ready()) return NULL;
+  int nth = 0;
+  if (!lua_arg_int(ctx, 1, &nth) || nth < 1) return NULL;
+  int lo, hi, id;
+  tier_args(ctx, 2, &lo, &hi);
+  (void)creatures_of_tiers(lo, hi, nth, &id);
+  return id ? (void *)(INT_PTR)lua_push_int(ctx, id) : NULL;
 }
 
 /** `H5ECreatureTier(creature)` — its tier, 1…7, or nothing for an id the table lacks. */
@@ -147,7 +180,8 @@ static void *__fastcall lua_creature_town(void *ctx) {
 }
 
 static void add_creature_map_functions(void) {
-  add_map_function("H5ECreatures", (void *)&lua_creatures);
+  add_map_function("H5ECreatureCount", (void *)&lua_creature_count);
+  add_map_function("H5ECreatureAt", (void *)&lua_creature_at);
   add_map_function("H5ECreatureTier", (void *)&lua_creature_tier);
   add_map_function("H5ECreatureGrowth", (void *)&lua_creature_growth);
   add_map_function("H5ECreatureCost", (void *)&lua_creature_cost);

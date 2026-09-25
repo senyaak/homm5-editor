@@ -234,6 +234,16 @@ static int source_fill(const int *creature, const int *count, int offers) {
   int at = 0;
   for (int i = 0; i < offers; i++) {
     if (creature[i] <= 0) continue;
+    /* ONE LINE PER CREATURE. The engine tells lines apart by nothing but the
+       creature — a purchase says "this many of that", no more — so a second
+       line of the same creature is a line nobody can buy from: launch 49 sold
+       the second footman out of the first. The later one is dropped, said. */
+    int twice = 0;
+    for (int j = 0; j < at; j++) if (*entries[j].begin == creature[i]) twice = 1;
+    if (twice) {
+      log_num("hire screen: a creature listed twice is shown once, dropping the later line of ", creature[i]);
+      continue;
+    }
     int *id = (int *)g_allocate(sizeof(int));
     if (!id) { g_engineFree(entries); return 0; }
     *id = creature[i];
@@ -245,13 +255,13 @@ static int source_fill(const int *creature, const int *count, int offers) {
   }
   HireVector *v = source_vector();
   v->begin = entries;
-  v->end = entries + n;
-  v->cap = entries + n;
+  v->end = entries + at;
+  v->cap = entries + at;
   for (HireEntry *e = v->begin; e < v->end; e++) {
     log_num("hire screen: the list holds creature ", *e->begin);
     log_num("hire screen:                    count ", e->count);
   }
-  return n;
+  return at;
 }
 
 /** The entry that lists a creature, or nothing. */

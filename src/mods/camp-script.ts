@@ -6,9 +6,14 @@
 // and none of the same data: what the extension lends is two doors the map's
 // Lua does not have —
 //
-//   H5ECreatures(minTier, maxTier)   every creature the table holds, the mod's
+//   H5ECreatureCount(minTier, maxTier) and H5ECreatureAt(n, minTier, maxTier)
+//                                    every creature the table holds, the mod's
 //                                    own included, so a roll is not a list
-//                                    somebody has to keep up to date;
+//                                    somebody has to keep up to date — asked as
+//                                    a count and an index, because a table built
+//                                    out of one call's many results keeps only
+//                                    the first of them in this dialect (launch
+//                                    49: 119 ids pushed, a pool of 1 counted);
 //   H5EHireScreen(creature, count,…) the game's own hire screen over a list of
 //                                    ours, and `H5EHireBought(creature, count)`
 //                                    back when the player buys.
@@ -124,49 +129,61 @@ export function campScript(spec: CampScript): string {
     `  SetGameVar(${n}_Var(town, what), value);`,
     'end;',
     '',
-    '-- One creature of the tiers this camp draws from, and a week of it.',
-    `function ${n}_One(pool, poolSize)`,
-    '  local at = random(poolSize) + 1;',
-    '  local creature = pool[at];',
+    '-- A week of a creature: what its dwelling would stock, and never nothing.',
+    `function ${n}_Week(creature)`,
     '  local count = H5ECreatureGrowth(creature);',
     '  if count < 1 then',
     '    count = 1;',
     '  end;',
-    '  return creature, count;',
+    '  return count;',
     'end;',
     '',
     '-- A new week replaces the stock: ALL THREE of it, whatever the camp is',
     '-- built to. The level only decides how many are open, so paying for one',
     '-- shows one more of what the week already rolled.',
+    '--',
+    '-- Three DIFFERENT creatures: the screen tells its lines apart by the',
+    '-- creature alone, so a second line of the same one is sold out of the',
+    '-- first. Drawn without putting back — each draw picks among the indices',
+    '-- left and steps over the ones already taken, smallest first.',
     `function ${n}_Roll(town)`,
-    `  local pool = { H5ECreatures(${n}_MIN_TIER, ${n}_MAX_TIER) };`,
-    // No `getn` here either, so the pool is counted by walking it.
-    '  local poolSize = 0;',
-    '  while pool[poolSize + 1] ~= nil do',
-    '    poolSize = poolSize + 1;',
-    '  end;',
-    '  if poolSize < 1 then',
-    '    return nil;',
-    '  end;',
-    // WHILE THIS IS BEING MADE TO WORK: how big the pool actually is, and one
-    // raw draw. Launch 47 drew the same creature three times running out of a
-    // hundred and nineteen, which is either a generator that does not advance
-    // or a table that holds one element — `H5ECreatures` pushes 119 values and
-    // `{ … }` has to keep them all. These two lines say which.
-    '  H5ELog(poolSize);',
-    '  H5ELog(random(100));',
+    `  local size = H5ECreatureCount(${n}_MIN_TIER, ${n}_MAX_TIER);`,
+    '  local t1, t2 = 0, 0;',
     '  local i = 1;',
     '  while i <= 3 do',
-    '    local creature = 0;',
-    '    local count = 0;',
-    `    creature, count = ${n}_One(pool, poolSize);`,
+    '    local creature, count = 0, 0;',
+    '    if size >= i then',
+    '      local k = random(size - i + 1) + 1;',
+    '      if i == 2 and k >= t1 then',
+    '        k = k + 1;',
+    '      end;',
+    '      if i == 3 then',
+    '        local lo, hi = t1, t2;',
+    '        if hi < lo then',
+    '          lo, hi = t2, t1;',
+    '        end;',
+    '        if k >= lo then',
+    '          k = k + 1;',
+    '        end;',
+    '        if k >= hi then',
+    '          k = k + 1;',
+    '        end;',
+    '      end;',
+    '      if i == 1 then',
+    '        t1 = k;',
+    '      end;',
+    '      if i == 2 then',
+    '        t2 = k;',
+    '      end;',
+    `      creature = H5ECreatureAt(k, ${n}_MIN_TIER, ${n}_MAX_TIER);`,
+    '      if creature == nil then',
+    '        creature = 0;',
+    '      else',
+    `        count = ${n}_Week(creature);`,
+    '      end;',
+    '    end;',
     `    ${n}_Set(town, "c" .. i, creature);`,
     `    ${n}_Set(town, "n" .. i, count);`,
-    // WHILE THIS IS BEING MADE TO WORK: the three creatures the week drew.
-    // Launch 46 showed the same footman every game, and a camp built at level
-    // one only ever SHOWS the first of the three — so whether the roll is stuck
-    // or only its first draw is, the other two say it in one launch.
-    '    H5ELog(creature);',
     '    i = i + 1;',
     '  end;',
     'end;',
@@ -197,22 +214,14 @@ export function campScript(spec: CampScript): string {
     '  if rule.offers > 2 then',
     `    c3, n3 = ${n}_Get(town, "c3"), ${n}_Get(town, "n3");`,
     '  end;',
-    // WHILE THIS IS BEING MADE TO WORK: what the town already holds of the
-    // creature on offer. It is read HERE and not after the purchase because
-    // `AddObjectCreatures` does not add — it queues a command on the adventure
-    // map (0x5DAA50 ends by handing one to the map's `vt+0x04`), and the world
-    // does not run its queue while a screen is up. Asked a line later it always
-    // answers with the old number; asked on the next visit it answers with the
-    // truth about the last one.
-    '  if c1 > 0 then',
-    '    H5ELog(GetObjectCreatures(town, c1));',
-    '  end;',
     '  H5EHireScreen(c1, n1, c2, n2, c3, n3);',
     'end;',
     '',
     '-- The purchase, said by the extension while the screen is still up. The',
     '-- engine pays nothing and gives nothing for a screen of ours, so this is',
     '-- the whole transaction: the gold, the creatures, and what is left.',
+    '-- The creatures are QUEUED, not added: `AddObjectCreatures` hands the map',
+    '-- a command, and the world runs its queue once the screen is closed.',
     'function H5EHireBought(creature, count)',
     `  local town = ${n}_TOWN;`,
     '  if town == "" then',
@@ -221,17 +230,14 @@ export function campScript(spec: CampScript): string {
     '  local player = GetObjectOwner(town);',
     `  local price = H5ECreatureCost(creature) * count * ${n}_PRICE;`,
     '  local purse = GetPlayerResource(player, GOLD);',
-    // WHILE THIS IS BEING MADE TO WORK: the three numbers that decide the
-    // purchase, into the extension's log, because a script that quietly does
-    // nothing looks exactly like a screen that quietly sold nothing.
-    '  H5ELog(price);',
-    '  H5ELog(purse);',
     '  if purse < price then',
-    '    H5ELog(-1);',
     '    return nil;',
     '  end;',
     '  SetPlayerResource(player, GOLD, purse - price);',
     '  AddObjectCreatures(town, creature, count);',
+    // The FIRST slot of that creature only. The roll draws three different
+    // ones, but a stock written down before it did (launch 49) holds the same
+    // creature twice, and taking from both sold one purchase twice.
     '  local i = 1;',
     '  while i <= 3 do',
     `    if ${n}_Get(town, "c" .. i) == creature then`,
@@ -240,6 +246,7 @@ export function campScript(spec: CampScript): string {
     '        left = 0;',
     '      end;',
     `      ${n}_Set(town, "n" .. i, left);`,
+    '      i = 3;',
     '    end;',
     '    i = i + 1;',
     '  end;',

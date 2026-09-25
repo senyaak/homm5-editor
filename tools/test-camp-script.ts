@@ -32,7 +32,14 @@ console.log('the camp script');
 
 console.log('what it asks the extension for — two doors and no more');
 {
-  check("the pool is every creature of the tiers, the mod's own included", lua.includes('H5ECreatures(BonePit_MIN_TIER, BonePit_MAX_TIER)'));
+  check("the pool is every creature of the tiers, the mod's own included",
+    lua.includes('H5ECreatureCount(BonePit_MIN_TIER, BonePit_MAX_TIER)')
+    && lua.includes('H5ECreatureAt(k, BonePit_MIN_TIER, BonePit_MAX_TIER)'));
+  // Launch 49: `{ H5ECreatures(3, 6) }` — 119 ids pushed, a pool of 1 counted.
+  // A table gathered out of one call's many results keeps the first of them
+  // in this dialect, so nothing may be built that way.
+  check("no table is gathered out of one call's results", !/\{\s*H5E\w+\(/.test(lua));
+  check('no probe left in the script', !lua.includes('H5ELog('));
   check('the tiers are the ones asked for', lua.includes('BonePit_MIN_TIER = 3;') && lua.includes('BonePit_MAX_TIER = 6;'));
   check('a week of the creature is what it stocks', lua.includes('H5ECreatureGrowth(creature)'));
   check('the screen is given a list and nothing else', lua.includes('H5EHireScreen(c1, n1, c2, n2, c3, n3);') && !lua.includes('H5EHireScreen(town'));
@@ -52,6 +59,50 @@ console.log("the purchase is the script's whole business");
   check('it refuses what the player cannot afford', lua.includes('if purse < price then'));
   check('it gives the creatures to the town', lua.includes('AddObjectCreatures(town, creature, count);'));
   check('and writes down what is left', lua.includes('local left = BonePit_Get(town, "n" .. i) - count;'));
+  // Launch 49: the same creature in two slots, one purchase taken from both.
+  check('out of the first slot of that creature only', /BonePit_Set\(town, "n" \.\. i, left\);\n\s*i = 3;/.test(lua));
+}
+
+console.log('the week draws three different creatures');
+{
+  // The rule the roll writes in Lua, as a model: draw N picks among the
+  // size-N+1 indices left and steps over the ones taken, smallest first. Every
+  // outcome `random` could give is tried, for every pool size up to eight, and
+  // each must be three different indices inside the pool — or, for a pool
+  // smaller than three, as many different ones as there are.
+  const rolls = (size: number, draws: number[]): number[] => {
+    const taken: number[] = [];
+    for (let i = 1; i <= 3 && i <= size; i++) {
+      let k = draws[i - 1]! + 1;
+      if (i === 2 && k >= taken[0]!) k++;
+      if (i === 3) {
+        const [lo, hi] = taken[0]! < taken[1]! ? [taken[0]!, taken[1]!] : [taken[1]!, taken[0]!];
+        if (k >= lo) k++;
+        if (k >= hi) k++;
+      }
+      taken.push(k);
+    }
+    return taken;
+  };
+  let wrong = '';
+  for (let size = 1; size <= 8 && !wrong; size++) {
+    for (let a = 0; a < size; a++) {
+      for (let b = 0; b < Math.max(1, size - 1); b++) {
+        for (let c = 0; c < Math.max(1, size - 2); c++) {
+          const got = rolls(size, [a, b, c]);
+          const inside = got.every((k) => k >= 1 && k <= size);
+          if (new Set(got).size !== got.length || !inside || got.length !== Math.min(3, size)) {
+            wrong = `pool ${size}, draws ${a},${b},${c} gave ${got.join(',')}`;
+          }
+        }
+      }
+    }
+  }
+  check('never the same one twice, never outside the pool', !wrong, wrong);
+  // And the Lua is that model, line for line where it matters.
+  check('the Lua draws among what is left', lua.includes('local k = random(size - i + 1) + 1;'));
+  check('and steps over what is taken', lua.includes('if i == 2 and k >= t1 then')
+    && lua.includes('if hi < lo then') && lua.includes('if k >= lo then') && lua.includes('if k >= hi then'));
 }
 
 console.log('the levels');

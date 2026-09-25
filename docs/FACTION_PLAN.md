@@ -343,13 +343,20 @@ creature the game has — the mod's own included, read off the creature
 table at its ceiling, not a list — with filters as arguments (the
 building's camp will ask tiers 3–6 later). So:
 
-1. DLL → Lua: `H5ECreatures([minTier, maxTier, …])` — the ids of every
-   creature there is, filtered; Lua rolls from it.
-2. DLL → Lua: `H5ECampScreen(town, creature, count, price?)` — the hire
-   screen on a source of ours; and the readback after it closes
-   (`H5ECampOpen()` / `H5ECampLeft()`, the count window's pattern), because
-   the store has to be the Lua's game vars — the DLL's memory is not in a
-   save, `SetGameVar` is.
+1. DLL → Lua: `H5ECreatureCount([minTier, maxTier])` and
+   `H5ECreatureAt(n [, minTier, maxTier])` — every creature there is,
+   filtered, asked as a count and an index; Lua rolls from it. (First built
+   as ONE call answering all the ids for `{ H5ECreatures(3, 6) }` to gather —
+   in this dialect such a table keeps only the first result: launch 49
+   pushed 119 and counted a pool of 1, which is why every camp sold
+   footmen.)
+2. DLL → Lua: `H5EHireScreen(creature, count, …)` — the game's own hire
+   screen over a list of ours, one line per creature; and the event
+   `H5EHireBought(creature, count)` back when the player presses hire, heard
+   at the window's own "hire" rather than at the command (the window builds
+   the same command to ask "may he?", and listening there sold the whole
+   stock on opening — launches 44–48). The stock itself is the Lua's game
+   vars; the DLL keeps nothing past the screen.
 3. The faction's Lua: the camp with three levels for the test town — new
    week (NEW_DAY, day 1): per town with the building, roll and stock;
    the button → the screen → write the count back; the level of the
@@ -360,8 +367,8 @@ pool.** `MapObjects/Special/RefugeeCamp.xdb` lists 38 creatures by name
 (tiers 3–6 of the six original races; Fortress and Stronghold were never
 added), and the roll is `pool[int(38·r)]` — a creature the mod adds never
 shows up there. Fix: the mod build writes its own copy of the record with
-the pool extended, through the same `H5ECreatures` filter (tiers 3–6),
-once that function exists.
+the pool extended, through the same tier filter the extension's
+`H5ECreatureCount`/`H5ECreatureAt` apply (tiers 3–6).
 
 **TODO (Senya, 2026-09-23): the Lua linter should know the game's
 constants.** `src/script/lua-lint.ts` checks GRAMMAR — blocks, `return;`,
