@@ -527,6 +527,11 @@ everything left "hire all" dead (launch 52).
     world at `+0x24`, cast to `IAdventureMap`, kept when its `+0x40` is this
     engine) — every frame, new game or loaded. The same hole took the
     spells of ours (adv-cast.c) and the hire screen's event with it.
+    Whether the Lua FUNCTIONS (`BonePit`, `H5EHireBought`) come back with
+    a loaded save was not answered by that launch — it never got that far.
+    The lines the extension says now end in `else H5ENoSuchFunction();`,
+    which logs "the map has no function for this line", so a missing
+    function no longer looks like one that ran and did nothing.
 
 **Open:** the screen's left tabs (caravans…) show; hiding them is a flag
 on `H5EHireScreen`, later.

@@ -504,7 +504,7 @@ static void hire_say_bought(int creature, int count) {
   append_num(line, &at, sizeof line, creature);
   append_text(line, &at, sizeof line, ", ");
   append_num(line, &at, sizeof line, count);
-  append_text(line, &at, sizeof line, "); end;");
+  append_text(line, &at, sizeof line, "); else H5ENoSuchFunction(); end;");
   if (!say_to_the_map(line)) {
     log_line("hire screen: the purchase could not be told to the map — no script of ours has fetched it yet");
     return;

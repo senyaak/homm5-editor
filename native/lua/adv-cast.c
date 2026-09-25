@@ -272,7 +272,15 @@ static int g_scriptsNamed = 0;
 /** The objects a cast is handed are named once, for the hero that is in them. */
 static int g_castNamed = 0;
 
+/** The last line said to the map — for `H5ENoSuchFunction`, which names it. */
+static char g_lastSaid[256];
+
 static int say_to_the_map(const char *line) {
+  {
+    int i = 0;
+    for (; line[i] && i < (int)sizeof g_lastSaid - 1; i++) g_lastSaid[i] = line[i];
+    g_lastSaid[i] = 0;
+  }
   // NOT `adventure_map(NULL)`: that lookup wants the Lua context a script was
   // called with, and a detour on a cast has none — handing it NULL faulted
   // inside the lookup at 0xa455f1. The map a script of ours already fetched
@@ -383,6 +391,19 @@ static void *__fastcall lua_log(void *ctx) {
   int value = 0;
   if (lua_arg_int(ctx, 1, &value)) log_num("script says ", value);
   else log_line("script says something that is not a number");
+  return NULL;
+}
+
+/**
+ * `H5ENoSuchFunction()` — the `else` of a line the extension says to the map:
+ * `if F ~= nil then F(…); else H5ENoSuchFunction(); end;`. A function the map
+ * does not have used to be nothing at all, which in a log looks exactly like a
+ * function that ran and did nothing; after a loaded save that difference was
+ * the whole question (launch 56). Named in the log with the line it was.
+ */
+static void *__fastcall lua_no_such_function(void *ctx) {
+  (void)ctx;
+  log_text("the map has no function for this line: ", g_lastSaid);
   return NULL;
 }
 
@@ -633,6 +654,7 @@ static void install_adv_cast(void) {
                                 (void *)&on_adv_cast, "the adventure map's cast");
   add_map_function("H5EAnswer", (void *)&lua_answer);
   add_map_function("H5ELog", (void *)&lua_log);
+  add_map_function("H5ENoSuchFunction", (void *)&lua_no_such_function);
   add_map_function("H5EIsCastingHero", (void *)&lua_is_casting_hero);
   add_map_function("H5ECasterKnown", (void *)&lua_caster_known);
   if (g_advCast) log_line("and a cast of ours will ask the map's own script");

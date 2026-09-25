@@ -306,7 +306,7 @@ static int __thiscall own_button_handler(void *screen, void *msg) {
   line[at++] = '"';
   for (const char *c = name; *c; c++) line[at++] = *c;
   line[at++] = '"';
-  const char *tail = "); end;";
+  const char *tail = "); else H5ENoSuchFunction(); end;";
   while (*tail) line[at++] = *tail++;
   line[at] = 0;
   if (!say_to_the_map(line)) {
