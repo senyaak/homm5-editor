@@ -76,6 +76,9 @@ console.log('the model');
   check('the type is the identifier\'s', townTypeFor('BoneCourt') === 'TOWN_BONE_COURT' && townTypeFor('Test') === 'TOWN_TEST');
   check('the race is the type\'s, but the dwarves', raceFor('TOWN_TEST') === 'RACE_TEST' && raceFor('TOWN_FORTRESS') === 'RACE_DWARF');
   check('a blank faction names what it lacks', factionProblems({ ...spec('X'), name: '', towns: [] }).length === 2);
+  check('a tier of three different creatures is fine', factionProblems({ ...spec('X'), dwellings: { 5: { base: 'C_A', upgrade: 'C_B', alternate: 'C_C' } } }).length === 0);
+  check('a tier naming one creature twice is refused', factionProblems({ ...spec('X'), dwellings: { 5: { base: 'C_A', upgrade: 'C_B', alternate: 'C_B' } } })
+    .some((p) => p.includes('tier 5') && p.includes('twice')));
   const mod = newCreatureMod();
   const a = addFaction(mod, spec('Alpha'));
   const b = addFaction(mod, spec('Beta'));

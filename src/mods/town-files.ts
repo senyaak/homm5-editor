@@ -85,6 +85,17 @@ export const GUILD_BUILDING = 'TB_MAGIC_GUILD';
 /** Whose guild records a town without magic takes: Stronghold's, five stubs with no cell. */
 export const GUILD_STUB_DONOR = 'TOWN_STRONGHOLD';
 
+/** What a dwelling record says when it hires no second creature — shipped data's own word for none. */
+export const NO_CREATURE = 'CREATURE_UNKNOWN';
+
+/** One tier's creatures: the base, its upgrade, and the expansion's second upgrade. */
+export interface TierCreatures {
+  base: string;
+  upgrade: string;
+  /** The second upgrade, hired by the upgraded dwelling beside the first; none when absent. */
+  alternate?: string;
+}
+
 export interface TownSpec {
   /** Folder and file stem inside the mod. */
   file: string;
@@ -107,12 +118,23 @@ export interface TownSpec {
    */
   magic?: 'guild' | 'none';
   /**
-   * What the dwellings hire, by tier 1–7: the base creature for the dwelling
-   * and its upgrade for the upgraded one (the expansion's second upgrade is
-   * reached through the creature's own `Upgrades`, not through a building).
+   * What the dwellings hire, by tier 1–7: the base creature for the dwelling,
+   * its upgrade for the upgraded one — and the expansion's SECOND upgrade,
+   * which the upgraded dwelling hires too: its record carries it as
+   * `<Creature2>` (Academy's Pinnacle of Wishes: Master Genie AND Djinn
+   * Vizier). Without `alternate` the upgraded dwelling hires no second one
+   * (`CREATURE_UNKNOWN`, what twenty shipped records say), never the donor's.
    * A tier left out keeps hiring the donor's.
+   *
+   * It is also how the game finds a creature's dwelling — `0x849170` walks
+   * the town's buildings for one whose `Creature` or `Creature2` is it — so a
+   * creature no dwelling names has "no town": the hire screen draws the random
+   * dwelling's picture beside it and says so in its tooltip. That is how the
+   * donor's second upgrade came to be left behind unnoticed: the Test town's
+   * upgraded dwellings went on hiring Haven's Zealots and Seraphs, and its own
+   * Lich Masters showed up townless in a refugee camp (launch 50).
    */
-  dwellings?: Partial<Record<number, { base: string; upgrade: string }>>;
+  dwellings?: Partial<Record<number, TierCreatures>>;
   /**
    * Whose siege to fight: the `TownType` of a shipped town whose `Combat`
    * block — arena, walls, towers, gate, moat, their effects and sounds, the
@@ -660,7 +682,17 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     if (!hires) continue;
     const creature = level[1] === '1' ? hires.base : hires.upgrade;
     once(text, '<Creature>', `${path} creature`);
-    files.set(path, Buffer.from(text.replace(/<Creature>[^<]*<\/Creature>/, `<Creature>${creature}</Creature>`), 'latin1'));
+    let out = text.replace(/<Creature>[^<]*<\/Creature>/, `<Creature>${creature}</Creature>`);
+    // The second upgrade lives on the upgraded dwelling only; a base one has
+    // no such element and must not grow one.
+    if (level[1] !== '1') {
+      if (out.includes('<Creature2>')) {
+        out = out.replace(/<Creature2>[^<]*<\/Creature2>/, `<Creature2>${hires.alternate || NO_CREATURE}</Creature2>`);
+      } else if (hires.alternate) {
+        throw new Error(`${path}: the upgraded dwelling has no <Creature2> to hire ${hires.alternate} in`);
+      }
+    }
+    files.set(path, Buffer.from(out, 'latin1'));
   }
 
   // The tree's edits: what a record says, and where its cell is on the grid.

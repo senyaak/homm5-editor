@@ -509,42 +509,48 @@ function readSkillValues(): Record<number, SkillValues> {
   return out;
 }
 
-/** The seven tiers: base and upgrade, out of the mod's creatures. */
+/** The three creatures of a tier, as the window offers them. */
+const TIER_ROLES = [
+  { role: 'base', title: 'the base creature, hired by the dwelling', none: "the donor's" },
+  { role: 'upgrade', title: 'its upgrade, hired by the upgraded dwelling', none: "the donor's" },
+  // Not the donor's when left empty: a tier of ours with the donor's second
+  // upgrade sold Haven's Seraphs in a Necropolis clone (town-files.ts).
+  { role: 'alternate', title: 'the second upgrade, hired by the upgraded dwelling beside the first', none: 'none' },
+] as const;
+
+/** The seven tiers: base, upgrade and second upgrade, out of the mod's creatures. */
 function drawDwellings(data: ModsFactionDataResult, current: NonNullable<ModsFactionPayload['dwellings']>): void {
   const box = $('fac-dwellings');
   box.innerHTML = '';
-  const creatures = [{ id: '', label: 'the donor\'s' }, ...data.creatures.map((c) => ({ id: c.id, label: c.name ? `${c.name} (${c.id})` : c.id }))];
+  const creatures = data.creatures.map((c) => ({ id: c.id, label: c.name ? `${c.name} (${c.id})` : c.id }));
   for (let tier = 1; tier <= 7; tier++) {
     const row = document.createElement('div');
     row.className = 'on-row';
     const label = document.createElement('span');
     label.textContent = `Tier ${tier}`;
-    const base = document.createElement('select');
-    base.className = 'fc-dwelling';
-    base.dataset.tier = String(tier);
-    base.dataset.role = 'base';
-    base.title = 'the base creature, hired by the dwelling';
-    fillSelect(base, creatures, current[tier]?.base ?? '');
-    const up = document.createElement('select');
-    up.className = 'fc-dwelling';
-    up.dataset.tier = String(tier);
-    up.dataset.role = 'upgrade';
-    up.title = 'its upgrade, hired by the upgraded dwelling';
-    fillSelect(up, creatures, current[tier]?.upgrade ?? '');
-    row.append(label, base, up);
+    row.append(label);
+    for (const { role, title, none } of TIER_ROLES) {
+      const sel = document.createElement('select');
+      sel.className = 'fc-dwelling';
+      sel.dataset.tier = String(tier);
+      sel.dataset.role = role;
+      sel.title = title;
+      fillSelect(sel, [{ id: '', label: none }, ...creatures], current[tier]?.[role] ?? '');
+      row.append(sel);
+    }
     box.appendChild(row);
   }
 }
 
 function readDwellings(): ModsFactionPayload['dwellings'] {
-  const out: Record<number, { base: string; upgrade: string }> = {};
+  const out: Record<number, { base: string; upgrade: string; alternate?: string }> = {};
   for (const el of document.querySelectorAll<HTMLSelectElement>('.fc-dwelling')) {
     const tier = Number(el.dataset.tier);
     if (!el.value) continue;
     const t = out[tier] ?? (out[tier] = { base: '', upgrade: '' });
-    t[el.dataset.role as 'base' | 'upgrade'] = el.value;
+    t[el.dataset.role as 'base' | 'upgrade' | 'alternate'] = el.value;
   }
-  // A tier with one of the two is not a tier: both or the donor's.
+  // A tier without both of the first two is not a tier: those or the donor's.
   for (const [tier, t] of Object.entries(out)) if (!t.base || !t.upgrade) delete out[Number(tier)];
   return Object.keys(out).length ? out : undefined;
 }

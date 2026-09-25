@@ -313,6 +313,26 @@ console.log('what a building does');
   throws('a town that is not shipped', () => build({ 'TB_SPECIAL_1': { grants: { like: 'TOWN_TEST' } } }), 'not a shipped town');
 }
 
+console.log("the dwellings' creatures — all three of a tier");
+{
+  // Launch 50: the Test town's upgraded dwellings kept Haven's SECOND upgrade
+  // in <Creature2> — Zealots, Seraphs — and its own Lich Masters had no
+  // dwelling, so the game called them townless. The second upgrade is the
+  // upgraded dwelling's to hire, and a tier of ours never keeps the donor's.
+  const creatureOf = (t: TownBuild, key: string, field: string): string | undefined =>
+    new RegExp(`<${field}>([^<]*)</${field}>`).exec(text(t, t.records.get(key)!))?.[1];
+  const three = buildTown({ ...base, dwellings: { 5: { base: 'CREATURE_X_LICH', upgrade: 'CREATURE_X_DEMILICH', alternate: 'CREATURE_X_LICH_MASTER' } } }, HEAVEN, read);
+  check('the shipped upgraded dwelling hires a second one', creatureOf(plain, 'TB_DWELLING_5/2', 'Creature2') === 'CREATURE_ZEALOT');
+  check('the base dwelling: the base creature', creatureOf(three, 'TB_DWELLING_5', 'Creature') === 'CREATURE_X_LICH');
+  check('and no second one grows on it', creatureOf(three, 'TB_DWELLING_5', 'Creature2') === undefined);
+  check('the upgraded one: the upgrade', creatureOf(three, 'TB_DWELLING_5/2', 'Creature') === 'CREATURE_X_DEMILICH');
+  check('and the second upgrade beside it', creatureOf(three, 'TB_DWELLING_5/2', 'Creature2') === 'CREATURE_X_LICH_MASTER');
+  const two = buildTown({ ...base, dwellings: { 5: { base: 'CREATURE_X_LICH', upgrade: 'CREATURE_X_DEMILICH' } } }, HEAVEN, read);
+  check("a tier without a second upgrade hires none — never the donor's", creatureOf(two, 'TB_DWELLING_5/2', 'Creature2') === 'CREATURE_UNKNOWN');
+  check("a tier left out keeps the donor's, both", creatureOf(two, 'TB_DWELLING_4/2', 'Creature') === creatureOf(plain, 'TB_DWELLING_4/2', 'Creature')
+    && creatureOf(two, 'TB_DWELLING_4/2', 'Creature2') === creatureOf(plain, 'TB_DWELLING_4/2', 'Creature2'));
+}
+
 console.log('the grid alone');
 check('dropping the last cell drops the slot', !dropGridCell(grid0, 'TB_TAVERN', 1).includes('TB_TAVERN'));
 check('dropping one of four keeps three', cells(dropGridCell(grid0, 'TB_TOWN_HALL', 2), 'TB_TOWN_HALL').length === 3);

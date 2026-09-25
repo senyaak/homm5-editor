@@ -139,6 +139,21 @@ pre-release.
 - A faction's adventure-map Lua (`TownSpec.script`) is a file of the
   mod's under `scripts/homm5-editor/`, loaded by the mod's global script on
   every map — where the button's function lives.
+- A hire screen of our own contents for a map's Lua: `H5EHireScreen(creature,
+  count, …)` opens the game's own screen over the script's list, and
+  `H5EHireBought(creature, count)` comes back when the player presses hire —
+  paying and giving are the script's. With `H5ECreatureCount`/`H5ECreatureAt`
+  (every creature of some tiers, the mod's own included) and
+  `H5ECreatureCost`/`Growth`/`Tier`/`Town`, a faction's refugee camp is a
+  generated Lua file: three levels, three different creatures a week, one to
+  three of them on offer at double, full or half price
+  (`src/mods/camp-script.ts`; the whole story in docs/FACTION_PLAN.md §2b).
+- A faction's upgraded dwellings hired the DONOR's second upgrade (the
+  expansion's third creature of a tier): only the first creature of each
+  dwelling was rewritten, so a Haven-based town sold Zealots and Seraphs, and
+  its own second upgrades had no dwelling — the game drew them as townless
+  neutrals. `TownSpec.dwellings[tier].alternate` names it (none when a tier of
+  yours names no second one), with a third selector per tier in Factions….
 - A faction's town looks like what it is told on the map: `TownSpec.exterior`
   takes another shipped town's whole exterior or a MIX, a town per stage
   (`EXTERIOR_STAGES`, the ten every town lists) plus whose gate, spliced into

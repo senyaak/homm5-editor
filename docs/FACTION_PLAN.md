@@ -362,6 +362,118 @@ building's camp will ask tiers 3–6 later). So:
    the button → the screen → write the count back; the level of the
    building sets the stock (or the tiers).
 
+#### As built, 2026-09-22…25 (launches 42–50) — WORKS
+
+Senya's rule, and the shape everything below follows: **the DLL lends
+primitives and events; every piece of logic is Lua.** The extension holds
+no state past an open screen and knows nothing of camps; the same doors
+serve a caravan, a black market or a quest reward written tomorrow.
+
+**The doors (native/lua/creatures.c, native/ui/hire-screen.c):**
+
+| Lua | what |
+|---|---|
+| `H5ECreatureCount([minTier, maxTier])` | how many creatures the table holds in those tiers, the mod's own included (read to the ceiling the installer set) |
+| `H5ECreatureAt(n [, minTier, maxTier])` | the id of the Nth of them, 1-based, table order; nothing past the last |
+| `H5ECreatureTier(c)`, `H5ECreatureGrowth(c)`, `H5ECreatureTown(c)` | record `+0x8C`, `+0xA8`, `+0x98` |
+| `H5ECreatureCost(c [, resource])` | the price of one; gold by default (resources at record `+0xB0`, see below) |
+| `H5EHireScreen(creature, count, creature, count, …)` | the game's own hire screen over that list, on the town screen that is up; pairs until they run out, the order the script's, one line per creature |
+| `H5EHireOpen()` | 1 while a screen of ours is up |
+| event `H5EHireBought(creature, count)` | said to the map (one line + one scheduler tick, as the town button does) when the player presses hire — the script pays, gives, writes down what is left |
+
+**The camp (src/mods/camp-script.ts → `TownSpec.script`):** the button's
+function `BonePit(town)` reads the building's level
+(`GetTownBuildingLevel(town, TOWN_BUILDING_SPECIAL_1)` — the Lua name, not
+`TB_SPECIAL_1`); on the first click of a new week it rolls ALL THREE offers
+at once — three DIFFERENT creatures of tiers 3–6, drawn without putting back
+(each draw picks among the indices left and steps over the taken ones),
+count = the creature's weekly growth — and keeps them in game vars under
+`h5e.<fn>.<town>.c1/n1…c3/n3`, so a save carries them. The level only OPENS
+one, two or three of them (an upgrade never re-rolls) and sets the price:
+×2, ×1, ×0.5. `H5EHireBought` checks the purse, `SetPlayerResource`,
+`AddObjectCreatures(town, …)` (the garrison, hero or not), and takes the
+count off the first slot of that creature. `tools/test-camp-script.ts`
+lints it, checks every name it shouts against `advmap-startup.lua`, and
+tries every outcome of the draw for pools of one to eight.
+
+**Inside the screen — the hire source.** An object of ours laid out as a
+dwelling's: the entries vector `{count, vector<creature>}` 0x44 bytes before
+it (so the engine's own `Entries`, `CopyEntries` and `Items` run on it
+unchanged), our `Take` and `Available`, stubs that log for the other
+eleven slots. Its vbtable `[1]` and `[2]` both lead to **the town's real
+object base** — the screen casts that base to `IAdvMapTown` (`0x840833`)
+and reads liveness, refcount and owner off it; a block of ours there died
+in VCRUNTIME (launch 43). The request is built with the town button's own
+arguments (`0x84FD4D`: `number` is the address of a preselected creature
+id, 0 here; the army is `object→vt90→vt04→vt2C`).
+
+**Inside the screen — where a sale is heard.** `CHireWindow` carries an
+interface at `+0x40` whose first two virtuals both build the same
+`CHireCreaturesCmd` from `(object, creature, count)`:
+
+- `+0x00` (`0x83E9F0`) — the DEED: hands it to `Do`; called by the hire
+  button (`+0x4422CF`);
+- `+0x04` (`0x83ED70`) — the QUESTION: hands it to `CanDo`, answers in `al`
+  whether the button may be on; the window's refresh asks it over and over,
+  counting down from the stock (`+0x43F5DC`: 10, 10, 9, 8 … 1).
+
+Both are detoured: for a window whose source (interface `+0x1C` == 1,
+`+0x20`) is ours, the deed is our sale — clamp to what is left, `Take`, say
+`H5EHireBought` — and the question is answered from the list. The command's
+own `Execute` (`0xC60240`) is detoured too, as a WALL: a source of ours is
+never bought by the engine's hand, and whoever walks into it is logged
+(it happens — `CanDo` does reach Execute, from `+0x7F8C08`).
+
+**The traps, each paid for by a launch:**
+
+1. *The screen emptied itself on opening* (launches 44–48). The first
+   detour sat on `Execute` and called every arrival a sale; the window's
+   first "may he hire ten?" sold ten. A question is not a purchase — listen
+   at the gesture.
+2. *The price was 0* (launch 46). The `Cost` struct starts at record
+   `+0xAC`, but its first word is not a resource: its serializer
+   (`0xA82480`) writes Wood at `+4` … Gold at `+0x1C`, so gold is at
+   `+0xC8`. Execute itself reads `+0xC8`.
+3. *Always a footman, in every slot* (launches 45–49). `{ H5ECreatures(3,6) }`
+   — one call pushing 119 ids — became a table of ONE in this dialect; the
+   script counted a pool of 1 while `random` gave 23 and 38. Lists go to
+   Lua as a count and an index. (Memory: homm5-lua-table-keeps-one-result.)
+4. *Buying in the second slot took from the first* (launch 49). The engine
+   tells lines apart by the creature alone — the command says "this many of
+   that". Hence the three different creatures, the screen dropping a
+   repeated creature, and the purchase taking from one slot only.
+5. *Bought twice out of ten* (launch 44) — skipping Execute skipped its
+   `Available ≥ count` guard; the deed clamps now.
+6. *`AddObjectCreatures` does not add* — it queues a command on the adventure
+   map (`0x5DAA50` ends with the map's `vt+0x04`), and the world runs its
+   queue after the screen closes. Reading the garrison back a line later
+   always says the old number; it is right on the next visit.
+7. *`TB_SPECIAL_1` is not a Lua name* (launch 42) — see the linter TODO.
+8. *The camp could not be upgraded* — `slot` moved only level 1's grid
+   cell; levels 2–3 stayed on the donor's cell and were dropped
+   (`moveGridCell` moves every level on the cell now, test-faction-mod).
+9. *A creature of ours showed as townless* (launch 50: the Test Lich Master,
+   "no town" in the tooltip, the random dwelling's picture). The hire screen
+   finds a creature's dwelling by walking its town's `buildings` for a
+   `TownBuildingSharedStats` whose `Creature` (`+0x9C`) OR `Creature2`
+   (`+0xA0`) is it (`0x849170`, via `0xAC0CB0` = the `TOWN_ANY` group). The
+   copier wrote `Creature` and left `Creature2` — the expansion's second
+   upgrade — as the donor's, so the Test town's upgraded dwellings went on
+   hiring Haven's Zealots and Seraphs, and its own second upgrades had no
+   dwelling at all. `TownSpec.dwellings[tier].alternate` now fills it
+   (`CREATURE_UNKNOWN`, shipped data's own "none", when a tier of ours names
+   no second one), the Factions window has a third selector per tier, and
+   `test-town-buildings` checks all three. Neutrals (the elementals) are
+   townless by right and keep the random picture.
+
+**Open:** the question does not know the price (the script's multiplier) —
+the button goes by what is left, a player who cannot pay is turned away by
+the script and the line looks sold until the screen reopens; when that
+matters the script hands the screen a price with the list. The screen's
+left tabs (caravans…) show; hiding them is a flag on `H5EHireScreen`, later.
+Opening from the adventure map (a dwelling's visit, `0x767107`) is not
+written — only from the town screen.
+
 **TODO, after the camp (Senya, 2026-09-22): the shipped refugee camp's
 pool.** `MapObjects/Special/RefugeeCamp.xdb` lists 38 creatures by name
 (tiers 3–6 of the six original races; Fortress and Stronghold were never

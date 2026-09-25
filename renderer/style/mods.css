@@ -131,7 +131,8 @@ button.he-file { margin-left: 6px; flex: 0 0 auto; }
 .fc-level-tabs { display: flex; gap: 6px; margin-top: 6px; }
 .fc-level-tabs button { padding: 2px 8px; }
 .fc-level-tabs button.on { border-color: #1f6feb; color: #e6edf3; }
-.fc-tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 18px; }
+.fc-tiers { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.fc-tiers select { flex: 1 1 0; min-width: 0; }
 .fc-tiers .on-row span { flex: 0 0 78px; }
 .fc-resources { display: flex; gap: 6px; flex: 1; flex-wrap: wrap; }
 .fc-resources label { display: flex; flex-direction: column; font-size: 10px; color: #8b949e; width: 64px; }

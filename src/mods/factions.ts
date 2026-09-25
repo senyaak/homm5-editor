@@ -147,6 +147,8 @@ export function factionProblems(spec: FactionSpec): string[] {
     if (!d) continue;
     if (!(Number(tier) >= 1 && Number(tier) <= 7)) out.push(`dwelling tier ${tier}: tiers are 1–7`);
     if (!d.base || !d.upgrade) out.push(`dwelling tier ${tier}: names a base creature and its upgrade`);
+    const named = [d.base, d.upgrade, d.alternate].filter(Boolean);
+    if (new Set(named).size !== named.length) out.push(`dwelling tier ${tier}: one creature named twice — each of the three is a different one`);
   }
   if (spec.alignment && !['good', 'evil', 'neutral'].includes(spec.alignment)) out.push(`alignment is good, evil or neutral, not ${spec.alignment}`);
   if (spec.ai?.skillsLike && !SHIPPED_TOWN_ORDINALS[spec.ai.skillsLike]) out.push(`${spec.ai.skillsLike} is not a shipped town — the AI's skill values come from one of ${Object.keys(SHIPPED_TOWN_ORDINALS).join(', ')}`);
