@@ -232,6 +232,7 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // (native/ui/hire-screen.c).
   install_hire_screen();
   install_hero_specialization();
+  install_map_watch(); /* a loaded save knows its map without a script of ours (lua/hero-specialization.c) */
   // BEFORE the table is copied, not after: this adds a row of its own
   // (H5EAnswer, which is how a script's verdict comes back), and a row added
   // after the copy is a function the game's Lua has never heard of. The map

@@ -154,6 +154,11 @@ pre-release.
   different creatures a week, one to three of them on offer at double, full or
   half price (`src/mods/camp-script.ts`; the whole story in
   docs/FACTION_PLAN.md §2b).
+- After loading a saved game, a faction's centre button, the hire screen's
+  purchases and the spells of a mod did nothing until a new game was
+  started: the extension learned where a map keeps its scripts only from a
+  script of ours run at the map's start, which a loaded save never runs. It
+  now takes the map from the map's own script tick.
 - A faction's upgraded dwellings hired the DONOR's second upgrade (the
   expansion's third creature of a tier): only the first creature of each
   dwelling was rewritten, so a Haven-based town sold Zealots and Seraphs, and

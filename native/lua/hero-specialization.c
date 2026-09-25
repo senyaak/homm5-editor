@@ -169,6 +169,75 @@ static void *map_without_context(void) {
   return readable(g_lastMap, 4) ? g_lastMap : NULL;
 }
 
+// ---------------------------------------------------------------------------
+// THE MAP FROM ITS OWN TICK. `g_lastMap` used to be set only when a script of
+// ours fetched the map — the faction script's `H5ETownButtons();` at the
+// map's start — and a LOADED SAVE never runs that line: its Lua comes back
+// out of the file, no startup script is run again. So after a load the town
+// button, the hire screen and the spells of ours had no map to talk to
+// (launch 55: "the map has no script system to say it to", click after
+// click, until a new game was started).
+//
+// The world ticks its script engine every frame, a new game or a loaded one:
+// slot +0x08 of `CLuaScriptEngine` (vtable 0xFAEAAC — `mov ecx,[ecx+1Ch];
+// jmp 0xA2F010`, the same slot `tick_the_map_scripts` calls), and the engine
+// knows its world at +0x24 (slot +0x0C is `mov eax,[ecx+24h]; ret`, which is
+// how 0xA455E0 gets from a script to its map). That world, cast the way
+// `adventure_map` casts it, IS the map — kept only when it names this engine
+// as its own script system (`+0x40`), so the engine of anything else that
+// ticks through this slot is never taken for the map's.
+//
+// The slot is replaced in the vtable rather than the code detoured: the
+// function is eight bytes ending in a relative jump, which a trampoline
+// cannot carry.
+
+#define SCRIPT_ENGINE_VTABLE_RVA 0xbaeaacu
+#define SCRIPT_ENGINE_TICK_SLOT 2
+#define SCRIPT_ENGINE_TICK_RVA 0x642ec0u
+static const BYTE SCRIPT_ENGINE_TICK_HEAD[4] = { 0x8B, 0x49, 0x1C, 0xE9 };
+#define SCRIPT_ENGINE_WORLD 0x24u
+/** Where the map keeps its script system — `WORLD_SCRIPTS` of adv-cast.c, which is included after this. */
+#define MAP_SCRIPT_ENGINE 0x40u
+
+typedef void (__fastcall *EngineTickFn)(void *engine);
+static EngineTickFn g_engineTick = NULL;
+/** The world the map was last cast from, so the cast runs once per map and not once per frame. */
+static void *g_tickedWorld = NULL;
+
+static void __fastcall engine_tick_hook(void *engine) {
+  void *world = readable((BYTE *)engine + SCRIPT_ENGINE_WORLD, 4) ? *(void **)((BYTE *)engine + SCRIPT_ENGINE_WORLD) : NULL;
+  if (world && world != g_tickedWorld && hero_lookup_ready()) {
+    BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+    BYTE *map = (BYTE *)g_getAdvMap(world, 0, base + LOOKUP_ARG_A_RVA, base + LOOKUP_ARG_B_RVA, 0);
+    if (map && readable(map + MAP_SCRIPT_ENGINE, 4) && *(void **)(map + MAP_SCRIPT_ENGINE) == engine) {
+      g_lastMap = map;
+      g_tickedWorld = world;
+      log_line("the map is known from its own script tick — a loaded save included");
+    }
+  }
+  g_engineTick(engine);
+}
+
+/** Put the watch in the engine's tick slot, once, at start-up. */
+static void install_map_watch(void) {
+  BYTE *base = (BYTE *)GetModuleHandleW(NULL);
+  if (!code_at(SCRIPT_ENGINE_TICK_RVA, SCRIPT_ENGINE_TICK_HEAD, sizeof SCRIPT_ENGINE_TICK_HEAD, "the script engine's tick")) return;
+  void **slot = (void **)(base + SCRIPT_ENGINE_VTABLE_RVA) + SCRIPT_ENGINE_TICK_SLOT;
+  if (!readable(slot, sizeof *slot) || *slot != (void *)(base + SCRIPT_ENGINE_TICK_RVA)) {
+    log_line("map watch: the script engine's vtable is not the one measured — a loaded save will not know its map");
+    return;
+  }
+  DWORD old = 0;
+  if (!VirtualProtect(slot, sizeof *slot, PAGE_READWRITE, &old)) {
+    log_line("map watch: could not make the script engine's vtable writable");
+    return;
+  }
+  g_engineTick = (EngineTickFn)*slot;
+  *slot = (void *)&engine_tick_hook;
+  VirtualProtect(slot, sizeof *slot, old, &old);
+  log_line("map watch: the map will be known from its script tick");
+}
+
 // --- saying everything, once ------------------------------------------------
 //
 // ONE RUN, NOT TEN. Three runs went on appending an offset to a pointer nobody

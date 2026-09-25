@@ -517,6 +517,16 @@ everything left "hire all" dead (launch 52).
     queued on the adventure map (`0x5CF357` → the map's `vt+4`), which the
     open screen does not hear; the engine's own payment tells its listener
     (`payer+0x144`). Hence `H5EHirePay`, through that payment.
+16. *A loaded save broke the building* (launch 55: the camp's button lit,
+    and every click said "the map has no script system to say it to").
+    The extension knew the map only when a script of ours fetched it —
+    the faction script's `H5ETownButtons();` at the map's start — and a
+    loaded save never runs a startup line: its Lua comes back out of the
+    file. The map is now taken from its own script tick (`CLuaScriptEngine`
+    vtable `0xFAEAAC`, slot `+0x08`, replaced in the vtable; the engine's
+    world at `+0x24`, cast to `IAdventureMap`, kept when its `+0x40` is this
+    engine) — every frame, new game or loaded. The same hole took the
+    spells of ours (adv-cast.c) and the hire screen's event with it.
 
 **Open:** the screen's left tabs (caravans…) show; hiding them is a flag
 on `H5EHireScreen`, later.
