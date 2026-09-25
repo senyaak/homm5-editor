@@ -146,9 +146,9 @@ pre-release.
   that price, paints it red, and refuses what the engine's own screen refuses
   — nothing left, no room in the army, no money — for one line and for "hire
   all" alike, and `H5EHireBought(creature,
-  count)` comes back when the player presses hire: paying (`H5EHireCost`, what
-  the screen showed), giving and what is left (`H5EHireLeft`) are the
-  script's. With `H5ECreatureCount`/`H5ECreatureAt` (every creature of some
+  count)` comes back when the player presses hire: paying (`H5EHirePay`, the
+  engine's own payment at the price the screen showed, which its resource bar
+  hears), giving and what is left (`H5EHireLeft`) are the script's. With `H5ECreatureCount`/`H5ECreatureAt` (every creature of some
   tiers, the mod's own included) and `H5ECreatureCost`/`Growth`/`Tier`/`Town`,
   a faction's refugee camp is a generated Lua file: three levels, three
   different creatures a week, one to three of them on offer at double, full or

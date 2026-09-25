@@ -58,11 +58,11 @@ console.log("the purchase is the script's whole business");
 {
   check('it hears the event', lua.includes('function H5EHireBought(creature, count)'));
   // Launch 51: the script priced one way and the screen another, and the
-  // screen sold what the script refused. It charges what the screen showed.
-  check('it charges what the screen showed, in every resource', lua.includes('local cost = H5EHireCost(creature, count, r);')
-    && lua.includes('SetPlayerResource(player, r, GetPlayerResource(player, r) - cost);') && lua.includes('while r <= 6 do'));
-  check('its own price is gone', !lua.includes('BonePit_PRICE') && !lua.includes('H5ECreatureCost('));
-  check('it refuses what the player cannot afford', lua.includes('if GetPlayerResource(player, r) < H5EHireCost(creature, count, r) then'));
+  // screen sold what the script refused. Launch 53: SetPlayerResource is a
+  // queued command the screen's resource bar never hears. It pays what the
+  // screen showed, the engine's way, and stops when that fails.
+  check('it pays what the screen showed, the engine\'s way', lua.includes('if H5EHirePay(creature, count) ~= 1 then'));
+  check('and nothing of its own', !lua.includes('SetPlayerResource') && !lua.includes('BonePit_PRICE') && !lua.includes('H5ECreatureCost('));
   check('it gives the creatures to the town', lua.includes('AddObjectCreatures(town, creature, count);'));
   check('and writes down what is left', lua.includes('local left = BonePit_Get(town, "n" .. i) - count;'));
   // Launch 49: the same creature in two slots, one purchase taken from both.

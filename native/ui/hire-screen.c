@@ -153,6 +153,15 @@ typedef struct { HirePlanLine *begin; HirePlanLine *end; HirePlanLine *cap; } Hi
  *   room            `0xB433E0(army, creature)`, answers in al    (0xC60320)
  *   money           the payer's `vt+0xE0(int cost[7])`, al       (0xC6037B)
  *
+ * — and the third is NOT a question. `vt+0xE0` (CPlayer's, 0xC05720) is
+ * "pay if you can": it compares the purse at `payer+0x3C` with the cost
+ * (0xA462C0, seven ints, need ≤ have) and then SUBTRACTS it (0xA45AD0).
+ * Called from a question the window asks on every refresh, it took the
+ * line's price from the player each time (launch 53: the purse emptied with
+ * nothing bought, and the window said "not enough money"). So the money is
+ * asked the way 0xA462C0 asks it, on the purse itself, and nothing is paid
+ * here — paying is the script's.
+ *
  * — unless the command's free byte is set, which skips the money (0xC6032D).
  * The command gets all three from the words the two virtuals read around the
  * interface (0x83EA56…0x83EA88): the payer from `-0x0C` (the command's
@@ -164,7 +173,17 @@ typedef struct { HirePlanLine *begin; HirePlanLine *end; HirePlanLine *cap; } Hi
 #define WINDOW_PAYER_BACK 0x0Cu
 #define WINDOW_ARMY_BACK 0x04u
 #define WINDOW_FREE 0x08u
-#define VT_CAN_PAY 0xE0u
+/** The purse: seven ints, Wood … Gold, at the payer the command carries (0xC05789: `lea ecx,[esi+3Ch]`). */
+#define PAYER_PURSE 0x3Cu
+/**
+ * "Pay if you can" — the engine's own payment, the one its purchase makes
+ * (0xC6037B): compares, subtracts, and tells whoever listens (`payer+0x144`),
+ * which is how the resource bar of a screen that is up hears of it. A script's
+ * `SetPlayerResource` does not: it queues a command on the adventure map
+ * (0x5CF357 → the map's `vt+4`), and the hire screen's bar went on showing
+ * the old purse (launch 53). So `H5EHirePay` pays through this.
+ */
+#define VT_PAY_IF_YOU_CAN 0xE0u
 /** Room for a stack of a creature in an army: `push esi; mov esi,ecx; call` — `__fastcall(army, creature)`, `ret`. */
 #define ARMY_ROOM_RVA 0x7433e0u
 static const BYTE ARMY_ROOM_HEAD[6] = { 0x56, 0x8B, 0xF1, 0xE8, 0x88, 0xFE };
@@ -215,8 +234,8 @@ typedef int (__fastcall *HireExecuteFn)(void *cmd, void *edx);
 /** The probe's two: `__thiscall(object, creature, count)`, `ret 0Ch`. */
 typedef int (__fastcall *HireWindowHireFn)(void *self, void *edx, void *object, int creature, int count);
 typedef int (__fastcall *ArmyRoomFn)(void *army, int creature);
+typedef int (__thiscall *PayIfYouCanFn)(void *payer, const int *cost);
 typedef int (__fastcall *HireAllFn)(void *self, void *edx, void *manager, const HirePlan *plan);
-typedef int (__thiscall *CanPayFn)(void *payer, const int *cost);
 
 static CreateHireScreenFn g_createHireScreen = NULL;
 static PushScreenRequestFn g_pushScreenRequest = NULL;
@@ -283,6 +302,8 @@ static int g_hireOpen = 0;
 static int g_hirePercent[HIRE_MOST];
 /** The hire screen that shows the list of ours, caught when it asks the list something; nothing when another is up. */
 static void *g_ourHireScreen = NULL;
+/** Who pays for the purchase being told to the map — set around the event only, for `H5EHirePay`. */
+static void *g_hirePayer = NULL;
 
 static HireVector *source_vector(void) { return (HireVector *)g_sourceBlock; }
 
@@ -383,11 +404,11 @@ static const char *hire_refusal_of(void *payer, void *army, int free, int creatu
   HireEntry *e = source_entry_of(creature);
   if (!e || count <= 0 || count > e->count) return "not that many left";
   if (g_armyRoom && army && town_alive(army) && !(g_armyRoom(army, creature) & 0xFF)) return "no room in the army";
-  if (!free) {
-    CanPayFn can = payer && town_alive(payer) ? (CanPayFn)vtable_entry(payer, VT_CAN_PAY) : NULL;
+  if (!free && payer && town_alive(payer) && readable((BYTE *)payer + PAYER_PURSE, COST_RESOURCES * 4)) {
+    const int *purse = (const int *)((BYTE *)payer + PAYER_PURSE);
     int cost[COST_RESOURCES];
     hire_cost(creature, count, cost);
-    if (can && !(can(payer, cost) & 0xFF)) return "the player cannot pay";
+    for (int i = 0; i < COST_RESOURCES; i++) if (cost[i] > purse[i]) return "the player cannot pay";
   }
   return NULL;
 }
@@ -549,7 +570,9 @@ static int __fastcall hire_window_hire_hook(void *self, void *edx, void *object,
   }
   log_num("hire screen: the player hires ", count);
   log_num("             of creature ", creature);
+  g_hirePayer = *(void **)((BYTE *)self - WINDOW_PAYER_BACK);
   hire_say_bought(creature, count);
+  g_hirePayer = NULL;
   return 0; /* the engine's own path answers with nothing the caller reads */
 }
 
@@ -582,7 +605,9 @@ static int __fastcall hire_window_hire_all_hook(void *self, void *edx, void *man
     }
     log_num("hire screen: hire all: the player hires ", line->count);
     log_num("             of creature ", line->creature);
+    g_hirePayer = *(void **)((BYTE *)self - WINDOW_PAYER_BACK);
     hire_say_bought(line->creature, line->count);
+    g_hirePayer = NULL;
   }
   return 0; /* as the single hire: the caller reads nothing */
 }
@@ -810,7 +835,35 @@ static void *__fastcall lua_hire_cost(void *ctx) {
   return (void *)(INT_PTR)lua_push_int(ctx, cost[resource]);
 }
 
+/**
+ * `H5EHirePay(creature, count)` — take what that many cost on the open screen
+ * from the player who is buying, the engine's own way: 1 when paid (or when it
+ * costs nothing), 0 when the purse is short. Only inside `H5EHireBought` —
+ * that is when there is a buyer. The script decides whether to call it at all:
+ * a line it gives away is simply not paid for.
+ */
+static void *__fastcall lua_hire_pay(void *ctx) {
+  int creature = 0;
+  int count = 0;
+  if (!lua_arg_int(ctx, 1, &creature) || !lua_arg_int(ctx, 2, &count)) return NULL;
+  void *payer = g_hirePayer;
+  int cost[COST_RESOURCES];
+  if (!payer || !town_alive(payer) || !hire_cost(creature, count, cost)) {
+    log_line("H5EHirePay: no purchase of that is being made — nobody to pay");
+    return (void *)(INT_PTR)lua_push_int(ctx, 0);
+  }
+  int any = 0;
+  for (int i = 0; i < COST_RESOURCES; i++) if (cost[i] > 0) any = 1;
+  if (!any) return (void *)(INT_PTR)lua_push_int(ctx, 1);
+  PayIfYouCanFn pay = (PayIfYouCanFn)vtable_entry(payer, VT_PAY_IF_YOU_CAN);
+  int paid = pay ? pay(payer, cost) & 0xFF : 0;
+  log_num("H5EHirePay: gold ", cost[COST_GOLD]);
+  log_num("            paid ", paid);
+  return (void *)(INT_PTR)lua_push_int(ctx, paid ? 1 : 0);
+}
+
 static void add_hire_screen_map_functions(void) {
+  add_map_function("H5EHirePay", (void *)&lua_hire_pay);
   add_map_function("H5EHireScreen", (void *)&lua_hire_screen);
   add_map_function("H5EHireOpen", (void *)&lua_hire_open);
   add_map_function("H5EHireLeft", (void *)&lua_hire_left);

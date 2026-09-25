@@ -381,6 +381,7 @@ serve a caravan, a black market or a quest reward written tomorrow.
 | `H5EHireOpen()` | 1 while a screen of ours is up |
 | event `H5EHireBought(creature, count)` | said to the map (one line + one scheduler tick, as the town button does) when the player presses hire AND the screen's checks passed — the script pays, gives, writes down what is left |
 | `H5EHireCost(creature, count [, resource])` | what that many cost on the open screen in one resource (WOOD 0 … GOLD 6, gold by default) — the number the screen showed and checked |
+| `H5EHirePay(creature, count)` | take that price from the buyer, the engine's own way (the payer's "pay if you can", which the screen's resource bar hears); 1 when paid or free, 0 when short. Inside `H5EHireBought` only — a line the script gives away it simply does not pay for |
 | `H5EHireLeft(creature, count)` | what the open screen has left of a creature — the script says it after it sold; the window reads the list again the moment the event returns |
 
 **The camp (src/mods/camp-script.ts → `TownSpec.script`):** the button's
@@ -393,7 +394,7 @@ count = the creature's weekly growth — and keeps them in game vars under
 `h5e.<fn>.<town>.c1/n1…c3/n3`, so a save carries them. The level only OPENS
 one, two or three of them (an upgrade never re-rolls) and sets the price
 it hands the screen with every line: 200, 100, 50 percent. `H5EHireBought`
-charges `H5EHireCost` in all seven resources (refusing if any falls short),
+pays with `H5EHirePay` (stopping when that fails),
 `AddObjectCreatures(town, …)` (the garrison, hero or not), takes the count off
 the first slot of that creature and says `H5EHireLeft`. A price per line is
 the point (Senya, 2026-09-25): a tier cheaper, a first tier free, free for a
@@ -425,7 +426,9 @@ interface at `+0x40` whose first two virtuals both build the same
 Both are detoured: for a window whose source (interface `+0x1C` == 1,
 `+0x20`) is ours, the question is answered THE ENGINE'S WAY — the three
 calls `Execute` makes (`0xC6030E` what is left, `0xB433E0(army, creature)`
-room, the payer's `vt+0xE0(int cost[7])` money unless the free byte is set),
+room, and money unless the free byte is set — asked on the purse itself,
+seven ints at `payer+0x3C`, as `0xA462C0` asks it, because the payer's
+`vt+0xE0` that Execute calls is "pay if you can" and PAYS),
 fed from the words around the interface (payer `-0x0C`, army `-0x04`, free
 byte `+0x08`) and the LINE's price — so the button goes dark where the
 engine's own would. The deed asks the same once more and, if it passes,
@@ -504,6 +507,16 @@ everything left "hire all" dead (launch 52).
     replace `bin/homm5-editor.dll` while the game is open (EBUSY), and a
     launch then tests yesterday's DLL. The load report's own lines say which
     build is in (`answered out of the list` vs `the engine's way`).
+14. *Money gone with nothing bought* (launch 53: only "+" and "−" on the
+    count). The money question called the payer's `vt+0xE0` — CPlayer's
+    `0xC05720`, which compares the purse (`+0x3C`) with the cost AND
+    subtracts it — and the window asks on every refresh, so every click
+    paid the line's price. The question reads the purse now; nothing pays
+    but `H5EHirePay`.
+15. *The resource bar kept the old purse.* `SetPlayerResource` is a command
+    queued on the adventure map (`0x5CF357` → the map's `vt+4`), which the
+    open screen does not hear; the engine's own payment tells its listener
+    (`payer+0x144`). Hence `H5EHirePay`, through that payment.
 
 **Open:** the screen's left tabs (caravans…) show; hiding them is a flag
 on `H5EHireScreen`, later.
