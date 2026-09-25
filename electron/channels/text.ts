@@ -42,7 +42,11 @@ export function registerText(): void {
         let src: string;
         try { src = readFileSync(join(scripts, f), 'latin1'); } catch { continue; }
         for (const m of src.matchAll(/^\s*function\s+([A-Za-z_]\w*)/gm)) helpers.add(m[1]!);
-        for (const m of src.matchAll(/^([A-Z][A-Z0-9_]{2,})\s*=/gm)) constants.add(m[1]!);
+        // WITH LEADING WHITESPACE: advmap-startup.lua indents every one of its
+        // 673 declarations by a tab, and a pattern anchored at the column
+        // matched none of them — the vocabulary held the ID rosters and nothing
+        // a map is actually written against (TOWN_BUILDING_SPECIAL_1, PLAYER_1…).
+        for (const m of src.matchAll(/^\s*([A-Z][A-Z0-9_]{2,})\s*=/gm)) constants.add(m[1]!);
       }
     }
     // The ID rosters: a script says CREATURE_PEASANT and SPELL_MAGIC_ARROW, and

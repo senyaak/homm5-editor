@@ -19,6 +19,17 @@
 // scripts (every balance is zero): a block is opened by `function`, `if` and
 // `do`, and closed by `end` — `for`/`while` do not take an `end`, their `do`
 // does; `repeat` is closed by `until`. See tools/test-lua-lint.ts.
+//
+// ONE VOCABULARY CHECK IS MADE, and only for ALL-CAPS names (`luaConstantWarnings`).
+// A constant is different from a function: the game declares every one of them
+// in `advmap-startup.lua` and its ID tables — data an install can be read for,
+// not a manual we extracted half of — and a name outside that list reads as
+// nil without a word from the engine. `GetTownBuildingLevel(town, TB_SPECIAL_1)`
+// passed the structural check and the game said "Value was NIL when getting
+// global with name 'TB_SPECIAL_1'" once per click (the Lua name is
+// `TOWN_BUILDING_SPECIAL_1`). Still a WARNING: the vocabulary is the install's,
+// a mod or another file of the map may add to it, and a wrong red mark is
+// worse than a yellow one.
 
 export type LuaSeverity = 'error' | 'warning';
 
@@ -422,6 +433,83 @@ export function luaNameWarnings(src: string, known: Iterable<string>): LuaDiagno
     if (seen.has(dupe)) continue;
     seen.add(dupe);
     out.push({ from: at, to: at + name.length, severity: 'warning', message: `unknown '${name}' — did you mean '${near}'?` });
+  }
+  return out;
+}
+
+/** What an ALL-CAPS name looks like: a capital, then two or more capitals, digits or underscores. */
+const CONSTANT_SHAPE = /^[A-Z][A-Z0-9_]{2,}$/;
+
+/**
+ * ALL-CAPS names the game has never heard of.
+ *
+ * `known` is the install's vocabulary — the constants its scripts declare and
+ * the ids its tables list (electron/channels/text.ts builds it) — and a name of
+ * that shape which is neither in it nor assigned in this file is reported at
+ * every place it is READ. The tokeniser does the reading, so a name inside a
+ * string or a comment is not one, and a name after `.` or `:` is a field, not
+ * a global. Assignments count as declarations wherever they are — a statement,
+ * a `local`, a `for`, a list (`A, B = 1, 2`), a table key (`{ KEY = 1 }`) — so
+ * that a script's own constants are its own business.
+ *
+ * With no vocabulary there is no opinion (as `luaNameWarnings`): an empty list
+ * would call every constant a map uses unknown.
+ */
+export function luaConstantWarnings(src: string, known: Iterable<string>): LuaDiagnostic[] {
+  const knownSet = new Set(known);
+  if (knownSet.size === 0) return [];
+  const toks = tokenize(src);
+
+  /** The first character at or after `i` that is not a space or a tab, and where it is. */
+  const nextChar = (i: number): { c: string; at: number } => {
+    let j = i;
+    while (j < src.length && (src[j] === ' ' || src[j] === '\t')) j++;
+    return { c: src[j] ?? '', at: j };
+  };
+  const prevChar = (i: number): string => {
+    let j = i - 1;
+    while (j >= 0 && (src[j] === ' ' || src[j] === '\t')) j--;
+    return src[j] ?? '';
+  };
+  /**
+   * Is the word at `tok` being assigned to? `X =` (not `==`), or `X, Y, Z =`
+   * — walked forward over the list — or a `function X` / `local X` / `for X`.
+   */
+  const assigned = (at: number): boolean => {
+    const t = toks[at]!;
+    const before = toks[at - 1];
+    if (before?.kind === 'word' && (before.text === 'function' || before.text === 'local' || before.text === 'for')) return true;
+    let i = t.to;
+    for (;;) {
+      const { c, at: j } = nextChar(i);
+      if (c === '=') return src[j + 1] !== '=';
+      if (c !== ',') return false;
+      // A list: `, NAME` and on.
+      const { c: first, at: k } = nextChar(j + 1);
+      if (!/[A-Za-z_]/.test(first)) return false;
+      let m = k;
+      while (m < src.length && /[A-Za-z0-9_]/.test(src[m]!)) m++;
+      i = m;
+    }
+  };
+
+  const own = new Set<string>();
+  const reads: { name: string; from: number; to: number }[] = [];
+  for (let at = 0; at < toks.length; at++) {
+    const t = toks[at]!;
+    if (t.kind !== 'word' || !CONSTANT_SHAPE.test(t.text)) continue;
+    const p = prevChar(t.from);
+    if (p === '.' || p === ':') continue;         // a field
+    if (assigned(at)) { own.add(t.text); continue; }
+    reads.push({ name: t.text, from: t.from, to: t.to });
+  }
+  const out: LuaDiagnostic[] = [];
+  for (const r of reads) {
+    if (knownSet.has(r.name) || own.has(r.name)) continue;
+    out.push({
+      from: r.from, to: r.to, severity: 'warning',
+      message: `'${r.name}' is not a name the game declares — not in its scripts, its ID tables, or this file; the game reads it as nil`,
+    });
   }
   return out;
 }

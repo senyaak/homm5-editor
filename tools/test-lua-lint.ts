@@ -7,9 +7,11 @@
 // and the whole design (structural only, no "unknown function" errors) exists to
 // make that true — so the test that would catch a regression is a real script.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { luaDiagnostics, luaNameWarnings } from '../src/script/lua-lint.ts';
+import { luaConstantWarnings, luaDiagnostics, luaNameWarnings } from '../src/script/lua-lint.ts';
+import { Registry } from '../src/schema/registry.ts';
+import { dataDir } from './game-dir.ts';
 
 let bad = 0;
 const ok = (cond: boolean, msg: string): void => {
@@ -131,6 +133,29 @@ console.log('\n=== "did you mean" — the only name check, and only on a near mi
   ok(luaNameWarnings('sleep(1)', ['sleep', 'startThread']).length === 0, 'a known engine call is fine');
 }
 
+// The one vocabulary check: an ALL-CAPS name the game does not declare. Paid
+// for in game — `TB_SPECIAL_1` where the Lua says `TOWN_BUILDING_SPECIAL_1`
+// passed every structural rule and read as nil once per click.
+console.log('\n=== constants the game has never heard of ===');
+{
+  const vocab = ['TOWN_BUILDING_SPECIAL_1', 'PLAYER_1', 'CREATURE_PEASANT'];
+  const w = luaConstantWarnings('GetTownBuildingLevel(town, TB_SPECIAL_1)', vocab);
+  ok(w.length === 1 && w[0]!.message.includes("'TB_SPECIAL_1'"), "the data's spelling of a building is flagged");
+  ok(w[0]!.severity === 'warning', 'as a warning — the vocabulary is the install\'s, not ours');
+  ok(w[0]!.from === 27 && w[0]!.to === 39, `positioned on the name (got ${w[0]!.from}–${w[0]!.to})`);
+  ok(luaConstantWarnings('GetTownBuildingLevel(town, TOWN_BUILDING_SPECIAL_1)', vocab).length === 0, 'the Lua\'s spelling passes');
+  ok(luaConstantWarnings('MY_LIMIT = 3\nif x > MY_LIMIT then y() end', vocab).length === 0, 'a constant the file assigns is its own');
+  ok(luaConstantWarnings('local MY_A, MY_B = 1, 2\nz = MY_B', vocab).length === 0, 'assigned in a list, too');
+  ok(luaConstantWarnings('for STEP = 1, 3 do print(STEP) end', vocab).length === 0, 'and as a loop variable');
+  ok(luaConstantWarnings('function MY_HANDLER() end\nTrigger(x, MY_HANDLER)', vocab).length === 0, 'a function the file defines');
+  ok(luaConstantWarnings('t = { RATE = 5 }\nx = t.RATE + t.OTHER', vocab).length === 0, 'a table key and a field are not globals');
+  ok(luaConstantWarnings('print("NOT A NAME") -- NOR THIS\nx = [[OR THIS]]', vocab).length === 0, 'strings and comments are not code');
+  ok(luaConstantWarnings('x = TB_SPECIAL_1 + TB_SPECIAL_1', vocab).length === 2, 'every place it is read is marked');
+  ok(luaConstantWarnings('x = TB_SPECIAL_1', []).length === 0, 'no vocabulary → no opinion');
+  ok(luaConstantWarnings('x = C1M1', vocab).length === 1, 'a capital and digits is a name too');
+  ok(luaConstantWarnings('x = AB', vocab).length === 0, 'but two letters is not what this is for');
+}
+
 console.log('\n=== the shipped C1M1 scripts lint clean ===');
 {
   const dir = '_tmp/fixtures/C1M1';
@@ -141,6 +166,32 @@ console.log('\n=== the shipped C1M1 scripts lint clean ===');
     for (const f of files) {
       const d = luaDiagnostics(readFileSync(join(dir, f), 'utf8'));
       ok(d.length === 0, `${f}: 0 diagnostics${d.length ? ` (got: ${d.map((x) => x.message).join('; ')})` : ''}`);
+    }
+    // And against the install's own vocabulary, built the way the editor
+    // builds it (electron/channels/text.ts): every constant the game's scripts
+    // declare, indented or not, plus the four ID rosters. The shipped scripts
+    // — the game's own and the tutorial's — have to come out with no unknown
+    // name, or the warning is noise on working code.
+    const data = dataDir();
+    const scripts = join(data, 'scripts');
+    if (!existsSync(join(data, 'types.xml')) || !existsSync(scripts)) {
+      console.log(`  skip  no unpacked data at ${data} — no vocabulary to check the shipped scripts against`);
+    } else {
+      const vocab = new Set<string>();
+      const shipped = readdirSync(scripts).filter((f) => /\.lua$/i.test(f)).map((f) => join(scripts, f));
+      for (const f of shipped) {
+        for (const m of readFileSync(f, 'latin1').matchAll(/^\s*([A-Z][A-Z0-9_]{2,})\s*=/gm)) vocab.add(m[1]!);
+      }
+      const registry = new Registry(data);
+      for (const e of [...registry.creatures(), ...registry.spells(), ...registry.artifacts(), ...registry.skills()]) {
+        if (/^[A-Z][A-Z0-9_]*$/.test(e.id)) vocab.add(e.id);
+      }
+      ok(vocab.has('TOWN_BUILDING_SPECIAL_1') && vocab.has('PLAYER_1'), `the vocabulary holds the startup script's constants (${vocab.size} names)`);
+      for (const f of [...shipped, ...files.map((x) => join(dir, x))]) {
+        const w = luaConstantWarnings(readFileSync(f, 'latin1'), vocab);
+        const names = [...new Set(w.map((d) => /'([^']+)'/.exec(d.message)?.[1] ?? ''))];
+        ok(w.length === 0, `${f.split(/[\\/]/).pop()}: no unknown constant${w.length ? ` (got: ${names.join(', ')})` : ''}`);
+      }
     }
   }
 }

@@ -7,7 +7,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { campScript, campOffers, CAMP_LEVELS, luaBuildingName } from '../src/mods/camp-script.ts';
-import { luaDiagnostics } from '../src/script/lua-lint.ts';
+import { luaConstantWarnings, luaDiagnostics } from '../src/script/lua-lint.ts';
 import { dataDir } from './game-dir.ts';
 
 let failures = 0;
@@ -143,24 +143,23 @@ console.log("every name of the game's the script reads is declared");
   //
   // So: every SHOUTED name the script READS has to be declared by
   // `advmap-startup.lua`, which is the vocabulary a map is written against.
-  // Ours are the ones the script assigns itself.
+  // Ours are the ones the script assigns itself. The check is the linter's
+  // own now (`luaConstantWarnings`, the editor makes it on every script), so
+  // what is tested here is the script against the real vocabulary — and the
+  // linter against a sabotaged script, because a check that never fires
+  // proves nothing about the script (it was written through a heredoc once,
+  // which ate an escape, and matched nothing at all while passing everything).
   const startup = join(dataDir(), 'scripts', 'advmap-startup.lua');
   if (!existsSync(startup)) {
     console.log(`  skip  no unpacked data at ${dataDir()} — the game's vocabulary is not here to check against`);
   } else {
     const text = readFileSync(startup, 'latin1');
     const declared = new Set([...text.matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*=/gm)].map((m) => m[1]!));
-    const ours = new Set([...lua.matchAll(/^([A-Za-z_][A-Za-z0-9_]*)\s*=/gm)].map((m) => m[1]!));
-    // WHOLE WORDS: a word boundary each side, or H5ECreatures reads as the
-    // unknown name H5EC and the check drowns in its own noise. It was written
-    // through a heredoc once, which ate the escape and left a real backspace
-    // byte — the check then matched nothing at all and passed everything.
-    // COMMENTS ARE NOT CODE: a sentence in capitals inside one is not a name
-    // the game has to know (it read "ALL THREE" as two of them).
-    const code = lua.split(String.fromCharCode(10)).map((l) => l.replace(/--.*$/, '')).join(String.fromCharCode(10));
-    const used = new Set([...code.matchAll(/\b([A-Z][A-Z0-9_]{2,})\b/g)].map((m) => m[1]!));
-    const unknown = [...used].filter((name) => !declared.has(name) && !ours.has(name));
-    check('no name the game has never heard of', unknown.length === 0, unknown.join(', '));
+    const unknown = luaConstantWarnings(lua, declared);
+    check('no name the game has never heard of', unknown.length === 0, unknown.map((d) => d.message).join('; '));
+    const sabotaged = luaConstantWarnings(lua.replace(/TOWN_BUILDING_SPECIAL_1/g, 'TB_SPECIAL_1'), declared);
+    check("and the linter would have caught the data's name", sabotaged.length === 1 && sabotaged[0]!.message.includes("'TB_SPECIAL_1'"),
+      sabotaged.map((d) => d.message).join('; '));
     check('the building is named the way a map names one', lua.includes(`GetTownBuildingLevel(town, ${luaBuildingName('TB_SPECIAL_1')})`));
     check("and that name is the game's own", declared.has('TOWN_BUILDING_SPECIAL_1'));
   }

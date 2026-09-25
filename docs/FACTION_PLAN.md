@@ -551,21 +551,27 @@ shows up there. Fix: the mod build writes its own copy of the record with
 the pool extended, through the same tier filter the extension's
 `H5ECreatureCount`/`H5ECreatureAt` apply (tiers 3–6).
 
-**TODO (Senya, 2026-09-23): the Lua linter should know the game's
-constants.** `src/script/lua-lint.ts` checks GRAMMAR — blocks, `return;`,
-`false`, the library names this engine does not register — and knows
-nothing of the vocabulary a map is written against. So
-`GetTownBuildingLevel(town, TB_SPECIAL_1)` passed it and the game said
-"Value was NIL when getting global with name 'TB_SPECIAL_1'" at every
-click (the Lua name is `TOWN_BUILDING_SPECIAL_1`; `luaBuildingName()` in
-src/mods/camp-script.ts converts one to the other). The check exists for
-the camp's script only — `tools/test-camp-script.ts` reads
-`scripts/advmap-startup.lua` and refuses a shouted name it does not
-declare. It belongs in the linter, for every script the editor writes or
-lints: read the declarations out of the mounted `advmap-startup.lua`
-(they are data, so a mod or a map may add to them), warn on an ALL-CAPS
-name that is neither declared nor assigned in the file, and keep it a
-WARNING — the vocabulary is the install's, not ours.
+**The Lua linter knows the game's constants — DONE 2026-09-26 (Senya's
+TODO of 09-23).** `luaConstantWarnings(src, known)` in `src/script/lua-lint.ts`:
+an ALL-CAPS name (`[A-Z][A-Z0-9_]{2,}`) READ by the script — the tokeniser
+decides, so strings and comments are not code and a name after `.`/`:` is a
+field — that is neither in the vocabulary nor assigned in the file (a
+statement, `local`, `for`, a list `A, B = …`, a table key, `function NAME`)
+is a WARNING at every place it is read. The vocabulary is the install's
+(`electron/channels/text.ts` builds it: every constant the mounted scripts
+declare plus the four ID rosters) — and it was EMPTY of the startup script
+until now: its 673 declarations are indented by a tab, and the pattern was
+anchored at the column, so the editor's completions and this check knew the
+ID rosters and nothing a map is written against. `test-lua-lint` checks the
+rule, the sabotage (`TB_SPECIAL_1` flagged, the Lua name not) and that every
+shipped script — the game's eight and C1M1's three — comes out with no
+unknown name against the real vocabulary; `test-camp-script` lints the camp
+with the same function and a sabotaged copy. What it caught the expensive way
+first: `GetTownBuildingLevel(town, TB_SPECIAL_1)` passed the structural
+check and the game said "Value was NIL when getting global with name
+'TB_SPECIAL_1'" at every click (`luaBuildingName()` in src/mods/camp-script.ts
+converts the data's name to the Lua's).
+
 ### 2c. A stage per building — later (Senya, 2026-09-19)
 
 The exterior has ten stages, chosen by the engine from the hall, the walls

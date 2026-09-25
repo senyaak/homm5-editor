@@ -25,7 +25,7 @@ import { lintKeymap, linter, lintGutter } from '@codemirror/lint';
 import type { Diagnostic } from '@codemirror/lint';
 import { lua } from '@codemirror/legacy-modes/mode/lua';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { luaDiagnostics, luaNameWarnings } from '#src/script/lua-lint.ts';
+import { luaConstantWarnings, luaDiagnostics, luaNameWarnings } from '#src/script/lua-lint.ts';
 import type { LuaDiagnostic } from '#src/script/lua-lint.ts';
 
 /** One engine function the editor completes from — merged from our curated
@@ -211,10 +211,17 @@ export interface CodeEditor {
   focus(): void;
 }
 
-/** The diagnostics for a document, or none when it is not Lua. */
+/**
+ * The diagnostics for a document, or none when it is not Lua.
+ *
+ * Three checks: the grammar this engine's parser rejects, a "did you mean" on a
+ * mistyped call, and the ALL-CAPS names the game has to know — measured against
+ * the install's own vocabulary (`ctx.constants`: what its scripts declare and
+ * its ID tables list), so with no vocabulary loaded the third says nothing.
+ */
 function computeLint(src: string): LuaDiagnostic[] {
   if (lintLang !== 'lua') return [];
-  return [...luaDiagnostics(src), ...luaNameWarnings(src, knownNames())];
+  return [...luaDiagnostics(src), ...luaNameWarnings(src, knownNames()), ...luaConstantWarnings(src, ctx.constants)];
 }
 
 /**

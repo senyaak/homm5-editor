@@ -159,6 +159,15 @@ pre-release.
   started: the extension learned where a map keeps its scripts only from a
   script of ours run at the map's start, which a loaded save never runs. It
   now takes the map from the map's own script tick.
+- The script editor warns on an ALL-CAPS name the game does not declare —
+  `TB_SPECIAL_1` where the Lua says `TOWN_BUILDING_SPECIAL_1` passed every
+  check and read as nil once per click in game. The vocabulary is the
+  install's own (what its scripts declare, what its ID tables list), a name
+  the file itself assigns is its own, strings and comments do not count, and
+  it is a warning, never an error. On the way: the editor's vocabulary had
+  none of `advmap-startup.lua`'s 673 constants — they are indented, and the
+  pattern reading them was anchored at the column — so completions offered
+  the ID rosters and nothing a map is written against; fixed.
 - A faction's upgraded dwellings hired the DONOR's second upgrade (the
   expansion's third creature of a tier): only the first creature of each
   dwelling was rewritten, so a Haven-based town sold Zealots and Seraphs, and
