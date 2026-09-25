@@ -15,13 +15,17 @@
 //                                    out of one call's many results keeps only
 //                                    the first of them in this dialect (launch
 //                                    49: 119 ids pushed, a pool of 1 counted);
-//   H5EHireScreen(creature, count, price, …) the game's own hire screen over
-//                                    a list of ours, each line at its own price
-//                                    (percent of the creature's cost), and
-//                                    `H5EHireBought(creature, count)` back when
-//                                    the player presses hire — the screen has
+//   H5EHireScreen("bought=<fn>", "tag=<town>", creature, count, price, …)
+//                                    the game's own hire screen over a list of
+//                                    ours, each line at its own price (percent
+//                                    of the creature's cost), and
+//                                    `<fn>(creature, count, town)` back when the
+//                                    player presses hire — the screen has
 //                                    already checked the stock, the room in the
 //                                    army and the money, the engine's own way;
+//                                    the function and the tag are the script's
+//                                    words, so four towns with the building
+//                                    share one function and no global;
 //   H5EHireCost / H5EHireLeft        what the screen charged, per resource, and
 //                                    what the script says is left after it sold.
 //
@@ -115,8 +119,6 @@ export function campScript(spec: CampScript): string {
     `${n}_LEVELS = { ${levels} };`,
     `${n}_MIN_TIER = ${min};`,
     `${n}_MAX_TIER = ${max};`,
-    '-- The town whose camp is open, for the purchase that comes back.',
-    `${n}_TOWN = "";`,
     '',
     "-- One number of the town's stock, and where it is kept.",
     `function ${n}_Var(town, what)`,
@@ -210,7 +212,6 @@ export function campScript(spec: CampScript): string {
     `    ${n}_Set(town, "week", week);`,
     `    ${n}_Roll(town);`,
     '  end;',
-    `  ${n}_TOWN = town;`,
     '  local p = rule.price;',
     // The level OPENS what the week rolled — one, two or all three — so an
     // upgrade shows one more of the same stock rather than rolling a new one
@@ -224,7 +225,10 @@ export function campScript(spec: CampScript): string {
     '  if rule.offers > 2 then',
     `    c3, n3 = ${n}_Get(town, "c3"), ${n}_Get(town, "n3");`,
     '  end;',
-    '  H5EHireScreen(c1, n1, p, c2, n2, p, c3, n3, p);',
+    // The purchase comes back to THIS camp's function with THIS town's name —
+    // the screen's own words, not a global of the script's, so any number of
+    // towns with the building share one function and never a variable.
+    `  H5EHireScreen("bought=${n}_Bought", "tag=" .. town, c1, n1, p, c2, n2, p, c3, n3, p);`,
     'end;',
     '',
     '-- The purchase, said by the extension while the screen is still up — the',
@@ -236,9 +240,8 @@ export function campScript(spec: CampScript): string {
     '-- the creatures; and what is left, written down and told to the screen.',
     '-- The creatures are QUEUED, not added: `AddObjectCreatures` hands the map',
     '-- a command, and the world runs its queue once the screen is closed.',
-    'function H5EHireBought(creature, count)',
-    `  local town = ${n}_TOWN;`,
-    '  if town == "" then',
+    `function ${n}_Bought(creature, count, town)`,
+    '  if town == nil or town == "" then',
     '    return nil;',
     '  end;',
     '  if H5EHirePay(creature, count) ~= 1 then',

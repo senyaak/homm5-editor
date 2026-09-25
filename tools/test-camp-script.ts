@@ -44,7 +44,12 @@ console.log('what it asks the extension for — two doors and no more');
   check('a week of the creature is what it stocks', lua.includes('H5ECreatureGrowth(creature)'));
   // Three a line: the creature, how many, and its price in percent — the
   // level's, the same for every line of one opening.
-  check('the screen is given a list and nothing else', lua.includes('H5EHireScreen(c1, n1, p, c2, n2, p, c3, n3, p);') && !lua.includes('H5EHireScreen(town'));
+  // The purchase comes back to THIS camp's function with THIS town's name —
+  // the screen's words, not a global: four towns with the building would
+  // otherwise fight over "which town is open" (Senya, 2026-09-26).
+  check('the screen is given who to tell, which town, and the list',
+    lua.includes('H5EHireScreen("bought=BonePit_Bought", "tag=" .. town, c1, n1, p, c2, n2, p, c3, n3, p);'));
+  check('and the script keeps no "which town is open" of its own', !lua.includes('BonePit_TOWN') && !lua.includes('H5EHireBought'));
   check("and the price is the level's", lua.includes('local p = rule.price;'));
   // The week rolls all three; the level only opens them.
   check('the week rolls the whole stock', lua.includes('function BonePit_Roll(town)') && !lua.includes('BonePit_Roll(town, rule.offers)'));
@@ -56,7 +61,7 @@ console.log('what it asks the extension for — two doors and no more');
 
 console.log("the purchase is the script's whole business");
 {
-  check('it hears the event', lua.includes('function H5EHireBought(creature, count)'));
+  check('it hears the event, with the town the screen was opened for', lua.includes('function BonePit_Bought(creature, count, town)'));
   // Launch 51: the script priced one way and the screen another, and the
   // screen sold what the script refused. Launch 53: SetPlayerResource is a
   // queued command the screen's resource bar never hears. It pays what the

@@ -352,7 +352,8 @@ building's camp will ask tiers 3–6 later). So:
    footmen.)
 2. DLL → Lua: `H5EHireScreen(creature, count, …)` — the game's own hire
    screen over a list of ours, one line per creature; and the event
-   `H5EHireBought(creature, count)` back when the player presses hire, heard
+   back when the player presses hire (first a fixed `H5EHireBought`, since
+   2026-09-26 the function the script names, see the table below), heard
    at the window's own "hire" rather than at the command (the window builds
    the same command to ask "may he?", and listening there sold the whole
    stock on opening — launches 44–48). The stock itself is the Lua's game
@@ -377,11 +378,11 @@ serve a caravan, a black market or a quest reward written tomorrow.
 | `H5ECreatureAt(n [, minTier, maxTier])` | the id of the Nth of them, 1-based, table order; nothing past the last |
 | `H5ECreatureTier(c)`, `H5ECreatureGrowth(c)`, `H5ECreatureTown(c)` | record `+0x8C`, `+0xA8`, `+0x98` |
 | `H5ECreatureCost(c [, resource])` | the price of one; gold by default (resources at record `+0xB0`, see below) |
-| `H5EHireScreen([options,] creature, count, price, …)` | the game's own hire screen over that list; THREE a line — the price in percent of the creature's own cost, all seven resources scaled alike, rounded down (100 ordinary, 200 double, 0 free); lines until they run out, the order the script's, one line per creature. A STRING among the arguments is an option: `"notabs"` hides the three caravan tabs; any other string is the script name of the HERO who buys, which opens the screen on the ADVENTURE MAP (his army beside the offers) instead of the town screen — `H5EHireScreen("Isabell", "notabs", CREATURE_PEASANT, 12, 50)` |
+| `H5EHireScreen(options…, creature, count, price, …)` | the game's own hire screen over that list; THREE a line — the price in percent of the creature's own cost, all seven resources scaled alike, rounded down (100 ordinary, 200 double, 0 free); lines until they run out, the order the script's, one line per creature. A STRING among the arguments is an option, wherever it stands: `"bought=<function>"` (REQUIRED) the map function a purchase is told to; `"tag=<text>"` handed back to it word for word (the town's name, say — four towns with the building share one function and no global); `"hero=<name>"` the HERO who buys, which opens the screen on the ADVENTURE MAP (his army beside the offers) instead of the town screen; `"notabs"` hides the three caravan tabs. `H5EHireScreen("bought=CampBought", "tag=" .. town, c1, n1, 100)`; `H5EHireScreen("bought=RewardTaken", "hero=Isabell", "notabs", CREATURE_PEASANT, 12, 0)` |
 | `H5EHireOpen()` | 1 while a screen of ours is up |
-| event `H5EHireBought(creature, count)` | said to the map (one line + one scheduler tick, as the town button does) when the player presses hire AND the screen's checks passed — the script pays, gives, writes down what is left |
+| event `<bought>(creature, count, tag)` | said to the map (one line + one scheduler tick, as the town button does) when the player presses hire AND the screen's checks passed — the function named with `bought=`, the tag given with `tag=` (`""` when none) — the script pays, gives, writes down what is left. Was a fixed `H5EHireBought(creature, count)` until 2026-09-26: one global for every building on the map, and the camp kept "which town is open" in a global beside it |
 | `H5EHireCost(creature, count [, resource])` | what that many cost on the open screen in one resource (WOOD 0 … GOLD 6, gold by default) — the number the screen showed and checked |
-| `H5EHirePay(creature, count)` | take that price from the buyer, the engine's own way (the payer's "pay if you can", which the screen's resource bar hears); 1 when paid or free, 0 when short. Inside `H5EHireBought` only — a line the script gives away it simply does not pay for |
+| `H5EHirePay(creature, count)` | take that price from the buyer, the engine's own way (the payer's "pay if you can", which the screen's resource bar hears); 1 when paid or free, 0 when short. Inside the `bought=` event only — a line the script gives away it simply does not pay for |
 | `H5EHireLeft(creature, count)` | what the open screen has left of a creature — the script says it after it sold; the window reads the list again the moment the event returns |
 
 **The camp (src/mods/camp-script.ts → `TownSpec.script`):** the button's
@@ -393,8 +394,10 @@ at once — three DIFFERENT creatures of tiers 3–6, drawn without putting back
 count = the creature's weekly growth — and keeps them in game vars under
 `h5e.<fn>.<town>.c1/n1…c3/n3`, so a save carries them. The level only OPENS
 one, two or three of them (an upgrade never re-rolls) and sets the price
-it hands the screen with every line: 200, 100, 50 percent. `H5EHireBought`
-pays with `H5EHirePay` (stopping when that fails),
+it hands the screen with every line: 200, 100, 50 percent — and
+`"bought=BonePit_Bought"`, `"tag=" .. town`, so the purchase comes back as
+`BonePit_Bought(creature, count, town)` with no "which town is open" kept
+anywhere. It pays with `H5EHirePay` (stopping when that fails),
 `AddObjectCreatures(town, …)` (the garrison, hero or not), takes the count off
 the first slot of that creature and says `H5EHireLeft`. A price per line is
 the point (Senya, 2026-09-25): a tier cheaper, a first tier free, free for a
@@ -432,7 +435,8 @@ seven ints at `payer+0x3C`, as `0xA462C0` asks it, because the payer's
 fed from the words around the interface (payer `-0x0C`, army `-0x04`, free
 byte `+0x08`) and the LINE's price — so the button goes dark where the
 engine's own would. The deed asks the same once more and, if it passes,
-only says `H5EHireBought`: the script sells and says what is left. The
+only says the purchase event (the `bought=` function): the script sells and
+says what is left. The
 price the window draws comes from `0xABA5A0(line, int out[7])` (the refresh,
 `0x83F6F9`, on the selected line at `window+0x1A0`), which is replaced whole
 — for a line of ours on our screen it is the line's price, so the panel shows
@@ -527,7 +531,7 @@ everything left "hire all" dead (launch 52).
     world at `+0x24`, cast to `IAdventureMap`, kept when its `+0x40` is this
     engine) — every frame, new game or loaded. The same hole took the
     spells of ours (adv-cast.c) and the hire screen's event with it.
-    Whether the Lua FUNCTIONS (`BonePit`, `H5EHireBought`) come back with
+    Whether the Lua FUNCTIONS (`BonePit`, the purchase event) come back with
     a loaded save was not answered by that launch — it never got that far.
     The lines the extension says now end in `else H5ENoSuchFunction();`,
     which logs "the map has no function for this line", so a missing
@@ -573,8 +577,9 @@ set, the screen's Init casts the source's base to a town and, failing that,
 asks it for a DWELLING TYPE (`vt+0xA4`, `0x84086C`) — a hero's slot there is
 something else; clear, the screen takes the generic `HIRE_CREATURES` layout
 by name (`0x84090B`). The purchase then runs exactly as on the town screen
-(the gestures, the three questions, `H5EHireBought`, `H5EHirePay`); the
-script gives to the hero (`AddHeroCreatures`) rather than to a town.
+(the gestures, the three questions, the `bought=` event, `H5EHirePay`); the
+script gives to the hero (`AddHeroCreatures`) rather than to a town — the
+hero's name is what `tag=` is for here.
 Each step is a named log line, so the first launch says which reading is off.
 
 **The shipped refugee camp's pool — DONE 2026-09-26 (Senya's TODO of

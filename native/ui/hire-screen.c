@@ -16,9 +16,12 @@
 // creatures came from, who is paying, or where they go. It asks what the
 // engine's own screen asks before a purchase (what is left, room in the army,
 // the money at the line's price) and every purchase that passes comes back to
-// the map's Lua as an event:
+// the map's Lua as an event — to the function the script NAMED when it opened
+// the screen (`"bought=<function>"`), with whatever tag it gave (`"tag=<text>"`,
+// the town's name, say — so four towns with the same building share one
+// function and no global):
 //
-//     H5EHireBought(creature, count)
+//     <function>(creature, count, tag)
 //
 // and what that means — the gold (`H5EHireCost` says what the screen showed),
 // the army, a caravan, a quest — is the script's, written where the feature
@@ -302,6 +305,14 @@ static DwellingSoundBuilderFn g_dwellingSoundBuilder = NULL;
 static TabsInitFn g_tabsInit = NULL;
 /** "notabs" was said for the screen being opened; read once by the tabs' Init and cleared. */
 static int g_hideTabs = 0;
+/** The longest option a script may say, its `key=` included. */
+#define HIRE_OPTION_LEN 64
+/** Who the purchase is told to (`bought=`), and with what (`tag=`) — the script's words, kept while its screen is up. */
+static char g_hireBought[HIRE_OPTION_LEN];
+static char g_hireTag[HIRE_OPTION_LEN];
+/** The hero named with `hero=`, as the engine's own string shape, for the map's lookup. */
+static char g_hireHeroChars[HIRE_OPTION_LEN];
+static NameString g_hireHero;
 static HireExecuteFn g_hireExecute = NULL;
 static HireWindowHireFn g_hireWindowHire = NULL;
 static HireWindowHireFn g_hireWindowHire2 = NULL;
@@ -583,23 +594,63 @@ static BYTE *object_base_of(void *obj) {
   return readable(base, 4) ? (BYTE *)base : NULL;
 }
 
-/** Does one of the engine's string objects read as `lit`, case blind? Its first word points at the characters (log_hero_name). */
-static int engine_string_is(void *s, const char *lit) {
+/**
+ * The characters of one of the engine's string objects into `out` — how many,
+ * or -1 when it does not read as printable text that fits. Its first word
+ * points at the characters (as `log_hero_name` reads them).
+ */
+static int engine_string_chars(void *s, char *out, int room) {
   for (int word = 0; word < 2; word++) {
-    if (!readable((BYTE *)s + word * 4, 4)) return 0;
+    if (!readable((BYTE *)s + word * 4, 4)) return -1;
     const char *text = *(const char **)((BYTE *)s + word * 4);
     if (!readable(text, 1)) continue;
-    int i = 0;
-    int same = 1;
-    for (; lit[i] && same; i++) {
-      if (!readable(text + i, 1)) { same = 0; break; }
-      char c = text[i];
-      if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
-      if (c != lit[i]) same = 0;
-    }
-    if (same && readable(text + i, 1) && text[i] == 0) return 1;
+    int n = 0;
+    while (n < room - 1 && readable(text + n, 1) && text[n] >= 0x20 && text[n] < 0x7f) { out[n] = text[n]; n++; }
+    if (n < 1 || !readable(text + n, 1) || text[n] != 0) continue;
+    out[n] = 0;
+    return n;
   }
-  return 0;
+  return -1;
+}
+
+/** Is `text` the word `lit`, case blind? */
+static int text_is(const char *text, const char *lit) {
+  int i = 0;
+  for (; lit[i]; i++) {
+    char c = text[i];
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    if (c != lit[i]) return 0;
+  }
+  return text[i] == 0;
+}
+
+/** `key=value`: when `text` starts with `key`, the value after it. */
+static const char *option_value(const char *text, const char *key) {
+  int i = 0;
+  for (; key[i]; i++) if (text[i] != key[i]) return NULL;
+  return text + i;
+}
+
+/** A Lua name: a letter or underscore, then letters, digits, underscores. */
+static int lua_name_ok(const char *s) {
+  if (!((s[0] >= 'A' && s[0] <= 'Z') || (s[0] >= 'a' && s[0] <= 'z') || s[0] == '_')) return 0;
+  for (int i = 1; s[i]; i++) {
+    char c = s[i];
+    if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) return 0;
+  }
+  return 1;
+}
+
+/** A tag goes back inside a quoted Lua string, so it may not break out of one. */
+static int tag_ok(const char *s) {
+  for (int i = 0; s[i]; i++) if (s[i] == '"' || s[i] == '\\') return 0;
+  return 1;
+}
+
+static void copy_text(char *out, const char *text, int room) {
+  int i = 0;
+  for (; text[i] && i < room - 1; i++) out[i] = text[i];
+  out[i] = 0;
 }
 
 // --- the tabs -------------------------------------------------------------------------
@@ -639,16 +690,27 @@ static int __fastcall tabs_init_hook(void *self, void *edx, void *window, void *
 
 // --- the purchase, which is the script's --------------------------------------------
 
-/** One purchase, told to the map's Lua the way a town button tells a click. */
+/**
+ * One purchase, told to the map's Lua the way a town button tells a click — to
+ * the function the script named at opening, with the tag it gave:
+ * `<bought>(creature, count, "<tag>")`.
+ */
 static void hire_say_bought(int creature, int count) {
-  char line[160];
+  char line[256];
   int at = 0;
   line[0] = 0;
-  append_text(line, &at, sizeof line, "if H5EHireBought ~= nil then H5EHireBought(");
+  if (!g_hireBought[0]) { log_line("hire screen: a purchase with nobody to tell it to — the screen was opened without bought="); return; }
+  append_text(line, &at, sizeof line, "if ");
+  append_text(line, &at, sizeof line, g_hireBought);
+  append_text(line, &at, sizeof line, " ~= nil then ");
+  append_text(line, &at, sizeof line, g_hireBought);
+  append_text(line, &at, sizeof line, "(");
   append_num(line, &at, sizeof line, creature);
   append_text(line, &at, sizeof line, ", ");
   append_num(line, &at, sizeof line, count);
-  append_text(line, &at, sizeof line, "); else H5ENoSuchFunction(); end;");
+  append_text(line, &at, sizeof line, ", \"");
+  append_text(line, &at, sizeof line, g_hireTag);
+  append_text(line, &at, sizeof line, "\"); else H5ENoSuchFunction(); end;");
   if (!say_to_the_map(line)) {
     log_line("hire screen: the purchase could not be told to the map — no script of ours has fetched it yet");
     return;
@@ -963,16 +1025,26 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creatur
  *
  * A STRING among the arguments is an option, wherever it stands:
  *
- *   "notabs"       the three caravan tabs on the left are hidden — a list of
- *                  ours has no caravans to send; the list and creature tabs stay;
- *   anything else  the script name of the HERO who buys, which opens the screen
- *                  on the adventure map (his army beside the offers, the room
- *                  question asked of it) rather than on the town screen — what
- *                  an object on the map, a spell or a quest wants:
+ *   "bought=<function>"  REQUIRED — the map function the purchase is told to,
+ *                        as `<function>(creature, count, tag)`; the script's
+ *                        own name, so two buildings with two ideas of a sale
+ *                        never share one;
+ *   "tag=<text>"         handed back as the third argument, word for word —
+ *                        the town's name, say, so four towns with the same
+ *                        building share one function and no global;
+ *   "hero=<name>"        the script name of the HERO who buys, which opens the
+ *                        screen on the adventure map (his army beside the
+ *                        offers, the room question asked of it) rather than on
+ *                        the town screen — what an object on the map, a spell
+ *                        or a quest wants;
+ *   "notabs"             the three caravan tabs on the left are hidden — a list
+ *                        of ours has no caravans to send; the list and creature
+ *                        tabs stay.
  *
- *     H5EHireScreen("Isabell", "notabs", CREATURE_PEASANT, 12, 50);
+ *     H5EHireScreen("bought=CampBought", "tag=" .. town, c1, n1, 100, c2, n2, 100);
+ *     H5EHireScreen("bought=RewardTaken", "hero=Isabell", "notabs", CREATURE_PEASANT, 12, 0);
  *
- * With no hero named, the town screen has to be up and the town buys, as before.
+ * With no hero named, the town screen has to be up and the town buys.
  */
 static void *__fastcall lua_hire_screen(void *ctx) {
   if (!hire_screen_ready()) return NULL;
@@ -980,13 +1052,34 @@ static void *__fastcall lua_hire_screen(void *ctx) {
   int count[HIRE_MOST];
   int percent[HIRE_MOST];
   int offers = 0;
-  void *heroName = NULL;
+  char text[HIRE_OPTION_LEN];
+  char bought[HIRE_OPTION_LEN] = "";
+  char tag[HIRE_OPTION_LEN] = "";
+  char hero[HIRE_OPTION_LEN] = "";
   int hideTabs = 0;
   for (int at = 1; offers < HIRE_MOST;) {
     void *word = lua_arg_string(ctx, at);
     if (word) {
-      if (engine_string_is(word, "notabs")) hideTabs = 1;
-      else heroName = word;
+      if (engine_string_chars(word, text, sizeof text) < 0) {
+        log_num("H5EHireScreen: an option that does not read as text (or is longer than it may be), argument ", at);
+        return NULL;
+      }
+      const char *value;
+      if (text_is(text, "notabs")) {
+        hideTabs = 1;
+      } else if ((value = option_value(text, "bought=")) != NULL) {
+        if (!lua_name_ok(value)) { log_text("H5EHireScreen: bought= has to name a Lua function, not ", value); return NULL; }
+        copy_text(bought, value, sizeof bought);
+      } else if ((value = option_value(text, "tag=")) != NULL) {
+        if (!tag_ok(value)) { log_text("H5EHireScreen: a tag may not hold a quote or a backslash: ", value); return NULL; }
+        copy_text(tag, value, sizeof tag);
+      } else if ((value = option_value(text, "hero=")) != NULL) {
+        if (!value[0]) { log_line("H5EHireScreen: hero= names nobody"); return NULL; }
+        copy_text(hero, value, sizeof hero);
+      } else {
+        log_text("H5EHireScreen: not an option I know (bought=, tag=, hero=, notabs): ", text);
+        return NULL;
+      }
       at++;
       continue;
     }
@@ -1006,6 +1099,10 @@ static void *__fastcall lua_hire_screen(void *ctx) {
     log_line("H5EHireScreen: takes lines of creature, count and price, and was given none");
     return NULL;
   }
+  if (!bought[0]) {
+    log_line("H5EHireScreen: say bought=<function> — the function a purchase is told to; without one nothing could be sold");
+    return NULL;
+  }
   if (g_hireOpen && screen_up_of(HIRE_SCREEN_VTABLE_RVA)) {
     log_line("H5EHireScreen: a hire screen of ours is already up");
     return NULL;
@@ -1014,8 +1111,22 @@ static void *__fastcall lua_hire_screen(void *ctx) {
   g_ourHireScreen = NULL;
   g_hideTabs = hideTabs && g_tabsInit;
   if (hideTabs && !g_tabsInit) log_line("H5EHireScreen: \"notabs\" was asked, but the tabs' Init is not hooked (see the load report)");
-  int up = heroName ? open_hire_screen_on_map(ctx, heroName, creature, count, percent, offers)
-                    : open_hire_screen(creature, count, percent, offers);
+  copy_text(g_hireBought, bought, sizeof g_hireBought);
+  copy_text(g_hireTag, tag, sizeof g_hireTag);
+  int up;
+  if (hero[0]) {
+    /* The engine's own string shape — {begin, end, capacity end}, NUL after
+       end — over characters of ours, for the map's lookup by name. */
+    int n = 0;
+    copy_text(g_hireHeroChars, hero, sizeof g_hireHeroChars);
+    while (g_hireHeroChars[n]) n++;
+    g_hireHero.begin = g_hireHeroChars;
+    g_hireHero.end = g_hireHeroChars + n;
+    g_hireHero.cap = g_hireHeroChars + n + 1;
+    up = open_hire_screen_on_map(ctx, &g_hireHero, creature, count, percent, offers);
+  } else {
+    up = open_hire_screen(creature, count, percent, offers);
+  }
   if (!up) g_hideTabs = 0;
   return NULL;
 }
@@ -1028,8 +1139,8 @@ static void *__fastcall lua_hire_open(void *ctx) {
 
 /**
  * `H5EHireLeft(creature, count)` — how many of a creature the open screen has
- * left: what a script says after it sold (or did not). Called from
- * `H5EHireBought`, it lands before the window reads the list again, so the
+ * left: what a script says after it sold (or did not). Called from the
+ * purchase event, it lands before the window reads the list again, so the
  * screen shows the script's answer at once. A creature the list does not hold
  * is nothing.
  */
@@ -1069,8 +1180,9 @@ static void *__fastcall lua_hire_cost(void *ctx) {
 /**
  * `H5EHirePay(creature, count)` — take what that many cost on the open screen
  * from the player who is buying, the engine's own way: 1 when paid (or when it
- * costs nothing), 0 when the purse is short. Only inside `H5EHireBought` —
- * that is when there is a buyer. The script decides whether to call it at all:
+ * costs nothing), 0 when the purse is short. Only inside the purchase event
+ * (the `bought=` function) — that is when there is a buyer. The script
+ * decides whether to call it at all:
  * a line it gives away is simply not paid for.
  */
 static void *__fastcall lua_hire_pay(void *ctx) {

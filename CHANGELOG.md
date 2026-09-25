@@ -145,8 +145,9 @@ pre-release.
   cheaper, a first tier free, free for a hero with a skill). The screen shows
   that price, paints it red, and refuses what the engine's own screen refuses
   — nothing left, no room in the army, no money — for one line and for "hire
-  all" alike, and `H5EHireBought(creature,
-  count)` comes back when the player presses hire: paying (`H5EHirePay`, the
+  all" alike, and the function the script named (`"bought=<function>"`,
+  with the tag it gave — the town's name, say) comes back when the player
+  presses hire: paying (`H5EHirePay`, the
   engine's own payment at the price the screen showed, which its resource bar
   hears), giving and what is left (`H5EHireLeft`) are the script's. With `H5ECreatureCount`/`H5ECreatureAt` (every creature of some
   tiers, the mod's own included) and `H5ECreatureCost`/`Growth`/`Tier`/`Town`,
@@ -159,14 +160,20 @@ pre-release.
   started: the extension learned where a map keeps its scripts only from a
   script of ours run at the map's start, which a loaded save never runs. It
   now takes the map from the map's own script tick.
-- `H5EHireScreen` takes options: a string among its arguments that is not a
-  line. `"notabs"` hides the three caravan tabs on the screen's left, which
-  a list of ours has nothing to offer through (the list and creature tabs
-  stay). Any other string names the HERO who buys, and the screen then opens
-  on the adventure map — his army beside the offers, the room question asked
-  of it — the way a dwelling's visit opens it, so an object on the map, a
-  spell or a quest can sell from a script's list; without a hero named it
-  opens on the town screen as before. Not yet seen in game.
+- `H5EHireScreen` takes options: strings among its arguments that are not
+  lines. `"bought=<function>"` names the map function a purchase is told to
+  and `"tag=<text>"` what it is told with — the town's name, say — so two
+  buildings with two ideas of a sale never share one function, and four
+  towns with the same building share one function and no global (the event
+  was a fixed `H5EHireBought`, and the camp kept "which town is open" in a
+  variable beside it). `"notabs"` hides the three caravan tabs on the
+  screen's left, which a list of ours has nothing to offer through (the list
+  and creature tabs stay). `"hero=<name>"` names the HERO who buys, and the
+  screen then opens on the adventure map — his army beside the offers, the
+  room question asked of it — the way a dwelling's visit opens it, so an
+  object on the map, a spell or a quest can sell from a script's list;
+  without a hero named it opens on the town screen as before. Not yet seen
+  in game.
 - The game's own refugee camp never offered a creature of a mod: its pool is
   thirty-eight names written into `MapObjects/Special/RefugeeCamp.xdb`, and
   the weekly roll draws from that list. A mod with creatures of tiers three
