@@ -22,6 +22,7 @@ import {
   BOOTS, creatureTextures, MOD, modGameRoot, PALACE, PIECES, SHARPSHOOTER, UNDEAD_KING,
 } from './mods.ts';
 import { readEntries } from '../src/format/pak.ts';
+import { REFUGEE_CAMP, campPool } from '../src/mods/refugee-camp.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { readCreatureMod } from '../src/mods/mod-archive.ts';
 import { heroPaths } from '../src/mods/heroes.ts';
@@ -115,6 +116,21 @@ test('the archive carries what the run authored', { tag: '@game' }, () => {
   // expected is read off the record rather than written down twice.
   expect(decode(members().get(p.specName)!))
     .toBe(gem!.specializationName || ours!.name);
+
+  // The game's own refugee camp rolls from thirty-eight names written into
+  // its record, so a creature of the mod was never offered by a camp on the
+  // map. The archive carries the record with ours appended: every creature of
+  // the pool's tiers (three to six) after the shipped names, and no other.
+  const camp = members().get(REFUGEE_CAMP)?.toString('latin1') ?? '';
+  expect(camp, 'the archive carries the refugee camp record').toBeTruthy();
+  const pool = campPool(camp);
+  expect(pool.length, 'the shipped pool is intact before ours').toBeGreaterThan(38);
+  expect(pool.slice(0, 38).some((id) => mod.creatures.some((c) => c.id === id)), 'ours come after the shipped names, not among them').toBe(false);
+  for (const c of mod.creatures) {
+    const belongs = c.stats.tier >= 3 && c.stats.tier <= 6;
+    expect(pool.includes(c.id), `${c.id} (tier ${c.stats.tier}) ${belongs ? 'joins' : 'stays out of'} the camp's pool`).toBe(belongs);
+  }
+  expect(pool.includes(SHARPSHOOTER.id), 'the Sharp Shooter, tier 4, can be a refugee').toBe(true);
 });
 
 test('and the words a player reads are the ones we wrote', { tag: '@game' }, () => {

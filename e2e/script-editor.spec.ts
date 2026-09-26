@@ -123,7 +123,55 @@ local r = "${REGION.name.slice(0, 4)}`);
   expect(onDisk, 'the text it was opened with is still there').toContain('function onStart()');
 });
 
+/** A second scratch script: a constant the game never declared, then the one it did. */
+const LINT_FILE = 'e2e-editor-lint.lua';
+const WRONG = 'local level = GetTownBuildingLevel("Town1", TB_SPECIAL_1)\n';
+const RIGHT = 'local level = GetTownBuildingLevel("Town1", TOWN_BUILDING_SPECIAL_1)\n';
+
+// The one vocabulary check the linter makes, through the app. `TB_SPECIAL_1` is
+// how the DATA names the building and `TOWN_BUILDING_SPECIAL_1` how the game's
+// Lua does; the first passed every structural rule and read as nil once per
+// click in game (docs/FACTION_PLAN.md §2b). The second half is the load-bearing
+// one: the right name is known only if the editor's vocabulary reached the
+// renderer with `advmap-startup.lua`'s declarations in it — which are indented,
+// and which a pattern anchored at the column had skipped for months.
+test('and warns on a constant the game never declared', { tag: '@data' }, async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+
+  await page.evaluate((p) => window.view.open(p), join(MAP_DIR, 'map.xdb'));
+  await expect(page.locator('#title')).toContainText(NAME, { timeout: 120_000 });
+  await page.evaluate(([href, text]) => window.editor.writeFile({ href: href!, text: text! }), [LINT_FILE, WRONG]);
+
+  await bar(page, '#scriptbtn');
+  const row = page.locator(`#sp-list button[data-file="${LINT_FILE}"]`);
+  await expect(row).toBeVisible();
+  await row.click();
+  await expect(page.locator('#docedit')).toBeVisible();
+  await expect(page.locator('#de-text .cm-content')).toContainText('TB_SPECIAL_1');
+
+  const lint = page.locator('#de-lint');
+  await expect(lint, "the data's spelling of a building is flagged").toContainText('1 warning');
+  await expect(lint, 'as a warning, not an error — the vocabulary is the install\'s').toHaveClass(/warn/);
+  await expect(page.locator('#docedit .cm-lint-marker-warning'), 'and marked in the gutter').toHaveCount(1);
+
+  // The name the game's Lua knows — quiet. Written whole and reopened, the way a
+  // person would fix a file, rather than typed (the auto-closing brackets and
+  // quotes would double every one typed).
+  await page.locator('#de-close').click();
+  await page.evaluate(([href, text]) => window.editor.writeFile({ href: href!, text: text! }), [LINT_FILE, RIGHT]);
+  await bar(page, '#scriptbtn');
+  await row.click();
+  await expect(page.locator('#docedit')).toBeVisible();
+  await expect(page.locator('#de-text .cm-content')).toContainText('TOWN_BUILDING_SPECIAL_1');
+  await expect(lint, "the Lua's spelling is a name the editor knows").toHaveText('✓ no errors');
+  await expect(page.locator('#docedit .cm-lint-marker-warning')).toHaveCount(0);
+  await page.locator('#de-close').click();
+});
+
 test.afterAll(() => {
-  const f = join(MAP_DIR, FILE);
-  if (existsSync(f)) rmSync(f);
+  for (const name of [FILE, LINT_FILE]) {
+    const f = join(MAP_DIR, name);
+    if (existsSync(f)) rmSync(f);
+  }
 });
