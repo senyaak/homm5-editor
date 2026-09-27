@@ -117,28 +117,6 @@ static void *lua_arg_string(void *ctx, int n) {
   return readable(object, 4) ? object : NULL;
 }
 
-/**
- * The characters inside one of the engine's string objects, into the log.
- *
- * A log that says a hero was not recognised, without saying WHICH hero, sends
- * whoever reads it back to the game to find out — and the name is right there:
- * the engine's string keeps its first character where its first word points, so
- * the same reading `Hero "%s" doesn't exist` does is all this needs.
- */
-static void log_hero_name(const char *what, void *name) {
-  for (int word = 0; word < 2; word++) {
-    if (!readable((BYTE *)name + word * 4, 4)) break;
-    const char *text = *(const char **)((BYTE *)name + word * 4);
-    if (!readable(text, 2)) continue;
-    int n = 0;
-    while (n < 60 && text[n] >= 0x20 && text[n] < 0x7f) n++;
-    if (n < 1 || text[n] != 0) continue;
-    log_text(what, text);
-    return;
-  }
-  log_text(what, "(a name that does not read as one)");
-}
-
 /** The map last handed out, for code that has no Lua context to ask with. */
 static void *g_lastMap = NULL;
 
@@ -501,14 +479,14 @@ static void *__fastcall lua_army_slots(void *ctx) {
   if (!find) { log_line("H5EArmySlots: the map has no lookup where we measured one"); return NULL; }
   void *hero = ((FindByNameFn)find)(map, NULL, name);
   if (!hero || !pointer_alive(hero)) {
-    log_hero_name("H5EArmySlots: no living hero called ", name);
+    log_name("H5EArmySlots: no living hero called ", name);
     return NULL;
   }
   void *armyOf = vtable_entry(hero, VT_ARMY_OF);
   if (!armyOf) { log_line("H5EArmySlots: that hero has no army accessor"); return NULL; }
   void *army = ((ArmyOfFn)armyOf)(hero, NULL);
   if (!readable(army, 4)) {
-    log_hero_name("H5EArmySlots: no army at all on ", name);
+    log_name("H5EArmySlots: no army at all on ", name);
     return NULL;
   }
   int used = g_armyUsed(army, NULL);
@@ -520,7 +498,7 @@ static void *__fastcall lua_army_slots(void *ctx) {
   if (hero != lastHero || used != lastUsed) {
     lastHero = hero;
     lastUsed = used;
-    log_hero_name("H5EArmySlots: ", name);
+    log_name("H5EArmySlots: ", name);
     log_num("              slots taken: ", used);
   }
   return (void *)(INT_PTR)lua_push_int(ctx, used);

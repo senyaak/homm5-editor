@@ -597,7 +597,7 @@ static BYTE *object_base_of(void *obj) {
 /**
  * The characters of one of the engine's string objects into `out` — how many,
  * or -1 when it does not read as printable text that fits. Its first word
- * points at the characters (as `log_hero_name` reads them).
+ * points at the characters (as `log_name` reads them).
  */
 static int engine_string_chars(void *s, char *out, int room) {
   for (int word = 0; word < 2; word++) {
@@ -975,7 +975,7 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creatur
   FindByNameFn find = (FindByNameFn)vtable_entry(map, VT_FIND_BY_NAME);
   if (!find) { log_line("H5EHireScreen: the map has no lookup where we measured one"); return 0; }
   void *hero = find(map, NULL, heroName);
-  if (!hero || !pointer_alive(hero)) { log_hero_name("H5EHireScreen: no living hero called ", heroName); return 0; }
+  if (!hero || !pointer_alive(hero)) { log_name("H5EHireScreen: no living hero called ", heroName); return 0; }
   ArmyOfFn armyOf = (ArmyOfFn)vtable_entry(hero, VT_ARMY_OF);
   void *army = armyOf ? armyOf(hero, NULL) : NULL;
   if (!army || !town_alive(army)) { log_line("H5EHireScreen: the hero has no army to show beside the offers"); return 0; }
@@ -1000,7 +1000,7 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creatur
   *(int *)((BYTE *)request + 8) -= 1;
   if (*(int *)((BYTE *)request + 8) == 0) g_objectRelease(request);
   g_hireOpen = 1;
-  log_hero_name("H5EHireScreen: the screen goes up on the adventure map for ", heroName);
+  log_name("H5EHireScreen: the screen goes up on the adventure map for ", heroName);
   log_num("H5EHireScreen:   with offers: ", shown);
   return 1;
 }

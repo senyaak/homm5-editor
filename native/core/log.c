@@ -322,6 +322,34 @@ static void log_object_now(const char *what, void *p) {
   log_line_now(line);
 }
 
+/**
+ * The characters inside one of the engine's string objects, into the log.
+ *
+ * A log that says a hero was not recognised, without saying WHICH hero, sends
+ * whoever reads it back to the game to find out — and the name is right there:
+ * the engine's string keeps its first character where its first word points, so
+ * the same reading `Hero "%s" doesn't exist` does is all this needs.
+ *
+ * HERE, and not in the file that first needed it: a helper defined in one file
+ * speaks under THAT file's switch, so a caller in another file, asked to log,
+ * called it and got silence — the hire screen's "the screen goes up for <hero>"
+ * line was missing from a log whose every other line was there (2026-09-27).
+ * The `_now` function is gated by the macro below, at the CALLER's line.
+ */
+static void log_name_now(const char *what, void *name) {
+  for (int word = 0; word < 2; word++) {
+    if (!readable((BYTE *)name + word * 4, 4)) break;
+    const char *text = *(const char **)((BYTE *)name + word * 4);
+    if (!readable(text, 2)) continue;
+    int n = 0;
+    while (n < 60 && text[n] >= 0x20 && text[n] < 0x7f) n++;
+    if (n < 1 || text[n] != 0) continue;
+    log_text_now(what, text);
+    return;
+  }
+  log_text_now(what, "(a name that does not read as one)");
+}
+
 // ---------------------------------------------------------------------------
 // ONE SWITCH PER FILE, and the file itself says its name.
 //
@@ -371,5 +399,6 @@ static void log_object_now(const char *what, void *p) {
 #define log_text(prefix, text) do { if (LOG_ON) log_text_now(prefix, text); } while (0)
 #define log_hex(prefix, value) do { if (LOG_ON) log_hex_now(prefix, value); } while (0)
 #define log_object(what, p)    do { if (LOG_ON) log_object_now(what, p); } while (0)
+#define log_name(what, p)      do { if (LOG_ON) log_name_now(what, p); } while (0)
 
 

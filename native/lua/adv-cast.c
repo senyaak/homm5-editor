@@ -448,7 +448,7 @@ static void *no_caster(const char *why, void *name) {
   if (why != g_lastWhy) {
     g_lastWhy = why;
     log_text("H5EIsCastingHero: ", why);
-    if (name) log_hero_name("                  asked about ", name);
+    if (name) log_name("                  asked about ", name);
   }
   return NULL;
 }
@@ -597,7 +597,7 @@ static void *__fastcall lua_is_casting_hero(void *ctx) {
   // three of them are not him every time.
   if (g_castingHero != lastCaster) {
     lastCaster = g_castingHero;
-    log_hero_name("H5EIsCastingHero: the spell is being cast by ", name);
+    log_name("H5EIsCastingHero: the spell is being cast by ", name);
   }
   return (void *)(INT_PTR)lua_push_int(ctx, 1);
 }
