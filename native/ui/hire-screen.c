@@ -969,6 +969,58 @@ static int open_hire_screen(const int *creature, const int *count, const int *pe
  * hands it. Each step named, so one launch says which is not what it was read
  * to be.
  */
+/** Does a decorated class name carry this word? */
+static int name_has(const char *name, const char *word) {
+  for (int i = 0; name[i]; i++) {
+    int j = 0;
+    while (word[j] && name[i + j] == word[j]) j++;
+    if (!word[j]) return 1;
+  }
+  return 0;
+}
+
+/**
+ * The HERO HIMSELF out of what the map's lookup answers with.
+ *
+ * `IAdventureMap::FindObjectByName` is the SCRIPT layer's lookup (the map is a
+ * `NAdventureMapScript::IAdventureMap`, served by `CWorldScriptSystem`, which
+ * forwards to the world's), and what comes back is the script layer's WRAPPER —
+ * a `…Manipulator` of `NAdventureMapScript`, holding the object at
+ * `MANIPULATOR_OBJECT` (its first slot is `mov ecx,[ecx+8]` and a call on
+ * that) — alive for the call and freed after it. Used within the call it is a
+ * hero: `H5EArmySlots` reads his army through it. Handed to a screen that is
+ * built a frame LATER it is freed memory: 2026-09-27 the screen's own
+ * allocation landed on it, the "object" read as screen+0x290, and its slot
+ * +0xF0 was a string constructor (the game died allocating 0x13cda700 bytes).
+ * The screen wants what the dwelling visit passes — the whole `CAdvMapHero` —
+ * so the wrapper is opened and the whole object taken (RTTI's locator says how
+ * far in any base pointer sits). Every reading is named in the log, and a
+ * whole object that is not a hero of the adventure map is refused rather than
+ * shown.
+ */
+#define MANIPULATOR_OBJECT 8u
+static void *hero_object_of(void *found) {
+  const char *name = class_name_of(found);
+  log_text("H5EHireScreen: the lookup answered with a ", name ? name : "(nameless object)");
+  void *object = found;
+  if (name && name_has(name, "Manipulator")) {
+    if (!readable((BYTE *)found + MANIPULATOR_OBJECT, 4)) return NULL;
+    object = *(void **)((BYTE *)found + MANIPULATOR_OBJECT);
+    if (!readable(object, 4)) { log_line("H5EHireScreen: the wrapper holds nothing"); return NULL; }
+    const char *held = class_name_of(object);
+    log_text("H5EHireScreen:   which holds a ", held ? held : "(nameless object)");
+  }
+  void *whole = whole_object_of(object);
+  const char *kind = class_name_of(whole);
+  log_text("H5EHireScreen:   the whole object is a ", kind ? kind : "(nameless object)");
+  if (!kind || !name_has(kind, "CAdvMapHero@")) {
+    log_line("H5EHireScreen: that is not a hero of the adventure map — refused");
+    return NULL;
+  }
+  if (!pointer_alive(whole)) { log_line("H5EHireScreen: the hero does not read as alive"); return NULL; }
+  return whole;
+}
+
 static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creature, const int *count,
                                    const int *percent, int offers) {
   BYTE *screen = screen_up_of(ADVENTURE_SCREEN_VTABLE_RVA);
@@ -981,8 +1033,10 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creatur
   if (!map) { log_line("H5EHireScreen: no adventure map to find the hero on"); return 0; }
   FindByNameFn find = (FindByNameFn)vtable_entry(map, VT_FIND_BY_NAME);
   if (!find) { log_line("H5EHireScreen: the map has no lookup where we measured one"); return 0; }
-  void *hero = find(map, NULL, heroName);
-  if (!hero || !pointer_alive(hero)) { log_name("H5EHireScreen: no living hero called ", heroName); return 0; }
+  void *found = find(map, NULL, heroName);
+  if (!found || !pointer_alive(found)) { log_name("H5EHireScreen: no living hero called ", heroName); return 0; }
+  void *hero = hero_object_of(found);
+  if (!hero) return 0;
   ArmyOfFn armyOf = (ArmyOfFn)vtable_entry(hero, VT_ARMY_OF);
   void *army = armyOf ? armyOf(hero, NULL) : NULL;
   if (!army || !town_alive(army)) { log_line("H5EHireScreen: the hero has no army to show beside the offers"); return 0; }

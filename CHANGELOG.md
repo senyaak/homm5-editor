@@ -175,9 +175,10 @@ pre-release.
   without a hero named it opens on the town screen as before. The town half
   is seen in game (2026-09-27: the camp's screen, one bought, the function
   told with the town's name, the gold paid); the `hero=` half took the game
-  down on its first launch — the layout flag sat in the wrong of the request's
-  three bool slots, so the screen asked a hero's object for a dwelling type —
-  and is fixed, not yet seen again.
+  down on its first two launches — the layout flag sat in the wrong of the
+  request's three bool slots, so the screen asked a hero's object for a
+  dwelling type; then the hero was handed over as the script layer's wrapper,
+  freed by the time the screen was built — both fixed, not yet seen again.
 - The game's own refugee camp never offered a creature of a mod: its pool is
   thirty-eight names written into `MapObjects/Special/RefugeeCamp.xdb`, and
   the weekly roll draws from that list. A mod with creatures of tiers three

@@ -581,7 +581,14 @@ hero's slot there is something else; clear, the screen takes the generic
 own (it clears `+0xC4` on the `CBaseScreen` beneath) and is passed as 1, as the
 dwelling visit passes it. The first launch (2026-09-27) had the 0 in the third
 slot: Init took the dwelling-type branch on the hero's base and the game died
-calling through a string. The purchase then runs exactly as on the town screen
+calling through a string. The second launch died a frame later: the map's
+lookup is the SCRIPT layer's (`NAdventureMapScript::IAdventureMap`), and what
+it answers with is the script layer's wrapper — a `…Manipulator` holding the
+object at `+8`, alive for the call and freed after it. Fine for `H5EArmySlots`,
+which reads through it at once; a screen built a frame later found the
+screen's own allocation where the hero had been. The wrapper is now opened and
+the whole `CAdvMapHero` taken, the class names read from RTTI and logged, and
+anything that is not a hero refused. The purchase then runs exactly as on the town screen
 (the gestures, the three questions, the `bought=` event, `H5EHirePay`); the
 script gives to the hero (`AddHeroCreatures`) rather than to a town — the
 hero's name is what `tag=` is for here.
