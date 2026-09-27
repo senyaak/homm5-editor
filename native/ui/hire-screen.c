@@ -85,12 +85,19 @@ static const BYTE DWELLING_SOUND_BUILDER_HEAD[8] = { 0x6A, 0x0C, 0xE8, 0xB9, 0xB
  *   object  the visiting HERO (the visit's second argument), army his `vt+0x48`;
  *   sound   the dwelling's builder, the pointer 0, the bools 1, 1, 1.
  *
- * The last bool is passed as 0 here, as the town screen's second opener
- * (0x787732) passes it: set, the screen's Init casts the source's object base
- * to a town and, failing that, asks it for a DWELLING TYPE (`vt+0xA4`, 0x84086C)
- * — and the base a list of ours stands on out here is the hero's, whose slot
- * there is something else. Clear, the screen takes its generic `HIRE_CREATURES`
- * layout by name (0x84090B), which the engine itself ships and uses.
+ * The SECOND bool is passed as 0 here, as the town screen's second opener
+ * (0x787732, `push 0; push 0; push [esp+18h]`) passes it. The request's
+ * Execute (0x848DC0) hands the screen's Init (0x840650) the first two bools
+ * only, and the second lands at `+0x276`: set, Init casts the source's object
+ * base to a town and, failing that, asks it for a DWELLING TYPE (`vt+0xA4`,
+ * 0x84086C) — and the base a list of ours stands on out here is the hero's,
+ * whose slot there is something else. Clear, the screen takes its generic
+ * `HIRE_CREATURES` layout by name (0x84090B), which the engine itself ships.
+ * The THIRD bool is the Execute's own (0x848E1F): set, it clears a byte
+ * (`+0xC4`) on the `NUI::CBaseScreen` beneath before the new one goes up; the
+ * dwelling visit sets it and so does this. Measured 2026-09-27 from a crash: the
+ * first launch passed the 0 in the third slot, Init took the dwelling-type
+ * branch on the hero's base and called through a string ("bili", 0x696c6962).
  *
  * `NUI::CAdventureScreen`'s main vtable is RTTI's answer (tools/reverse/vtable.ts).
  */
@@ -993,7 +1000,7 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creatur
 
   void *sound = g_dwellingSoundBuilder();
   int number = 0;
-  void *request = g_createHireScreen(p0, p1, SOURCE_OBJECT, hero, army, &number, sound, NULL, 1, 1, 0);
+  void *request = g_createHireScreen(p0, p1, SOURCE_OBJECT, hero, army, &number, sound, NULL, 1, 0, 1);
   if (!request) { log_line("H5EHireScreen: the request would not be built"); return 0; }
   *(int *)((BYTE *)request + 8) += 1;
   g_pushScreenRequest(request);

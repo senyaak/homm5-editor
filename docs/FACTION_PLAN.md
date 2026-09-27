@@ -571,12 +571,17 @@ among `H5EHireScreen`'s arguments that is not `"notabs"` — found with
 the source's object base (the words the screen reads liveness, the refcount
 and the owner from) is the hero's `CObjectBase`, by the engine's own
 `__RTDynamicCast` from the whole object's own type (`object_base_of`, so no
-vbtable index measured on one class is trusted for another). The last bool
-is passed as 0, as the town screen's second opener (`0x787732`) passes it:
-set, the screen's Init casts the source's base to a town and, failing that,
-asks it for a DWELLING TYPE (`vt+0xA4`, `0x84086C`) — a hero's slot there is
-something else; clear, the screen takes the generic `HIRE_CREATURES` layout
-by name (`0x84090B`). The purchase then runs exactly as on the town screen
+vbtable index measured on one class is trusted for another). The SECOND of
+the request's three bools is passed as 0, as the town screen's second opener
+(`0x787732`) passes it: the request's Execute (`0x848DC0`) hands Init the first
+two only, and the second (`+0x276`) set makes Init cast the source's base to a
+town and, failing that, ask it for a DWELLING TYPE (`vt+0xA4`, `0x84086C`) — a
+hero's slot there is something else; clear, the screen takes the generic
+`HIRE_CREATURES` layout by name (`0x84090B`). The third bool is the Execute's
+own (it clears `+0xC4` on the `CBaseScreen` beneath) and is passed as 1, as the
+dwelling visit passes it. The first launch (2026-09-27) had the 0 in the third
+slot: Init took the dwelling-type branch on the hero's base and the game died
+calling through a string. The purchase then runs exactly as on the town screen
 (the gestures, the three questions, the `bought=` event, `H5EHirePay`); the
 script gives to the hero (`AddHeroCreatures`) rather than to a town — the
 hero's name is what `tag=` is for here.
