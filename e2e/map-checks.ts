@@ -24,6 +24,7 @@ import { ENEMY_CASTER, FIXES_UNDER_TEST, HEROES, OPPONENT } from './fixes.ts';
 import type { Kit } from './fixes.ts';
 import { kitComplaints, skillRules } from './perk-rules.ts';
 import { QOL_FLAGS } from '../src/mods/qol.ts';
+import type { QolName } from '../src/mods/qol.ts';
 import { takenSpells } from '../src/mods/spells.ts';
 import { OUR_ARTIFACT_FIXTURES, OUR_SPELL_FIXTURES } from './mods.ts';
 
@@ -101,6 +102,18 @@ function sharedPaths(kit: Kit): Array<{ what: string; path: string }> {
  * game's tables cannot be asked at all, and the caller is told so rather than
  * handed a pass it did not earn — see `dataIsThere`.
  */
+/**
+ * The fixes no hero can stand for, and why — the "say here why not" of the
+ * check below. Each is a claim, so each is checked another way: 002
+ * (017-fix-rules-on) reads it back where it lands.
+ */
+export const NO_HERO_FOR: Partial<Record<QolName, string>> = {
+  // One bit of the executable's header: the process gets 4 GB instead of 2.
+  // Nothing on a map plays differently; what shows it is memory running out
+  // later, which no row of heroes reproduces. 002 reads the bit.
+  'large-addresses': 'a header bit of the executable, not a rule a battle shows',
+};
+
 export function mapComplaints(dataRoot: string): string[] {
   const said: string[] = [];
   // Every hero the map places, and the second caster was NOT among them until
@@ -215,6 +228,7 @@ export function mapComplaints(dataRoot: string): string[] {
   }
   for (const flag of QOL_FLAGS) {
     if (flag.tab !== 'fixes') continue;
+    if (flag.name in NO_HERO_FOR) continue;
     if (!onTheMap.has(flag.name)) {
       said.push(`${flag.name} is a fix with no hero on the map — add one, or say here why not`);
     }

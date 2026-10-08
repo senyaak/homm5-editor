@@ -15,6 +15,9 @@ import { join } from 'node:path';
 
 import { closeEditor, launchEditor } from './launch.ts';
 import { ARCHIVE, FIXES_UNDER_TEST, GAME } from './fixes.ts';
+import { NO_HERO_FOR } from './map-checks.ts';
+import { isLargeAddressAware } from '../src/exe/large-address.ts';
+import { PATCHED_EXE } from '../src/exe/creature-limit.ts';
 
 test('every rule fix is turned on, and the map from 001 is still there', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
@@ -43,6 +46,11 @@ test('every rule fix is turned on, and the map from 001 is still there', { tag: 
     for (const flag of FIXES_UNDER_TEST) {
       expect(written, `${flag} is on in the file`).toMatch(new RegExp(`^${flag} 1$`, 'm'));
     }
+    // The fixes no hero stands for (map-checks.ts, NO_HERO_FOR), read back
+    // where they land instead. The master switch took them too.
+    expect(Object.keys(NO_HERO_FOR)).toEqual(['large-addresses']);
+    expect(isLargeAddressAware(readFileSync(join(GAME, PATCHED_EXE))), 'the executable is marked large-address aware')
+      .toBe(true);
     console.log(`\n  every fix on — play ${ARCHIVE} again.`);
   } finally {
     await closeEditor(ed);
