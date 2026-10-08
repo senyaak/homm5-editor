@@ -595,7 +595,18 @@ through what those answered. (A guess between the two launches had the map's
 lookup answer with a script-layer wrapper freed after the call; the third
 launch, 2026-10-08, logged the lookup's answer as the whole `NWorld::CHero`.)
 Now the player goes in as the object, both classes are read from RTTI and
-logged, and anything else is refused. The purchase then runs exactly as on the town screen
+logged, and anything else is refused. The fourth launch (same day) built the
+screen and hid the tabs, then died in the screen's window builder
+(`0x83E340`): it reaches the SELLER through the source's vbtable entry at
+byte 8 (`0x83E499`), which in a town or a dwelling is the `IAdvMapObject`
+virtual base (RTTI vdisp 8), not `CObjectBase` (vdisp 4), and calls its
+`vt+0x18` and then slot 0 of the answer. Our source stood on the hero's
+`CObjectBase`, which answered `0x3278`. A `CHero` has no `IAdvMapObject` at all
+— the hero's map figure is a different object, `CAdvMapHero` — so the seller is
+now NAMED: `"object=<name>"`, required with `"hero="`, the object on the map
+that sells (the camp the hero walked into, as a dwelling is the seller of its
+own screen), cast to `IAdvMapObject` by the engine's `__RTDynamicCast` against
+a descriptor whose name is checked first. The purchase then runs exactly as on the town screen
 (the gestures, the three questions, the `bought=` event, `H5EHirePay`); the
 script gives to the hero (`AddHeroCreatures`) rather than to a town — the
 hero's name is what `tag=` is for here.

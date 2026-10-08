@@ -121,8 +121,16 @@ static const BYTE ADVENTURE_MANAGER_HEAD[10] = { 0x8B, 0x89, 0xF4, 0x05, 0x00, 0
 #define ADVENTURE_UI_STACK 0x1Cu
 /** The player the adventure screen is played by — the visit's object (0x6B14AC, 0x6B1565). */
 #define ADVENTURE_UI_PLAYER 0x3Cu
-/** `NWorld::CObjectBase`'s type descriptor — the source type every cast of the engine's names (0x10A79F8). */
-#define OBJECT_BASE_TYPE_RVA 0xca79f8u
+/**
+ * `NWorld::IAdvMapObject`'s type descriptor (0x10AA2A8) — what the screen
+ * reaches the seller through. The source's vbtable entry at byte 8 is where
+ * the screen looks (`[[source+4]+8]`, 0x83E499), and in a town or a dwelling
+ * that entry is the IAdvMapObject virtual base (RTTI's vdisp 8), not the
+ * CObjectBase one (vdisp 4). The screen calls its `vt+0x18` and then slot 0
+ * of what that answers (0x83E4A3…0x83E4C0); a `CHero`'s CObjectBase there
+ * answered 0x3278 and the game died on it (2026-10-08).
+ */
+#define ADV_MAP_OBJECT_TYPE_RVA 0xcaa2a8u
 /**
  * THE TABS. The screen's left column is five buttons in one `tabs` window,
  * found by name and cast to IButton by the tabs controller's Init (0x838FC0,
@@ -335,6 +343,9 @@ static char g_hireTag[HIRE_OPTION_LEN];
 /** The hero named with `hero=`, as the engine's own string shape, for the map's lookup. */
 static char g_hireHeroChars[HIRE_OPTION_LEN];
 static NameString g_hireHero;
+/** The seller named with `object=`, the same way. */
+static char g_hireSellerChars[HIRE_OPTION_LEN];
+static NameString g_hireSeller;
 static HireExecuteFn g_hireExecute = NULL;
 static HireWindowHireFn g_hireWindowHire = NULL;
 static HireWindowHireFn g_hireWindowHire2 = NULL;
@@ -559,8 +570,10 @@ static void *const g_sourceStubs[SOURCE_SLOTS] = { SOURCE_EVERY_SLOT(SOURCE_STUB
 /**
  * The object, built over a seller's object base: its own five slots, its own
  * reference words, and that base where the engine looks for liveness, a
- * reference count and an owner (see `g_sourceVbtable`). On the town screen
- * the base is the town's; on the adventure map, the buying hero's.
+ * reference count and an owner (see `g_sourceVbtable`). The base is the
+ * seller's `IAdvMapObject` — what a town's or a dwelling's vbtable entry at
+ * byte 8 leads to: on the town screen the town's, on the adventure map the
+ * object named with `object=`.
  */
 static int source_build_on(BYTE *base) {
   if (!readable(base, 4)) return 0;
@@ -585,8 +598,8 @@ static int source_build_on(BYTE *base) {
 
 /**
  * The same, over the town whose screen is up. `townInterface` is the base the
- * town's holder hands out (+0xF8 of the whole town), whose vbtable knows the
- * way to the town's object base.
+ * town's holder hands out (+0xF8 of the whole town), whose vbtable entry at
+ * byte 8 (`VB_OBJECT_BASE`) knows the way to the town's IAdvMapObject.
  */
 static int source_build(BYTE *townInterface) {
   if (!readable(townInterface + 4, 4)) return 0;
@@ -595,15 +608,36 @@ static int source_build(BYTE *townInterface) {
   return source_build_on(townInterface + 4 + townVb[VB_OBJECT_BASE / 4]);
 }
 
+/** Does a decorated class name carry this word? */
+static int name_has(const char *name, const char *word) {
+  for (int i = 0; name[i]; i++) {
+    int j = 0;
+    while (word[j] && name[i + j] == word[j]) j++;
+    if (!word[j]) return 1;
+  }
+  return 0;
+}
+
 /**
- * Any object's `CObjectBase` — the subobject the screen reads liveness, the
- * reference count and the owner from — by the engine's own cast rather than
- * by a vbtable index measured on one class: the whole object (RTTI's locator
- * says how far in a base pointer sits), its own type (the locator's
- * descriptor, at `+0xC`), `__RTDynamicCast` from that to CObjectBase.
+ * Any object's `IAdvMapObject` — the subobject the screen takes the seller
+ * through — by the engine's own cast rather than by a vbtable index measured
+ * on one class: the whole object (RTTI's locator says how far in a base
+ * pointer sits), its own type (the locator's descriptor, at `+0xC`),
+ * `__RTDynamicCast` from that to `NWorld::IAdvMapObject`. NULL for anything
+ * that is not an object of the map — a `CHero`, whose map figure is a
+ * different object (`CAdvMapHero`), is one.
+ *
+ * The descriptor's address is a constant of ours, so its decorated name is
+ * read before it is handed to the cast: a wrong address is a refusal in the
+ * log, not a cast through something that is not a type.
  */
-static BYTE *object_base_of(void *obj) {
+static BYTE *adv_map_object_of(void *obj) {
   if (!g_rtDynamicCast) return NULL;
+  const char *target = (const char *)GetModuleHandleW(NULL) + ADV_MAP_OBJECT_TYPE_RVA;
+  if (!readable(target + 8, 28) || !name_has(target + 8, ".?AUIAdvMapObject@NWorld@@")) {
+    log_line("H5EHireScreen: IAdvMapObject's type is not where it was measured");
+    return NULL;
+  }
   BYTE *whole = (BYTE *)whole_object_of(obj);
   if (!readable(whole, 4)) return NULL;
   BYTE *vtable = *(BYTE **)whole;
@@ -612,7 +646,7 @@ static BYTE *object_base_of(void *obj) {
   if (!readable(locator, 0x10)) return NULL;
   void *type = *(void **)(locator + 0xC);
   if (!readable(type, 4)) return NULL;
-  void *base = g_rtDynamicCast(whole, 0, type, (BYTE *)GetModuleHandleW(NULL) + OBJECT_BASE_TYPE_RVA, 0);
+  void *base = g_rtDynamicCast(whole, 0, type, (void *)target, 0);
   return readable(base, 4) ? (BYTE *)base : NULL;
 }
 
@@ -975,16 +1009,6 @@ static int open_hire_screen(const int *creature, const int *count, const int *pe
   return 1;
 }
 
-/** Does a decorated class name carry this word? */
-static int name_has(const char *name, const char *word) {
-  for (int i = 0; name[i]; i++) {
-    int j = 0;
-    while (word[j] && name[i + j] == word[j]) j++;
-    if (!word[j]) return 1;
-  }
-  return 0;
-}
-
 /**
  * The hero the map's lookup names — or nothing, when the name is of something
  * else. `FindObjectByName` answers for any object on the map (a town, a mine),
@@ -1004,16 +1028,31 @@ static void *hero_object_of(void *found) {
 }
 
 /**
+ * Our characters in the engine's string shape — {begin, end, capacity end},
+ * NUL after end — for the map's lookup by name.
+ */
+static void *as_name_string(NameString *s, char *chars, int room, const char *text) {
+  int n = 0;
+  copy_text(chars, text, room);
+  while (chars[n]) n++;
+  s->begin = chars;
+  s->end = chars + n;
+  s->cap = chars + n + 1;
+  return s;
+}
+
+/**
  * The screen on the ADVENTURE MAP, for a named hero — asked for as the
  * dwelling visit asks (see ADVENTURE_MANAGER_RVA): the request out of the
  * adventure screen's fields, the PLAYER the screen is played by as the object,
  * the hero's army beside the offers, a list of ours where the dwelling's would
- * stand, the source's object base the hero's own. Handed to the interface
- * stack, as the visit hands it. Each step named, so one launch says which is
- * not what it was read to be.
+ * stand, the source on the SELLER — the object on the map named with
+ * `object=`, as the visit's source stands on the dwelling. Handed to the
+ * interface stack, as the visit hands it. Each step named, so one launch says
+ * which is not what it was read to be.
  */
-static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creature, const int *count,
-                                   const int *percent, int offers) {
+static int open_hire_screen_on_map(void *ctx, void *heroName, void *sellerName, const int *creature,
+                                   const int *count, const int *percent, int offers) {
   BYTE *screen = screen_up_of(ADVENTURE_SCREEN_VTABLE_RVA);
   if (!screen) { log_line("H5EHireScreen: a hero is named, and the adventure map is not the screen on screen"); return 0; }
   if (!g_adventureManager || !g_dwellingSoundBuilder || !g_rtDynamicCast) {
@@ -1031,8 +1070,12 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creatur
   ArmyOfFn armyOf = (ArmyOfFn)vtable_entry(hero, VT_ARMY_OF);
   void *army = armyOf ? armyOf(hero, NULL) : NULL;
   if (!army || !town_alive(army)) { log_line("H5EHireScreen: the hero has no army to show beside the offers"); return 0; }
-  BYTE *base = object_base_of(hero);
-  if (!base) { log_line("H5EHireScreen: the hero's object base is out of reach"); return 0; }
+  void *seller = find(map, NULL, sellerName);
+  if (!seller || !pointer_alive(seller)) { log_name("H5EHireScreen: no object on the map called ", sellerName); return 0; }
+  const char *sellerKind = class_name_of(whole_object_of(seller));
+  log_text("H5EHireScreen: the seller is a ", sellerKind ? sellerKind : "(nameless object)");
+  BYTE *base = adv_map_object_of(seller);
+  if (!base) { log_line("H5EHireScreen: the seller is not an object of the map (no IAdvMapObject) — refused"); return 0; }
   if (!readable(screen + ADVENTURE_SCREEN_UI, 4)) { log_line("H5EHireScreen: the adventure screen is not shaped as measured"); return 0; }
   BYTE *ui = *(BYTE **)(screen + ADVENTURE_SCREEN_UI);
   if (!readable(ui, ADVENTURE_UI_PLAYER + 4)) { log_line("H5EHireScreen: the adventure screen's UI object is out of reach"); return 0; }
@@ -1046,7 +1089,7 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creatur
     log_line("H5EHireScreen: the adventure screen has no player where it was measured — refused");
     return 0;
   }
-  if (!source_build_on(base)) { log_line("H5EHireScreen: the hero's object base does not read"); return 0; }
+  if (!source_build_on(base)) { log_line("H5EHireScreen: the seller's IAdvMapObject does not read"); return 0; }
   int shown = source_fill(creature, count, percent, offers);
   if (!shown) { log_line("H5EHireScreen: the list is empty, nothing to show"); return 0; }
 
@@ -1096,12 +1139,17 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creatur
  *                        offers, the room question asked of it) rather than on
  *                        the town screen — what an object on the map, a spell
  *                        or a quest wants;
+ *   "object=<name>"      with hero=, REQUIRED: the script name of the object on
+ *                        the map that SELLS — the camp the hero walked into —
+ *                        as a dwelling is the seller of its own screen. The
+ *                        screen reaches its seller as an object of the map
+ *                        (IAdvMapObject); a hero's own record is not one;
  *   "notabs"             the three caravan tabs on the left are hidden — a list
  *                        of ours has no caravans to send; the list and creature
  *                        tabs stay.
  *
  *     H5EHireScreen("bought=CampBought", "tag=" .. town, c1, n1, 100, c2, n2, 100);
- *     H5EHireScreen("bought=RewardTaken", "hero=Isabell", "notabs", CREATURE_PEASANT, 12, 0);
+ *     H5EHireScreen("bought=CampSold", "hero=" .. hero, "object=" .. camp, "notabs", CREATURE_PEASANT, 12, 0);
  *
  * With no hero named, the town screen has to be up and the town buys.
  */
@@ -1115,6 +1163,7 @@ static void *__fastcall lua_hire_screen(void *ctx) {
   char bought[HIRE_OPTION_LEN] = "";
   char tag[HIRE_OPTION_LEN] = "";
   char hero[HIRE_OPTION_LEN] = "";
+  char seller[HIRE_OPTION_LEN] = "";
   int hideTabs = 0;
   for (int at = 1; offers < HIRE_MOST;) {
     void *word = lua_arg_string(ctx, at);
@@ -1135,8 +1184,11 @@ static void *__fastcall lua_hire_screen(void *ctx) {
       } else if ((value = option_value(text, "hero=")) != NULL) {
         if (!value[0]) { log_line("H5EHireScreen: hero= names nobody"); return NULL; }
         copy_text(hero, value, sizeof hero);
+      } else if ((value = option_value(text, "object=")) != NULL) {
+        if (!value[0]) { log_line("H5EHireScreen: object= names nothing"); return NULL; }
+        copy_text(seller, value, sizeof seller);
       } else {
-        log_text("H5EHireScreen: not an option I know (bought=, tag=, hero=, notabs): ", text);
+        log_text("H5EHireScreen: not an option I know (bought=, tag=, hero=, object=, notabs): ", text);
         return NULL;
       }
       at++;
@@ -1162,6 +1214,14 @@ static void *__fastcall lua_hire_screen(void *ctx) {
     log_line("H5EHireScreen: say bought=<function> — the function a purchase is told to; without one nothing could be sold");
     return NULL;
   }
+  if (hero[0] && !seller[0]) {
+    log_line("H5EHireScreen: hero= needs object=<the object on the map that sells> — the screen reaches its seller as an object of the map");
+    return NULL;
+  }
+  if (seller[0] && !hero[0]) {
+    log_line("H5EHireScreen: object= is for the adventure map, and needs hero=<who buys>");
+    return NULL;
+  }
   if (g_hireOpen && screen_up_of(HIRE_SCREEN_VTABLE_RVA)) {
     log_line("H5EHireScreen: a hire screen of ours is already up");
     return NULL;
@@ -1174,15 +1234,9 @@ static void *__fastcall lua_hire_screen(void *ctx) {
   copy_text(g_hireTag, tag, sizeof g_hireTag);
   int up;
   if (hero[0]) {
-    /* The engine's own string shape — {begin, end, capacity end}, NUL after
-       end — over characters of ours, for the map's lookup by name. */
-    int n = 0;
-    copy_text(g_hireHeroChars, hero, sizeof g_hireHeroChars);
-    while (g_hireHeroChars[n]) n++;
-    g_hireHero.begin = g_hireHeroChars;
-    g_hireHero.end = g_hireHeroChars + n;
-    g_hireHero.cap = g_hireHeroChars + n + 1;
-    up = open_hire_screen_on_map(ctx, &g_hireHero, creature, count, percent, offers);
+    up = open_hire_screen_on_map(ctx, as_name_string(&g_hireHero, g_hireHeroChars, sizeof g_hireHeroChars, hero),
+                                 as_name_string(&g_hireSeller, g_hireSellerChars, sizeof g_hireSellerChars, seller),
+                                 creature, count, percent, offers);
   } else {
     up = open_hire_screen(creature, count, percent, offers);
   }

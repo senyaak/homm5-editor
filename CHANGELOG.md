@@ -178,8 +178,11 @@ pre-release.
   down on its first two launches — the layout flag sat in the wrong of the
   request's three bool slots, so the screen asked a hero's object for a
   dwelling type; then the hero was handed over where the engine passes the
-  PLAYER, and the screen's resource bar asked him for a player's resources —
-  both fixed, not yet seen again.
+  PLAYER, and the screen's resource bar asked him for a player's resources;
+  then the screen asked its seller a map object's question of the hero's
+  record. On the map the seller is now named too — `"object=<name>"`, the
+  object the hero walked into, required with `"hero="` — all fixed, not yet
+  seen again.
 - The game's own refugee camp never offered a creature of a mod: its pool is
   thirty-eight names written into `MapObjects/Special/RefugeeCamp.xdb`, and
   the weekly roll draws from that list. A mod with creatures of tiers three
