@@ -16,7 +16,7 @@ import { $, $input, $select, $button } from '#core/dom.ts';
 import { modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { pickPreset } from '#features/mods/preset.ts';
-import { idFrom, listActions, openModDialog, refreshModLists, umAbilities } from '#features/mods/shared.ts';
+import { fillCreatureLinks, idFrom, listActions, openModDialog, refreshModLists, umAbilities } from '#features/mods/shared.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import type { CreatureStats } from '#electron/ipc.ts';
 
@@ -72,6 +72,9 @@ async function loadUnitPreset(): Promise<void> {
   // copy of a Grand Elf that came back unraisable would differ from its donor in
   // a way no field on this form mentions.
   $select('um-raise').value = p.raisedAs;
+  // A preset never brings its upgrade links (the registry drops them), and
+  // the form says so rather than keeping the last creature's.
+  showLinks({});
   // The preset's abilities, one row each — and the printed line follows them,
   // so it says what this creature can do rather than what the donor could.
   $('um-abilities').innerHTML = '';
@@ -90,6 +93,7 @@ async function submitUnitsMod(): Promise<void> {
       flying: $input('um-fly').checked,
       town: $select('um-town').value,
       abilities: chosenAbilities(),
+      ...chosenLinks(),
     };
     for (const [input, key] of UM_STATS) {
       (stats as Record<string, number | boolean | string>)[key] = Number($input(input).value) || 0;
@@ -167,10 +171,25 @@ function chosenAbilities(): string[] {
     .map((el) => el.value).filter(Boolean))];
 }
 
+/** The upgrade links the form holds — absent, not empty, when it names none. */
+function chosenLinks(): Pick<CreatureStats, 'base' | 'upgrades'> {
+  const base = $select('um-base').value;
+  // In the order shown: the first is the upgrade, the second the alternative.
+  const upgrades = [...new Set([$select('um-upgrade').value, $select('um-upgrade2').value].filter(Boolean))];
+  return { ...(base ? { base } : {}), ...(upgrades.length ? { upgrades } : {}) };
+}
+
+function showLinks(stats: Pick<CreatureStats, 'base' | 'upgrades'>): void {
+  $select('um-base').value = stats.base ?? '';
+  $select('um-upgrade').value = stats.upgrades?.[0] ?? '';
+  $select('um-upgrade2').value = stats.upgrades?.[1] ?? '';
+}
+
 async function editCreature(id: string): Promise<void> {
   const { mods } = await api.listMods();
   const c = mods.flatMap((m) => m.creatures).find((x) => x.id === id);
   if (!c) return;
+  await fillCreatureLinks();
   editingCreature = id;
   $input('um-id').value = c.id;
   $input('um-file').value = c.file;
@@ -182,6 +201,7 @@ async function editCreature(id: string): Promise<void> {
   $input('um-fly').checked = !!c.stats.flying;
   $select('um-town').value = c.stats.town;
   $select('um-raise').value = c.raisedAs ?? '';
+  showLinks(c.stats);
   $('um-abilities').innerHTML = '';
   for (const a of c.stats.abilities ?? []) addAbilityRow(a);
   showAbilityLine();
@@ -203,8 +223,12 @@ async function editCreature(id: string): Promise<void> {
   $('unitedit-title').textContent = 'Editing creature';
 }
 
-function newCreature(): void {
+async function newCreature(): Promise<void> {
   editingCreature = '';
+  // Before the form shows: a selection made into lists still being refilled
+  // would be wiped by the refill.
+  await fillCreatureLinks();
+  showLinks({});
   // Blank means blank: every box keeps what the last creature put in it
   // otherwise. The donor is the dangerous one — hidden, so nothing shows that
   // the next creature is quietly a copy of whatever the last one copied — and
@@ -269,7 +293,9 @@ export function initUnitsMod(): void {
   };
 
   $('unitsbtn').onclick = () => { openModDialog('unitsmod', loadUnitPreset); };
-  $('um-new').onclick = () => { newCreature(); };
+  $('um-new').onclick = () => {
+    void newCreature().catch((e) => { $('um-err').textContent = e instanceof Error ? e.message : String(e); });
+  };
   $('unitedit-x').onclick = () => modDialog('unitedit').close();
   $('unitedit-cancel').onclick = () => modDialog('unitedit').close();
   $('um-close').onclick = () => modDialog('unitsmod').close();

@@ -20,6 +20,7 @@ import { SHIPPED_CLASSES, classProblems } from './hero-classes.ts';
 import { SHIPPED_SKILLS, skillProblems } from './hero-skills.ts';
 import { SHIPPED_SPELLS } from './spells.ts';
 import { spellHolders } from './spell-holders.ts';
+import { creatureHolders } from './creature-holders.ts';
 import type { ModSpell, SpellSpec } from './spells.ts';
 import { ORIGINAL_ARTIFACTS } from '../exe/artifact-limit.ts';
 import { MOD_STEM } from './mod-files.ts';
@@ -808,6 +809,7 @@ export function updateCreature(mod: CreatureMod, id: string, spec: CreatureSpec)
   const at = mod.creatures.findIndex((c) => c.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
   if (spec.id !== id) throw new Error(`a creature cannot be renamed — ${id} is what maps and scripts store`);
+  refuseBadLinks(spec);
   const kept = mod.creatures[at]!;
   const updated: ModCreature = { ...spec, number: kept.number, from: kept.from };
   mod.creatures[at] = updated;
@@ -820,11 +822,17 @@ export function updateCreature(mod: CreatureMod, id: string, spec: CreatureSpec)
  * Safe for maps, which name a creature rather than numbering it, and the
  * executable's ceiling comes down with it on the next install. What breaks is a
  * map that names THIS one — found by searching for it, the same way artifacts
- * are (src/artifact-usage.ts).
+ * are (src/artifact-usage.ts) — and that is a warning. What names it inside
+ * the mod is refused instead (`creatureHolders`).
  */
 export function removeCreature(mod: CreatureMod, id: string): ModCreature {
   const at = mod.creatures.findIndex((c) => c.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
+  // What in the mod names it goes first: an upgrade whose base vanished, a
+  // tier hiring nothing, a raise pair naming a creature the enum no longer
+  // declares — the mod is ours and stays whole after every operation.
+  const holders = creatureHolders(mod, id);
+  if (holders.length) throw new Error(`${id} is still named in the mod — ${holders.join('; ')} — change them first`);
   const removed = mod.creatures.splice(at, 1)[0]!;
   mod.creatures.forEach((c, i) => { c.number = mod.first + i; });
   return removed;
@@ -881,6 +889,18 @@ export function creatureLimit(mod: CreatureMod): number {
 }
 
 /**
+ * The upgrade links that cannot be meant: a creature that is its own upgrade
+ * or its own base, and one that upgrades into the creature it is an upgrade
+ * of — the upgrade dialog would turn it back and forth.
+ */
+function refuseBadLinks(spec: CreatureSpec): void {
+  const { base, upgrades = [] } = spec.stats ?? {};
+  if (base === spec.id || upgrades.includes(spec.id)) throw new Error(`${spec.id} cannot be its own upgrade or its own base`);
+  if (base && upgrades.includes(base)) throw new Error(`${spec.id} is an upgrade of ${base} and cannot upgrade into it as well`);
+  if (new Set(upgrades).size !== upgrades.length) throw new Error(`${spec.id} names one upgrade twice`);
+}
+
+/**
  * Append a creature and give it the next id number.
  *
  * THE LIST IS APPEND-ONLY. A creature's number is what maps, saved games and Lua
@@ -891,6 +911,7 @@ export function addCreature(mod: CreatureMod, spec: CreatureSpec): ModCreature {
   if (mod.creatures.some((c) => c.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
   if (!/^CREATURE_[A-Z0-9_]+$/.test(spec.id)) throw new Error(`${spec.id} is not a usable creature id`);
   if (mod.creatures.some((c) => c.file === spec.file)) throw new Error(`two creatures cannot both be "${spec.file}"`);
+  refuseBadLinks(spec);
   const c: ModCreature = {
     ...spec,
     stats: { ...blankStats(), ...spec.stats },

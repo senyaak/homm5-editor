@@ -23,7 +23,10 @@ import { tmpdir } from 'node:os';
 import { join, posix } from 'node:path';
 import { buildCreatureMod, creaturePaths } from '../src/mods/creature-mod.ts';
 import { REFUGEE_CAMP, campPool, patchRefugeeCamp } from '../src/mods/refugee-camp.ts';
-import { addCreature, creatureLimit, newCreatureMod } from '../src/mods/mod-model.ts';
+import { addCreature, creatureLimit, newCreatureMod, removeCreature, updateCreature } from '../src/mods/mod-model.ts';
+import { creatureHolders } from '../src/mods/creature-holders.ts';
+import type { CreatureSpec } from '../src/mods/mod-model.ts';
+import type { CreatureStats } from '../src/mods/creatures.ts';
 import { packCreatureMod, readCreatureModBuffer, writeCreatureMod } from '../src/mods/mod-archive.ts';
 import { dataPath } from '../src/mods/mod-art.ts';
 import { SHARPSHOOTER_LUA, TRAINABLE, questionFor } from '../src/mods/sharpshooter-training.ts';
@@ -67,6 +70,7 @@ const NONE_XDB = `<?xml version="1.0" encoding="UTF-8"?>\r
 \t<CreatureTown>TOWN_HEAVEN</CreatureTown>\r
 \t<WeeklyGrowth>0</WeeklyGrowth>\r
 \t<BaseCreature>CREATURE_UNKNOWN</BaseCreature>\r
+\t<Upgrades/>\r
 \t<Cost>\r
 \t\t<Wood>0</Wood>\r
 \t\t<Ore>0</Ore>\r
@@ -475,6 +479,51 @@ check('a second creature takes the next id and raises the ceiling',
 check('an empty mod is refused (there is nothing to open a slot for)',
   throws(() => buildCreatureMod(newCreatureMod(), () => null)));
 
+// ---- the upgrade links ----------------------------------------------------------
+
+console.log('\nthe upgrade links');
+const row = miniatureMod();
+const BASE = row.creatures[0]!.id;
+const UP = 'CREATURE_TEST_UP', ALT = 'CREATURE_TEST_ALT';
+const linked = (id: string, file: string, stats: Partial<CreatureStats>): CreatureSpec =>
+  ({ ...row.creatures[0]!, id, file, stats: { ...row.creatures[0]!.stats, ...stats } });
+addCreature(row, linked(UP, 'TestUp', { base: BASE }));
+addCreature(row, linked(ALT, 'TestAlt', { base: BASE }));
+updateCreature(row, BASE, { ...row.creatures[0]!, stats: { ...row.creatures[0]!.stats, upgrades: [UP, ALT] } });
+const rowFiles = byPath(buildCreatureMod(row, (rel) => data.get(rel) ?? null).files);
+const rowTable = asText(rowFiles, 'GameMechanics/RefTables/Creatures.xdb');
+const recordOf = (id: string): string => {
+  const from = rowTable.indexOf(`<ID>${id}</ID>`);
+  const at = rowTable.indexOf('<Creature ObjectRecordID=', from);
+  return rowTable.slice(at, rowTable.indexOf('</Creature>', at) + 11);
+};
+const baseRecord = recordOf(BASE), upRecord = recordOf(UP);
+check('the base names both upgrades, in order', /<Upgrades>\s*<Item>CREATURE_TEST_UP<\/Item>\s*<Item>CREATURE_TEST_ALT<\/Item>\s*<\/Upgrades>/.test(baseRecord));
+check('and pairs with the first', baseRecord.includes('<PairCreature>CREATURE_TEST_UP</PairCreature>'));
+check('the upgrade names its base twice over', upRecord.includes(`<BaseCreature>${BASE}</BaseCreature>`)
+  && upRecord.includes(`<PairCreature>${BASE}</PairCreature>`));
+const back = readStats(creatureRoot(baseRecord));
+check('the links read back', back.upgrades?.join() === `${UP},${ALT}` && back.base === undefined);
+check('a creature cannot be its own upgrade', throws(() => addCreature(row, linked('CREATURE_TEST_SELF', 'TestSelf', { upgrades: ['CREATURE_TEST_SELF'] }))));
+check('nor upgrade into the creature it is an upgrade of',
+  throws(() => addCreature(row, linked('CREATURE_TEST_LOOP', 'TestLoop', { base: BASE, upgrades: [BASE] }))));
+check('nor name one upgrade twice', throws(() => updateCreature(row, BASE, linked(BASE, row.creatures[0]!.file, { upgrades: [UP, UP] }))));
+
+// What names a creature inside the mod goes first, and the refusal says who.
+const refusal = whyRefused(() => removeCreature(row, BASE));
+check('the base will not go while its upgrades name it', refusal.includes(`creature ${UP} is its upgrade`) && refusal.includes(ALT), refusal);
+check('nor an upgrade while the base upgrades into it', whyRefused(() => removeCreature(row, ALT)).includes(`creature ${BASE} upgrades into it`));
+check('a faction tier holds one too',
+  creatureHolders({ factions: [{ file: 'Bone', dwellings: { 3: { base: BASE, upgrade: UP } } }] }, UP).join() === 'faction Bone\'s tier 3 hires it');
+check('and a raise pair, a dwelling and the towers',
+  creatureHolders({
+    creatures: [{ id: 'CREATURE_X', raisedAs: UP }], dwellings: [{ file: 'Den', creatures: [UP] }],
+    factions: [{ file: 'Bone', shooter: UP }],
+  }, UP).length === 3);
+updateCreature(row, BASE, { ...row.creatures[0]!, stats: { ...row.creatures[0]!.stats, upgrades: [UP] } });
+removeCreature(row, ALT);
+check('unlinked, it goes', !row.creatures.some((c) => c.id === ALT) && row.creatures.length === 2);
+
 // ---- 2. against the real Sharp Shooter ---------------------------------------
 
 const dataRoot = dataDir();
@@ -647,6 +696,16 @@ function throws(fn: () => unknown): boolean {
     return false;
   } catch {
     return true;
+  }
+}
+
+/** What a refusal said — empty when nothing was refused. */
+function whyRefused(fn: () => unknown): string {
+  try {
+    fn();
+    return '';
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
   }
 }
 

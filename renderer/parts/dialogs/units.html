@@ -70,6 +70,15 @@
                  raised at all. Every shipped neutral is outside it, so a new
                  creature is unraisable unless this says otherwise. -->
             <label class="on-row"><span>Raised as</span><select id="um-raise" title="what necromancy raises this creature as. Nothing — the dead stay dead, which is what every shipped neutral does."></select></label>
+            <!-- The upgrade links a faction's row is made of, on the record
+                 itself: an upgrade names its base (BaseCreature, PairCreature),
+                 a base names what it becomes (Upgrades — one, or the
+                 expansion's two). A preset never brings them: a copy of the
+                 Archer that upgraded into the game's Marksman would be a link
+                 nobody chose. -->
+            <label class="on-row"><span>Upgrade of</span><select id="um-base" title="the creature this one is an upgrade of — what the upgrade dialog pairs it with. Nothing for a base creature or a neutral."></select></label>
+            <label class="on-row"><span>Upgrades into</span><select id="um-upgrade" title="what this creature becomes when upgraded. Nothing for an upgrade or a neutral."></select></label>
+            <label class="on-row"><span>Second upgrade</span><select id="um-upgrade2" title="the expansion's alternative upgrade — the second one the upgraded dwelling hires beside the first"></select></label>
             <label class="on-row um-span"><span>Description</span><input id="um-desc" type="text" autocomplete="off"></label>
             <!-- Added one at a time, by name. The line the hire dialog prints is
                  NOT typed here: it is built from these when the creature is

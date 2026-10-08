@@ -431,9 +431,11 @@ ours, with a drawn portrait.
 - **Dwellings** hire the faction's own row: `TownSpec.dwellings` by tier,
   base for `BLD_UPG_1`, upgrade for `BLD_UPG_2`; the second upgrade is the
   creature's own `Upgrades`. The creature model carries the links now
-  (`stats.base`, `stats.upgrades`, `PairCreature` from them); a preset
+  (`stats.base`, `stats.upgrades`, `PairCreature` from them), set in the
+  Units window ("Upgrade of", "Upgrades into", "Second upgrade"); a preset
   drops the donor's links, so a copy of the Archer does not upgrade into
-  the game's Marksman.
+  the game's Marksman. A creature the mod still names — by a link, a raise
+  pair, a tier, the towers — is not removed (`creatureHolders`).
 - **The siege** is data through and through. `siege: TownType` takes
   another town's whole `Combat` block; `siege: { arena, walls, gate, towers,
   moat }` assembles one from five — the buildings stand at the same tiles

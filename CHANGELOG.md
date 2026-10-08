@@ -14,6 +14,17 @@ pre-release.
 
 ## Unreleased
 
+- A creature of your mod can be an upgrade of another. The Units window has
+  three new fields: "Upgrade of", "Upgrades into" and "Second upgrade". They
+  are what the upgrade dialog and a faction's row are made of. Until now
+  only a hand-written spec could set them, so a faction's tiers could name
+  a base and its upgrade that did not know about each other. A preset never
+  brings its links, so a copy of the Archer does not upgrade into the
+  game's Marksman. A creature that is its own upgrade, or that upgrades
+  back into its own base, is refused. Removing a creature now also stops
+  while the mod names it: an upgrade or base of it, a creature raised as it,
+  a faction tier that hires it, the towers it mans. The window says which,
+  as it does for a spell.
 - Removing a spell of your mod now stops while the mod itself still names
   it, and the Spells window says who: a hero who starts knowing it, a class
   that prefers it, a specialization that grants it, a faction whose moat

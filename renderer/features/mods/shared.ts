@@ -9,6 +9,7 @@ import { $, $select } from '#core/dom.ts';
 import { ask, modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { openRecolor } from '#features/mods/recolor.ts';
+import { creatureHolders } from '#src/mods/creature-holders.ts';
 import type { ModsFormDataResult, RosterEntryDTO } from '#electron/ipc.ts';
 
 /** A row in an installed list: what it is, and the two things you can do. */
@@ -116,6 +117,25 @@ export async function ensureEffectStats(): Promise<void> {
   heroStats = data.heroStats;
 }
 
+/**
+ * The upgrade-link lists: the mod's own creatures first — a faction's row is
+ * made of them — and the shipped roster after, which is the game's data and
+ * knows nothing of ours.
+ *
+ * Its own function because the creature form calls it again each time it
+ * opens: a row is authored one creature at a time, and the upgrade made a
+ * minute ago has to be there to name as the next one's base.
+ */
+export async function fillCreatureLinks(): Promise<void> {
+  const data = await modFormData();
+  const ours = (await api.listMods()).mods.flatMap((m) => m.creatures)
+    .map((c) => ({ id: c.id, name: `${c.name || c.id} (ours)` }));
+  const linkable = [...ours, ...data.donors.filter((d) => !ours.some((c) => c.id === d.id))];
+  fillModSelect($select('um-base'), [{ id: '', name: 'nothing — a base creature' }, ...linkable]);
+  fillModSelect($select('um-upgrade'), [{ id: '', name: 'nothing' }, ...linkable]);
+  fillModSelect($select('um-upgrade2'), [{ id: '', name: 'nothing' }, ...linkable]);
+}
+
 export async function fillModForms(): Promise<void> {
   const data = await modFormData();
   {
@@ -124,13 +144,15 @@ export async function fillModForms(): Promise<void> {
     // a creature's town is what the engine's morale and alignment read, so a
     // creature of a faction has to be able to say so. (Which TIER of the town
     // hires it is the Factions window's business, not this field's.)
-    const factions = (await api.listMods()).mods.flatMap((m) => m.factions ?? [])
+    const { mods } = await api.listMods();
+    const factions = mods.flatMap((m) => m.factions ?? [])
       .map((f) => ({ id: f.type, name: `${f.race?.name || f.name || f.type} (ours)` }));
     fillModSelect($select('um-town'), [...data.towns, ...factions]);
     // Every creature, plus the blank the game's own neutrals hold: a raise pair
     // may name any creature, so the choice is the whole roster rather than the
     // fourteen the shipped table happens to use.
     fillModSelect($select('um-raise'), [{ id: '', name: 'nothing — the dead stay dead' }, ...data.donors]);
+    await fillCreatureLinks();
   }
   effectStats = data.effectStats;
   heroStats = data.heroStats;
@@ -149,6 +171,17 @@ export async function fillModForms(): Promise<void> {
 export async function removeWithWarning(
   kind: 'artifact' | 'creature', id: string, label: string, errBox: string,
 ): Promise<void> {
+  $(errBox).textContent = '';
+  // Inside the mod is different from a map: what names a creature there goes
+  // FIRST, so nothing is asked — the window says who and stops. The model
+  // refuses the same list; this only spares the question.
+  if (kind === 'creature') {
+    const holders = (await api.listMods()).mods.flatMap((m) => creatureHolders(m, id));
+    if (holders.length) {
+      $(errBox).textContent = `${label} is still named in the mod — ${holders.join('; ')}. Change them first.`;
+      return;
+    }
+  }
   const { uses } = kind === 'artifact'
     ? await api.artifactUses({ id })
     : await api.creatureUses({ id });
