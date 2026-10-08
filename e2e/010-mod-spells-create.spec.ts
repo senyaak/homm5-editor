@@ -30,6 +30,8 @@ import { settled } from './trace.ts';
 import { EFFECTS_FILE, readSpellRows } from '../src/mods/artifact-effects.ts';
 import { abilityNumbers } from '../src/mods/ability-files.ts';
 import { NOT_LIVING, SHIPPED_SPELLS } from '../src/mods/spells.ts';
+import { modFile } from '../src/game/mod-paths.ts';
+import { MOD_STEM } from '../src/mods/mod-files.ts';
 import type { Locator } from '@playwright/test';
 
 let ed: Launched;
@@ -388,18 +390,49 @@ test('a specialization can hand this spell to whoever holds it', { tag: '@game' 
 });
 
 /**
- * Removing WARNS and then does it — it is never refused.
+ * Removing is REFUSED while the mod still names the spell, and says who does.
  *
- * A map stores a spell's NAME, in a hero's book, a guild's list, on a shrine, so
- * the question is asked with those maps in front of it; a hero of the mod who
- * knows it and a class that prefers it are ours, so they are named too and then
- * edited. What none of that does is stand in the way: something you cannot
- * delete because something else names it is a trap, not a safeguard.
+ * The specialization made above grants it, and the mod is ours: it has to stay
+ * whole after every operation, so what names the spell goes first (Senya,
+ * 2026-10-08) — no question is asked, the window says who and stops. Then the
+ * specialization goes, through its own window, and the spell after it.
+ */
+test('removing is refused while the mod names it — the specialization goes first', { tag: '@game' }, async () => {
+  test.setTimeout(3 * 60_000);
+  const { page } = ed;
+  if (!(await page.locator('#spellsmod').isVisible())) await page.locator('#spellsbtn').click();
+  const row = page.locator('#sm-list .um-item').filter({ hasText: SPELL.name });
+  await row.locator('button', { hasText: '×' }).click();
+  await expect(page.locator('#sm-err')).toContainText('specialization HERO_SPEC_E2E_ABILITY grants it');
+  await expect(page.locator('#ask'), 'nothing is asked: the answer would not matter').toBeHidden();
+  expect(readInstalledMod(GAME).spells?.map((x) => x.id)).toContain(SPELL.id);
+
+  // The specialization first, in the Heroes window.
+  await page.locator('#sm-cancel').click();
+  await expect(page.locator('#spellsmod')).toBeHidden();
+  await page.locator('#heroesbtn').click();
+  await expect(page.locator('#heroesmod')).toBeVisible();
+  await page.locator('#hm-tabs button', { hasText: 'Specializations' }).click();
+  const note = await settled(page, 'removing the specialization', '#hm-note', '#hm-err', async () => {
+    await page.locator('#hs-list .um-item', { hasText: 'Наставник' }).first().locator('button', { hasText: '×' }).click();
+    await page.locator('#ask button', { hasText: 'Remove' }).click();
+  });
+  expect(note).toContain('removed');
+  expect((readInstalledMod(GAME).specializations ?? []).some((s) => s.id === 'HERO_SPEC_E2E_ABILITY')).toBe(false);
+  await page.locator('#hm-cancel').click();
+  await expect(page.locator('#heroesmod')).toBeHidden();
+});
+
+/**
+ * Then it WARNS and does it. A map stores a spell's NAME, in a hero's book, a
+ * guild's list, on a shrine; a map is its author's, so that is a question with
+ * those maps in front of it, not a refusal.
  */
 test('removing asks first — Cancel means no, and Remove means gone', { tag: '@game' }, async () => {
   test.setTimeout(3 * 60_000);
   const { page } = ed;
   if (!(await page.locator('#spellsmod').isVisible())) await page.locator('#spellsbtn').click();
+  await expect(page.locator('#sm-err')).toHaveText('');
   const row = page.locator('#sm-list .um-item').filter({ hasText: SPELL.name });
   await row.locator('button', { hasText: '×' }).click();
   await expect(page.locator('#ask-text')).toContainText(/Remove .*\?/);
@@ -414,6 +447,11 @@ test('removing asks first — Cancel means no, and Remove means gone', { tag: '@
   await page.locator('#ask-yes').click();
   await expect(page.locator('#sm-note')).toContainText('removed', { timeout: 120_000 });
   await expect(page.locator('#sm-list')).not.toContainText(SPELL.name);
+  // Run alone, the spell was the mod's last content once its specialization
+  // went, so the ARCHIVE goes with it — a mod of nothing is not built. Run in
+  // the chain, the archive stays and lists the rest. Both are right; which one
+  // happened is what existsSync answers.
+  if (!existsSync(modFile(GAME, 'mod', MOD_STEM))) return;
   const left = readInstalledMod(GAME).spells ?? [];
   expect(left.map((x) => x.id)).not.toContain(SPELL.id);
   // And the numbering closed up behind it: the value IS the position in the

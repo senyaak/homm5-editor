@@ -19,6 +19,7 @@ import { SHIPPED_SPECIALIZATIONS } from './specializations.ts';
 import { SHIPPED_CLASSES, classProblems } from './hero-classes.ts';
 import { SHIPPED_SKILLS, skillProblems } from './hero-skills.ts';
 import { SHIPPED_SPELLS } from './spells.ts';
+import { spellHolders } from './spell-holders.ts';
 import type { ModSpell, SpellSpec } from './spells.ts';
 import { ORIGINAL_ARTIFACTS } from '../exe/artifact-limit.ts';
 import { MOD_STEM } from './mod-files.ts';
@@ -494,40 +495,26 @@ export function updateSpell(mod: CreatureMod, id: string, spec: SpellSpec): ModS
 }
 
 /**
- * Take a spell out, close the gap behind it, and take it out of whatever in the
- * mod was naming it.
+ * Take a spell out and close the gap behind it.
  *
- * REMOVING IS NEVER REFUSED. A hero of the mod who starts knowing it and a class
- * that prefers it are ours to edit, so they are edited rather than made into a
- * reason you cannot delete something: the id simply leaves their lists. What is
- * outside the mod is a map, and that is not repaired but SHOWN — the window asks
- * `findSpellUses` and puts the maps in the question before it gets here, exactly
- * as removing an artifact or a hero does.
- *
- * It says what it touched, because "the spell is gone and so is it from two of
- * your heroes" is not something the caller can work out afterwards.
+ * REFUSED while anything in the MOD still names it (`spellHolders`), the way a
+ * faction, a skill and a specialization are: the mod is ours and has to stay
+ * whole after every operation, so what holds it goes first — a hero's book
+ * naming a spell the mod no longer declares is a broken mod, not a hero who
+ * forgot something (Senya, 2026-10-08: "if we extend the game itself, every
+ * dependency is removed before the thing"). What is OUTSIDE the mod is a map,
+ * and that is not a reason to refuse: the window asks `findSpellUses` and
+ * puts the maps in the question first, as removing an artifact or a hero does.
  */
-export function removeSpell(mod: CreatureMod, id: string): {
-  spell: ModSpell; heroes: string[]; classes: string[];
-} {
+export function removeSpell(mod: CreatureMod, id: string): ModSpell {
   const list = mod.spells ?? [];
   const at = list.findIndex((s) => s.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
-  const heroes: string[] = [];
-  for (const h of mod.heroes ?? []) {
-    if (!h.spells?.includes(id)) continue;
-    heroes.push(h.id);
-    h.spells = h.spells.filter((s) => s !== id);
-  }
-  const classes: string[] = [];
-  for (const c of mod.classes ?? []) {
-    if (!c.preferredSpells?.includes(id)) continue;
-    classes.push(c.id);
-    c.preferredSpells = c.preferredSpells.filter((s) => s !== id);
-  }
+  const holders = spellHolders(mod, id);
+  if (holders.length) throw new Error(`${id} is still named in the mod — ${holders.join('; ')} — change them first`);
   const spell = list.splice(at, 1)[0]!;
   list.forEach((s, i) => { s.number = SHIPPED_SPELLS + i; });
-  return { spell, heroes, classes };
+  return spell;
 }
 
 /** Change one already in the mod, keeping its value. */

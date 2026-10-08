@@ -321,10 +321,11 @@ check('    but one that does is, with the same fixture one field apart',
 // position: a mod whose second spell was removed and whose third kept its old
 // number would declare a table with a hole in it.
 //
-// And removing is NEVER REFUSED. Something you cannot delete because something
-// else names it is a trap, not a safeguard — so what the mod itself owns is
-// edited (a hero stops knowing it, a class stops preferring it) and what it does
-// not own is a map, which the window names in the question it asks first.
+// And while anything IN THE MOD still names it, removing is REFUSED, naming
+// them: a hero who knows it, a class that prefers it, a specialization that
+// grants it, a faction whose moat casts it. The mod is ours and stays whole
+// after every operation, so those go first (Senya, 2026-10-08). What the mod
+// does not own is a map, which the window names in the question it asks.
 
 const shelf = newCreatureMod('x');
 for (const id of ['SPELL_TEST_A', 'SPELL_TEST_B', 'SPELL_TEST_C']) {
@@ -340,17 +341,22 @@ shelf.heroes = [{ id: 'H', name: 'H', basedOn: '', town: '', heroClass: '', biog
 shelf.classes = [{ id: 'C', number: 9, name: 'C', skills: [],
   attributes: { offence: 25, defence: 25, spellpower: 25, knowledge: 25 },
   preferredSpells: ['SPELL_TEST_C'] }];
+shelf.specializations = [{ id: 'S', number: 90, name: 'S', ability: 'SPELL_TEST_C' } as never];
+shelf.factions = [{ file: 'Moat', race: { name: 'M', moat: { spells: [{ spell: 'SPELL_TEST_C', chance: 10, mastery: 'MASTERY_BASIC', power: 1 }] } } } as never];
+let whyRefused = '';
+try { removeSpell(shelf, 'SPELL_TEST_C'); } catch (e) { whyRefused = (e as Error).message; }
+check('one the mod still names is refused', whyRefused !== '' && (shelf.spells ?? []).some((s) => s.id === 'SPELL_TEST_C'),
+  whyRefused || 'it was removed');
+for (const who of ['hero H knows it', 'class C prefers it', 'specialization S grants it', "faction Moat's moat casts it"]) {
+  check(`  and the refusal names it: ${who}`, whyRefused.includes(who), whyRefused);
+}
+check('  and touches nothing on the way', shelf.heroes[0]!.spells?.join(',') === 'SPELL_TEST_C,SPELL_ARMAGEDDON'
+  && shelf.classes[0]!.preferredSpells?.join(',') === 'SPELL_TEST_C');
+shelf.heroes = []; shelf.classes = []; shelf.specializations = []; shelf.factions = [];
 const took = removeSpell(shelf, 'SPELL_TEST_C');
-check('one a hero of the mod knows comes out anyway',
-  (shelf.spells ?? []).map((s) => s.id).join(',') === 'SPELL_TEST_A',
+check('once nothing in the mod names it, it goes', took.id === 'SPELL_TEST_C'
+  && (shelf.spells ?? []).map((s) => s.id).join(',') === 'SPELL_TEST_A',
   `${(shelf.spells ?? []).map((s) => s.id).join(',') || 'none'} left`);
-check('  and it leaves his book rather than dangling in it',
-  shelf.heroes[0]!.spells?.join(',') === 'SPELL_ARMAGEDDON',
-  shelf.heroes[0]!.spells?.join(',') ?? 'none');
-check('  the class stops preferring it too', !shelf.classes[0]!.preferredSpells?.length);
-check('  and it says whom it touched, since nobody can work that out afterwards',
-  took.heroes.join(',') === 'H' && took.classes.join(',') === 'C',
-  `heroes ${took.heroes.join(',')}, classes ${took.classes.join(',')}`);
 
 // --- the executable's two numbers ---------------------------------------------
 

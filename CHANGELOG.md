@@ -14,6 +14,14 @@ pre-release.
 
 ## Unreleased
 
+- Removing a spell of your mod now stops while the mod itself still names
+  it, and the Spells window says who: a hero who starts knowing it, a class
+  that prefers it, a specialization that grants it, a faction whose moat
+  casts it. Remove those first, the way a faction or a skill is removed.
+  Until now the spell went anyway and was quietly taken out of the heroes
+  and classes — and a specialization granting it, or a moat casting it, was
+  left naming a spell the mod no longer had. Maps that name the spell are
+  still only a warning in the question: a map is its author's.
 - A hero can be of your own faction. The Heroes window offered only the
   game's eight towns, so a hero of a faction made in the Factions window
   could not be made at all — and a race with nobody in its pool starts the
