@@ -1,6 +1,6 @@
 # A faction of our own — the plan
 
-*Where the ninth faction stands on 2026-09-17, what is still unknown, and
+*Where the ninth faction stands (last brought up to date 2026-10-08), what is still unknown, and
 the order the rest is done in. The engine's side of the story — every
 address, every table, every launch that taught something — is in
 [engineInternals/FACTIONS.md](engineInternals/FACTIONS.md); this is the
@@ -8,27 +8,56 @@ work list.*
 
 ## Where it stands
 
-A twelfth `TownType` (`TOWN_TEST = 11`) starts and plays, through a probe
-(`_tmp/town12-probe.ts`, `town12-units.ts`, `town12-siege-map.ts` — not in
-the tree, main worktree only) and code that IS in the tree:
+*Rewritten 2026-10-08; the first version (2026-09-19) described the probe.*
 
-- **the race** is selectable and starts: the picker's five accessors, the
-  type's name and the picker's icon live in the DLL, read from
+A twelfth `TownType` (`TOWN_TEST = 11`) starts and plays, and a faction is
+now AUTHORED IN THE EDITOR: the Factions window (`FactionSpec`,
+`src/mods/factions.ts`, written by `src/mods/faction-files.ts`) builds,
+installs, edits and removes one, and `e2e/018-mod-faction-create.spec.ts`
+takes a faction through that window end to end in a sandbox install. The
+probe (`_tmp/town12-probe.ts` and its siblings, outside the tree) is left
+as a test bench — its map carries the Test faction and the hire-screen
+test camp — not as the way a faction is made.
+
+- **The race** is selectable and starts: the picker's accessors, the type's
+  name, its icon and tooltip live in the DLL, read from
   `bin/homm5-editor-races.txt` (`native/faction/race-order.c`,
-  `src/mods/race-order.ts`); `TownTypesInfo`, `TownSpecs`, `RMGPresetTable`
-  are widened as data plus the executable's ceilings;
-- **the town** is a copy of a shipped one under `Factions/<name>/`
-  (`src/mods/town-files.ts`): screen, buildings, texts, icons, build grid;
-  its dwellings hire the faction's row; its siege is assembled from any
-  towns' parts with any creature on the towers; its icons are drawn
-  (`src/format/paint.ts`, `src/mods/faction-icons.ts`); its named towns
-  come from a list;
-- **the creatures** are the creature mod's, 7 × 3 with upgrade links.
+  `src/mods/race-order.ts`); `TownTypesInfo`, `TownSpecs` and
+  `RMGPresetTable` are widened as data plus the executable's ceilings. Per
+  race it has its alignment, silo income, war machine, moat (damage and
+  spells), music and its own tracks, the town's ambient loop and the
+  buildings' clicks, the capture sign and flag, the AI's skill values, and
+  the random map generator deals it like the other eight.
+- **The town** starts as a copy of a shipped one under `Factions/<name>/`
+  (`src/mods/town-files.ts`) and every part can be the faction's own: each
+  building's name, description, cost, level, requirements, cell on the
+  build grid and screen model; the exterior stages' models and the gate
+  hull; the magic guild's two schools, or no magic at all; the siege put
+  together from any towns' parts or parts of its own, any creature on the
+  towers; the icons drawn or given as pictures; the named towns with their
+  bonuses and texts; random map dwellings of the race; a script
+  (`scripts/homm5-editor/faction-<file>.lua`, global, on every map) and a
+  button on the town screen that calls it (`src/mods/town-button.ts`).
+- **The creatures** are the creature mod's, 7 × 3 with upgrade links; the
+  town's dwellings hire them.
 
-Still the donor's: the hero (Haven's Brem with `TownType` changed), the
-building names and descriptions, the race's own texts, the interior's
-building models, the exterior stage models, the magic guild's schools
-(a field, never set), and every compiled effect a special building has.
+Still not the faction's own:
+
+- **A building's compiled effect** is borrowed, not new: a building takes
+  the effect of any shipped town's building, level for level (`Grant`,
+  `src/mods/town-features.ts`), or does what its button's Lua says (the
+  refugee camp, §2b). An effect the engine has never compiled cannot be
+  written.
+- **The town screen's scene** — background, lightmap, cameras — stays the
+  donor's; the faction replaces the buildings on it one by one. A whole
+  scene of ours is item 2e.
+- **Creatures and heroes OF the race cannot be made in the editor yet.**
+  The model takes them — a hero whose `town` is the faction's type is
+  listed in the random hero pool by the faction's install
+  (`faction-files.ts`) — but the creature and hero windows offer only the
+  eight shipped races (the roster in `src/schema/registry.ts` and the
+  shipped `TownType` enum). The Test faction's creatures and its hero
+  TestBrem are written by the probe's scripts (`_tmp/town12-units.ts`).
 
 ## Principles, already paid for
 
