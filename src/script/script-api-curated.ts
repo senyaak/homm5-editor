@@ -196,12 +196,15 @@ export const CURATED: ApiDoc[] = [
   // --- Objects on the map --------------------------------------------------
   {
     name: 'SetObjectEnabled', category: 'Objects', source: 'manual', since: 'C1M1',
-    summary: 'Show or hide a placed object (a disabled object is not on the map for the player).',
+    summary:
+      "Turn an interactive object's OWN behaviour on or off. Disabled, a hero who comes to it gets nothing but the "
+      + 'OBJECT_TOUCH_TRIGGER handler, if one is set — the way to make any visitable object do what the script says. '
+      + 'It stays on the map either way (to remove it, RemoveObject).',
     params: [
       { name: 'objectName', type: 'name', desc: "The object's Name handle." },
-      { name: 'enable', type: 'number | nil', desc: '1 to show, nil (or 0) to hide.' },
+      { name: 'enable', type: 'number | nil', desc: "1 for the object's standard behaviour, nil to leave only the touch trigger." },
     ],
-    example: "SetObjectEnabled('zastava', 1);",
+    example: 'SetObjectEnabled("camp", nil);\nTrigger(OBJECT_TOUCH_TRIGGER, "camp", "OnCampTouched");',
   },
   {
     name: 'RemoveObject', category: 'Objects', source: 'manual', since: 'C1M1',

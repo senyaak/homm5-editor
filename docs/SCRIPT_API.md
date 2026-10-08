@@ -381,15 +381,16 @@ RemoveObject("enemy1");
 
 ### `SetObjectEnabled(objectName, enable)`
 
-Show or hide a placed object (a disabled object is not on the map for the player). · first seen in C1M1
+Turn an interactive object's OWN behaviour on or off. Disabled, a hero who comes to it gets nothing but the OBJECT_TOUCH_TRIGGER handler, if one is set — the way to make any visitable object do what the script says. It stays on the map either way (to remove it, RemoveObject). · first seen in C1M1
 
 | param | type | meaning |
 |---|---|---|
 | `objectName` | name | The object's Name handle. |
-| `enable` | number \| nil | 1 to show, nil (or 0) to hide. |
+| `enable` | number \| nil | 1 for the object's standard behaviour, nil to leave only the touch trigger. |
 
 ```lua
-SetObjectEnabled('zastava', 1);
+SetObjectEnabled("camp", nil);
+Trigger(OBJECT_TOUCH_TRIGGER, "camp", "OnCampTouched");
 ```
 
 ## Ours
