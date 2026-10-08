@@ -233,11 +233,14 @@ test('a town without magic, a named town, a script — and it saves', { tag: '@g
   // The skill table: every skill listed, nothing said until filled; a fill
   // from Sylvan copies its column, and one cell is then said differently.
   const rows = page.locator('#fac-ai-table tbody tr');
-  expect(await rows.count()).toBeGreaterThanOrEqual(220);
-  await expect(page.locator('#fac-ai-count')).toHaveText('0 of 220 said');
+  // Every skill: the game's 220 and, run in the chain, the ones 004 authored —
+  // which carry values of their own for every town, so a fill says them too.
+  const skills = await rows.count();
+  expect(skills).toBeGreaterThanOrEqual(220);
+  await expect(page.locator('#fac-ai-count')).toHaveText(`0 of ${skills} said`);
   await page.locator('#fac-ai-fill-from').selectOption('TOWN_PRESERVE');
   await press(page, page.locator('#fac-ai-fill'));
-  await expect(page.locator('#fac-ai-count')).toHaveText('220 of 220 said');
+  await expect(page.locator('#fac-ai-count')).toHaveText(`${skills} of ${skills} said`);
   const archery = rows.filter({ has: page.locator('td.skill[title^="HERO_SKILL_ARCHERY "]') });
   await expect(archery).toHaveClass(/said/);
   await expect(archery.locator('input[data-role="commander"]')).toHaveValue('4000');
@@ -300,7 +303,9 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.icons?.field).toEqual([58, 28, 66, 255]);
   expect(f!.alignment).toBe('evil');
   expect(f!.ai?.skillsLike).toBe('TOWN_NECROMANCY');
-  expect(Object.keys(f!.ai?.skillValues ?? {}).length).toBe(220);
+  // Every skill the table listed, said: 220 alone, more in the chain.
+  const said = Object.keys(f!.ai?.skillValues ?? {}).length;
+  expect(said).toBeGreaterThanOrEqual(220);
   expect(f!.ai?.skillValues?.[35]).toEqual({ commander: 7500, collectorSupplier: 1000, freelancer: 4000 });
   expect(f!.mapDwellings).toBeUndefined();
 
@@ -327,7 +332,7 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(races).toMatch(/^trait 11 ai-skills-like 7$/m);
   expect(races).not.toContain('trait 11 dwellings');
   // Every skill said: Sylvan's column, but the one cell edited (Archery is 35).
-  expect(races.split('\n').filter((l) => l.startsWith('skillvalue 11 ')).length).toBe(220);
+  expect(races.split('\n').filter((l) => l.startsWith('skillvalue 11 ')).length).toBe(said);
   expect(races).toMatch(/^skillvalue 11 35 7500 1000 4000$/m);
   expect(races).toMatch(/^skillvalue 11 1 3000 4000 3000$/m);
   const buildings = readFileSync(join(GAME, BUILDINGS_FILE), 'latin1');
@@ -346,7 +351,7 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await expect(page.locator('#fac-magic')).toHaveValue('none');
   await expect(page.locator('#fac-alignment')).toHaveValue('evil');
   await expect(page.locator('#fac-ai-like')).toHaveValue('TOWN_NECROMANCY');
-  await expect(page.locator('#fac-ai-count')).toHaveText('220 of 220 said');
+  await expect(page.locator('#fac-ai-count')).toHaveText(/^(\d+) of \1 said$/);
   await expect(page.locator('#fac-ai-table tbody tr').filter({ has: page.locator('td.skill[title^="HERO_SKILL_ARCHERY "]') }).locator('input[data-role="commander"]')).toHaveValue('7500');
   await expect(page.locator('#fac-donor-note')).toContainText('building records of TOWN_HEAVEN');
   await expect(cell(page, 5, 5)).toHaveClass(/dropped/);
