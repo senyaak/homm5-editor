@@ -120,7 +120,13 @@ export async function fillModForms(): Promise<void> {
   const data = await modFormData();
   {
     umAbilities = data.abilityNames;
-    fillModSelect($select('um-town'), data.towns);
+    // The eight races and the mod's factions after them, by the race's name:
+    // a creature's town is what the engine's morale and alignment read, so a
+    // creature of a faction has to be able to say so. (Which TIER of the town
+    // hires it is the Factions window's business, not this field's.)
+    const factions = (await api.listMods()).mods.flatMap((m) => m.factions ?? [])
+      .map((f) => ({ id: f.type, name: `${f.race?.name || f.name || f.type} (ours)` }));
+    fillModSelect($select('um-town'), [...data.towns, ...factions]);
     // Every creature, plus the blank the game's own neutrals hold: a raise pair
     // may name any creature, so the choice is the whole roster rather than the
     // fourteen the shipped table happens to use.

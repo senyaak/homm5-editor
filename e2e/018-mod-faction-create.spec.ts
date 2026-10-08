@@ -505,24 +505,75 @@ test('a hero of the race is made in the Heroes window and joins the race\'s pool
   expect(text(HERO_GROUP), 'the random hero pool lists him').toContain(heroHref(heroPaths(hero!)));
 });
 
-// Removing a race a hero is still of is refused today, and the refusal names
-// him — his document would name a type the enum no longer declares, a parse
-// error at the game's start. So he goes first, through his own window, and
-// the faction after him in the next test.
-test('the race will not go while its hero stands — he goes first', { tag: '@game' }, async () => {
+/** The creature of the race this spec makes through the Units window. */
+const CREATURE = { file: 'E2eBoneArcher', name: 'Bone archers of the e2e' };
+
+// A CREATURE OF THE RACE: its town is what the engine's morale and alignment
+// read (which tier of the town hires it is the Factions window's business).
+// The Units window offered the game's eight; the faction follows them now.
+test('a creature of the race is made in the Units window', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   await press(page, page.locator('#hm-close'));
+  await press(page, page.locator('#unitsbtn'));
+  await expect(page.locator('#unitsmod')).toBeVisible();
+  await press(page, page.locator('#um-new'));
+  await press(page, page.locator('#um-donor-pick'));
+  await expect(page.locator('#presetpick')).toBeVisible();
+  await page.locator('#pp-search').fill('Лесные стрелки');
+  await press(page, page.locator('#pp-list button').first());
+  await expect(page.locator('#um-shots')).toHaveValue('16');
+
+  const ours = page.locator(`#um-town option[value="${TYPE}"]`);
+  await expect(ours, 'the faction is a town a creature can be of').toHaveCount(1);
+  await expect(ours).toHaveText(/Bone Court.*ours/);
+  await page.locator('#um-file').fill(CREATURE.file);
+  await page.locator('#um-name').fill(CREATURE.name);
+  await page.locator('#um-town').selectOption(TYPE);
+  const note = await settled(page, 'installing the creature of the race', '#um-note', '#um-err',
+    () => page.locator('#um-ok').click());
+  expect(note).toContain('installed');
+  expect(ed.errors).toEqual([]);
+
+  const creature = readInstalledMod(GAME).creatures.find((c) => c.file === CREATURE.file);
+  expect(creature, 'the manifest holds it').toBeTruthy();
+  expect(creature!.stats.town).toBe(TYPE);
+  const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
+  const naming = entries.filter((e) => e.data.toString('latin1').includes(`<CreatureTown>${TYPE}</CreatureTown>`));
+  expect(naming.length, 'its record in the archive names the race').toBeGreaterThan(0);
+  CREATURE_ID = creature!.id;
+});
+let CREATURE_ID = '';
+
+// Removing a race a hero or a creature is still of is refused today, and the
+// refusal names them — their documents would name a type the enum no longer
+// declares, a parse error at the game's start. So they go first, through
+// their own windows, and the faction after them in the next test.
+test('the race will not go while its hero and its creature stand — they go first', { tag: '@game' }, async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  await press(page, page.locator('#um-close'));
   await press(page, page.locator('#facbtn'));
   await expect(page.locator('#facmod')).toBeVisible();
   await press(page, page.locator('#fac-list .um-item button[title="remove it from the mod"]').first());
   await expect(page.locator('#ask')).toBeVisible();
   await page.locator('#ask-yes').click();
   await expect(page.locator('#fac-err'), 'refused, naming the hero').toContainText(HERO.id, { timeout: 60_000 });
+  await expect(page.locator('#fac-err'), '...and the creature').toContainText(CREATURE_ID);
   expect((readInstalledMod(GAME).factions ?? []).length, 'and the faction is still there').toBe(1);
   expect(ed.errors).toEqual([]);
 
+  // The creature first, through its window.
   await press(page, page.locator('#fac-close'));
+  await press(page, page.locator('#unitsbtn'));
+  const unit = page.locator('#um-list .um-item', { hasText: CREATURE.name }).first();
+  await press(page, unit.locator('button[title="remove it from the mod"]'));
+  await page.locator('#ask-yes').click();
+  await expect(page.locator('#um-list')).not.toContainText(CREATURE.name, { timeout: 120_000 });
+  expect(readInstalledMod(GAME).creatures.some((c) => c.file === CREATURE.file), 'it is out of the manifest').toBe(false);
+  await press(page, page.locator('#um-close'));
+
+  // Then the hero.
   await press(page, page.locator('#heroesbtn'));
   await press(page, page.locator('#hm-tabs button', { hasText: 'Heroes' }));
   const row = page.locator('#hm-list .um-item', { hasText: HERO.name }).first();

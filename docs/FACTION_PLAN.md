@@ -51,19 +51,16 @@ Still not the faction's own:
 - **The town screen's scene** — background, lightmap, cameras — stays the
   donor's; the faction replaces the buildings on it one by one. A whole
   scene of ours is item 2e.
-- **A creature's own race cannot be the faction yet.** The creature window
-  offers the eight shipped races (the roster in `src/schema/registry.ts`).
-  It is not what makes a creature the faction's — the Factions window puts
-  the mod's creatures in the town's tiers — but it is what the engine's
-  morale and alignment read; the Test faction's creatures got theirs from
-  the probe's scripts (`_tmp/town12-units.ts`).
-
-A HERO of the race is made in the editor since 2026-10-08: the Heroes window
-offers the mod's factions beside the eight towns, by their race's name. A
-hero's race is his `TownType`, not his class (the class decides what a
-level-up offers); the faction's install lists him in the random hero pool,
-which is where the race's starting hero is drawn from. e2e 018 makes one
-through the window and finds him in the pool.
+HEROES AND CREATURES of the race are made in the editor since 2026-10-08:
+the Heroes and Units windows offer the mod's factions beside the eight towns,
+by their race's name. A hero's race is his `TownType`, not his class (the
+class decides what a level-up offers); the faction's install lists him in the
+random hero pool, which is where the race's starting hero is drawn from. A
+creature's town (`CreatureTown`) is what morale and alignment read — which
+tier of the town hires it is the Factions window's business. Removing a
+faction is refused while a hero or a creature is still of it, naming them.
+e2e 018 makes one of each through the windows, reads them back out of the
+archive and the pool, and removes them before the faction.
 
 ## Principles, already paid for
 

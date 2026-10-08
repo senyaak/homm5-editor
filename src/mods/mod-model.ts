@@ -968,9 +968,9 @@ export function updateFaction(mod: CreatureMod, file: string, spec: FactionSpec)
 }
 
 /**
- * Take one out. Refused while a hero of the mod is of the type: his document
- * names it, and a type the enum no longer declares is a parse error at
- * startup, not a hero without a town. What to make him instead is his
+ * Take one out. Refused while a hero or a creature of the mod is of the type:
+ * its document names it, and a type the enum no longer declares is a parse
+ * error at startup, not a hero without a town. What to make him instead is his
  * author's decision. The ones after it move down, as the classes do — a
  * faction is a type maps store, so the caller warns first.
  */
@@ -979,7 +979,11 @@ export function removeFaction(mod: CreatureMod, file: string): ModFaction {
   const at = list.findIndex((f) => f.file === file);
   if (at < 0) throw new Error(`${file} is not in the mod`);
   const heroes = (mod.heroes ?? []).filter((h) => h.town === list[at]!.type).map((h) => h.id);
-  if (heroes.length) throw new Error(`${list[at]!.type} is the town of ${heroes.join(', ')} — change them first`);
+  // A creature's document names its town the same way a hero's does
+  // (`CreatureTown`), so the same parse error waits for one left behind.
+  const creatures = mod.creatures.filter((c) => c.stats.town === list[at]!.type).map((c) => c.id);
+  const holders = [...heroes, ...creatures];
+  if (holders.length) throw new Error(`${list[at]!.type} is the town of ${holders.join(', ')} — change them first`);
   const gone = list.splice(at, 1)[0]!;
   list.forEach((f, i) => { f.number = SHIPPED_TOWN_TYPES + i; });
   return gone;

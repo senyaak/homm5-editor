@@ -19,7 +19,10 @@ pre-release.
   could not be made at all — and a race with nobody in its pool starts the
   game with no hero and is out before the first turn. The faction is now in
   the list, by its race's name, and the faction lists such a hero in its
-  random pool when it is installed.
+  random pool when it is installed. The Units window offers it too, for a
+  creature's own race (what morale and alignment read). A faction a hero or
+  a creature is still of is not removed: the window names them, because
+  each would name a town type the game no longer has.
 - The script editor knows the functions the editor's extension adds to the
   game's Lua — all 34 of them, from `H5EHireScreen` to `H5ETentCharge`. Until
   now it knew six: the rest neither completed nor were checked, so a mistyped
