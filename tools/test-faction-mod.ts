@@ -25,6 +25,7 @@ import { addDwelling, addFaction, newCreatureMod, removeFaction, updateFaction }
 import type { CreatureMod } from '../src/mods/mod-model.ts';
 import { GRID, SHIPPED_TOWN_TYPES, dwellingsGroupFor, factionProblems, raceFor, townTypeFor } from '../src/mods/factions.ts';
 import type { FactionSpec } from '../src/mods/factions.ts';
+import { missingStartTiers, startWarning } from '../src/mods/faction-ready.ts';
 import { DWELLING_GROUP_DIR, PICKER_DIR, PICKER_TEXTS, PICKER_TEXTURES, RMG_PRESETS, RPG_ROOT, pickerNames } from '../src/mods/faction-files.ts';
 import { racesFileText } from '../src/mods/race-order.ts';
 import { SHIPPED_TOWN_ORDINALS, TOWN_SPECS, gridSlotText } from '../src/mods/town-files.ts';
@@ -99,6 +100,19 @@ console.log('the model');
   removeFaction(mod, 'Alpha');
   check('the ones after a removal move down', mod.factions!.length === 1 && mod.factions![0]!.number === SHIPPED_TOWN_TYPES);
   check('the grid is five by six', GRID.columns === 5 && GRID.rows === 6);
+}
+
+console.log('what a race needs to start a game');
+{
+  const of = (town: string, tier: number, base?: string) => ({ stats: { town, tier, ...(base ? { base } : {}) } });
+  check('a race with nobody misses all three', missingStartTiers('TOWN_BONE', []).join() === '1,2,3');
+  check('an upgrade does not count — the army takes base creatures',
+    missingStartTiers('TOWN_BONE', [of('TOWN_BONE', 1, 'C_X'), of('TOWN_BONE', 2), of('TOWN_BONE', 3)]).join() === '1');
+  check('nor another race\'s, nor tier 4 and up',
+    missingStartTiers('TOWN_BONE', [of('TOWN_HEAVEN', 1), of('TOWN_BONE', 4), of('TOWN_BONE', 2), of('TOWN_BONE', 3)]).join() === '1');
+  check('one of each of 1–3 starts', missingStartTiers('TOWN_BONE', [of('TOWN_BONE', 3), of('TOWN_BONE', 1), of('TOWN_BONE', 2)]).length === 0
+    && startWarning('TOWN_BONE', [of('TOWN_BONE', 3), of('TOWN_BONE', 1), of('TOWN_BONE', 2)]) === '');
+  check('the warning names the tiers', startWarning('TOWN_BONE', [of('TOWN_BONE', 1)]).startsWith('no base creature of tier 2, 3'));
 }
 
 console.log('the tree, read for the form');

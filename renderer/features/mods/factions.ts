@@ -21,6 +21,7 @@ import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import { modRow, NL } from '#features/mods/shared.ts';
+import { startWarning } from '#src/mods/faction-ready.ts';
 import type { FactionTreeDTO, ModFactionDTO, ModsFactionDataResult, ModsFactionPayload } from '#electron/ipc.ts';
 import type { BuildingEdit, BuildingKey, Resource, SiegeMix, ExteriorMix } from '#src/mods/town-files.ts';
 import type { TreeBuilding } from '#src/mods/town-tree.ts';
@@ -289,6 +290,7 @@ async function refreshFactions(): Promise<void> {
     return;
   }
   let n = 0;
+  const creatures = mods.flatMap((m) => m.creatures);
   for (const m of mods) {
     for (const f of m.factions ?? []) {
       n++;
@@ -297,6 +299,15 @@ async function refreshFactions(): Promise<void> {
         onEdit: () => { void openFactionForm(f); },
         onRemove: () => { void removeFaction(f); },
       }));
+      // Under its row, while it lasts: a race without its first three tiers
+      // installs fine and crashes the game that plays it.
+      const warning = startWarning(f.type, creatures);
+      if (warning) {
+        const line = document.createElement('div');
+        line.className = 'um-warn fac-start-warn';
+        line.textContent = `${f.race?.name || f.file}: ${warning}`;
+        list.appendChild(line);
+      }
     }
   }
   if (!n) list.innerHTML = '<div class="um-empty">none yet — the game holds its eight</div>';

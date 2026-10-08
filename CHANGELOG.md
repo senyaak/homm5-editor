@@ -14,6 +14,13 @@ pre-release.
 
 ## Unreleased
 
+- The Factions window warns when a race cannot start a game yet. A hero
+  starts with one base creature of each of tiers 1–3 of his race, and with
+  any of the three missing the game crashed before the first turn — with
+  nothing in the editor to say why. The race's row now names the missing
+  tiers until creatures of them are made in the Units window. It is a
+  warning, not a refusal, because those creatures can only be made once
+  the race exists.
 - A creature of your mod can be an upgrade of another. The Units window has
   three new fields: "Upgrade of", "Upgrades into" and "Second upgrade". They
   are what the upgrade dialog and a faction's row are made of. Until now
