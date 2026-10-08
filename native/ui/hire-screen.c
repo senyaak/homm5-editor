@@ -131,6 +131,10 @@ static const BYTE ADVENTURE_MANAGER_HEAD[10] = { 0x8B, 0x89, 0xF4, 0x05, 0x00, 0
  * answered 0x3278 and the game died on it (2026-10-08).
  */
 #define ADV_MAP_OBJECT_TYPE_RVA 0xcaa2a8u
+/** The adventure map's lookup of any OBJECT by script name — `SetObjectEnabled`'s (0x5DBC0A); `vt+0x14` finds heroes. */
+#define VT_FIND_OBJECT_BY_NAME 0x1Cu
+/** Where a script-layer `…Manipulator` keeps the object it wraps (its first slot, 0x64A920, reads it there). */
+#define MANIPULATOR_OBJECT 8u
 /**
  * THE TABS. The screen's left column is five buttons in one `tabs` window,
  * found by name and cast to IButton by the tabs controller's Init (0x838FC0,
@@ -1070,11 +1074,27 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, void *sellerName, 
   ArmyOfFn armyOf = (ArmyOfFn)vtable_entry(hero, VT_ARMY_OF);
   void *army = armyOf ? armyOf(hero, NULL) : NULL;
   if (!army || !town_alive(army)) { log_line("H5EHireScreen: the hero has no army to show beside the offers"); return 0; }
-  void *seller = find(map, NULL, sellerName);
+  /* NOT the hero's lookup: the map's `vt+0x14` answers for heroes only (the
+     fifth launch, 2026-10-08: "no object on the map called H5ETestHire" for a
+     camp standing there). `SetObjectEnabled` (0x5DBC0A) finds its object with
+     `vt+0x1C`, the same world service's other method — so does this. */
+  FindByNameFn findObject = (FindByNameFn)vtable_entry(map, VT_FIND_OBJECT_BY_NAME);
+  if (!findObject) { log_line("H5EHireScreen: the map has no object lookup where we measured one"); return 0; }
+  void *seller = findObject(map, NULL, sellerName);
   if (!seller || !pointer_alive(seller)) { log_name("H5EHireScreen: no object on the map called ", sellerName); return 0; }
   const char *sellerKind = class_name_of(whole_object_of(seller));
   log_text("H5EHireScreen: the seller is a ", sellerKind ? sellerKind : "(nameless object)");
   BYTE *base = adv_map_object_of(seller);
+  /* The script layer's lookups may hand out its wrapper, a `…Manipulator`
+     whose first slot is `mov ecx,[ecx+8]` and a call on that (0x64A920): the
+     object is at +8. Opened only when the class says so, and logged. */
+  if (!base && sellerKind && name_has(sellerKind, "Manipulator")) {
+    BYTE *wrapper = (BYTE *)whole_object_of(seller);
+    void *inner = readable(wrapper + MANIPULATOR_OBJECT, 4) ? *(void **)(wrapper + MANIPULATOR_OBJECT) : NULL;
+    const char *innerKind = inner ? class_name_of(whole_object_of(inner)) : NULL;
+    log_text("H5EHireScreen:   which holds a ", innerKind ? innerKind : "(nothing that reads)");
+    if (inner) base = adv_map_object_of(inner);
+  }
   if (!base) { log_line("H5EHireScreen: the seller is not an object of the map (no IAdvMapObject) — refused"); return 0; }
   if (!readable(screen + ADVENTURE_SCREEN_UI, 4)) { log_line("H5EHireScreen: the adventure screen is not shaped as measured"); return 0; }
   BYTE *ui = *(BYTE **)(screen + ADVENTURE_SCREEN_UI);
