@@ -1,13 +1,16 @@
-// A faction, authored through the window: the donor's tree on the grid, a
+// A faction, authored through the windows: the donor's tree on the grid, a
 // building dropped, one renamed and given a button, a town without magic, a
-// named town, a script — saved, read back off disk, edited; a hero of the
-// race made in the Heroes window and found in the race's pool; removed.
+// named town, a script — saved, read back off disk, edited. Then what a race
+// is made of besides its town: a class of our own and a hero of it and of
+// the race (Heroes window, found in the race's pool); a row of seven tiers,
+// three creatures each, linked base to upgrades (Units window); the faction's
+// dwellings hiring that row. Then everything taken apart again, in the order
+// the refusals name, and the faction removed.
 //
 // What the probe (_tmp/town12-probe.ts) wrote by hand for the Bone Court,
 // this makes through the palette; the archive, the extension's files and the
 // executable's four numbers are then read back the way the game would read
-// them. Standing alone: the faction needs nothing another stage authored —
-// every tier hires the donor's creature, the towers keep the donor's shooter.
+// them. Standing alone: the faction needs nothing another stage authored.
 //
 // Every press goes through `press`, which asserts the renderer threw nothing
 // and no error line lit up BEFORE the next expectation waits on anything:
@@ -445,18 +448,18 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(ed.errors).toEqual([]);
 });
 
-/** The hero of the race this spec makes through the Heroes window. */
+/** The class of our own this spec makes, and the hero of it and of the race. */
+const CLASS = { id: 'HERO_CLASS_E2E_REAPER', name: 'Reaper of the e2e' };
 const HERO = { id: 'E2eBoneLord', name: 'Bone Lord of the e2e' };
 
-// A HERO OF THE RACE. His race is his TownType — not his class: the class
-// decides what a level-up offers, the TownType which taverns offer him and
-// whether the faction's install lists him in the random hero pool, where a
-// race's starting hero is drawn from (docs/engineInternals/FACTIONS.md: a
-// race with nobody in the pool starts with no hero and is out before the
-// first turn). The Heroes window offered only the game's eight towns, so a
-// hero of a faction could only be written by a script; now the faction is in
-// the list, and this makes him the way an author would.
-test('a hero of the race is made in the Heroes window and joins the race\'s pool', { tag: '@game' }, async () => {
+// A CLASS OF OUR OWN AND A HERO OF IT AND OF THE RACE. His race is his
+// TownType — not his class: the class decides what a level-up offers, the
+// TownType which taverns offer him and whether the faction's install lists
+// him in the random hero pool, where a race's starting hero is drawn from
+// (docs/engineInternals/FACTIONS.md: a race with nobody in the pool starts
+// with no hero and is out before the first turn). So the two are chosen
+// apart, and a faction of ours has both: a class made here, and the race.
+test('a class of our own, and a hero of it and of the race, made in the Heroes window', { tag: '@game' }, async () => {
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   await press(page, page.locator('#fac-close'));
@@ -464,6 +467,22 @@ test('a hero of the race is made in the Heroes window and joins the race\'s pool
 
   await press(page, page.locator('#heroesbtn'));
   await expect(page.locator('#heroesmod')).toBeVisible();
+  await press(page, page.locator('#hm-tabs button', { hasText: 'Classes' }));
+  await press(page, page.locator('#hc-new'));
+  await expect(page.locator('#classedit')).toBeVisible();
+  await press(page, page.locator('#hc-donor-pick'));
+  await expect(page.locator('#presetpick')).toBeVisible();
+  await page.locator('#pp-search').fill('NECROMANCER');
+  await press(page, page.locator('#pp-list button', { hasText: 'NECROMANCER' }).first());
+  await expect(page.locator('#hc-skill-total')).toHaveText(/100/);
+  await page.locator('#hc-id').fill(CLASS.id);
+  await page.locator('#hc-name').fill(CLASS.name);
+  const made = await settled(page, 'installing the class', '#hm-note', '#hc-err',
+    () => page.locator('#hc-ok').click());
+  expect(made).toContain('Installed');
+  await expect(page.locator('#hc-list')).toContainText(CLASS.name);
+  expect(ed.errors).toEqual([]);
+
   await press(page, page.locator('#hm-tabs button', { hasText: 'Heroes' }));
   await press(page, page.locator('#hm-new'));
   await expect(page.locator('#heroedit')).toBeVisible();
@@ -480,6 +499,9 @@ test('a hero of the race is made in the Heroes window and joins the race\'s pool
   const classBefore = await page.locator('#he-class').inputValue();
   await page.locator('#he-town').selectOption(TYPE);
   await expect(page.locator('#he-class'), 'a faction of ours names no class; the preset\'s stays').toHaveValue(classBefore);
+  // ...and the class is chosen on its own: ours.
+  await expect(page.locator(`#he-class option[value="${CLASS.id}"]`)).toHaveText(/Reaper of the e2e.*ours/);
+  await page.locator('#he-class').selectOption(CLASS.id);
   await page.locator('#he-id').fill(HERO.id);
   await page.locator('#he-name').fill(HERO.name);
   await expect(page.locator('#he-ok')).toBeEnabled();
@@ -494,86 +516,243 @@ test('a hero of the race is made in the Heroes window and joins the race\'s pool
   const hero = (readInstalledMod(GAME).heroes ?? []).find((h) => h.id === HERO.id);
   expect(hero, 'the manifest holds him').toBeTruthy();
   expect(hero!.town).toBe(TYPE);
-  const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
-  const text = (path: string): string => {
-    const e = entries.find((x) => x.name.split(String.fromCharCode(92)).join('/') === path);
-    return e ? e.data.toString('latin1') : '';
-  };
-  const doc = text(heroPaths(hero!).shared);
+  expect(hero!.heroClass).toBe(CLASS.id);
+  const doc = archiveText(heroPaths(hero!).shared);
   expect(doc, 'his document says his race').toContain(`<TownType>${TYPE}</TownType>`);
+  expect(doc, '...and his class, ours').toContain(`<Class>${CLASS.id}</Class>`);
   expect(doc, 'and that the race may draw him').toContain('<ScenarioHero>false</ScenarioHero>');
-  expect(text(HERO_GROUP), 'the random hero pool lists him').toContain(heroHref(heroPaths(hero!)));
+  expect(archiveText(HERO_GROUP), 'the random hero pool lists him').toContain(heroHref(heroPaths(hero!)));
+  await press(page, page.locator('#hm-close'));
 });
 
-/** The creature of the race this spec makes through the Units window. */
-const CREATURE = { file: 'E2eBoneArcher', name: 'Bone archers of the e2e' };
+/** A file of the installed mod archive, as text — '' when it holds none. */
+function archiveText(path: string): string {
+  const e = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
+    .find((x) => x.name.split(String.fromCharCode(92)).join('/') === path);
+  return e ? e.data.toString('latin1') : '';
+}
 
-// A CREATURE OF THE RACE: its town is what the engine's morale and alignment
-// read (which tier of the town hires it is the Factions window's business).
-// The Units window offered the game's eight; the faction follows them now.
-test('a creature of the race is made in the Units window', { tag: '@game' }, async () => {
-  test.setTimeout(5 * 60_000);
+// A race with nobody of tiers 1–3 starts a game that crashes before the first
+// turn: a hero starts with one base creature of each (0xC26FA0). The faction
+// installs regardless — its creatures can only be made once it exists — so
+// the window says so under its row until they do.
+test('until it has creatures, the race says it cannot start a game', { tag: '@game' }, async () => {
   const { page } = ed;
-  await press(page, page.locator('#hm-close'));
-  await press(page, page.locator('#unitsbtn'));
-  await expect(page.locator('#unitsmod')).toBeVisible();
+  await press(page, page.locator('#facbtn'));
+  await expect(page.locator('#facmod')).toBeVisible();
+  const warning = page.locator('#fac-list .fac-start-warn');
+  await expect(warning).toHaveCount(1);
+  await expect(warning).toContainText('Bone Court: no base creature of tier 1, 2, 3');
+  await press(page, page.locator('#fac-close'));
+  expect(ed.errors).toEqual([]);
+});
+
+/** The row: per tier a base creature, its upgrade and the second upgrade — by file stem, filled with ids as they are made. */
+const ROW = [1, 2, 3, 4, 5, 6, 7].map((tier) => ({
+  tier,
+  base: { file: `E2eBoneT${tier}`, name: `T${tier} base of the e2e`, id: '' },
+  up: { file: `E2eBoneT${tier}Up`, name: `T${tier} upgrade of the e2e`, id: '' },
+  alt: { file: `E2eBoneT${tier}Alt`, name: `T${tier} second of the e2e`, id: '' },
+}));
+
+/** Press a row's button in the Units list, by the creature's name. */
+const unitRow = (page: Page, name: string): Locator => page.locator('#um-list .um-item', { hasText: name }).first();
+
+/**
+ * One creature, through the Units window: a preset, its identity, the race
+ * and the tier, and the link to its base. Its id comes back off the manifest.
+ */
+async function makeCreature(page: Page, c: { file: string; name: string }, tier: number, base = ''): Promise<string> {
   await press(page, page.locator('#um-new'));
+  await expect(page.locator('#unitedit')).toBeVisible();
+  // A new form names no links: what the last creature linked is not this one's.
+  await expect(page.locator('#um-base')).toHaveValue('');
+  await expect(page.locator('#um-upgrade')).toHaveValue('');
   await press(page, page.locator('#um-donor-pick'));
   await expect(page.locator('#presetpick')).toBeVisible();
   await page.locator('#pp-search').fill('Лесные стрелки');
   await press(page, page.locator('#pp-list button').first());
   await expect(page.locator('#um-shots')).toHaveValue('16');
-
-  const ours = page.locator(`#um-town option[value="${TYPE}"]`);
-  await expect(ours, 'the faction is a town a creature can be of').toHaveCount(1);
-  await expect(ours).toHaveText(/Bone Court.*ours/);
-  await page.locator('#um-file').fill(CREATURE.file);
-  await page.locator('#um-name').fill(CREATURE.name);
+  await page.locator('#um-file').fill(c.file);
+  await page.locator('#um-name').fill(c.name);
   await page.locator('#um-town').selectOption(TYPE);
-  const note = await settled(page, 'installing the creature of the race', '#um-note', '#um-err',
-    () => page.locator('#um-ok').click());
+  await page.locator('#um-tier').fill(String(tier));
+  if (base) await page.locator('#um-base').selectOption(base);
+  const note = await settled(page, `installing ${c.file}`, '#um-note', '#ue-err', () => page.locator('#um-ok').click());
   expect(note).toContain('installed');
   expect(ed.errors).toEqual([]);
+  const made = readInstalledMod(GAME).creatures.find((x) => x.file === c.file);
+  expect(made, `${c.file} is in the manifest`).toBeTruthy();
+  return made!.id;
+}
 
-  const creature = readInstalledMod(GAME).creatures.find((c) => c.file === CREATURE.file);
-  expect(creature, 'the manifest holds it').toBeTruthy();
-  expect(creature!.stats.town).toBe(TYPE);
-  const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
-  const naming = entries.filter((e) => e.data.toString('latin1').includes(`<CreatureTown>${TYPE}</CreatureTown>`));
-  expect(naming.length, 'its record in the archive names the race').toBeGreaterThan(0);
-  CREATURE_ID = creature!.id;
-});
-let CREATURE_ID = '';
+/** A creature's own record out of the mod's creature table. */
+function creatureRecord(id: string): string {
+  const table = archiveText('GameMechanics/RefTables/Creatures.xdb');
+  const from = table.indexOf(`<ID>${id}</ID>`);
+  expect(from, `${id} has an entry in the table`).toBeGreaterThan(-1);
+  const at = table.indexOf('<Creature ObjectRecordID=', from);
+  return table.slice(at, table.indexOf('</Creature>', at));
+}
 
-// Removing a race a hero or a creature is still of is refused today, and the
-// refusal names them — their documents would name a type the enum no longer
-// declares, a parse error at the game's start. So they go first, through
-// their own windows, and the faction after them in the next test.
-test('the race will not go while its hero and its creature stand — they go first', { tag: '@game' }, async () => {
-  test.setTimeout(5 * 60_000);
+// THE ROW, made the way an author makes it. Per tier: the base, then the
+// upgrade and the second upgrade naming it as their base — each lists the
+// creatures made before it — and the base opened again to name the two it
+// becomes. The game reads both sides: the upgrade dialog by the base's
+// Upgrades, the pairing by the upgrade's BaseCreature.
+test('a row of seven tiers is made in the Units window, each base linked to its two upgrades', { tag: '@game' }, async () => {
+  test.setTimeout(10 * 60_000);
   const { page } = ed;
+  await press(page, page.locator('#unitsbtn'));
+  await expect(page.locator('#unitsmod')).toBeVisible();
+  const ourTown = page.locator(`#um-town option[value="${TYPE}"]`);
+  await expect(ourTown, 'the faction is a town a creature can be of').toHaveCount(1);
+  await expect(ourTown).toHaveText(/Bone Court.*ours/);
+
+  for (const t of ROW) {
+    t.base.id = await makeCreature(page, t.base, t.tier);
+    t.up.id = await makeCreature(page, t.up, t.tier, t.base.id);
+    t.alt.id = await makeCreature(page, t.alt, t.tier, t.base.id);
+    await press(page, unitRow(page, t.base.name).locator('button', { hasText: '✎' }));
+    await expect(page.locator('#unitedit')).toBeVisible();
+    await expect(page.locator('#um-base')).toHaveValue('');
+    await page.locator('#um-upgrade').selectOption(t.up.id);
+    await page.locator('#um-upgrade2').selectOption(t.alt.id);
+    const saved = await settled(page, `linking ${t.base.file}`, '#um-note', '#ue-err', () => page.locator('#um-ok').click());
+    expect(saved).toContain('installed');
+    expect(ed.errors).toEqual([]);
+  }
+
+  // The manifest, and the records the game reads.
+  const creatures = readInstalledMod(GAME).creatures;
+  for (const t of ROW) {
+    const base = creatures.find((c) => c.id === t.base.id)!;
+    expect(base.stats, `tier ${t.tier}'s base`).toMatchObject({ town: TYPE, tier: t.tier, upgrades: [t.up.id, t.alt.id] });
+    expect(base.stats.base).toBeUndefined();
+    for (const u of [t.up, t.alt]) {
+      expect(creatures.find((c) => c.id === u.id)!.stats).toMatchObject({ town: TYPE, tier: t.tier, base: t.base.id });
+    }
+    const record = creatureRecord(t.base.id);
+    expect(record).toContain(`<CreatureTown>${TYPE}</CreatureTown>`);
+    expect(record, 'the base names its two upgrades').toMatch(new RegExp(`<Upgrades>\\s*<Item>${t.up.id}</Item>\\s*<Item>${t.alt.id}</Item>\\s*</Upgrades>`));
+    expect(record, '...and pairs with the first').toContain(`<PairCreature>${t.up.id}</PairCreature>`);
+    expect(record).toContain('<BaseCreature>CREATURE_UNKNOWN</BaseCreature>');
+    const up = creatureRecord(t.up.id);
+    expect(up, 'the upgrade names its base').toContain(`<BaseCreature>${t.base.id}</BaseCreature>`);
+    expect(up).toContain(`<PairCreature>${t.base.id}</PairCreature>`);
+  }
+
+  // And the race can start a game now: tiers 1–3 have base creatures.
   await press(page, page.locator('#um-close'));
   await press(page, page.locator('#facbtn'));
   await expect(page.locator('#facmod')).toBeVisible();
+  await expect(page.locator('#fac-list .um-item')).toHaveCount(1);
+  await expect(page.locator('#fac-list .fac-start-warn'), 'the warning is gone').toHaveCount(0);
+  expect(ed.errors).toEqual([]);
+});
+
+// The dwellings hire the row: seven tiers, three creatures each, chosen out of
+// the mod's own in the faction's form.
+test("the faction's dwellings hire the row", { tag: '@game' }, async () => {
+  test.setTimeout(10 * 60_000);
+  const { page } = ed;
+  await press(page, page.locator('#fac-list .um-item button[title*="change it"]').first());
+  await expect(page.locator('#facedit')).toBeVisible();
+  for (const t of ROW) {
+    for (const [role, c] of [['base', t.base], ['upgrade', t.up], ['alternate', t.alt]] as const) {
+      await page.locator(`#fac-dwellings .fc-dwelling[data-tier="${t.tier}"][data-role="${role}"]`).selectOption(c.id);
+    }
+  }
+  await press(page, page.locator('#fac-ok'));
+  await expect(page.locator('#facedit')).toBeHidden({ timeout: 300_000 });
+  await expect(page.locator('#fac-note')).toContainText(`${TYPE} = 11`);
+  expect(ed.errors).toEqual([]);
+
+  const f = readInstalledMod(GAME).factions?.[0];
+  for (const t of ROW) {
+    expect(f?.dwellings?.[t.tier], `tier ${t.tier}`).toEqual({ base: t.base.id, upgrade: t.up.id, alternate: t.alt.id });
+  }
+  // The town's dwelling records hire them: the base in the plain dwelling,
+  // the upgrade and the second upgrade in the upgraded one.
+  const town = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
+    .filter((e) => e.name.split(String.fromCharCode(92)).join('/').startsWith(`Factions/${FILE}/town/`))
+    .map((e) => e.data.toString('latin1')).join('\n');
+  for (const t of ROW) {
+    expect(town, `a dwelling hires tier ${t.tier}'s base`).toContain(`<Creature>${t.base.id}</Creature>`);
+    expect(town, '...its upgrade').toContain(`<Creature>${t.up.id}</Creature>`);
+    expect(town, '...and the second upgrade beside it').toContain(`<Creature2>${t.alt.id}</Creature2>`);
+  }
+});
+
+// Removing what the mod still names is refused, and the window says who —
+// before it asks anything, since the answer is "not yet" whatever is chosen.
+test('what the mod still names will not go — the window says who', { tag: '@game' }, async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  const [first] = ROW;
+  // The faction: its hero, its class's hero, and every creature of its race.
   await press(page, page.locator('#fac-list .um-item button[title="remove it from the mod"]').first());
   await expect(page.locator('#ask')).toBeVisible();
   await page.locator('#ask-yes').click();
   await expect(page.locator('#fac-err'), 'refused, naming the hero').toContainText(HERO.id, { timeout: 60_000 });
-  await expect(page.locator('#fac-err'), '...and the creature').toContainText(CREATURE_ID);
+  await expect(page.locator('#fac-err'), '...and the creatures').toContainText(first!.base.id);
   expect((readInstalledMod(GAME).factions ?? []).length, 'and the faction is still there').toBe(1);
-  expect(ed.errors).toEqual([]);
+  await press(page, page.locator('#fac-close'), /./);
 
-  // The creature first, through its window.
-  await press(page, page.locator('#fac-close'));
+  // A base: its two upgrades name it, and the faction's tier hires it.
   await press(page, page.locator('#unitsbtn'));
-  const unit = page.locator('#um-list .um-item', { hasText: CREATURE.name }).first();
-  await press(page, unit.locator('button[title="remove it from the mod"]'));
-  await page.locator('#ask-yes').click();
-  await expect(page.locator('#um-list')).not.toContainText(CREATURE.name, { timeout: 120_000 });
-  expect(readInstalledMod(GAME).creatures.some((c) => c.file === CREATURE.file), 'it is out of the manifest').toBe(false);
+  await press(page, unitRow(page, first!.base.name).locator('button[title="remove it from the mod"]'));
+  await expect(page.locator('#ask'), 'nothing is asked').toBeHidden();
+  const why = page.locator('#um-err');
+  await expect(why).toContainText(`creature ${first!.up.id} is its upgrade`);
+  await expect(why).toContainText(`creature ${first!.alt.id} is its upgrade`);
+  await expect(why).toContainText(`faction ${FILE}'s tier 1 hires it`);
+  // An upgrade: the base upgrades into it.
+  await press(page, unitRow(page, first!.up.name).locator('button[title="remove it from the mod"]'));
+  await expect(page.locator('#ask')).toBeHidden();
+  await expect(why).toContainText(`creature ${first!.base.id} upgrades into it`);
+  expect(readInstalledMod(GAME).creatures.filter((c) => c.stats.town === TYPE)).toHaveLength(21);
+  await press(page, page.locator('#um-close'));
+  expect(ed.errors).toEqual([]);
+});
+
+// And then taken apart in the order the refusals ask for: the tiers off the
+// faction, each base's links, the creatures, the hero, his class.
+test('taken apart in the order the refusals ask for', { tag: '@game' }, async () => {
+  test.setTimeout(15 * 60_000);
+  const { page } = ed;
+  await press(page, page.locator('#facbtn'));
+  await press(page, page.locator('#fac-list .um-item button[title*="change it"]').first());
+  await expect(page.locator('#facedit')).toBeVisible();
+  for (const sel of await page.locator('#fac-dwellings .fc-dwelling').all()) await sel.selectOption('');
+  await press(page, page.locator('#fac-ok'));
+  await expect(page.locator('#facedit')).toBeHidden({ timeout: 300_000 });
+  expect(readInstalledMod(GAME).factions?.[0]?.dwellings, 'the tiers hire the donor\'s again').toBeUndefined();
+  await press(page, page.locator('#fac-close'));
+
+  await press(page, page.locator('#unitsbtn'));
+  const remove = async (c: { name: string; file: string }): Promise<void> => {
+    await press(page, unitRow(page, c.name).locator('button[title="remove it from the mod"]'));
+    await expect(page.locator('#ask')).toBeVisible();
+    await page.locator('#ask-yes').click();
+    await expect(page.locator('#um-list')).not.toContainText(c.name, { timeout: 120_000 });
+    await expect(page.locator('#um-err')).toHaveText('');
+    expect(readInstalledMod(GAME).creatures.some((x) => x.file === c.file), `${c.file} is out of the manifest`).toBe(false);
+  };
+  for (const t of ROW) {
+    await press(page, unitRow(page, t.base.name).locator('button', { hasText: '✎' }));
+    await page.locator('#um-upgrade').selectOption('');
+    await page.locator('#um-upgrade2').selectOption('');
+    const saved = await settled(page, `unlinking ${t.base.file}`, '#um-note', '#ue-err', () => page.locator('#um-ok').click());
+    expect(saved).toContain('installed');
+    await remove(t.up);
+    await remove(t.alt);
+    await remove(t.base);
+  }
+  expect(readInstalledMod(GAME).creatures.filter((c) => c.stats.town === TYPE)).toHaveLength(0);
   await press(page, page.locator('#um-close'));
 
-  // Then the hero.
+  // Then the hero, and then his class.
   await press(page, page.locator('#heroesbtn'));
   await press(page, page.locator('#hm-tabs button', { hasText: 'Heroes' }));
   const row = page.locator('#hm-list .um-item', { hasText: HERO.name }).first();
@@ -581,6 +760,12 @@ test('the race will not go while its hero and its creature stand — they go fir
   await page.locator('#ask button', { hasText: 'Remove' }).click();
   await expect(page.locator('#hm-list')).not.toContainText(HERO.name, { timeout: 120_000 });
   expect((readInstalledMod(GAME).heroes ?? []).some((h) => h.id === HERO.id), 'he is out of the manifest').toBe(false);
+  await press(page, page.locator('#hm-tabs button', { hasText: 'Classes' }));
+  const cls = page.locator('#hc-list .um-item', { hasText: CLASS.name }).first();
+  await press(page, cls.locator('button', { hasText: '×' }));
+  await page.locator('#ask button', { hasText: 'Remove' }).click();
+  await expect(page.locator('#hc-list')).not.toContainText(CLASS.name, { timeout: 120_000 });
+  expect((readInstalledMod(GAME).classes ?? []).some((c) => c.id === CLASS.id), 'the class is out of the manifest').toBe(false);
   await press(page, page.locator('#hm-close'));
   await press(page, page.locator('#facbtn'));
   await expect(page.locator('#facmod')).toBeVisible();

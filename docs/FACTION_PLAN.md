@@ -57,10 +57,17 @@ by their race's name. A hero's race is his `TownType`, not his class (the
 class decides what a level-up offers); the faction's install lists him in the
 random hero pool, which is where the race's starting hero is drawn from. A
 creature's town (`CreatureTown`) is what morale and alignment read — which
-tier of the town hires it is the Factions window's business. Removing a
-faction is refused while a hero or a creature is still of it, naming them.
-e2e 018 makes one of each through the windows, reads them back out of the
-archive and the pool, and removes them before the faction.
+tier of the town hires it is the Factions window's business. A creature's
+upgrade links ("Upgrade of", "Upgrades into", "Second upgrade") are set in
+the Units window. A race without a base creature of each of tiers 1–3
+installs but crashes the game that plays it (the starting army,
+`0xC26FA0`), so the Factions window warns under its row until they exist.
+Removing anything the mod still names is refused, naming who: a faction
+with a hero or a creature of it, a creature with an upgrade, a base, a
+tier or a raise pair naming it. e2e 018 makes the whole race through the
+windows — a class of ours and a hero of it, 7 tiers × 3 linked creatures,
+the dwellings hiring them — reads it back out of the archive and the pool,
+and takes it apart in the order the refusals ask for.
 
 ## Principles, already paid for
 
