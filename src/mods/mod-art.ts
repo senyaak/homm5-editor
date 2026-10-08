@@ -78,12 +78,15 @@ export const UID_BINS: Record<string, string> = {
  * which looks exactly like a texture that failed to copy.
  */
 export function repaint(files: Map<string, Buffer>, ops: RecolorOps): void {
+  const how = JSON.stringify(ops);
   for (const [path, data] of files) {
     const lower = path.toLowerCase();
     if (lower.endsWith('.dds')) {
-      const img = decodeDDSBuffer(data);
-      recolorPixels(img.rgba, ops);
-      files.set(path, writeDDS(img));
+      files.set(path, repainted(data, how, () => {
+        const img = decodeDDSBuffer(data);
+        recolorPixels(img.rgba, ops);
+        return writeDDS(img);
+      }));
     } else if (lower.endsWith('.(texture).xdb')) {
       files.set(path, Buffer.from(data.toString('latin1')
         .replace(/<Format>[^<]*<\/Format>/, '<Format>TF_8888</Format>')
@@ -92,6 +95,36 @@ export function repaint(files: Map<string, Buffer>, ops: RecolorOps): void {
         .replace(/<UseS3TC>[^<]*<\/UseS3TC>/, '<UseS3TC>false</UseS3TC>'), 'latin1'));
     }
   }
+}
+
+/**
+ * Textures already painted, by what went in: the source's hash and the
+ * operations. Every install rebuilds the whole mod, and a building or a
+ * creature recoloured once was recoloured again each time — about half of a
+ * rebuild's four seconds, for the same pixels. Least recently used goes first
+ * past `REPAINT_BUDGET` bytes, so the cache is bounded whatever the mod holds.
+ */
+const repaints = new Map<string, Buffer>();
+let repaintBytes = 0;
+const REPAINT_BUDGET = 256 * 1024 * 1024;
+
+function repainted(source: Buffer, how: string, paint: () => Buffer): Buffer {
+  const key = `${createHash('sha1').update(source).digest('hex')}:${how}`;
+  const hit = repaints.get(key);
+  if (hit) {
+    repaints.delete(key);
+    repaints.set(key, hit);
+    return hit;
+  }
+  const out = paint();
+  repaints.set(key, out);
+  repaintBytes += out.length;
+  for (const [k, v] of repaints) {
+    if (repaintBytes <= REPAINT_BUDGET) break;
+    repaints.delete(k);
+    repaintBytes -= v.length;
+  }
+  return out;
 }
 
 export interface ArtCopy {

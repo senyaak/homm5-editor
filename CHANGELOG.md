@@ -20,6 +20,11 @@ pre-release.
   them — a mod of 71 MB took eleven seconds to pack every time. The editor
   now keeps what it compressed last time and reuses it for the files that
   did not change: under a second, and the archive is byte for byte the same.
+  Rebuilding got the same treatment: recoloured textures are painted once
+  rather than at every install, and the hire-dialog ability names are read
+  once per build rather than once per creature. A rebuild after the first
+  went from four seconds to under one; an install as a whole, from about
+  fourteen seconds to about two.
 - The Factions window warns when a race cannot start a game yet. A hero
   starts with one base creature of each of tiers 1–3 of his race, and with
   any of the three missing the game crashed before the first turn — with

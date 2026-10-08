@@ -28,7 +28,9 @@ import { creatureHolders } from '../src/mods/creature-holders.ts';
 import type { CreatureSpec } from '../src/mods/mod-model.ts';
 import type { CreatureStats } from '../src/mods/creatures.ts';
 import { packCreatureMod, readCreatureModBuffer, writeCreatureMod } from '../src/mods/mod-archive.ts';
-import { dataPath } from '../src/mods/mod-art.ts';
+import { dataPath, repaint } from '../src/mods/mod-art.ts';
+import { writeDDS } from '../src/format/texture.ts';
+import type { RecolorOps } from '../src/format/recolor.ts';
 import { SHARPSHOOTER_LUA, TRAINABLE, questionFor } from '../src/mods/sharpshooter-training.ts';
 import { MOD_MANIFEST, dataReader } from '../src/mods/mod-files.ts';
 import { assets } from '../src/game/assets.ts';
@@ -499,6 +501,30 @@ check('a second creature takes the next id and raises the ceiling',
   grown.creatures[1]!.number === 3 && creatureLimit(grown) === 4);
 check('an empty mod is refused (there is nothing to open a slot for)',
   throws(() => buildCreatureMod(newCreatureMod(), () => null)));
+
+// ---- a repaint remembered -------------------------------------------------------
+
+// Every install rebuilds the whole mod; a texture painted once is not painted
+// again — but only when both what went in and how it was painted are the same.
+console.log('\na repaint remembered');
+{
+  const square = (r: number, g: number, b: number): Buffer => {
+    const rgba = new Uint8Array(4 * 4 * 4);
+    for (let i = 0; i < 16; i++) rgba.set([r, g, b, 255], i * 4);
+    return writeDDS({ width: 4, height: 4, rgba });
+  };
+  const paint = (source: Buffer, ops: RecolorOps): Buffer => {
+    const one = new Map([['t.dds', source]]);
+    repaint(one, ops);
+    return one.get('t.dds')!;
+  };
+  const red = square(200, 40, 40);
+  const first = paint(red, { hue: 120 });
+  check('the same texture and the same paint give the same bytes', paint(red, { hue: 120 }).equals(first));
+  check('another paint is painted afresh', !paint(red, { hue: 240 }).equals(first));
+  check('and so is another texture', !paint(square(40, 40, 200), { hue: 120 }).equals(first));
+  check('and the first is still what it was', paint(red, { hue: 120 }).equals(first));
+}
 
 // ---- the upgrade links ----------------------------------------------------------
 

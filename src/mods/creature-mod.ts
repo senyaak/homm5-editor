@@ -458,6 +458,21 @@ const TEXT_END = String.fromCharCode(0);
  */
 function abilityLine(read: DataReader, abilities: readonly string[]): string {
   if (!abilities.length) return '';
+  const named = abilityNamesOf(read);
+  // An id the table does not name keeps its id: a line with ABILITY_SOMETHING
+  // in it is ugly and true, which beats a line that quietly drops an ability.
+  return abilities.map((id) => named.get(id) ?? id).join(', ');
+}
+
+/**
+ * Every ability's printed name, read once per reader — that is, once per
+ * build. Read per creature it was some two hundred text files for each of
+ * them, an eighth of a whole rebuild.
+ */
+const abilityNames = new WeakMap<DataReader, Map<string, string>>();
+function abilityNamesOf(read: DataReader): Map<string, string> {
+  const known = abilityNames.get(read);
+  if (known) return known;
   const table = read('GameMechanics/RefTables/CombatAbilities.xdb')?.toString('utf8') ?? '';
   const named = new Map<string, string>();
   for (const m of table.matchAll(/<ID>(ABILITY_[A-Z0-9_]+)<\/ID>[\s\S]*?<NameFileRef href="([^"]*)"/g)) {
@@ -468,9 +483,8 @@ function abilityLine(read: DataReader, abilities: readonly string[]): string {
     const text = raw.split(TEXT_END)[0]!.trim();
     if (text) named.set(m[1]!, text);
   }
-  // An id the table does not name keeps its id: a line with ABILITY_SOMETHING
-  // in it is ugly and true, which beats a line that quietly drops an ability.
-  return abilities.map((id) => named.get(id) ?? id).join(', ');
+  abilityNames.set(read, named);
+  return named;
 }
 
 // --- the creature's own two documents ----------------------------------------
