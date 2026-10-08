@@ -549,6 +549,16 @@ function drawDwellings(data: ModsFactionDataResult, current: NonNullable<ModsFac
       fillSelect(sel, [{ id: '', label: none }, ...creatures], current[tier]?.[role] ?? '');
       row.append(sel);
     }
+    // A base that names its upgrades (the Units window's links) brings them:
+    // the tier is that creature's line, and the two others were the old
+    // base's. A base with no links leaves them for the author to choose.
+    const [base, upgrade, alternate] = [...row.querySelectorAll<HTMLSelectElement>('select')];
+    base!.onchange = () => {
+      const links = data.creatures.find((c) => c.id === base!.value)?.upgrades;
+      if (!links?.length) return;
+      upgrade!.value = links[0]!;
+      alternate!.value = links[1] ?? '';
+    };
     box.appendChild(row);
   }
 }

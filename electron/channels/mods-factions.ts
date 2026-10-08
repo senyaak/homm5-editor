@@ -106,7 +106,10 @@ export function registerModFactions(): void {
       warMachines: ['WAR_MACHINE_NONE', 'WAR_MACHINE_BALLISTA', 'WAR_MACHINE_FIRST_AID_TENT', 'WAR_MACHINE_AMMO_CART'],
       spells: r.spells(),
       masteries: ['MASTERY_NONE', 'MASTERY_BASIC', 'MASTERY_ADVANCED', 'MASTERY_EXPERT'],
-      creatures: (mod?.creatures ?? []).map((c) => ({ id: c.id, name: c.name })),
+      creatures: (mod?.creatures ?? []).map((c) => ({
+        id: c.id, name: c.name,
+        ...(c.stats.upgrades?.length ? { upgrades: [...c.stats.upgrades] } : {}),
+      })),
       dwellings: (mod?.dwellings ?? []).map((d) => ({ id: d.file })),
       exteriorStages: [...EXTERIOR_STAGES],
       skillValues: readSkillAiRows(data.text(SKILL_TABLE) ?? '', (href) => gameText(data, href), mod?.skills ?? []),

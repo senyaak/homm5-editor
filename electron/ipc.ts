@@ -1752,8 +1752,11 @@ export interface ModsFactionDataResult {
   /** The spells a moat can cast, and the masteries. */
   spells: RosterEntryDTO[];
   masteries: string[];
-  /** The mod's own creatures, for the dwellings and the towers. */
-  creatures: RosterEntryDTO[];
+  /**
+   * The mod's own creatures, for the dwellings and the towers — with what each
+   * upgrades into, so picking a tier's base can fill in the other two.
+   */
+  creatures: Array<RosterEntryDTO & { upgrades?: string[] }>;
   /** The mod's own dwellings, by file — what a random dwelling of the race may become. */
   dwellings: RosterEntryDTO[];
   /** The ten exterior stages, in the engine's order. */

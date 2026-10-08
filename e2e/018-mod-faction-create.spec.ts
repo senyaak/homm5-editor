@@ -658,10 +658,14 @@ test("the faction's dwellings hire the row", { tag: '@game' }, async () => {
   const { page } = ed;
   await press(page, page.locator('#fac-list .um-item button[title*="change it"]').first());
   await expect(page.locator('#facedit')).toBeVisible();
+  // Only the base is chosen: it names its two upgrades (the links made in the
+  // Units window), and the tier's other two follow it.
+  const tierSelect = (tier: number, role: string): Locator =>
+    page.locator(`#fac-dwellings .fc-dwelling[data-tier="${tier}"][data-role="${role}"]`);
   for (const t of ROW) {
-    for (const [role, c] of [['base', t.base], ['upgrade', t.up], ['alternate', t.alt]] as const) {
-      await page.locator(`#fac-dwellings .fc-dwelling[data-tier="${t.tier}"][data-role="${role}"]`).selectOption(c.id);
-    }
+    await tierSelect(t.tier, 'base').selectOption(t.base.id);
+    await expect(tierSelect(t.tier, 'upgrade'), `tier ${t.tier}'s upgrade came with its base`).toHaveValue(t.up.id);
+    await expect(tierSelect(t.tier, 'alternate')).toHaveValue(t.alt.id);
   }
   await press(page, page.locator('#fac-ok'));
   await expect(page.locator('#facedit')).toBeHidden({ timeout: 300_000 });
