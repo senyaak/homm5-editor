@@ -131,6 +131,8 @@ static const BYTE ADVENTURE_MANAGER_HEAD[10] = { 0x8B, 0x89, 0xF4, 0x05, 0x00, 0
  * answered 0x3278 and the game died on it (2026-10-08).
  */
 #define ADV_MAP_OBJECT_TYPE_RVA 0xcaa2a8u
+/** `CObjectBase`'s type descriptor (0x10A79F8) — the counted core every map object shares as a virtual base. */
+#define OBJECT_BASE_TYPE_RVA 0xca79f8u
 /** The adventure map's lookup of any OBJECT by script name — `SetObjectEnabled`'s (0x5DBC0A); `vt+0x14` finds heroes. */
 #define VT_FIND_OBJECT_BY_NAME 0x1Cu
 /** Where a script-layer `…Manipulator` keeps the object it wraps (its first slot, 0x64A920, reads it there). */
@@ -572,15 +574,27 @@ SOURCE_EVERY_SLOT(SOURCE_STUB)
 static void *const g_sourceStubs[SOURCE_SLOTS] = { SOURCE_EVERY_SLOT(SOURCE_STUB_NAME) };
 
 /**
- * The object, built over a seller's object base: its own five slots, its own
- * reference words, and that base where the engine looks for liveness, a
- * reference count and an owner (see `g_sourceVbtable`). The base is the
- * seller's `IAdvMapObject` — what a town's or a dwelling's vbtable entry at
- * byte 8 leads to: on the town screen the town's, on the adventure map the
- * object named with `object=`.
+ * The object, built over a SELLER: its own five slots, its own reference
+ * words, and a vbtable with the seller's two virtual bases where the engine
+ * looks for them —
+ *
+ *   [1] (byte 4)  the seller's `CObjectBase`: liveness at its +4, the
+ *                 reference count at its +8 (the request's constructor, the
+ *                 screen and every holder count there), and what Init casts
+ *                 from when it asks for a town (0x840833, source type
+ *                 CObjectBase);
+ *   [2] (byte 8)  the seller's `IAdvMapObject`, which the window builder asks
+ *                 its questions of (0x83E499, `vt+0x18`).
+ *
+ * TWO BASES, NOT ONE. Both entries used to lead to the same subobject, and on
+ * the adventure map that was the camp's IAdvMapObject: every count the screen
+ * took landed on the IAdvMapObject's +8, which is not a count. The first
+ * screen over the camp worked and bought; the second (2026-10-08) died in the
+ * camp's own method (0xD40840, a CAdvMapBuilding's), reading through a
+ * pointer of its own the counting had moved.
  */
-static int source_build_on(BYTE *base) {
-  if (!readable(base, 4)) return 0;
+static int source_build_on(BYTE *objectBase, BYTE *mapObject) {
+  if (!readable(objectBase, 12) || !readable(mapObject, 4)) return 0;
   for (int i = 0; i < SOURCE_SLOTS; i++) g_sourceVtable[i] = g_sourceStubs[i];
   g_sourceVtable[0x00 / 4] = g_sourceEntries;
   g_sourceVtable[0x04 / 4] = g_sourceCopy;
@@ -590,10 +604,9 @@ static int source_build_on(BYTE *base) {
   g_sourceVtableWithLocator[0] = NULL;
 
   BYTE *self = SOURCE_OBJECT;
-  int toBase = (int)(base - (self + 4));
   g_sourceVbtable[0] = -4;
-  g_sourceVbtable[1] = toBase;
-  g_sourceVbtable[2] = toBase;
+  g_sourceVbtable[1] = (int)(objectBase - (self + 4));
+  g_sourceVbtable[2] = (int)(mapObject - (self + 4));
   g_sourceVbtable[3] = 0;
   *(void ***)(self + 0) = g_sourceVtable;
   *(int **)(self + 4) = g_sourceVbtable;
@@ -603,13 +616,20 @@ static int source_build_on(BYTE *base) {
 /**
  * The same, over the town whose screen is up. `townInterface` is the base the
  * town's holder hands out (+0xF8 of the whole town), whose vbtable entry at
- * byte 8 (`VB_OBJECT_BASE`) knows the way to the town's IAdvMapObject.
+ * byte 8 (`VB_OBJECT_BASE`) knows the way to the town's IAdvMapObject — the
+ * one base this path has always handed the screen; the CObjectBase is the
+ * engine's own cast of the town.
  */
+static BYTE *object_base_of(void *obj);
 static int source_build(BYTE *townInterface) {
   if (!readable(townInterface + 4, 4)) return 0;
   const int *townVb = *(const int **)(townInterface + 4);
   if (!readable(townVb, VB_OBJECT_BASE + 4)) return 0;
-  return source_build_on(townInterface + 4 + townVb[VB_OBJECT_BASE / 4]);
+  BYTE *mapObject = townInterface + 4 + townVb[VB_OBJECT_BASE / 4];
+  BYTE *objectBase = object_base_of(townInterface);
+  if (!objectBase) { log_line("H5EHireScreen: the town's CObjectBase is out of reach"); return 0; }
+  log_num("hire screen: the town's CObjectBase sits from its IAdvMapObject at ", (int)(objectBase - mapObject));
+  return source_build_on(objectBase, mapObject);
 }
 
 /** Does a decorated class name carry this word? */
@@ -623,23 +643,21 @@ static int name_has(const char *name, const char *word) {
 }
 
 /**
- * Any object's `IAdvMapObject` — the subobject the screen takes the seller
- * through — by the engine's own cast rather than by a vbtable index measured
- * on one class: the whole object (RTTI's locator says how far in a base
- * pointer sits), its own type (the locator's descriptor, at `+0xC`),
- * `__RTDynamicCast` from that to `NWorld::IAdvMapObject`. NULL for anything
- * that is not an object of the map — a `CHero`, whose map figure is a
- * different object (`CAdvMapHero`), is one.
+ * Any object as one of its bases, by the engine's own cast rather than by a
+ * vbtable index measured on one class: the whole object (RTTI's locator says
+ * how far in a base pointer sits), its own type (the locator's descriptor, at
+ * `+0xC`), `__RTDynamicCast` from that to the base's descriptor. NULL when the
+ * object has no such base.
  *
  * The descriptor's address is a constant of ours, so its decorated name is
  * read before it is handed to the cast: a wrong address is a refusal in the
  * log, not a cast through something that is not a type.
  */
-static BYTE *adv_map_object_of(void *obj) {
+static BYTE *cast_whole_to(void *obj, DWORD typeRva, const char *decorated) {
   if (!g_rtDynamicCast) return NULL;
-  const char *target = (const char *)GetModuleHandleW(NULL) + ADV_MAP_OBJECT_TYPE_RVA;
-  if (!readable(target + 8, 28) || !name_has(target + 8, ".?AUIAdvMapObject@NWorld@@")) {
-    log_line("H5EHireScreen: IAdvMapObject's type is not where it was measured");
+  const char *target = (const char *)GetModuleHandleW(NULL) + typeRva;
+  if (!readable(target + 8, 32) || !name_has(target + 8, decorated)) {
+    log_text("H5EHireScreen: a type is not where it was measured: ", decorated);
     return NULL;
   }
   BYTE *whole = (BYTE *)whole_object_of(obj);
@@ -652,6 +670,16 @@ static BYTE *adv_map_object_of(void *obj) {
   if (!readable(type, 4)) return NULL;
   void *base = g_rtDynamicCast(whole, 0, type, (void *)target, 0);
   return readable(base, 4) ? (BYTE *)base : NULL;
+}
+
+/** The seller's face to the screen: NULL for what is not an object of the map (a `CHero` is not; his map figure is a `CAdvMapHero`). */
+static BYTE *adv_map_object_of(void *obj) {
+  return cast_whole_to(obj, ADV_MAP_OBJECT_TYPE_RVA, ".?AUIAdvMapObject@NWorld@@");
+}
+
+/** The seller's counted core: liveness at +4, the reference count at +8. */
+static BYTE *object_base_of(void *obj) {
+  return cast_whole_to(obj, OBJECT_BASE_TYPE_RVA, ".?AVCObjectBase@@");
 }
 
 /**
@@ -1093,9 +1121,11 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, void *sellerName, 
     void *inner = readable(wrapper + MANIPULATOR_OBJECT, 4) ? *(void **)(wrapper + MANIPULATOR_OBJECT) : NULL;
     const char *innerKind = inner ? class_name_of(whole_object_of(inner)) : NULL;
     log_text("H5EHireScreen:   which holds a ", innerKind ? innerKind : "(nothing that reads)");
-    if (inner) base = adv_map_object_of(inner);
+    if (inner) { seller = inner; base = adv_map_object_of(inner); }
   }
   if (!base) { log_line("H5EHireScreen: the seller is not an object of the map (no IAdvMapObject) — refused"); return 0; }
+  BYTE *sellerCore = object_base_of(seller);
+  if (!sellerCore) { log_line("H5EHireScreen: the seller has no CObjectBase — refused"); return 0; }
   if (!readable(screen + ADVENTURE_SCREEN_UI, 4)) { log_line("H5EHireScreen: the adventure screen is not shaped as measured"); return 0; }
   BYTE *ui = *(BYTE **)(screen + ADVENTURE_SCREEN_UI);
   if (!readable(ui, ADVENTURE_UI_PLAYER + 4)) { log_line("H5EHireScreen: the adventure screen's UI object is out of reach"); return 0; }
@@ -1109,7 +1139,7 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, void *sellerName, 
     log_line("H5EHireScreen: the adventure screen has no player where it was measured — refused");
     return 0;
   }
-  if (!source_build_on(base)) { log_line("H5EHireScreen: the seller's IAdvMapObject does not read"); return 0; }
+  if (!source_build_on(sellerCore, base)) { log_line("H5EHireScreen: the seller's bases do not read"); return 0; }
   int shown = source_fill(creature, count, percent, offers);
   if (!shown) { log_line("H5EHireScreen: the list is empty, nothing to show"); return 0; }
 
