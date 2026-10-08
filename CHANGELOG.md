@@ -185,7 +185,8 @@ pre-release.
   probe map then opened the screen and sold (2026-10-08), and died on the
   second visit: the screen's reference counting landed on the camp's
   IAdvMapObject instead of its CObjectBase. The two bases are kept apart now,
-  on the town screen too; not yet seen again.
+  on the town screen too. Seen in game the same evening: four visits in a row,
+  three purchases, no crash. The town screen after that change is not seen yet.
 - The game's own refugee camp never offered a creature of a mod: its pool is
   thirty-eight names written into `MapObjects/Special/RefugeeCamp.xdb`, and
   the weekly roll draws from that list. A mod with creatures of tiers three
