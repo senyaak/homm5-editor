@@ -619,8 +619,13 @@ counting moved a pointer of the camp's. Now [1] is the seller's `CObjectBase`,
 [2] its `IAdvMapObject`, each by the engine's cast; the town path gets the same
 split, and logs how far apart the two sit. SEEN WORKING, launch seven
 (2026-10-08): four visits to the camp in a row, three purchases, no crash —
-Senya: "всё работает". The town path after the split is not launched yet; its
-first opening logs the distance between its two bases. The purchase then runs exactly as on the town screen
+Senya: "всё работает". The town path after the split is seen too (same
+evening: two openings, a purchase told to `BonePit_Bought` with the town's
+name, no crash), and its log line settles the question the split raised: the
+town's `CObjectBase` sits 16 bytes before its `IAdvMapObject`. They are
+different subobjects, so before the split the town screen also counted on the
+IAdvMapObject's +8 — the same defect, which there happened to hit a word that
+nothing read while the screen was up. The purchase then runs exactly as on the town screen
 (the gestures, the three questions, the `bought=` event, `H5EHirePay`); the
 script gives to the hero (`AddHeroCreatures`) rather than to a town — the
 hero's name is what `tag=` is for here.

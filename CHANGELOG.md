@@ -186,7 +186,9 @@ pre-release.
   second visit: the screen's reference counting landed on the camp's
   IAdvMapObject instead of its CObjectBase. The two bases are kept apart now,
   on the town screen too. Seen in game the same evening: four visits in a row,
-  three purchases, no crash. The town screen after that change is not seen yet.
+  three purchases, no crash; and the town screen after the change, two
+  openings and a purchase. The town's two bases sit 16 bytes apart, so it had
+  the same miscount all along and was only lucky in the word it hit.
 - The game's own refugee camp never offered a creature of a mod: its pool is
   thirty-eight names written into `MapObjects/Special/RefugeeCamp.xdb`, and
   the weekly roll draws from that list. A mod with creatures of tiers three
