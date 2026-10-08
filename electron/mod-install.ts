@@ -29,6 +29,7 @@ import type { Installed } from '#src/mods/mod-archive.ts';
 import type { BuildReport } from '#src/mods/mod-files.ts';
 import { writeEffectsFile, writeModEffectsFile } from '#src/mods/extension.ts';
 import { MOD_DIR, modFile } from '#src/game/mod-paths.ts';
+import { intakeOwnFiles, modSourcesDir } from '#src/mods/own-files.ts';
 
 /**
  * OUR mod: the one manifest-carrying archive in our folder, or a fresh one under
@@ -53,6 +54,11 @@ export function ourMod(g: string): CreatureMod {
  * granting what the mod no longer carries.
  */
 export function buildAndInstall(g: string, mod: CreatureMod): { installed: Installed; report: BuildReport } {
+  // The author's own files FIRST: copied into the mod and the manifest pointed
+  // at the copies, so nothing below ever reads the place they were picked from
+  // (see intakeOwnFiles). Before the empty case too — it is what clears the
+  // copies of a mod that has nothing left.
+  intakeOwnFiles(mod, modSourcesDir(g));
   // Removing the LAST thing in the mod leaves nothing to build, and building
   // nothing throws — so the archive goes instead. Reached by removing the last
   // hero, the last artifact or the last creature alike; it was the hero that

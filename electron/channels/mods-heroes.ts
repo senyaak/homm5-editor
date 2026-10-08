@@ -127,8 +127,9 @@ export function registerModHeroes(): void {
 
   // Pick a file of the author's own for one appearance slot.
   //
-  // It is copied when the hero is BUILT, not here: a form that is cancelled must
-  // leave nothing behind, and until then the mod has no folder for him anyway.
+  // It is copied when the hero is INSTALLED, not here: a form that is cancelled
+  // must leave nothing behind. From then on the mod works from its copy
+  // (intakeOwnFiles), never from where it was picked.
   // The file is expected to be in the game's format already — this is a choice of
   // bytes, not a conversion.
   ipcMain.handle('mods:pick-hero-file', async (_e: IpcMainInvokeEvent, { id, slot }: { id: string; slot: string }): Promise<{ href: string; from: string }> => {
@@ -146,9 +147,9 @@ export function registerModHeroes(): void {
     return { href: `/${HERO_DIR}/${id || 'hero'}/${basename(from)}`, from };
   });
 
-  // A drawing, kept as a PATH. Nothing is copied and no texture is written
-  // here: the pair the game reads is built when the hero is, which is why the
-  // same picture can be edited and the mod rebuilt without touching the form.
+  // A drawing, picked as a PATH. Nothing is copied and no texture is written
+  // here: the install takes the file into the mod first and works from that
+  // copy from then on (intakeOwnFiles) — a changed picture is picked again.
   ipcMain.handle('mods:pick-picture', async (): Promise<string> => {
     const opts = {
       title: 'Choose a picture',

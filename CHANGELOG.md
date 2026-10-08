@@ -14,6 +14,15 @@ pre-release.
 
 ## Unreleased
 
+- Files of your own — a model, a picture, a track, a sound you pick for a
+  faction, a hero, an artifact — are copied into the mod the moment it is
+  installed, and from then on only that copy is used. The mod used to
+  remember where you picked them from and read them from there again at
+  every install of anything, so moving or deleting that folder made the
+  next install fail — of a creature, say — on a model you had forgotten.
+  The copies live in `H5E/sources` beside the mod; picking the same file
+  again takes it in afresh, and a copy nothing uses any more is removed.
+  The forms now show the copy's path.
 - Installing anything into your mod is several seconds faster after the
   first time. Every install rebuilds and repacks the whole mod, and packing
   compressed every file again even though one edit changes only a few of

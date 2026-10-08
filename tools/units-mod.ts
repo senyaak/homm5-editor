@@ -35,6 +35,7 @@ import type { CreatureMod } from '../src/mods/mod-model.ts';
 import { PATCHED_EXE, readExe } from '../src/exe/creature-limit.ts';
 import { SHIPPED_CREATURES } from '../src/mods/creatures.ts';
 import { dataDir } from './game-dir.ts';
+import { SOURCES_DIR, intakeOwnFiles } from '../src/mods/own-files.ts';
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -131,6 +132,13 @@ if (command === 'build') {
     process.exit(1);
   }
 
+  // The author's own files into the project first, and the manifest pointed
+  // at the copies — the build never reads where they were picked from.
+  const taken = intakeOwnFiles(mod, join(project, SOURCES_DIR));
+  if (taken.copied.size) {
+    writeFileSync(manifest, `${JSON.stringify(mod, null, 2)}\n`);
+    console.log(`${taken.copied.size} file(s) of your own taken into ${join(project, SOURCES_DIR)}`);
+  }
   const report_ = buildCreatureMod(mod, dataReader(data));
   const out = join(project, 'packed');
   mkdirSync(out, { recursive: true });

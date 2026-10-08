@@ -47,7 +47,7 @@ import { test, expect } from '@playwright/test';
 import { launchEditor, REPO_ROOT } from './launch.ts';
 import { settled } from './trace.ts';
 import type { Launched } from './launch.ts';
-import { GEM, GEM_SPEC, WITCH, installWitchFixture, modGameRoot, readInstalledMod } from './mods.ts';
+import { GEM, GEM_SPEC, WITCH, installWitchFixture, isModCopyOf, modGameRoot, readInstalledMod } from './mods.ts';
 import { EFFECTS_FILE, readSpecializations } from '../src/mods/artifact-effects.ts';
 import { SHIPPED_SPECIALIZATIONS } from '../src/mods/specializations.ts';
 import { modFile } from '../src/game/mod-paths.ts';
@@ -382,8 +382,10 @@ test('an installed hero opens for editing, whole', { tag: '@game' }, async () =>
   // The pictures too. A field the form does not carry back is written as
   // whatever the box holds, and for these that means a hero who loses his face
   // by having his Knowledge corrected.
-  await expect(page.locator('#he-portrait-pic')).toHaveValue(GEM.portrait);
-  await expect(page.locator('#he-spec-pic')).toHaveValue(GEM.specPicture);
+  // As saved: the mod's copies, taken in at install — never the place they
+  // were picked from.
+  expect(isModCopyOf(GAME, await page.locator('#he-portrait-pic').inputValue(), GEM.portrait), "the portrait box holds the mod's copy").toBe(true);
+  expect(isModCopyOf(GAME, await page.locator('#he-spec-pic').inputValue(), GEM.specPicture), "...and the specialization's").toBe(true);
 
   // Change one thing and save: the rest must survive the round trip.
   await page.locator('#he-kn').fill('4');
@@ -395,8 +397,8 @@ test('an installed hero opens for editing, whole', { tag: '@game' }, async () =>
   expect(gem.stats?.knowledge).toBe(4);
   expect(gem.specializationName, 'the words a summary would have lost').toBe(GEM.specName);
   expect(gem.perks).toEqual(['HERO_SKILL_FIRST_AID']);
-  expect(gem.portrait, 'and the face she was built with').toBe(GEM.portrait);
-  expect(gem.specializationPicture).toBe(GEM.specPicture);
+  expect(isModCopyOf(GAME, gem.portrait, GEM.portrait), 'and the face she was built with').toBe(true);
+  expect(isModCopyOf(GAME, gem.specializationPicture, GEM.specPicture)).toBe(true);
 });
 
 test('a specialization a hero still holds cannot be taken away', { tag: '@game' }, async () => {

@@ -26,7 +26,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { DATA, REPO_ROOT, closeEditor, hudSays, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { LIVE, clearMap, modGameRoot, readInstalledMod } from './mods.ts';
+import { LIVE, clearMap, isModCopyOf, modGameRoot, readInstalledMod } from './mods.ts';
 import { bar } from './bar.ts';
 import { pickObject, placeAtTile, sharedKey } from './objects.ts';
 import { readEntries } from '../src/format/pak.ts';
@@ -132,6 +132,9 @@ function centreIsMagenta(names: string[], entries: { name: string; data: Buffer 
 }
 
 const cell = (page: Page, x: number, y: number): Locator => page.locator(`#fac-grid .fc-cell[data-x="${x}"][data-y="${y}"]`);
+
+/** Is `copy` the mod's copy of `original` — see isModCopyOf. */
+const isCopyOf = (copy: string | undefined, original: string, model = false): boolean => isModCopyOf(GAME, copy, original, model);
 
 /** The four numbers in the sandbox's executable. */
 function exeNumbers(): { towns: number | null; specs: number | null; clamp: number } {
@@ -423,18 +426,27 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(f?.number).toBe(11);
   expect(f?.towns.length).toBe(2);
   expect(f?.buildings?.TB_SHIPYARD, 'kept: no edit at all').toBeUndefined();
-  expect(f?.buildings?.TB_SPECIAL_1?.model).toEqual({ source: own, at: { x: 250, y: 340, z: 10 } });
+  // Every file of ours is the MOD'S copy now — taken in before the build,
+  // and the manifest names the copy, never the place it was picked from.
+  expect(isCopyOf(f?.buildings?.TB_SPECIAL_1?.model?.source, own, true), "the pit model is the mod's copy").toBe(true);
+  expect(f?.buildings?.TB_SPECIAL_1?.model?.at).toEqual({ x: 250, y: 340, z: 10 });
   const names = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM))).map((e) => e.name.split(String.fromCharCode(92)).join('/'));
   expect(names).toContain(`Factions/${FILE}/buildings/${FILE}_special_1/own/graves/UneartheGrave_u1r0.xdb`);
   expect(names).toContain(`Factions/${FILE}/buildings/${FILE}_special_1/own/graves/UneartheGrave_u1r0-geom.xdb`);
   // The pictures, the stage, the words.
-  expect(f?.pictures).toEqual({ buildings: { TB_SPECIAL_1: pitIcon }, tower: towerPic, capture: { sign: signPic, flag: signPic } });
+  expect(isCopyOf(f?.pictures?.buildings?.TB_SPECIAL_1, pitIcon)).toBe(true);
+  expect(isCopyOf(f?.pictures?.tower, towerPic)).toBe(true);
+  expect(isCopyOf(f?.pictures?.capture?.sign, signPic) && isCopyOf(f?.pictures?.capture?.flag, signPic)).toBe(true);
   expect(f?.race?.tooltip).toBe('The dead of the Bone Court');
-  expect(f?.exterior).toEqual({ stages: { town: necro }, gates: join(necro, '..', 'Necromancy-town_AI.xdb') });
+  const ext = f?.exterior as { stages?: { town?: string }; gates?: string } | undefined;
+  expect(isCopyOf(ext?.stages?.town, necro, true)).toBe(true);
+  expect(isCopyOf(ext?.gates, join(necro, '..', 'Necromancy-town_AI.xdb'), true)).toBe(true);
   expect(names).toContain(`Factions/${FILE}/town/own/necro/Necromancy-town_AI.xdb`);
-  expect(f?.siege).toEqual({ arena: 'TOWN_HEAVEN', gate: { models: [necro] } });
-  expect(f?.race?.tracks).toEqual({ town: ogg });
-  expect(f?.race?.sounds).toEqual({ guild: wav });
+  const siege = f?.siege as { arena?: string; gate?: { models?: string[] } } | undefined;
+  expect(siege?.arena).toBe('TOWN_HEAVEN');
+  expect(siege?.gate?.models?.length === 1 && isCopyOf(siege.gate.models[0], necro, true)).toBe(true);
+  expect(isCopyOf(f?.race?.tracks?.town, ogg)).toBe(true);
+  expect(isCopyOf(f?.race?.sounds?.guild, wav)).toBe(true);
   expect(names).toContain(`Factions/${FILE}/sounds/guild.(Sound).xdb`);
   expect(names.some((n) => n.startsWith('bin/Sounds/')), 'the click is a binary of the mod').toBe(true);
   expect(existsSync(join(GAME, 'Music', 'H5E', FILE, 'town.ogg')), 'the track is copied loose under the game').toBe(true);
@@ -449,10 +461,10 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(names).toContain(`Factions/${FILE}/towns/Charnel_Bonus.txt`);
   const tooltip = entries.find((e) => e.name.split(String.fromCharCode(92)).join('/') === 'UI/MPWait/PlayersList/Item/race_tooltip_e2ebone.txt')!;
   expect(tooltip.data.subarray(2).toString('utf16le')).toBe('The dead of the Bone Court');
-  // The folder of our own files is NOT removed here: the faction is read from
-  // it again at every build of the mod — the hero made in the next test
-  // rebuilds the whole mod — so it lives as long as the faction does, and goes
-  // in afterAll.
+  // And the originals go, NOW: everything after this rebuilds the whole mod
+  // — the class, the hero, twenty-one creatures, the faction again — and
+  // every one of those builds has to manage with the mod's copies alone.
+  rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-model'), { recursive: true, force: true });
   expect(exeNumbers()).toEqual({ towns: 12, specs: 257, clamp: 8 });
   expect(ed.errors).toEqual([]);
 });

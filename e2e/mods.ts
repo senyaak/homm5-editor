@@ -7,7 +7,8 @@
 // copied three times.
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
+import { intakeOwnFiles, modSourcesDir } from '../src/mods/own-files.ts';
 import { DATA, REPO_ROOT } from './launch.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
 import {
@@ -88,6 +89,21 @@ export function liveHome(sandbox: string): string {
  */
 export function modGameRoot(): string {
   return liveHome('e2e-mod-game');
+}
+
+/**
+ * Is `copy` the mod's copy of `original`: inside the store the install takes
+ * the author's files into (src/mods/own-files.ts), under the same name — and a
+ * model under its folder's name too, since that folder is what its paths in
+ * the mod are made of. The mod never names the place a file was picked from.
+ */
+export function isModCopyOf(game: string, copy: string | undefined, original: string, model = false): boolean {
+  if (!copy) return false;
+  const rel = relative(modSourcesDir(game), copy);
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) return false;
+  const parts = rel.split(sep);
+  const tail = model ? [basename(dirname(original)), basename(original)] : [basename(original)];
+  return parts.slice(-tail.length).join('/') === tail.join('/') && existsSync(copy);
 }
 
 /** Pictures and reference maps that travel with the checkout — assets/README.md. */
@@ -1427,6 +1443,8 @@ export function installCreatureHeadless(gameRoot: string): CreatureMod {
     stats: { ...blankStats(), attack: 12, shots: 32, range: -1, tier: 4, gold: 400 },
     visualSource: sources.visual, monsterSource: sources.monster,
   });
+  // As the window's install does: the author's files into the mod first.
+  intakeOwnFiles(mod, modSourcesDir(gameRoot));
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   return mod;
@@ -1612,6 +1630,8 @@ export function installMapFixture(gameRoot: string): CreatureMod {
     updateArtifactSet(mod, UNDEAD_KING.effect, set);
   } else addArtifactSet(mod, set);
 
+  // As the window's install does: the author's files into the mod first.
+  intakeOwnFiles(mod, modSourcesDir(gameRoot));
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   writeModEffects(gameRoot, mod);
@@ -1680,6 +1700,8 @@ export function installSpellFixture(gameRoot: string): CreatureMod {
     if ((mod.artifacts ?? []).some((x) => x.id === id)) updateArtifact(mod, id, spec);
     else addArtifact(mod, spec);
   }
+  // As the window's install does: the author's files into the mod first.
+  intakeOwnFiles(mod, modSourcesDir(gameRoot));
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
   // What a spell of ours passes over lives in this file and nowhere else — the
@@ -1754,6 +1776,8 @@ export function installWitchFixture(gameRoot: string): void {
   if ((mod.classes ?? []).some((c) => c.id === WITCH.id)
     && (mod.skills ?? []).some((s) => s.id === TENT_MASTER.id)) return;
   ensureWitch(mod);
+  // As the window's install does: the author's files into the mod first.
+  intakeOwnFiles(mod, modSourcesDir(gameRoot));
   const report = buildCreatureMod(mod, dataReader(DATA));
   installCreatureMod(gameRoot, mod, packCreatureMod(report));
 }
