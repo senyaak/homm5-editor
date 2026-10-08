@@ -80,9 +80,16 @@ for (const ins of disassemble(dll.buf.subarray(dllText.raw, dllText.raw + dllTex
   if (at >= dataLow && at < dataHigh) stores.push({ at, value: parseInt(m[2]!, 16) });
 }
 
-// The controller's first word IS its vtable, and that is the only place where
-// one of our .data addresses is written into another.
-const vtableStore = stores.filter((s) => s.value >= dataLow && s.value < dataHigh);
+// The controller's first word IS its vtable: one of our .data addresses written
+// into another — AND a table whose slot 0 is then given a function of ours
+// (`ctrl_stack`). The second half is not decoration: the hire screen's
+// stand-in source (native/ui/hire-screen.c) is given a vbtable and a vtable
+// the same way. The vbtable holds offsets, never code; the vtable's slot 0 is
+// the engine's own, copied at run time, so no constant lands there. Counted
+// by the first half alone they read as three controllers.
+const slotZeroIsOurs = (table: number): boolean =>
+  stores.some((s) => s.at === table && s.value >= textLow && s.value < textHigh);
+const vtableStore = stores.filter((s) => s.value >= dataLow && s.value < dataHigh && slotZeroIsOurs(s.value));
 check('the controller is given its vtable, once', vtableStore.length === 1,
   vtableStore.map((s) => s.value.toString(16)).join());
 if (vtableStore.length !== 1) process.exit(1);
