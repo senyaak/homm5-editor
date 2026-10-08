@@ -581,14 +581,21 @@ hero's slot there is something else; clear, the screen takes the generic
 own (it clears `+0xC4` on the `CBaseScreen` beneath) and is passed as 1, as the
 dwelling visit passes it. The first launch (2026-09-27) had the 0 in the third
 slot: Init took the dwelling-type branch on the hero's base and the game died
-calling through a string. The second launch died a frame later: the map's
-lookup is the SCRIPT layer's (`NAdventureMapScript::IAdventureMap`), and what
-it answers with is the script layer's wrapper — a `…Manipulator` holding the
-object at `+8`, alive for the call and freed after it. Fine for `H5EArmySlots`,
-which reads through it at once; a screen built a frame later found the
-screen's own allocation where the hero had been. The wrapper is now opened and
-the whole `CAdvMapHero` taken, the class names read from RTTI and logged, and
-anything that is not a hero refused. The purchase then runs exactly as on the town screen
+calling through a string. The second launch died a frame later, and the
+reading behind it was wrong from the start: the request's OBJECT is not the
+hero but the PLAYER. The visit's first argument is a
+`CHeroVisitDwellingDialogLogEntry` (`0x7673BC` casts it so) carrying the hero
+at `+0x14` — whose `vt+0x48` is the army — and the dwelling at `+0x18`; the
+object is the visit's second argument, which its caller (`0x6B14A2…0x6B1568`)
+takes, outside a networked or hotseat game, off the adventure screen's `+0x5F4`
+object at `+0x3C`. The screen fills its "resource-bar" by calling the object's
+`vt+0xD8` and then `vt+0xF0` (`0x840D7F…0x840DA2`): real methods on a
+`CPlayer`, thunks to `xor eax,eax; ret` on a `CHero`, and the screen called on
+through what those answered. (A guess between the two launches had the map's
+lookup answer with a script-layer wrapper freed after the call; the third
+launch, 2026-10-08, logged the lookup's answer as the whole `NWorld::CHero`.)
+Now the player goes in as the object, both classes are read from RTTI and
+logged, and anything else is refused. The purchase then runs exactly as on the town screen
 (the gestures, the three questions, the `bought=` event, `H5EHirePay`); the
 script gives to the hero (`AddHeroCreatures`) rather than to a town — the
 hero's name is what `tag=` is for here.

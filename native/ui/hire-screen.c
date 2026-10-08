@@ -82,8 +82,21 @@ static const BYTE DWELLING_SOUND_BUILDER_HEAD[8] = { 0x6A, 0x0C, 0xE8, 0xB9, 0xB
  *           than copied;
  *   p1      that object's `+0x1C`;
  *   source  the dwelling's hire interface — ours;
- *   object  the visiting HERO (the visit's second argument), army his `vt+0x48`;
+ *   object  the PLAYER — the visit's second argument, which its caller
+ *           (0x6B14A2…0x6B1568) takes, in a game that is neither networked
+ *           nor hotseat, straight off the same `+0x5F4` object at `+0x3C`;
+ *   army    the HERO's, his `vt+0x48`: the visit's first argument is a
+ *           `CHeroVisitDwellingDialogLogEntry` (0x7673BC casts it so) holding
+ *           the hero at `+0x14` and the dwelling at `+0x18`;
  *   sound   the dwelling's builder, the pointer 0, the bools 1, 1, 1.
+ *
+ * THE OBJECT IS NOT THE HERO. The first readings had it so, and the screen
+ * calls the object's `vt+0xD8` and then `vt+0xF0` on what that answers to
+ * fill its "resource-bar" (0x840D7F…0x840DA2) — a player's resources. On a
+ * `CHero` those slots are thunks to `xor eax,eax; ret`, and the screen went on
+ * to call through what they answered: the second launch (2026-09-27) died at
+ * 0xC24750 with the "resource-bar" string on its stack. On `CPlayer` both are
+ * real methods (0xC04BB0, 0xC05720).
  *
  * The SECOND bool is passed as 0 here, as the town screen's second opener
  * (0x787732, `push 0; push 0; push [esp+18h]`) passes it. The request's
@@ -106,6 +119,8 @@ static const BYTE DWELLING_SOUND_BUILDER_HEAD[8] = { 0x6A, 0x0C, 0xE8, 0xB9, 0xB
 static const BYTE ADVENTURE_MANAGER_HEAD[10] = { 0x8B, 0x89, 0xF4, 0x05, 0x00, 0x00, 0x8B, 0x01, 0xFF, 0x20 };
 #define ADVENTURE_SCREEN_UI 0x5F4u
 #define ADVENTURE_UI_STACK 0x1Cu
+/** The player the adventure screen is played by — the visit's object (0x6B14AC, 0x6B1565). */
+#define ADVENTURE_UI_PLAYER 0x3Cu
 /** `NWorld::CObjectBase`'s type descriptor — the source type every cast of the engine's names (0x10A79F8). */
 #define OBJECT_BASE_TYPE_RVA 0xca79f8u
 /**
@@ -960,15 +975,6 @@ static int open_hire_screen(const int *creature, const int *count, const int *pe
   return 1;
 }
 
-/**
- * The screen on the ADVENTURE MAP, for a named hero — asked for as the
- * dwelling visit asks (see ADVENTURE_MANAGER_RVA): the request out of the
- * adventure screen's fields, the hero as the object, his army beside the
- * offers, a list of ours where the dwelling's would stand, the source's
- * object base the hero's own. Handed to the interface stack, as the visit
- * hands it. Each step named, so one launch says which is not what it was read
- * to be.
- */
 /** Does a decorated class name carry this word? */
 static int name_has(const char *name, const char *word) {
   for (int i = 0; name[i]; i++) {
@@ -980,47 +986,32 @@ static int name_has(const char *name, const char *word) {
 }
 
 /**
- * The HERO HIMSELF out of what the map's lookup answers with.
- *
- * `IAdventureMap::FindObjectByName` is the SCRIPT layer's lookup (the map is a
- * `NAdventureMapScript::IAdventureMap`, served by `CWorldScriptSystem`, which
- * forwards to the world's), and what comes back is the script layer's WRAPPER —
- * a `…Manipulator` of `NAdventureMapScript`, holding the object at
- * `MANIPULATOR_OBJECT` (its first slot is `mov ecx,[ecx+8]` and a call on
- * that) — alive for the call and freed after it. Used within the call it is a
- * hero: `H5EArmySlots` reads his army through it. Handed to a screen that is
- * built a frame LATER it is freed memory: 2026-09-27 the screen's own
- * allocation landed on it, the "object" read as screen+0x290, and its slot
- * +0xF0 was a string constructor (the game died allocating 0x13cda700 bytes).
- * The screen wants what the dwelling visit passes — the whole `CAdvMapHero` —
- * so the wrapper is opened and the whole object taken (RTTI's locator says how
- * far in any base pointer sits). Every reading is named in the log, and a
- * whole object that is not a hero of the adventure map is refused rather than
- * shown.
+ * The hero the map's lookup names — or nothing, when the name is of something
+ * else. `FindObjectByName` answers for any object on the map (a town, a mine),
+ * and the rest of the path asks a hero's questions: so the whole object's
+ * RTTI class is read, logged, and has to be `NWorld::CHero` (what the launch
+ * of 2026-10-08 measured the lookup to answer with for a hero).
  */
-#define MANIPULATOR_OBJECT 8u
 static void *hero_object_of(void *found) {
-  const char *name = class_name_of(found);
-  log_text("H5EHireScreen: the lookup answered with a ", name ? name : "(nameless object)");
-  void *object = found;
-  if (name && name_has(name, "Manipulator")) {
-    if (!readable((BYTE *)found + MANIPULATOR_OBJECT, 4)) return NULL;
-    object = *(void **)((BYTE *)found + MANIPULATOR_OBJECT);
-    if (!readable(object, 4)) { log_line("H5EHireScreen: the wrapper holds nothing"); return NULL; }
-    const char *held = class_name_of(object);
-    log_text("H5EHireScreen:   which holds a ", held ? held : "(nameless object)");
-  }
-  void *whole = whole_object_of(object);
+  void *whole = whole_object_of(found);
   const char *kind = class_name_of(whole);
-  log_text("H5EHireScreen:   the whole object is a ", kind ? kind : "(nameless object)");
-  if (!kind || !name_has(kind, "CAdvMapHero@")) {
-    log_line("H5EHireScreen: that is not a hero of the adventure map — refused");
+  log_text("H5EHireScreen: the name is a ", kind ? kind : "(nameless object)");
+  if (!kind || !name_has(kind, "?AVCHero@NWorld@@")) {
+    log_line("H5EHireScreen: that is not a hero — refused");
     return NULL;
   }
-  if (!pointer_alive(whole)) { log_line("H5EHireScreen: the hero does not read as alive"); return NULL; }
-  return whole;
+  return pointer_alive(whole) ? whole : NULL;
 }
 
+/**
+ * The screen on the ADVENTURE MAP, for a named hero — asked for as the
+ * dwelling visit asks (see ADVENTURE_MANAGER_RVA): the request out of the
+ * adventure screen's fields, the PLAYER the screen is played by as the object,
+ * the hero's army beside the offers, a list of ours where the dwelling's would
+ * stand, the source's object base the hero's own. Handed to the interface
+ * stack, as the visit hands it. Each step named, so one launch says which is
+ * not what it was read to be.
+ */
 static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creature, const int *count,
                                    const int *percent, int offers) {
   BYTE *screen = screen_up_of(ADVENTURE_SCREEN_VTABLE_RVA);
@@ -1044,17 +1035,24 @@ static int open_hire_screen_on_map(void *ctx, void *heroName, const int *creatur
   if (!base) { log_line("H5EHireScreen: the hero's object base is out of reach"); return 0; }
   if (!readable(screen + ADVENTURE_SCREEN_UI, 4)) { log_line("H5EHireScreen: the adventure screen is not shaped as measured"); return 0; }
   BYTE *ui = *(BYTE **)(screen + ADVENTURE_SCREEN_UI);
-  if (!readable(ui, ADVENTURE_UI_STACK + 4)) { log_line("H5EHireScreen: the adventure screen's UI object is out of reach"); return 0; }
+  if (!readable(ui, ADVENTURE_UI_PLAYER + 4)) { log_line("H5EHireScreen: the adventure screen's UI object is out of reach"); return 0; }
   void *p0 = g_adventureManager(screen, NULL);
   void *p1 = *(void **)(ui + ADVENTURE_UI_STACK);
   if (!p0 || !p1) { log_line("H5EHireScreen: the adventure screen answers with nothing to build the request on"); return 0; }
+  void *player = *(void **)(ui + ADVENTURE_UI_PLAYER);
+  const char *playerKind = class_name_of(whole_object_of(player));
+  log_text("H5EHireScreen: the screen's player is a ", playerKind ? playerKind : "(nameless object)");
+  if (!playerKind || !name_has(playerKind, "?AVCPlayer@NWorld@@") || !pointer_alive(player)) {
+    log_line("H5EHireScreen: the adventure screen has no player where it was measured — refused");
+    return 0;
+  }
   if (!source_build_on(base)) { log_line("H5EHireScreen: the hero's object base does not read"); return 0; }
   int shown = source_fill(creature, count, percent, offers);
   if (!shown) { log_line("H5EHireScreen: the list is empty, nothing to show"); return 0; }
 
   void *sound = g_dwellingSoundBuilder();
   int number = 0;
-  void *request = g_createHireScreen(p0, p1, SOURCE_OBJECT, hero, army, &number, sound, NULL, 1, 0, 1);
+  void *request = g_createHireScreen(p0, p1, SOURCE_OBJECT, player, army, &number, sound, NULL, 1, 0, 1);
   if (!request) { log_line("H5EHireScreen: the request would not be built"); return 0; }
   *(int *)((BYTE *)request + 8) += 1;
   g_pushScreenRequest(request);
