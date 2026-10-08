@@ -181,8 +181,11 @@ pre-release.
   PLAYER, and the screen's resource bar asked him for a player's resources;
   then the screen asked its seller a map object's question of the hero's
   record. On the map the seller is now named too — `"object=<name>"`, the
-  object the hero walked into, required with `"hero="` — all fixed, not yet
-  seen again.
+  object the hero walked into, required with `"hero="`. A test camp on the
+  probe map then opened the screen and sold (2026-10-08), and died on the
+  second visit: the screen's reference counting landed on the camp's
+  IAdvMapObject instead of its CObjectBase. The two bases are kept apart now,
+  on the town screen too; not yet seen again.
 - The game's own refugee camp never offered a creature of a mod: its pool is
   thirty-eight names written into `MapObjects/Special/RefugeeCamp.xdb`, and
   the weekly roll draws from that list. A mod with creatures of tiers three

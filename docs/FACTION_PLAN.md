@@ -606,7 +606,18 @@ virtual base (RTTI vdisp 8), not `CObjectBase` (vdisp 4), and calls its
 now NAMED: `"object=<name>"`, required with `"hero="`, the object on the map
 that sells (the camp the hero walked into, as a dwelling is the seller of its
 own screen), cast to `IAdvMapObject` by the engine's `__RTDynamicCast` against
-a descriptor whose name is checked first. The purchase then runs exactly as on the town screen
+a descriptor whose name is checked first. The fifth launch found no seller —
+the map's `vt+0x14` finds heroes only; `vt+0x1C` is `SetObjectEnabled`'s object
+lookup and is used now. The SIXTH opened the screen over the camp and bought
+(five footmen, paid, the stock written down); the second visit died in the
+camp's own method (`0xD40840`). The source's vbtable gave both virtual bases
+as one subobject: entry [1] is where the engine COUNTS (a `CObjectBase`'s +4
+liveness, +8 reference count — the request's constructor, the screen and every
+holder count there, and Init casts from it as a CObjectBase), entry [2] is
+what the window builder asks. Both led to the camp's `IAdvMapObject`, so the
+counting moved a pointer of the camp's. Now [1] is the seller's `CObjectBase`,
+[2] its `IAdvMapObject`, each by the engine's cast; the town path gets the same
+split, and logs how far apart the two sit. The purchase then runs exactly as on the town screen
 (the gestures, the three questions, the `bought=` event, `H5EHirePay`); the
 script gives to the hero (`AddHeroCreatures`) rather than to a town — the
 hero's name is what `tag=` is for here.
