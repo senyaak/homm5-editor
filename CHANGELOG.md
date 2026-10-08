@@ -14,6 +14,12 @@ pre-release.
 
 ## Unreleased
 
+- Installing anything into your mod is several seconds faster after the
+  first time. Every install rebuilds and repacks the whole mod, and packing
+  compressed every file again even though one edit changes only a few of
+  them — a mod of 71 MB took eleven seconds to pack every time. The editor
+  now keeps what it compressed last time and reuses it for the files that
+  did not change: under a second, and the archive is byte for byte the same.
 - The Factions window warns when a race cannot start a game yet. A hero
   starts with one base creature of each of tiers 1–3 of his race, and with
   any of the three missing the game crashed before the first turn — with

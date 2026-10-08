@@ -30,7 +30,7 @@ import { SHIPPED_CREATURES, creatureRoot, readStats } from './creatures.ts';
 import { artifactLimit, creatureLimit } from './mod-model.ts';
 import { MOD_MANIFEST, MOD_STEM, REF_TABLE, TYPES } from './mod-files.ts';
 import { hrefOf } from './xml-edit.ts';
-import type { ZipEntry, ZipIndexEntry } from '../format/pak.ts';
+import type { DeflateCache, ZipEntry, ZipIndexEntry } from '../format/pak.ts';
 import type { ArtifactExeResult } from '../exe/artifact-limit.ts';
 import type { TableExeResult } from '../exe/table-limit.ts';
 import type { ExeResult } from '../exe/creature-limit.ts';
@@ -58,8 +58,14 @@ export function writeCreatureMod(dir: string, report: BuildReport): void {
  */
 export function packCreatureMod(report: BuildReport, when = new Date()): Buffer {
   const entries: ZipEntry[] = report.files.map((f) => ({ name: f.path.replace(/\\/g, '/'), data: f.data }));
-  return writeArchive(entries, { mtime: when });
+  return writeArchive(entries, { mtime: when, reuse: lastPacked });
 }
+
+/**
+ * The last mod packed, deflated — every install rebuilds the WHOLE mod, and
+ * one edit changes a few of its thousands of files (see `WriteOptions.reuse`).
+ */
+const lastPacked: DeflateCache = new Map();
 
 /** Where an installed mod went, and what the executable now says. */
 export interface Installed {

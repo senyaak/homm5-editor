@@ -37,7 +37,8 @@ import { findEditorRoot, listPlaceable } from '../src/map/objects.ts';
 import type { CreatureMod } from '../src/mods/mod-model.ts';
 import type { DataReader, ModFile } from '../src/mods/mod-files.ts';
 import { blankStats, creatureRoot, readStats, SHIPPED_CREATURES } from '../src/mods/creatures.ts';
-import { readEntries } from '../src/format/pak.ts';
+import { readEntries, writeArchive } from '../src/format/pak.ts';
+import type { DeflateCache } from '../src/format/pak.ts';
 import { dataDir } from './game-dir.ts';
 
 let failures = 0;
@@ -451,6 +452,26 @@ const stamped = (() => {
   return year;
 })();
 check('members carry a real date, not the ZIP epoch', stamped >= 2020, `${stamped}`);
+
+// Packing reuses what the last pack deflated — the same bytes, sooner.
+{
+  const when = new Date(2026, 9, 8);
+  const zipped = built.files.map((f) => ({ name: f.path, data: f.data }));
+  const fresh = writeArchive(zipped, { mtime: when });
+  const cache: DeflateCache = new Map();
+  writeArchive(zipped, { mtime: when, reuse: cache });
+  const filled = cache.size;
+  check('a pack with reuse writes the same bytes as one without, twice over',
+    writeArchive(zipped, { mtime: when, reuse: cache }).equals(fresh) && filled > 0 && cache.size === filled);
+  // One member changed, and one gone: the changed one is deflated afresh,
+  // the gone one leaves the cache with it.
+  const [first, , ...rest] = zipped;
+  const edited = [{ ...first!, data: Buffer.concat([first!.data, Buffer.from(' ')]) }, ...rest];
+  const reused = writeArchive(edited, { mtime: when, reuse: cache });
+  check('a changed member is not served from the cache', reused.equals(writeArchive(edited, { mtime: when })));
+  check('and the cache keeps this archive only', cache.size <= edited.length && cache.size < filled + 1,
+    `${cache.size} of ${edited.length}`);
+}
 
 const reopened = readCreatureModBuffer(archive);
 check('the registry reads back out of the archive', reopened?.creatures.length === 1

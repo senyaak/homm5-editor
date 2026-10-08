@@ -44,7 +44,19 @@ export interface WriteOptions {
    * Pin it only when byte-identical output matters more than that.
    */
   mtime?: Date;
+  /**
+   * What an earlier write deflated, reused for members whose bytes have not
+   * changed — and refilled with this write's, so it always holds the last
+   * archive and nothing older. Level-9 deflate is nearly all of the cost of
+   * packing a mod (71 MB took 11 s), and a rebuild after one edit changes a
+   * handful of its thousands of members. The output is the same bytes either
+   * way: a hit is confirmed by comparing the data, not trusted on its CRC.
+   */
+  reuse?: DeflateCache;
 }
+
+/** Members' deflated payloads by `crc:size` — see `WriteOptions.reuse`. */
+export type DeflateCache = Map<string, { data: Buffer; method: number; payload: Buffer }>;
 
 /** Result of `pack()`: how many entries were written and the archive size in bytes. */
 export interface PackResult {
@@ -291,6 +303,8 @@ export function writeArchive(entries: readonly ZipEntry[], opt: WriteOptions = {
   const locals: Buffer[] = [];   // local-header + data chunks, in file order
   const centrals: Buffer[] = []; // central-directory records
   let offset = 0;
+  const reuse = opt.reuse;
+  const kept = new Set<string>();
 
   for (const e of entries) {
     const nameBuf = Buffer.from(e.name, 'utf8');
@@ -300,8 +314,16 @@ export function writeArchive(entries: readonly ZipEntry[], opt: WriteOptions = {
     // Decide compression: STORE if forced, empty, or deflate doesn't pay off.
     let method = METHOD_STORE, payload = e.data;
     if (!forceStore(e.name) && uSize > 0) {
-      const def = deflateRawSync(e.data, { level: 9 });
-      if (def.length < uSize) { method = METHOD_DEFLATE; payload = def; }
+      const key = `${crc}:${uSize}`;
+      const hit = reuse?.get(key);
+      if (hit && hit.data.equals(e.data)) {
+        ({ method, payload } = hit);
+      } else {
+        const def = deflateRawSync(e.data, { level: 9 });
+        if (def.length < uSize) { method = METHOD_DEFLATE; payload = def; }
+        reuse?.set(key, { data: e.data, method, payload });
+      }
+      kept.add(key);
     }
     const cSize = payload.length;
 
@@ -337,6 +359,9 @@ export function writeArchive(entries: readonly ZipEntry[], opt: WriteOptions = {
 
     offset += local.length + nameBuf.length + payload.length;
   }
+  // Only this archive's members stay: a cache that kept every version of a
+  // mod ever packed would hold the editor's memory hostage to its history.
+  if (reuse) for (const key of reuse.keys()) if (!kept.has(key)) reuse.delete(key);
 
   const centralBlock = Buffer.concat(centrals);
   const eocd = Buffer.alloc(22);
