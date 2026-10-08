@@ -21,6 +21,19 @@ const SCENE = 'DialogScenes/C1/M1/D1';
 const GAME = process.env.HOMM5_ROOT || join(REPO_ROOT, '..');
 const CAMPAIGNS = join(GAME, 'UserMODs', 'All_campaigns.data.h5u');
 
+/**
+ * The longest the main process may go without answering — ONE number for both
+ * tests, so the sabotage fails the very bound the real run passes.
+ *
+ * It was two: under 4000ms here, over 5000ms with the build inline, set when a
+ * build took nine seconds. The build has since got faster (2.7–5.3s), the
+ * inline stall shrank with it to 1.9–3.3s, and an inline run passed the first
+ * test's bound — the metric had stopped telling the two apart without anything
+ * failing. Measured 2026-10-09, four runs each: 258–303ms with the builder,
+ * 1920–3329ms without. 1000 sits between with room on both sides.
+ */
+const STALL_BOUND = 1000;
+
 /** How the main process behaved while one scene came up. */
 interface Watch {
   /** Milliseconds the whole open took, as the window saw it. */
@@ -79,12 +92,11 @@ test('the app keeps answering while a scene is built', { tag: '@game' }, async (
     expect(w.answers).toBeGreaterThan(w.total / 400);
     // The one stall left is the PAYLOAD, not the build: ~21 MB comes back from
     // the child, and main deserializes it and serializes it again for the
-    // window, both on its own thread — about two seconds for C1M1's opening.
-    // The bound is here so that stall cannot quietly grow back into a build's
-    // worth of silence; shrinking it means moving the geometry onto typed
-    // arrays (or handing the window a port straight to the child), not
-    // loosening this number.
-    expect(w.worstWait).toBeLessThan(4000);
+    // window, both on its own thread — about two seconds for C1M1's opening
+    // in 2026-09, about 0.3 now. The bound is here so that stall cannot
+    // quietly grow back into a build's worth of silence; it is STALL_BOUND, the
+    // one the inline build has to break, and it is not to be loosened past it.
+    expect(w.worstWait).toBeLessThan(STALL_BOUND);
     expect(ed.errors).toEqual([]);
   } finally {
     await ed.app.close();
@@ -101,8 +113,7 @@ test('…and the same measurement fails when the build is put back in the main p
     console.log(`[thread] inline: built in ${w.total | 0}ms · ${w.answers} answers · worst wait ${w.worstWait | 0}ms`);
     // The build blocks the process it runs in, so ONE ping spans the whole of
     // it. If this ever stops being true the test above is measuring nothing.
-    // Measured: 9473ms of silence, and 8 answers where the child gives 47.
-    expect(w.worstWait).toBeGreaterThan(5000);
+    expect(w.worstWait).toBeGreaterThan(STALL_BOUND);
     expect(ed.errors).toEqual([]);
   } finally {
     await ed.app.close();
