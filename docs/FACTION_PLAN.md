@@ -67,7 +67,8 @@ with a hero or a creature of it, a creature with an upgrade, a base, a
 tier or a raise pair naming it. e2e 018 makes the whole race through the
 windows — a class of ours and a hero of it, 7 tiers × 3 linked creatures,
 the dwellings hiring them — reads it back out of the archive and the pool,
-and takes it apart in the order the refusals ask for.
+puts a town of it on a new map from the palette (saved, reopened, its model
+resolving), and takes it apart in the order the refusals ask for.
 
 ## Principles, already paid for
 

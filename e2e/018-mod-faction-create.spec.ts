@@ -24,9 +24,11 @@ import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DATA, REPO_ROOT, closeEditor, launchEditor } from './launch.ts';
+import { DATA, REPO_ROOT, closeEditor, hudSays, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { modGameRoot, readInstalledMod } from './mods.ts';
+import { LIVE, clearMap, modGameRoot, readInstalledMod } from './mods.ts';
+import { bar } from './bar.ts';
+import { pickObject, placeAtTile, sharedKey } from './objects.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { MOD_STEM } from '../src/mods/mod-files.ts';
@@ -141,6 +143,8 @@ test.beforeAll(async () => { ed = await launchEditor({ HOMM5_ROOT: GAME }); });
 test.afterAll(async () => {
   await closeEditor(ed);
   rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-model'), { recursive: true, force: true });
+  // The map that placed the town names a faction that is gone by now; live, it is left to look at.
+  if (!LIVE) clearMap(GAME, DATA, MAP_NAME);
 });
 
 test('the window opens on what is installed, and a blank form says what it needs', { tag: '@game' }, async () => {
@@ -686,6 +690,67 @@ test("the faction's dwellings hire the row", { tag: '@game' }, async () => {
     expect(town, '...its upgrade').toContain(`<Creature>${t.up.id}</Creature>`);
     expect(town, '...and the second upgrade beside it').toContain(`<Creature2>${t.alt.id}</Creature2>`);
   }
+});
+
+/** The map this spec puts a town of the faction on. */
+const MAP_NAME = 'E2e Bone Map';
+
+// A TOWN OF THE FACTION ON A MAP, the way any town is put there: the palette
+// lists it (the faction writes its link file beside the shipped towns'), a
+// click places it, the map is saved — and opened again, which is where an
+// object whose model does not resolve is named on the status line.
+test('a town of the faction is placed from the palette and the map keeps it', { tag: '@game' }, async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  await press(page, page.locator('#fac-close'));
+  clearMap(GAME, DATA, MAP_NAME);
+  await bar(page, '#newmapbtn');
+  await page.locator('#nm-name').fill(MAP_NAME);
+  await page.locator('#nm-size').selectOption('72');
+  await page.locator('#nm-ok').click();
+  await expect(page.locator('#newmap')).toBeHidden({ timeout: 60_000 });
+  await expect(page.locator('#title')).toContainText(MAP_NAME, { timeout: 120_000 });
+
+  // The palette's entry for it: a town, named by its link file.
+  const entry = await page.evaluate(async (file) => {
+    const { objects } = await window.editor.listObjects();
+    return objects.find((o) => o.shared.includes(`/Factions/${file}/`)) ?? null;
+  }, FILE);
+  expect(entry, 'the palette lists the faction\'s town').toBeTruthy();
+  expect(entry!.type).toBe('AdvMapTown');
+  expect(entry!.shared).toBe(`/Factions/${FILE}/${FILE}.(AdvMapTownShared).xdb#xpointer(/AdvMapTownShared)`);
+  expect(entry!.hidden).toBe(false);
+
+  let added: { id: string; type: string; shared: string }[] = [];
+  for (let attempt = 1; attempt <= 3 && added.length !== 1; attempt++) {
+    await pickObject(page, entry!.shared);
+    const before = new Set((await page.evaluate(() => window.view.objects())).map((o) => o.id));
+    await placeAtTile(page, 30, 30);
+    added = (await page.evaluate(() => window.view.objects())).filter((o) => !before.has(o.id));
+  }
+  expect(added, 'one click put down one town').toHaveLength(1);
+  expect(added[0]!.type).toBe('AdvMapTown');
+  expect(ed.errors).toEqual([]);
+
+  await bar(page, '#save');
+  await hudSays(page, /saved/i, 120_000);
+  const mapPath = join(DATA, 'Maps', 'SingleMissions', MAP_NAME, 'map.xdb');
+  const xml = readFileSync(mapPath, 'latin1');
+  const town = xml.slice(xml.indexOf('<AdvMapTown'), xml.indexOf('</AdvMapTown>'));
+  expect(town, 'the map holds the town').toContain(`<Shared href="${entry!.shared}"/>`);
+
+  // Opened again: the town is there and has its model.
+  await page.evaluate((p) => window.view.open(p), mapPath);
+  await expect(page.locator('#hud')).toContainText('placed 1');
+  await expect(page.locator('#hud'), 'its model resolves').not.toContainText('no model for');
+  // By what it points at: an object read back from a file is listed without the fragment.
+  expect((await page.evaluate(() => window.view.objects().map((o) => o.shared))).map(sharedKey)).toEqual([sharedKey(entry!.shared)]);
+  // The mod windows are the launcher's: closed, the map gives them back.
+  await bar(page, '#closemapbtn');
+  await expect(page.locator('#empty')).toBeVisible();
+  await press(page, page.locator('#facbtn'));
+  await expect(page.locator('#facmod')).toBeVisible();
+  expect(ed.errors).toEqual([]);
 });
 
 // Removing what the mod still names is refused, and the window says who —
