@@ -38,7 +38,8 @@ pre-release.
   only a hand-written spec could set them, so a faction's tiers could name
   a base and its upgrade that did not know about each other. A preset never
   brings its links, so a copy of the Archer does not upgrade into the
-  game's Marksman. A creature that is its own upgrade, or that upgrades
+  game's Marksman. In the Factions window, picking a tier's base creature
+  now fills in its upgrade and second upgrade from those links. A creature that is its own upgrade, or that upgrades
   back into its own base, is refused. Removing a creature now also stops
   while the mod names it: an upgrade or base of it, a creature raised as it,
   a faction tier that hires it, the towers it mans. The window says which,
