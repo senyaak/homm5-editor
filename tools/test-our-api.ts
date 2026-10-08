@@ -125,8 +125,9 @@ check('a correct call of each of ours is quiet', falseAlarms.length === 0, false
 const PAGE = join(ROOT, 'docs', 'api', 'functions.md');
 check('docs/api/functions.md is there', existsSync(PAGE));
 if (existsSync(PAGE)) {
+  // Line endings aside: git hands this checkout CRLF where build-api wrote LF.
   check('...and is what build-api makes of the write-ups (run npm run build-api if not)',
-    readFileSync(PAGE, 'utf8') === oursPage(OURS));
+    readFileSync(PAGE, 'utf8').replace(/\r\n/g, '\n') === oursPage(OURS));
 }
 check('the api folder\'s index links it', /\(functions\.md\)/.test(readFileSync(join(ROOT, 'docs', 'api', 'README.md'), 'utf8')));
 
