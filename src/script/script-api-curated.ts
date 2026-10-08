@@ -14,7 +14,10 @@
 //
 // To add one: find it in a mission, read what it does, and add an entry below.
 // `source: 'observed'` marks a call the manuals never documented (learned from a
-// script); `since` is the mission we first wrote it up from.
+// script); `since` is the mission we first wrote it up from. OUR functions — the
+// extension's and the mod's — live in script-api-ours.ts and are spread in below.
+
+import { OURS } from './script-api-ours.ts';
 
 /** One parameter of a call, as we document it. */
 export interface ApiParam {
@@ -44,6 +47,10 @@ export interface ApiDoc {
    *  from a script the campaigns ship; `extension` — OURS, and only there when
    *  the native extension is installed (src/artifact-scripts.ts). */
   source: 'manual' | 'observed' | 'extension';
+  /** For ours: which Lua may call it — the adventure map's or a battle's. The two
+   *  contexts share no functions (docs/EXE_LUA_REGISTRY.md), so a battle function
+   *  called from a map is nil there. Checked against the registrations. */
+  context?: 'map' | 'combat';
   /** The mission we first wrote this up from, for provenance. */
   since?: string;
   notes?: string;
@@ -52,107 +59,8 @@ export interface ApiDoc {
 /** The reference. Alphabetical within nothing in particular — grouped by category
  *  when rendered. Grows per mission. */
 export const CURATED: ApiDoc[] = [
-  // --- Ours, from the extension --------------------------------------------
-  //
-  // Not the game's. These exist because `bin/homm5-editor.dll` is loaded and
-  // adds them to the table the engine hands Lua — a map that runs without the
-  // extension will find them nil, which is why a script that calls one should
-  // check it is there first. See
-  // docs/engineInternals/LUA.md for how they are registered.
-  {
-    name: 'RestoreDarkEnergy', category: 'Ours', source: 'extension',
-    summary: "Fill a player's dark energy back up to its ceiling.",
-    params: [{ name: 'player', type: 'PLAYER_*', desc: 'Whose pool to fill — 1 through 8.' }],
-    example: 'RestoreDarkEnergy(PLAYER_1);',
-    notes: 'The engine has no setter for the pool: it keeps a CEILING and fills to it '
-      + 'weekly, so "restore" is asking the player to do that refill out of turn. Any '
-      + 'ceiling our artifacts add is included, because the refill is one of the '
-      + 'calculations the extension extends. A player number out of range is refused '
-      + "in the engine's own words.",
-  },
-  {
-    name: 'ShowSliderDialog', category: 'Ours', source: 'extension',
-    summary: 'Ask the player how many creatures to turn into another kind, and wait.',
-    params: [
-      { name: 'creature', type: 'CREATURE_*', desc: 'What the player is counting.' },
-      { name: 'becomes', type: 'CREATURE_*', desc: 'What they turn into.' },
-      { name: 'most', type: 'number', desc: 'The largest number the slider will reach.' },
-    ],
-    returns: 'The number the player chose, from 1 to `most`, or -1 if they closed it.',
-    example: 'local n = ShowSliderDialog(CREATURE_GRAND_ELF, CREATURE_SHARP_SHOOTER, 12);',
-    notes: 'Plain Lua, defined in the mod\'s copy of scripts/advmap-common.lua, over the '
-      + 'extension\'s H5EAskCount and H5EAskedCount. THE WAITING IS THE WRAPPER\'S: a '
-      + 'registered function\'s results are counted the moment it returns, so the one '
-      + 'that opens the window cannot answer with a number that does not exist yet. '
-      + 'Without the extension it answers -1 rather than hanging. The slider starts at '
-      + '`most` and never reaches nought — that is what Cancel is for. The window draws '
-      + 'the FIRST creature on both sides today: the engine asks its controller once '
-      + 'and uses the one answer for both icons, so showing what they become means '
-      + 'filling the second icon ourselves.',
-  },
-  {
-    name: 'H5EHeroSpecialization', category: 'Ours', source: 'extension',
-    summary: 'Which specialization this hero holds, as its number.',
-    params: [{ name: 'hero', type: 'name', desc: "The hero's script name." }],
-    returns: 'The value of his specialization; nothing when there is no such living hero.',
-    example: 'if H5EHeroSpecialization(hero) == 84 then ... end;',
-    notes: 'NOTHING, not zero, on every path it cannot serve — zero is HERO_SPEC_NONE, a '
-      + 'real answer, and a script that could not tell it from "he was not found" would '
-      + 'act on the wrong heroes exactly on the run where the lookup broke. The hero is '
-      + "reached the way GetHeroLevel reaches one, and the value is the hero's own field. "
-      + 'This is what lets a specialization of the mod GRANT something on the map rather '
-      + 'than have it written into documents at build time.',
-  },
-  {
-    name: 'H5EAskCount', category: 'Ours', source: 'extension',
-    summary: "Put up the game's own count slider. Answers nothing — see ShowSliderDialog.",
-    params: [
-      { name: 'creature', type: 'CREATURE_*', desc: 'What the player is counting.' },
-      { name: 'becomes', type: 'CREATURE_*', desc: 'What they turn into.' },
-      { name: 'most', type: 'number', desc: 'The largest number the slider will reach.' },
-    ],
-    example: 'H5EAskCount(CREATURE_GRAND_ELF, CREATURE_SHARP_SHOOTER, 12);',
-    notes: 'The window is the engine\'s own split slider (CSplitStack) driven by a '
-      + 'controller of ours, so it has the game\'s frame, slider and buttons, and it '
-      + 'goes on whichever screen the player is looking at. The picture is made from '
-      + 'the creature NUMBER, the way the engine makes it from a stack. A second window '
-      + 'while one is open is refused: there is one answer to collect. Prefer '
-      + 'ShowSliderDialog, which waits.',
-  },
-  {
-    name: 'H5EAskedCount', category: 'Ours', source: 'extension',
-    summary: 'What the count slider was answered with, if it has been.',
-    params: [],
-    returns: 'Nothing while the window is open; the chosen number once OK is pressed; '
-      + '-1 when it was closed without an answer.',
-    example: 'local n = H5EAskedCount(); if n ~= nil then ... end;',
-  },
-  {
-    name: 'EditorWornCount', category: 'Ours', source: 'extension',
-    summary: 'How many of these artifacts the hero is WEARING.',
-    params: [
-      { name: "hero", type: "name", desc: "The hero's script name." },
-      { name: "members", type: "table", desc: "Artifact ids — a set's `<Set>_MEMBERS` list." },
-    ],
-    returns: 'The count worn. A piece in the backpack does not count.',
-    example: 'EditorWornCount(hero, H3UndeadKing_MEMBERS)',
-    notes: "Plain Lua, defined in the mod's copy of scripts/advmap-common.lua rather "
-      + "than in the extension. It leans on HasArtefact's third argument, which the "
-      + 'manuals omit and which is what makes "worn" mean worn.',
-  },
-  {
-    name: 'EditorHeroWearing', category: 'Ours', source: 'extension',
-    summary: 'The first hero of a player wearing at least N of these artifacts.',
-    params: [
-      { name: 'player', type: 'PLAYER_*', desc: 'Whose heroes to look through.' },
-      { name: "members", type: "table", desc: "Artifact ids — a set's `<Set>_MEMBERS` list." },
-      { name: 'count', type: 'number', desc: 'How many have to be worn.' },
-    ],
-    returns: "The hero's name, or nil when none of them qualifies.",
-    example: 'local hero = EditorHeroWearing(player, H3UndeadKing_MEMBERS, 3);',
-    notes: "The condition half of a set's script: what the set does is up to the "
-      + 'script, whether that is one of ours or anything else the API offers.',
-  },
+  // --- Ours: the extension's and the mod's, in src/script/script-api-ours.ts ---
+  ...OURS,
 
   // --- Objectives ----------------------------------------------------------
   {

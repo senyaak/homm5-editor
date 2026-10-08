@@ -61,6 +61,7 @@
     "test-native-log": "node tools/test-native-log.ts",
     "test-training-plan": "node tools/test-training-plan.ts",
     "test-script-api": "node tools/test-script-api.ts",
+    "test-our-api": "node tools/test-our-api.ts",
     "test-fixes": "node tools/test-fixes.ts",
     "test-fix-map": "node tools/test-fix-map.ts",
     "test-creature-limit": "node tools/test-creature-limit.ts",

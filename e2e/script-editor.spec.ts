@@ -169,8 +169,56 @@ test('and warns on a constant the game never declared', { tag: '@data' }, async 
   await page.locator('#de-close').click();
 });
 
+/** A third scratch script: one of OUR functions, mistyped, then completed. */
+const OURS_FILE = 'e2e-editor-ours.lua';
+const OURS_TYPO = 'H5EHireScren("bought=Sold", CREATURE_PEASANT, 10, 100);\n';
+
+// Our functions are the extension's, not the game's, and until they were
+// written up (src/script/script-api-ours.ts) the editor knew none of them:
+// nothing completed, and a mistyped one passed in silence. Both halves through
+// the window — the "did you mean" on a typo, and the popup offering the name
+// with the summary beside it.
+test('and knows our functions — the lint names a typo, completion offers them', { tag: '@nodata' }, async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+
+  await page.evaluate((p) => window.view.open(p), join(MAP_DIR, 'map.xdb'));
+  await expect(page.locator('#title')).toContainText(NAME, { timeout: 120_000 });
+  await page.evaluate(([href, text]) => window.editor.writeFile({ href: href!, text: text! }), [OURS_FILE, OURS_TYPO]);
+
+  await bar(page, '#scriptbtn');
+  const row = page.locator(`#sp-list button[data-file="${OURS_FILE}"]`);
+  await expect(row).toBeVisible();
+  await row.click();
+  await expect(page.locator('#docedit')).toBeVisible();
+  const content = page.locator('#de-text .cm-content');
+  await expect(content).toContainText('H5EHireScren');
+
+  const lint = page.locator('#de-lint');
+  await expect(lint, 'the typo is flagged').toContainText('1 warning');
+  await page.locator('#docedit .cm-lint-marker-warning').first().hover();
+  await expect(page.locator('.cm-tooltip-lint'), 'naming the function it meant').toContainText("did you mean 'H5EHireScreen'");
+
+  // Completion: the start of a name of ours offers it, with what it does.
+  await content.click();
+  await page.keyboard.press('Control+End');
+  await page.keyboard.type('\nH5EArmySl');
+  const popup = page.locator('.cm-tooltip-autocomplete');
+  await expect(popup, 'the completion popup').toBeVisible({ timeout: 15_000 });
+  await expect(popup).toContainText('H5EArmySlots');
+  await expect(popup, 'with its parameters').toContainText('hero');
+  await popup.locator('li', { hasText: 'H5EArmySlots' }).first().click();
+  await expect(content).toContainText('H5EArmySlots(');
+  // The buffer was changed, so closing asks (renderer/core/dialog.ts) — and
+  // dropping the scratch edit is what this test means.
+  await page.locator('#de-close').click();
+  await expect(page.locator('#ask-text')).toContainText('unsaved changes');
+  await page.locator('#ask-yes').click();
+  await expect(page.locator('#docedit')).toBeHidden();
+});
+
 test.afterAll(() => {
-  for (const name of [FILE, LINT_FILE]) {
+  for (const name of [FILE, LINT_FILE, OURS_FILE]) {
     const f = join(MAP_DIR, name);
     if (existsSync(f)) rmSync(f);
   }

@@ -15,16 +15,20 @@
 // Outputs:
 //   - src/script-api.json  — the completion source (name, params, group, summary?)
 //   - docs/SCRIPT_API.md    — the readable reference
+//   - docs/api/functions.md — OUR functions alone (src/script/ours-page.ts)
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CURATED } from '../src/script/script-api-curated.ts';
 import type { ApiDoc } from '../src/script/script-api-curated.ts';
+import { OURS } from '../src/script/script-api-ours.ts';
+import { oursPage } from '../src/script/ours-page.ts';
 
 const ROOT = join(import.meta.dirname, '..');
 const EXTRACTED = join(ROOT, 'src', 'script', 'script-api-extracted.json');
 const OUT = join(ROOT, 'src', 'script', 'script-api.json');
 const DOC = join(ROOT, 'docs', 'SCRIPT_API.md');
+const OURS_DOC = join(ROOT, 'docs', 'api', 'functions.md');
 
 /**
  * The completion source shape — what script:context serves to the editor.
@@ -146,3 +150,12 @@ if (todo.length) {
 writeFileSync(DOC, L.join('\n'));
 console.log(`${OUT}: ${api.length} functions (${CURATED.length} curated, ${todo.length} extracted-only)`);
 console.log(`${DOC}: ${CURATED.length} written up across ${categories.length} categories`);
+
+// --- docs/api/functions.md: OURS alone, the page a modder opens -------------
+//
+// The same entries, without the game's three hundred around them, grouped the
+// way the extension's work is grouped, each saying which Lua can call it.
+// tools/test-our-api.ts checks the page is this function's output.
+writeFileSync(OURS_DOC, oursPage(OURS));
+console.log(`${OURS_DOC}: ${OURS.length} of ours`);
+

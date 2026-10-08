@@ -14,6 +14,17 @@ pre-release.
 
 ## Unreleased
 
+- The script editor knows the functions the editor's extension adds to the
+  game's Lua — all 34 of them, from `H5EHireScreen` to `H5ETentCharge`. Until
+  now it knew six: the rest neither completed nor were checked, so a mistyped
+  `H5EHireScren` passed in silence and ran as nil in game. Each now completes
+  with its arguments, what it answers and an example, and a typo of one gets
+  "did you mean". They have a page of their own, `docs/api/functions.md`,
+  which says for each whether a map script or a battle script may call it. A
+  test reads every function the extension registers out of its sources and
+  fails on one nobody wrote up, or on a write-up whose function is gone — the
+  reference had carried `H5EHeroSpecialization` for weeks after it was renamed
+  `H5EHeroHasSpecialization`.
 - Faster, by a lot — the frame and the map open. On the shipped A2C1M1 the
   frame's JavaScript went 18.7 → ~2.5 ms and the map is on screen in ~1.7 s
   where it took 11.5; a stress map of 2000 objects and 600 creatures draws

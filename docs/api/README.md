@@ -10,6 +10,12 @@ one subsystem per file. Where a page here has a rule that looks arbitrary, it
 links to the page there that explains it; if the two ever disagree, the one
 there is the record and this one is the summary that drifted.
 
+- [functions.md](functions.md) — EVERY function the extension and its mod add
+  to the game's Lua, map and battle, with arguments, answers and an example.
+  Generated from `src/script/script-api-ours.ts` by `npm run build-api`; the
+  same write-ups drive the script editor's completion and its "did you mean",
+  and `tools/test-our-api.ts` fails when the DLL registers a function nobody
+  wrote up.
 - [combat.md](combat.md) — inside a fight: triggers a battle script can hook,
   and the functions the extension registers into the battle's own Lua table.
 

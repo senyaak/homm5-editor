@@ -156,7 +156,7 @@
  {
   "name": "EditorHeroWearing",
   "params": "player, members, count",
-  "group": "Ours",
+  "group": "Ours · Artifact sets",
   "summary": "The first hero of a player wearing at least N of these artifacts.",
   "args": [
    {
@@ -179,9 +179,17 @@
   "example": "local hero = EditorHeroWearing(player, H3UndeadKing_MEMBERS, 3);"
  },
  {
+  "name": "EditorTest",
+  "params": "",
+  "group": "Ours · Plumbing",
+  "summary": "Write one line to the extension's log — proof that the map's Lua reaches the extension.",
+  "args": [],
+  "example": "EditorTest();"
+ },
+ {
   "name": "EditorWornCount",
   "params": "hero, members",
-  "group": "Ours",
+  "group": "Ours · Artifact sets",
   "summary": "How many of these artifacts the hero is WEARING.",
   "args": [
    {
@@ -578,9 +586,51 @@
   "group": "ADVMAP"
  },
  {
+  "name": "H5EAnnounceGain",
+  "params": "",
+  "group": "Ours · Plumbing",
+  "summary": "Ask for the next gain a hero receives to be announced on screen.",
+  "args": [],
+  "example": "H5EAnnounceGain(); TeachHeroSpell(hero, spell);"
+ },
+ {
+  "name": "H5EAnswer",
+  "params": "spell, verdict",
+  "group": "Ours · Heroes and spells",
+  "summary": "Say whether an adventure spell of the mod may be cast now.",
+  "args": [
+   {
+    "name": "spell",
+    "type": "SPELL_*",
+    "desc": "The spell's number."
+   },
+   {
+    "name": "verdict",
+    "type": "number",
+    "desc": "1 (or anything but 0) for yes, 0 for no."
+   }
+  ],
+  "example": "H5EAnswer(spell, now);"
+ },
+ {
+  "name": "H5EArmySlots",
+  "params": "hero",
+  "group": "Ours · Heroes and spells",
+  "summary": "How many slots of a hero's army are taken.",
+  "args": [
+   {
+    "name": "hero",
+    "type": "name",
+    "desc": "The hero's script name."
+   }
+  ],
+  "returns": "The number of taken slots, 0 to 7; nil when there is no such hero or army.",
+  "example": "if H5EArmySlots(hero) < 7 then AddHeroCreatures(hero, c, n); end;"
+ },
+ {
   "name": "H5EAskCount",
   "params": "creature, becomes, most",
-  "group": "Ours",
+  "group": "Ours · Windows",
   "summary": "Put up the game's own count slider. Answers nothing — see ShowSliderDialog.",
   "args": [
    {
@@ -604,17 +654,306 @@
  {
   "name": "H5EAskedCount",
   "params": "",
-  "group": "Ours",
+  "group": "Ours · Windows",
   "summary": "What the count slider was answered with, if it has been.",
   "args": [],
   "returns": "Nothing while the window is open; the chosen number once OK is pressed; -1 when it was closed without an answer.",
   "example": "local n = H5EAskedCount(); if n ~= nil then ... end;"
  },
  {
-  "name": "H5EHeroSpecialization",
+  "name": "H5ECanHoldSpell",
+  "params": "hero, spell",
+  "group": "Ours · Heroes and spells",
+  "summary": "The school half of H5ECanLearnSpell on its own: whether spells of that kind are for this hero at all.",
+  "args": [
+   {
+    "name": "hero",
+    "type": "name",
+    "desc": "The hero's script name."
+   },
+   {
+    "name": "spell",
+    "type": "SPELL_*",
+    "desc": "The spell."
+   }
+  ],
+  "returns": "1 when his kind may hold it; nothing otherwise.",
+  "example": "if H5ECanHoldSpell(hero, spell) == nil then -- refused for what he IS"
+ },
+ {
+  "name": "H5ECanLearnSpell",
+  "params": "hero, spell",
+  "group": "Ours · Heroes and spells",
+  "summary": "Whether a hero may learn a spell now — school, skill, mastery and level, as the game decides.",
+  "args": [
+   {
+    "name": "hero",
+    "type": "name",
+    "desc": "The hero's script name."
+   },
+   {
+    "name": "spell",
+    "type": "SPELL_*",
+    "desc": "The spell."
+   }
+  ],
+  "returns": "1 when he may; nothing when he may not, or when there is no such hero or spell.",
+  "example": "if H5ECanLearnSpell(hero, SPELL_MAGIC_ARROW) ~= nil then TeachHeroSpell(hero, SPELL_MAGIC_ARROW); end;"
+ },
+ {
+  "name": "H5ECasterKnown",
+  "params": "",
+  "group": "Ours · Heroes and spells",
+  "summary": "Whether the extension holds the hero whose adventure spell this is.",
+  "args": [],
+  "returns": "1 when it does; nothing when nobody is casting.",
+  "example": "if H5ECasterKnown() ~= nil then ... end;"
+ },
+ {
+  "name": "H5ECombatTest",
+  "params": "",
+  "group": "Ours · Battle",
+  "summary": "Write one line to the extension's log — proof that a battle's script reaches the extension.",
+  "args": [],
+  "example": "H5ECombatTest();"
+ },
+ {
+  "name": "H5ECreatureAt",
+  "params": "n, minTier = 1, maxTier = 7",
+  "group": "Ours · Creatures",
+  "summary": "The id of the Nth creature within the tiers asked, in the table's own order.",
+  "args": [
+   {
+    "name": "n",
+    "type": "number",
+    "desc": "Which one — the first is 1."
+   },
+   {
+    "name": "minTier",
+    "type": "number",
+    "desc": "The lowest tier counted."
+   },
+   {
+    "name": "maxTier",
+    "type": "number",
+    "desc": "The highest tier counted."
+   }
+  ],
+  "returns": "A CREATURE_* number; nothing past the last.",
+  "example": "local c = H5ECreatureAt(random(H5ECreatureCount(3, 6)) + 1, 3, 6);"
+ },
+ {
+  "name": "H5ECreatureCost",
+  "params": "creature, resource = 6",
+  "group": "Ours · Creatures",
+  "summary": "What one of a creature costs, in one resource.",
+  "args": [
+   {
+    "name": "creature",
+    "type": "CREATURE_*",
+    "desc": "The creature."
+   },
+   {
+    "name": "resource",
+    "type": "number",
+    "desc": "The game's resource number; gold is 6."
+   }
+  ],
+  "returns": "The price of one.",
+  "example": "local gold = H5ECreatureCost(CREATURE_ANGEL);"
+ },
+ {
+  "name": "H5ECreatureCount",
+  "params": "minTier = 1, maxTier = 7",
+  "group": "Ours · Creatures",
+  "summary": "How many creatures the game's table holds — the mod's own included — within the tiers asked.",
+  "args": [
+   {
+    "name": "minTier",
+    "type": "number",
+    "desc": "The lowest tier counted."
+   },
+   {
+    "name": "maxTier",
+    "type": "number",
+    "desc": "The highest tier counted."
+   }
+  ],
+  "returns": "The count; 0 when the filter leaves none.",
+  "example": "local n = H5ECreatureCount(3, 6);"
+ },
+ {
+  "name": "H5ECreatureGrowth",
+  "params": "creature",
+  "group": "Ours · Creatures",
+  "summary": "What a week of a creature is — the number its dwelling stocks.",
+  "args": [
+   {
+    "name": "creature",
+    "type": "CREATURE_*",
+    "desc": "The creature."
+   }
+  ],
+  "returns": "Its weekly growth.",
+  "example": "local week = H5ECreatureGrowth(CREATURE_ARCHER);"
+ },
+ {
+  "name": "H5ECreatureTier",
+  "params": "creature",
+  "group": "Ours · Creatures",
+  "summary": "A creature's tier.",
+  "args": [
+   {
+    "name": "creature",
+    "type": "CREATURE_*",
+    "desc": "The creature."
+   }
+  ],
+  "returns": "1 to 7; nothing for an id the table lacks.",
+  "example": "if H5ECreatureTier(c) >= 5 then ... end;"
+ },
+ {
+  "name": "H5ECreatureTown",
+  "params": "creature",
+  "group": "Ours · Creatures",
+  "summary": "The race a creature belongs to.",
+  "args": [
+   {
+    "name": "creature",
+    "type": "CREATURE_*",
+    "desc": "The creature."
+   }
+  ],
+  "returns": "A TOWN_* number.",
+  "example": "if H5ECreatureTown(c) == TOWN_NECROMANCY then ... end;"
+ },
+ {
+  "name": "H5EHeroHasSpecialization",
+  "params": "hero, spec",
+  "group": "Ours · Heroes and spells",
+  "summary": "Whether a hero holds this specialization.",
+  "args": [
+   {
+    "name": "hero",
+    "type": "name",
+    "desc": "The hero's script name."
+   },
+   {
+    "name": "spec",
+    "type": "number",
+    "desc": "The specialization value — the mod's own included."
+   }
+  ],
+  "returns": "1 when he holds it; nothing when he does not, or when there is no such living hero.",
+  "example": "if H5EHeroHasSpecialization(hero, 84) ~= nil then ... end;"
+ },
+ {
+  "name": "H5EHireCost",
+  "params": "creature, count, resource = GOLD",
+  "group": "Ours · Hiring",
+  "summary": "What that many cost on the open hire screen, in one resource.",
+  "args": [
+   {
+    "name": "creature",
+    "type": "CREATURE_*",
+    "desc": "A creature of the open list."
+   },
+   {
+    "name": "count",
+    "type": "number",
+    "desc": "How many."
+   },
+   {
+    "name": "resource",
+    "type": "WOOD…GOLD",
+    "desc": "Which resource."
+   }
+  ],
+  "returns": "The amount — the number the screen showed and checked; nothing for a creature the list does not hold.",
+  "example": "local gold = H5EHireCost(creature, count);"
+ },
+ {
+  "name": "H5EHireLeft",
+  "params": "creature, count",
+  "group": "Ours · Hiring",
+  "summary": "Tell the open hire screen how many of a creature are left.",
+  "args": [
+   {
+    "name": "creature",
+    "type": "CREATURE_*",
+    "desc": "A creature of the open list."
+   },
+   {
+    "name": "count",
+    "type": "number",
+    "desc": "What is left of it now."
+   }
+  ],
+  "example": "H5EHireLeft(creature, left);"
+ },
+ {
+  "name": "H5EHireOpen",
+  "params": "",
+  "group": "Ours · Hiring",
+  "summary": "Whether a hire screen of ours is the screen on screen.",
+  "args": [],
+  "returns": "1 while one is up, 0 otherwise.",
+  "example": "while H5EHireOpen() == 1 do sleep(1); end;"
+ },
+ {
+  "name": "H5EHirePay",
+  "params": "creature, count",
+  "group": "Ours · Hiring",
+  "summary": "Take what that many cost on the open hire screen from the buying player.",
+  "args": [
+   {
+    "name": "creature",
+    "type": "CREATURE_*",
+    "desc": "A creature of the open list."
+   },
+   {
+    "name": "count",
+    "type": "number",
+    "desc": "How many were bought."
+   }
+  ],
+  "returns": "1 when paid (or when the line is free), 0 when the purse is short.",
+  "example": "if H5EHirePay(creature, count) == 1 then AddHeroCreatures(hero, creature, count); end;"
+ },
+ {
+  "name": "H5EHireScreen",
+  "params": "options…, creature, count, price = 100",
+  "group": "Ours · Hiring",
+  "summary": "Open the game's own hire screen over a list of the script's, at the script's prices.",
+  "args": [
+   {
+    "name": "options…",
+    "type": "string",
+    "desc": "Any argument that is a string is an option, wherever it stands: \"bought=<function>\" (required), \"tag=<text>\", \"hero=<name>\", \"object=<name>\", \"notabs\" — see the notes."
+   },
+   {
+    "name": "creature",
+    "type": "CREATURE_*",
+    "desc": "A line of the list: the creature on offer. 0 skips the line."
+   },
+   {
+    "name": "count",
+    "type": "number",
+    "desc": "How many of it are on offer."
+   },
+   {
+    "name": "price",
+    "type": "number",
+    "desc": "Its price in percent of the creature's own cost, every resource alike: 100 ordinary, 50 half, 0 free."
+   }
+  ],
+  "example": "H5EHireScreen(\"bought=CampBought\", \"tag=\" .. town, CREATURE_PEASANT, 20, 100, CREATURE_ARCHER, 10, 50);"
+ },
+ {
+  "name": "H5EIsBarbarian",
   "params": "hero",
-  "group": "Ours",
-  "summary": "Which specialization this hero holds, as its number.",
+  "group": "Ours · Heroes and spells",
+  "summary": "Whether a hero is of the Horde.",
   "args": [
    {
     "name": "hero",
@@ -622,8 +961,89 @@
     "desc": "The hero's script name."
    }
   ],
-  "returns": "The value of his specialization; nothing when there is no such living hero.",
-  "example": "if H5EHeroSpecialization(hero) == 84 then ... end;"
+  "returns": "1 for a barbarian; nothing for anybody else.",
+  "example": "if H5EIsBarbarian(hero) ~= nil then ... end;"
+ },
+ {
+  "name": "H5EIsCastingHero",
+  "params": "hero",
+  "group": "Ours · Heroes and spells",
+  "summary": "Whether this hero is the one casting the adventure spell being decided now.",
+  "args": [
+   {
+    "name": "hero",
+    "type": "name",
+    "desc": "The hero's script name."
+   }
+  ],
+  "returns": "1 when he is; nil when he is not, and nil when it cannot be told — read that as \"not him\".",
+  "example": "if H5EIsCastingHero(hero) ~= nil then ... end;"
+ },
+ {
+  "name": "H5ELog",
+  "params": "value",
+  "group": "Ours · Plumbing",
+  "summary": "A number from a script, into the extension's log.",
+  "args": [
+   {
+    "name": "value",
+    "type": "number",
+    "desc": "What to write down."
+   }
+  ],
+  "example": "H5ELog(GetHeroLevel(hero));"
+ },
+ {
+  "name": "H5EMapIsPlaying",
+  "params": "",
+  "group": "Ours · Plumbing",
+  "summary": "Tell the extension the map is being played, not set up.",
+  "args": [],
+  "example": "H5EMapIsPlaying();"
+ },
+ {
+  "name": "H5EMessageBox",
+  "params": "text, header",
+  "group": "Ours · Windows",
+  "summary": "A message box on whatever screen is up — a town screen included.",
+  "args": [
+   {
+    "name": "text",
+    "type": "path | table",
+    "desc": "The text, as MessageBox takes it: a path to a text file, or a table of the path and its values."
+   },
+   {
+    "name": "header",
+    "type": "path | table",
+    "desc": "A header above the text, the same way."
+   }
+  ],
+  "example": "H5EMessageBox(\"/Text/MyMod/camp_closed.txt\");"
+ },
+ {
+  "name": "H5ENoSuchFunction",
+  "params": "",
+  "group": "Ours · Plumbing",
+  "summary": "The \"else\" of a line the extension says to the map — logs that the function it named is missing.",
+  "args": [],
+  "example": "if CampBought ~= nil then CampBought(c, n, t); else H5ENoSuchFunction(); end;"
+ },
+ {
+  "name": "H5ETentCharge",
+  "params": "",
+  "group": "Ours · Battle",
+  "summary": "Give the first aid tent one more use.",
+  "args": [],
+  "example": "H5ETentCharge();"
+ },
+ {
+  "name": "H5ETownButtons",
+  "params": "",
+  "group": "Ours · Plumbing",
+  "summary": "How many town buttons the extension's file lists — and the map introduces itself.",
+  "args": [],
+  "returns": "The number of buttons in bin/homm5-editor-buildings.txt.",
+  "example": "H5ETownButtons();"
  },
  {
   "name": "HasArtefact",
@@ -1047,7 +1467,7 @@
  {
   "name": "RestoreDarkEnergy",
   "params": "player",
-  "group": "Ours",
+  "group": "Ours · Heroes and spells",
   "summary": "Fill a player's dark energy back up to its ceiling.",
   "args": [
    {
@@ -1320,7 +1740,7 @@
  {
   "name": "ShowSliderDialog",
   "params": "creature, becomes, most",
-  "group": "Ours",
+  "group": "Ours · Windows",
   "summary": "Ask the player how many creatures to turn into another kind, and wait.",
   "args": [
    {
