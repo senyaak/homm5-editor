@@ -14,6 +14,12 @@ pre-release.
 
 ## Unreleased
 
+- A hero can be of your own faction. The Heroes window offered only the
+  game's eight towns, so a hero of a faction made in the Factions window
+  could not be made at all — and a race with nobody in its pool starts the
+  game with no hero and is out before the first turn. The faction is now in
+  the list, by its race's name, and the faction lists such a hero in its
+  random pool when it is installed.
 - The script editor knows the functions the editor's extension adds to the
   game's Lua — all 34 of them, from `H5EHireScreen` to `H5ETentCharge`. Until
   now it knew six: the rest neither completed nor were checked, so a mistyped

@@ -51,13 +51,19 @@ Still not the faction's own:
 - **The town screen's scene** — background, lightmap, cameras — stays the
   donor's; the faction replaces the buildings on it one by one. A whole
   scene of ours is item 2e.
-- **Creatures and heroes OF the race cannot be made in the editor yet.**
-  The model takes them — a hero whose `town` is the faction's type is
-  listed in the random hero pool by the faction's install
-  (`faction-files.ts`) — but the creature and hero windows offer only the
-  eight shipped races (the roster in `src/schema/registry.ts` and the
-  shipped `TownType` enum). The Test faction's creatures and its hero
-  TestBrem are written by the probe's scripts (`_tmp/town12-units.ts`).
+- **A creature's own race cannot be the faction yet.** The creature window
+  offers the eight shipped races (the roster in `src/schema/registry.ts`).
+  It is not what makes a creature the faction's — the Factions window puts
+  the mod's creatures in the town's tiers — but it is what the engine's
+  morale and alignment read; the Test faction's creatures got theirs from
+  the probe's scripts (`_tmp/town12-units.ts`).
+
+A HERO of the race is made in the editor since 2026-10-08: the Heroes window
+offers the mod's factions beside the eight towns, by their race's name. A
+hero's race is his `TownType`, not his class (the class decides what a
+level-up offers); the faction's install lists him in the random hero pool,
+which is where the race's starting hero is drawn from. e2e 018 makes one
+through the window and finds him in the pool.
 
 ## Principles, already paid for
 

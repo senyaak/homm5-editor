@@ -1,6 +1,7 @@
 // A faction, authored through the window: the donor's tree on the grid, a
 // building dropped, one renamed and given a button, a town without magic, a
-// named town, a script — saved, read back off disk, edited, removed.
+// named town, a script — saved, read back off disk, edited; a hero of the
+// race made in the Heroes window and found in the race's pool; removed.
 //
 // What the probe (_tmp/town12-probe.ts) wrote by hand for the Bone Court,
 // this makes through the palette; the archive, the extension's files and the
@@ -32,6 +33,9 @@ import { TOWN_SPEC_TABLE, TOWN_TYPE_TABLE, readTableLimit } from '../src/exe/tab
 import { RACES_FILE } from '../src/mods/race-order.ts';
 import { BUILDINGS_FILE } from '../src/mods/town-button.ts';
 import { pngDataUri } from '../src/format/png.ts';
+import { heroHref, heroPaths } from '../src/mods/heroes.ts';
+import { settled } from './trace.ts';
+import { HERO_GROUP } from '../src/mods/shared-groups.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
 
 let ed: Launched;
@@ -131,7 +135,10 @@ function exeNumbers(): { towns: number | null; specs: number | null; clamp: numb
 }
 
 test.beforeAll(async () => { ed = await launchEditor({ HOMM5_ROOT: GAME }); });
-test.afterAll(async () => { await closeEditor(ed); });
+test.afterAll(async () => {
+  await closeEditor(ed);
+  rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-model'), { recursive: true, force: true });
+});
 
 test('the window opens on what is installed, and a blank form says what it needs', { tag: '@game' }, async () => {
   const { page } = ed;
@@ -430,8 +437,102 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(names).toContain(`Factions/${FILE}/towns/Charnel_Bonus.txt`);
   const tooltip = entries.find((e) => e.name.split(String.fromCharCode(92)).join('/') === 'UI/MPWait/PlayersList/Item/race_tooltip_e2ebone.txt')!;
   expect(tooltip.data.subarray(2).toString('utf16le')).toBe('The dead of the Bone Court');
-  rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-model'), { recursive: true, force: true });
+  // The folder of our own files is NOT removed here: the faction is read from
+  // it again at every build of the mod — the hero made in the next test
+  // rebuilds the whole mod — so it lives as long as the faction does, and goes
+  // in afterAll.
   expect(exeNumbers()).toEqual({ towns: 12, specs: 257, clamp: 8 });
+  expect(ed.errors).toEqual([]);
+});
+
+/** The hero of the race this spec makes through the Heroes window. */
+const HERO = { id: 'E2eBoneLord', name: 'Bone Lord of the e2e' };
+
+// A HERO OF THE RACE. His race is his TownType — not his class: the class
+// decides what a level-up offers, the TownType which taverns offer him and
+// whether the faction's install lists him in the random hero pool, where a
+// race's starting hero is drawn from (docs/engineInternals/FACTIONS.md: a
+// race with nobody in the pool starts with no hero and is out before the
+// first turn). The Heroes window offered only the game's eight towns, so a
+// hero of a faction could only be written by a script; now the faction is in
+// the list, and this makes him the way an author would.
+test('a hero of the race is made in the Heroes window and joins the race\'s pool', { tag: '@game' }, async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  await press(page, page.locator('#fac-close'));
+  await expect(page.locator('#facmod')).toBeHidden();
+
+  await press(page, page.locator('#heroesbtn'));
+  await expect(page.locator('#heroesmod')).toBeVisible();
+  await press(page, page.locator('#hm-tabs button', { hasText: 'Heroes' }));
+  await press(page, page.locator('#hm-new'));
+  await expect(page.locator('#heroedit')).toBeVisible();
+  await press(page, page.locator('#he-preset-pick'));
+  await expect(page.locator('#presetpick')).toBeVisible();
+  await page.locator('#pp-search').fill('Ossir');
+  await press(page, page.locator('#pp-list button', { hasText: 'Ossir' }).first());
+  await expect(page.locator('#he-model')).not.toHaveValue('', { timeout: 30_000 });
+
+  // The faction is offered beside the game's eight, marked as the mod's.
+  const ours = page.locator(`#he-town option[value="${TYPE}"]`);
+  await expect(ours, 'the faction is a town a hero can be of').toHaveCount(1);
+  await expect(ours).toHaveText(/Bone Court.*ours/);
+  const classBefore = await page.locator('#he-class').inputValue();
+  await page.locator('#he-town').selectOption(TYPE);
+  await expect(page.locator('#he-class'), 'a faction of ours names no class; the preset\'s stays').toHaveValue(classBefore);
+  await page.locator('#he-id').fill(HERO.id);
+  await page.locator('#he-name').fill(HERO.name);
+  await expect(page.locator('#he-ok')).toBeEnabled();
+  // settled(): either the install note or the form's refusal, said as it is.
+  const note = await settled(page, 'installing the hero of the race', '#hm-note', '#he-err',
+    () => page.locator('#he-ok').click());
+  expect(note).toContain('Installed');
+  await expect(page.locator('#hm-list')).toContainText(HERO.name);
+  expect(ed.errors).toEqual([]);
+
+  // What landed: the manifest, his document, and the pool.
+  const hero = (readInstalledMod(GAME).heroes ?? []).find((h) => h.id === HERO.id);
+  expect(hero, 'the manifest holds him').toBeTruthy();
+  expect(hero!.town).toBe(TYPE);
+  const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
+  const text = (path: string): string => {
+    const e = entries.find((x) => x.name.split(String.fromCharCode(92)).join('/') === path);
+    return e ? e.data.toString('latin1') : '';
+  };
+  const doc = text(heroPaths(hero!).shared);
+  expect(doc, 'his document says his race').toContain(`<TownType>${TYPE}</TownType>`);
+  expect(doc, 'and that the race may draw him').toContain('<ScenarioHero>false</ScenarioHero>');
+  expect(text(HERO_GROUP), 'the random hero pool lists him').toContain(heroHref(heroPaths(hero!)));
+});
+
+// Removing a race a hero is still of is refused today, and the refusal names
+// him — his document would name a type the enum no longer declares, a parse
+// error at the game's start. So he goes first, through his own window, and
+// the faction after him in the next test.
+test('the race will not go while its hero stands — he goes first', { tag: '@game' }, async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  await press(page, page.locator('#hm-close'));
+  await press(page, page.locator('#facbtn'));
+  await expect(page.locator('#facmod')).toBeVisible();
+  await press(page, page.locator('#fac-list .um-item button[title="remove it from the mod"]').first());
+  await expect(page.locator('#ask')).toBeVisible();
+  await page.locator('#ask-yes').click();
+  await expect(page.locator('#fac-err'), 'refused, naming the hero').toContainText(HERO.id, { timeout: 60_000 });
+  expect((readInstalledMod(GAME).factions ?? []).length, 'and the faction is still there').toBe(1);
+  expect(ed.errors).toEqual([]);
+
+  await press(page, page.locator('#fac-close'));
+  await press(page, page.locator('#heroesbtn'));
+  await press(page, page.locator('#hm-tabs button', { hasText: 'Heroes' }));
+  const row = page.locator('#hm-list .um-item', { hasText: HERO.name }).first();
+  await press(page, row.locator('button', { hasText: '×' }));
+  await page.locator('#ask button', { hasText: 'Remove' }).click();
+  await expect(page.locator('#hm-list')).not.toContainText(HERO.name, { timeout: 120_000 });
+  expect((readInstalledMod(GAME).heroes ?? []).some((h) => h.id === HERO.id), 'he is out of the manifest').toBe(false);
+  await press(page, page.locator('#hm-close'));
+  await press(page, page.locator('#facbtn'));
+  await expect(page.locator('#facmod')).toBeVisible();
   expect(ed.errors).toEqual([]);
 });
 

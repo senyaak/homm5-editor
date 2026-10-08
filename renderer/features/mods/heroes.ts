@@ -80,12 +80,22 @@ async function fillHeroForm(): Promise<void> {
   heDonors = heroes;
 
   const asOptions = (v: string[] = []): { id: string; label: string }[] => v.map((id) => ({ id, label: id }));
-  fillHeroSelect('he-town', asOptions(values.TownType));
   // The game's nine classes and its 221 skills come out of types.xml as the
   // EDITOR reads it — the game's own copy, where a class of the mod does not
   // exist. Ours live only in the archive's copy, so without this a hero could
   // not be given the class or the racial he was made for.
   const ours = (await api.listMods()).mods;
+  // The towns, the same way: the eight the game declares, and the mod's
+  // factions after them. A hero's RACE is his TownType, not his class — it
+  // is what a tavern of the race offers and what the faction's install lists
+  // in the random hero pool (src/mods/faction-files.ts) — so without a
+  // faction here a hero of it could only be written by hand.
+  fillHeroSelect('he-town', [
+    ...asOptions(values.TownType),
+    // Labelled by the RACE's name (the picker's "Bone Court"), not the town's
+    // ("Ossuary Town"): a hero is of a race.
+    ...ours.flatMap((m) => m.factions ?? []).map((f) => ({ id: f.type, label: `${f.race?.name || f.name || f.type} (ours)` })),
+  ]);
   fillHeroSelect('he-class', [
     ...asOptions(values.Class),
     ...ours.flatMap((m) => m.classes ?? []).map((c) => ({ id: c.id, label: `${c.name || c.id} (ours)` })),
