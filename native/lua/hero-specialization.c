@@ -9,7 +9,7 @@
 #define LOG_UNIT lua_hero_specialization
 
 // ---------------------------------------------------------------------------
-// `H5EHeroSpecialization(heroName)`.
+// `H5EHeroHasSpecialization(heroName, spec)`.
 //
 // WHY IT HAS TO EXIST. A specialization that GIVES something can be written two
 // ways. The build can write the gift onto every hero holding it, which is data
@@ -352,12 +352,14 @@ static void log_neighbourhood(void *obj, const char *what) {
 static int g_specTraceLeft = 16;
 
 /**
- * `H5EHeroSpecialization(heroName)` — the value, or nothing.
+ * `H5EHeroHasSpecialization(heroName, spec)` — 1 when he holds it, nothing
+ * otherwise. (It was `H5EHeroSpecialization(heroName)`, answering the value;
+ * the question a script asks is "is it this one", and that is what it answers.)
  *
- * Nothing, rather than zero, on every path it cannot serve: zero is
- * `HERO_SPEC_NONE`, a real answer, and a script that cannot tell "no
- * specialization" from "I could not find him" would hand abilities to the wrong
- * heroes on the run where the lookup broke.
+ * Nothing, rather than a made-up answer, on every path it cannot serve: a
+ * script that cannot tell "not this specialization" from "I could not find
+ * him" would hand abilities to the wrong heroes on the run where the lookup
+ * broke.
  *
  * ASKED, NOT READ — and that is the correction three launches paid for. The
  * question a script needs is "is it this one", the engine answers exactly that

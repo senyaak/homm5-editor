@@ -44,7 +44,7 @@ end;
 | call | does |
 |---|---|
 | `H5ETentCharge()` | gives the first aid tent one more use |
-| `H5ECombatTest()` | writes one line to the run's log, `bin/homm5-editor-*.log` (needs `--log lua/battle`) |
+| `H5ECombatTest()` | writes one line to the run's log, `bin/homm5-editor-*.log` (needs `--log lua/registry`) |
 
 Neither takes arguments, and that is a limit as well as a style: with no
 arguments `H5ETentCharge()` cannot be told whose tent, so it charges the last one

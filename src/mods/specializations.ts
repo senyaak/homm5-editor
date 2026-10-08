@@ -119,7 +119,7 @@ export interface SpecializationSpec {
    * it did not write would hold the specialization and get nothing. Instead the
    * mod's `advmap-common.lua` asks, on every map, which specialization each hero
    * holds and teaches him what it promises. See `abilityLines` in
-   * artifact-scripts.ts and `H5EHeroSpecialization` in the extension.
+   * artifact-scripts.ts and `H5EHeroHasSpecialization` in the extension.
    */
   ability?: string;
 }

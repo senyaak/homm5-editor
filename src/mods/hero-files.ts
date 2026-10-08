@@ -93,7 +93,7 @@ function ownPictures(h: HeroSpec, p: HeroPaths): { files: ModFile[]; hrefs: Part
  * would exist only in files this build happened to write, so a hero it did not
  * build would hold the specialization and get nothing. The gift is handed out at
  * RUN TIME instead, by the script the mod generates, over
- * `H5EHeroSpecialization` — see artifact-scripts.ts and
+ * `H5EHeroHasSpecialization` — see artifact-scripts.ts and
  * native/lua/hero-specialization.c.
  */
 function withSpecialization(h: HeroSpec, specs: readonly ModSpecialization[]): HeroSpec {
