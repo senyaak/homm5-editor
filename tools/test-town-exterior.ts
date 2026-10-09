@@ -6,6 +6,7 @@
 //     named separately;
 //   Stronghold's exterior, a document of its own, is inlined like the rest;
 //   every model a part names is copied into the faction's tree;
+//   the ground plan (tiles) is the model's town's, not the donor's;
 //   every refusal names what it refuses.
 //
 //   node tools/test-town-exterior.ts [dataRoot]
@@ -14,7 +15,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dataReader } from '../src/mods/mod-files.ts';
-import { EXTERIOR_STAGES, buildTown, townPaths } from '../src/mods/town-files.ts';
+import { EXTERIOR_STAGES, GROUND_PLAN, buildTown, townPaths } from '../src/mods/town-files.ts';
 import type { TownBuild, TownSpec } from '../src/mods/town-files.ts';
 import { dataDir } from './game-dir.ts';
 
@@ -50,6 +51,8 @@ const models = (doc: string): string[] => {
   return [...doc.slice(s, e).matchAll(/<Model href="([^"]*)"/g)].map((m) => m[1]!.replace(/#.*$/, '').split('/').pop()!.replace(/\.xdb$/, ''));
 };
 const gates = (doc: string): string => /<Gates[^>]*>/.exec(doc)?.[0] ?? '';
+/** The five ground-plan elements, whole and whitespace-free, one after another. */
+const groundPlan = (doc: string): string => GROUND_PLAN.map((tag) => new RegExp(`<${tag}/>|<${tag}>[\\s\\S]*?</${tag}>`).exec(doc)?.[0] ?? `(no ${tag})`).join('').replace(/\s+/g, '');
 
 console.log('the exterior');
 {
@@ -122,6 +125,25 @@ console.log('the exterior');
   check("the stages stay the donor's", models(gatedDoc).every((m, i) => m === `Heaven-${EXTERIOR_STAGES[i]}`));
   throws('a file that is not there', () => build({ stages: { town: join(dir, 'nothing.xdb') } }), 'no such file');
   rmSync(join(dir, '..'), { recursive: true, force: true });
+
+  // The ground plan follows the model: a town's tiles under another town's
+  // model leave ground cut out where nothing stands and the entrance off the
+  // gate (Haven's under Necropolis's: the black stripe, launch of 09.10).
+  console.log('the ground plan');
+  const NECRO = read('MapObjects/Necromancy.(AdvMapTownShared).xdb')!.toString('latin1');
+  const HAVEN = read('MapObjects/Heaven.(AdvMapTownShared).xdb')!.toString('latin1');
+  const DUNGEON = read('MapObjects/Dungeon.(AdvMapTownShared).xdb')!.toString('latin1');
+  const entrance = (doc: string): string => /<activeTiles>\s*<Item>\s*<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/.exec(doc)!.slice(1).join(',');
+  check('no two shipped towns share one (what makes it matter)', entrance(HAVEN) !== entrance(NECRO) && groundPlan(HAVEN) !== groundPlan(NECRO));
+  check("the donor's by default", groundPlan(shared(plain)) === groundPlan(HAVEN));
+  check("a whole exterior's is that town's", groundPlan(doc) === groundPlan(NECRO), entrance(doc));
+  check("a mix: the gate's town's", groundPlan(mix) === groundPlan(DUNGEON), entrance(mix));
+  check('a mix without a gate: the donor\'s', groundPlan(ownDoc) === groundPlan(HAVEN));
+  check('a gate of ours: the donor\'s', groundPlan(gatedDoc) === groundPlan(HAVEN));
+  const said = shared(build({ stages: { town: 'TOWN_NECROMANCY' }, gates: 'TOWN_DUNGEON', ground: 'TOWN_NECROMANCY' }));
+  check('or the one said', groundPlan(said) === groundPlan(NECRO), entrance(said));
+  check('the rest of the record stays', said.includes('<Type>TOWN_TEST</Type>') && said.includes('/Arenas/Town/NewHaven/'));
+  throws('a ground that is not a town', () => build({ stages: {}, ground: 'TOWN_ATLANTIS' }), 'no shipped town of type TOWN_ATLANTIS');
 
   throws('a stage that is not one', () => build({ stages: { village: 'TOWN_DUNGEON' } as never }), 'no exterior stage village');
   throws('a town that is not one', () => build('TOWN_ATLANTIS'), 'no shipped town of type TOWN_ATLANTIS');

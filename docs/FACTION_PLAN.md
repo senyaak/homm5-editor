@@ -258,8 +258,16 @@ fully, in the probe, one launch per question.
   (town-files.ts, `EXTERIOR_STAGES`). The stage is `0xAC7980`: hall ≤ 2 →
   walls (0 none, 1 fort or citadel, 2 castle) + 3 with the guild; hall 3 →
   6 + walls; hall 4 → 9. Launch 32 showed Necropolis, Dungeon and Haven
-  stages in turn. **Debt:** a black stripe before the entrance on the
-  Necropolis stages only — not looked into. **Found on the way:** the sign
+  stages in turn. **The black stripe before the entrance** on the Necropolis
+  stages (2026-10-09, the e2e's Bone Court): the town kept the DONOR's
+  ground plan (`blockedTiles`, `holeTiles`, `activeTiles`, `passableTiles`,
+  `PossessionMarkerTile`), and no two shipped towns share one. Haven's cuts
+  the terrain out in row −6, Necropolis's model ends at −5: the hole showed.
+  The same row put the entrance a tile past the model's gate. The ground is
+  the model's now (`ExteriorMix.ground`, `groundOf`: a whole exterior's
+  town, else the said one, else the gate's town). In a mix whose stages come
+  from towns of different ground plans, one stage is still off; that cannot
+  be helped, because a town has one plan for all ten. **Found on the way:** the sign
   over an owned town (`PlayerColourSchemes.xdb`, capture-marker.ts) — done,
   the red skull stands over the town.
 - **1f. Texts — DONE (2026-09-18, launches 33–34).** Building names and

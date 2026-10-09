@@ -14,6 +14,15 @@ pre-release.
 
 ## Unreleased
 
+- A faction's town that looks like another town on the map now stands on
+  that town's ground too. It kept its donor's: the tiles it blocks, the
+  ground cut out under the model, and the tile a hero enters by. No two of
+  the game's towns share these, so a Haven town with Necropolis's model had
+  a black stripe before its gate — ground cut out where the Necropolis model
+  ends a row short — and an entrance a row off the gate. The ground follows
+  the whole exterior you pick, or the gate's town in a mix. A new "Ground"
+  field in the Factions window says it outright, which you need when the gate
+  is a hull of your own.
 - The game extension writes no log unless it is built for development. An
   ordinary build — what the editor installs — wrote a file beside the game on
   every launch (the load report, crashes, the multiplayer agent's traffic)

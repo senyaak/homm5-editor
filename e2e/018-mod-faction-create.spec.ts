@@ -110,8 +110,20 @@ function ownNecroTown(): string {
   const uidIn = (f: string): string => /<uid>([0-9A-F-]{36})<\/uid>/i.exec(readFileSync(join(src, f), 'latin1'))![1]!.toUpperCase();
   writeFileSync(join(dir, 'bin', 'Geometries', uidIn('Necromancy-town-geom.xdb')), readFileSync(join(DATA, 'bin', 'Geometries', uidIn('Necromancy-town-geom.xdb'))));
   writeFileSync(join(dir, 'bin', 'AIGeometries', uidIn('Necromancy-town_AI.xdb')), readFileSync(join(DATA, 'bin', 'AIGeometries', uidIn('Necromancy-town_AI.xdb'))));
+  // And the gate's hull as a document of its own — Necropolis keeps it inline
+  // in its town record (`Gate_AI`; `Necromancy-town_AI.xdb` is the whole
+  // town's hull, which the gate was given until 09.10).
+  const record = readFileSync(join(src, 'Necromancy.(AdvMapTownShared).xdb'), 'utf8');
+  const gate = /<AIGeometry ObjectRecordID="\d+">[\s\S]*?<\/AIGeometry>/.exec(record.slice(record.indexOf('<Gates')))![0];
+  expect(gate).toContain('<RootMesh>Gate_AI</RootMesh>');
+  writeFileSync(join(dir, NECRO_GATE), `<?xml version="1.0" encoding="UTF-8"?>\n${gate.replace(/^\t{4}/gm, '')}\n`);
+  const gateUid = /<uid>([0-9A-F-]{36})<\/uid>/i.exec(gate)![1]!.toUpperCase();
+  writeFileSync(join(dir, 'bin', 'AIGeometries', gateUid), readFileSync(join(DATA, 'bin', 'AIGeometries', gateUid)));
   return join(dir, 'Necromancy-town.xdb');
 }
+const NECRO_GATE = 'Necromancy-Gate_AI.xdb';
+/** Necropolis's entrance tile, from the town's tile: the faction stands on its ground. */
+const NECRO_ENTRANCE = [1, -5] as const;
 
 /** A 16×16 magenta PNG of ours. */
 function ownPicture(name: string): string {
@@ -393,9 +405,11 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await page.locator('#fac-stages .fc-stage-file').first().fill(necro);
   await expect(page.locator('#fac-stages .fc-stage').first()).toBeDisabled();
   // The gate hull as an AIGeometry of ours (the same folder holds Necropolis's),
-  // and the capture sign and flag as pictures.
-  await page.locator('#fac-exterior-gates-file').fill(join(necro, '..', 'Necromancy-town_AI.xdb'));
+  // the ground the model stands on said — a gate of ours names no town — and
+  // the capture sign and flag as pictures.
+  await page.locator('#fac-exterior-gates-file').fill(join(necro, '..', NECRO_GATE));
   await expect(page.locator('#fac-exterior-gates')).toBeDisabled();
+  await page.locator('#fac-exterior-ground').selectOption('TOWN_NECROMANCY');
   const signPic = ownPicture('sign');
   await page.locator('#fac-pictures .fc-file').nth(11).fill(signPic);
   await page.locator('#fac-pictures .fc-file').nth(12).fill(signPic);
@@ -442,10 +456,16 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(isCopyOf(f?.pictures?.tower, towerPic)).toBe(true);
   expect(isCopyOf(f?.pictures?.capture?.sign, signPic) && isCopyOf(f?.pictures?.capture?.flag, signPic)).toBe(true);
   expect(f?.race?.tooltip).toBe('The dead of the Bone Court');
-  const ext = f?.exterior as { stages?: { town?: string }; gates?: string } | undefined;
+  const ext = f?.exterior as { stages?: { town?: string }; gates?: string; ground?: string } | undefined;
   expect(isCopyOf(ext?.stages?.town, necro, true)).toBe(true);
-  expect(isCopyOf(ext?.gates, join(necro, '..', 'Necromancy-town_AI.xdb'), true)).toBe(true);
-  expect(names).toContain(`Factions/${FILE}/town/own/necro/Necromancy-town_AI.xdb`);
+  expect(isCopyOf(ext?.gates, join(necro, '..', NECRO_GATE), true)).toBe(true);
+  expect(names).toContain(`Factions/${FILE}/town/own/necro/${NECRO_GATE}`);
+  // The ground is Necropolis's: the tile a hero enters by is its (1,-5), not
+  // Haven's (1,-6) a row past the model's gate.
+  expect(ext?.ground).toBe('TOWN_NECROMANCY');
+  const record = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
+    .find((e) => e.name.split(String.fromCharCode(92)).join('/') === `Factions/${FILE}/${FILE}.(AdvMapTownShared).xdb`)!.data.toString('latin1');
+  expect(/<activeTiles>\s*<Item>\s*<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/.exec(record)?.slice(1)).toEqual(NECRO_ENTRANCE.map(String));
   const siege = f?.siege as { arena?: string; gate?: { models?: string[] } } | undefined;
   expect(siege?.arena).toBe('TOWN_HEAVEN');
   expect(siege?.gate?.models?.length === 1 && isCopyOf(siege.gate.models[0], necro, true)).toBe(true);
@@ -490,12 +510,14 @@ test("the author's own files can go: the mod works from its copies", { tag: '@ga
 
   await press(page, page.locator('#fac-list .um-item button[title*="change it"]').first());
   await expect(page.locator('#facedit')).toBeVisible();
+  await expect(page.locator('#fac-exterior-ground'), 'the ground said is shown').toHaveValue('TOWN_NECROMANCY');
   await press(page, page.locator('#fac-ok'));
   await expect(page.locator('#facedit')).toBeHidden({ timeout: 300_000 });
   await expect(page.locator('#fac-note')).toContainText(`${TYPE} = 11`);
 
   const f = readInstalledMod(GAME).factions?.[0];
   expect(existsSync(f!.buildings!.TB_SPECIAL_1!.model!.source), 'the manifest names a copy that is there').toBe(true);
+  expect((f!.exterior as { ground?: string }).ground, '...and kept').toBe('TOWN_NECROMANCY');
   const after = ownOf();
   expect([...after.keys()].sort(), 'the same files of ours').toEqual([...before.keys()].sort());
   for (const [name, data] of before) expect(after.get(name)!.equals(data), `${name} is the same bytes`).toBe(true);
@@ -843,9 +865,12 @@ test('a map for the race: its town and hero for red, packed into the install', {
   const creatures = readInstalledMod(GAME).creatures;
   const stackOf = (id: string): string => `/${creaturePaths(creatures.find((c) => c.id === id)!).monster}`;
 
-  const townId = await placeFromPalette(page, town!.shared, 16, 16);
+  // The hero at the town's gate, one tile out from the entrance — south, the
+  // way an unturned town faces.
+  const [tx, ty] = [16, 16];
+  const townId = await placeFromPalette(page, town!.shared, tx, ty);
   await own(page, townId, 'PLAYER_1');
-  const heroId = await placeFromPalette(page, `/${heroPaths(hero).shared}`, 22, 16);
+  const heroId = await placeFromPalette(page, `/${heroPaths(hero).shared}`, tx + NECRO_ENTRANCE[0], ty + NECRO_ENTRANCE[1] - 1);
   await own(page, heroId, 'PLAYER_1');
   const blueId = await placeFromPalette(page, necro, 54, 54);
   await own(page, blueId, 'PLAYER_2');
@@ -886,6 +911,8 @@ test('a map for the race: its town and hero for red, packed into the install', {
   expect(townBlock, '...and red\'s').toContain('<PlayerID>PLAYER_1</PlayerID>');
   const heroBlock = blocks('AdvMapHero').find((b) => b.includes(heroPaths(hero).shared));
   expect(heroBlock, 'our hero is red\'s').toContain('<PlayerID>PLAYER_1</PlayerID>');
+  expect(/<Pos>\s*<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/.exec(heroBlock!)?.slice(1), '...at the gate')
+    .toEqual([tx + NECRO_ENTRANCE[0], ty + NECRO_ENTRANCE[1] - 1].map(String));
   for (const t of [ROW[0]!, ROW[6]!]) {
     expect(xml, `a stack of ${t.base.id}`).toContain(creaturePaths(creatures.find((c) => c.id === t.base.id)!).monster);
   }

@@ -307,7 +307,22 @@ export interface ExteriorMix {
   stages: Partial<Record<ExteriorStage, string>>;
   /** Whose gate the AI walks through — a shipped town's, or an `AIGeometry` document of ours on disk. */
   gates?: string;
+  /**
+   * Whose ground plan the town stands on — a shipped `TownType` (`groundOf`
+   * says the default). No two shipped towns share one, and it is the model's,
+   * not the record's: Haven's under Necropolis's model left the terrain cut
+   * out in the row before the gate, where Necropolis's model stops a row
+   * short (a black stripe), and the tile a hero enters by a row off the gate.
+   */
+  ground?: string;
 }
+
+/**
+ * A town's ground plan: the tiles it blocks, the cells the terrain is not
+ * drawn on under it, the tile a hero enters by, the ones he walks through,
+ * and where the capture sign stands — one set for every stage.
+ */
+export const GROUND_PLAN = ['blockedTiles', 'holeTiles', 'activeTiles', 'passableTiles', 'PossessionMarkerTile'] as const;
 
 export interface TownPaths {
   dir: string;
@@ -501,6 +516,18 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     const [es, ee] = exteriorSpan(donor, spec.donor);
     const id = `item_${uidFor(`exterior:${spec.file}`).toLowerCase()}`;
     seeded.set(source, `${donor.slice(0, es)}<Exterior href="#n:inline(AdvMapTownExterior)" id="${id}">${EOL}\t\t${exterior}${EOL}\t</Exterior>${donor.slice(ee)}`);
+  }
+  // The ground plan goes with the model: whose it is, `groundOf`.
+  const ground = groundOf(spec);
+  // Only the record's own head is read: the lists come before its `Exterior`,
+  // and the same names recur deeper down, in the siege's buildings.
+  if (ground !== spec.donor) {
+    const headOf = (doc: string, what: string): string => doc.slice(0, once(doc, '<Exterior ', `${what} exterior`));
+    const plan = headOf(mustRead(read, donorTown(ground, read)), ground);
+    const donor = seeded.get(source) ?? mustRead(read, source);
+    let head = headOf(donor, spec.donor);
+    for (const tag of GROUND_PLAN) head = head.replace(elementOf(head, tag, `${spec.donor} ${tag}`), elementOf(plan, tag, `${ground} ${tag}`));
+    seeded.set(source, head + donor.slice(headOf(donor, spec.donor).length));
   }
   // A dropped building leaves the donor's list BEFORE the walk too, so its
   // record, its texts and its icon are never copied; and a re-parented one
@@ -929,10 +956,28 @@ function stagesOf(exterior: string, what: string): string[] {
 
 /** The exterior's gate geometry element, whole — inline with a body, or one line with an href. */
 function gatesOf(exterior: string, what: string): string {
-  const start = once(exterior, '<Gates', `${what} exterior gates`);
-  const oneLine = exterior.indexOf('/>', start), body = exterior.indexOf('>', start);
-  if (oneLine === body - 1) return exterior.slice(start, oneLine + '/>'.length);
-  return exterior.slice(start, once(exterior, '</Gates>', `${what} exterior gates end`) + '</Gates>'.length);
+  return elementOf(exterior, 'Gates', `${what} exterior gates`);
+}
+
+/** An element met once in the text, whole — `<tag/>`, `<tag href=…/>`, or with a body. */
+function elementOf(text: string, tag: string, what: string): string {
+  const start = once(text, `<${tag}`, what);
+  const oneLine = text.indexOf('/>', start), body = text.indexOf('>', start);
+  if (oneLine === body - 1) return text.slice(start, oneLine + '/>'.length);
+  return text.slice(start, once(text, `</${tag}>`, `${what} end`) + `</${tag}>`.length);
+}
+
+/**
+ * Whose ground plan the town stands on: the town whose exterior it takes
+ * whole; in a mix, the one said, else the gate's town when that is a shipped
+ * one — the gate and the tile a hero enters by are one entrance — else the
+ * donor's.
+ */
+export function groundOf(spec: Pick<TownSpec, 'donor' | 'exterior'>): string {
+  if (!spec.exterior) return spec.donor;
+  if (typeof spec.exterior === 'string') return spec.exterior;
+  const { ground, gates } = spec.exterior;
+  return ground || (gates && !isOwnFile(gates) ? gates : spec.donor);
 }
 
 // --- the building tree --------------------------------------------------------

@@ -397,6 +397,7 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
     $input('fac-exterior-gates-file').value = own ? gates : '';
     $select('fac-exterior-gates').disabled = own;
   }
+  fillSelect($select('fac-exterior-ground'), townOptions(data, 'the exterior\'s or the gate\'s town'), exterior.ground ?? '');
   drawStages(data, exterior.stages);
 
   fillSelect($select('fac-machine'), [{ id: '', label: 'the donor\'s' }, ...data.warMachines.map((m) => ({ id: m, label: m.replace('WAR_MACHINE_', '').toLowerCase() }))], existing?.race?.warMachine ?? '');
@@ -623,17 +624,20 @@ function drawStages(data: ModsFactionDataResult, current: ExteriorMix['stages'])
 function readExterior(): ModsFactionPayload['exterior'] {
   const whole = $select('fac-exterior').value;
   const gates = $input('fac-exterior-gates-file').value.trim() || $select('fac-exterior-gates').value;
+  const said = $select('fac-exterior-ground').value;
   const stages: Record<string, string> = {};
   for (const el of document.querySelectorAll<HTMLSelectElement>('.fc-stage')) {
     const v = el.dataset.file || el.value;
     if (v) stages[el.dataset.stage!] = v;
   }
-  if (!Object.keys(stages).length && !gates) return whole || undefined;
+  if (!Object.keys(stages).length && !gates && (!said || said === whole)) return whole || undefined;
   // A whole exterior with a stage or a gate said differently is a mix whose
   // unsaid stages are the whole's — which the copier reads as the donor's, so
-  // the whole is spelt out per stage.
+  // the whole is spelt out per stage; and its ground, the copier's default for
+  // a mix being the gate's town.
   if (whole) for (const stage of (facData?.exteriorStages ?? [])) stages[stage] ??= whole;
-  return { stages: stages as ExteriorMix['stages'], ...(gates ? { gates } : {}) };
+  const ground = said || whole;
+  return { stages: stages as ExteriorMix['stages'], ...(gates ? { gates } : {}), ...(ground ? { ground } : {}) };
 }
 
 function readSiege(): ModsFactionPayload['siege'] {
