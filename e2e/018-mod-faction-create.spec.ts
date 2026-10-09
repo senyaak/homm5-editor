@@ -146,6 +146,7 @@ test.beforeAll(async () => { ed = await launchEditor({ HOMM5_ROOT: GAME }); });
 test.afterAll(async () => {
   await closeEditor(ed);
   rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-model'), { recursive: true, force: true });
+  rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-icon'), { recursive: true, force: true });
   // The map that placed the town names a faction that is gone by now; live, it is left to look at.
   if (!LIVE) clearMap(GAME, DATA, MAP_NAME);
 });
@@ -612,7 +613,7 @@ const unitRow = (page: Page, name: string): Locator => page.locator('#um-list .u
  * One creature, through the Units window: a preset, its identity, the race
  * and the tier, and the link to its base. Its id comes back off the manifest.
  */
-async function makeCreature(page: Page, c: { file: string; name: string }, tier: number, base = ''): Promise<string> {
+async function makeCreature(page: Page, c: { file: string; name: string }, tier: number, base = '', ownIcon = ''): Promise<string> {
   await press(page, page.locator('#um-new'));
   await expect(page.locator('#unitedit')).toBeVisible();
   // A new form names no links: what the last creature linked is not this one's.
@@ -628,12 +629,34 @@ async function makeCreature(page: Page, c: { file: string; name: string }, tier:
   await page.locator('#um-town').selectOption(TYPE);
   await page.locator('#um-tier').fill(String(tier));
   if (base) await page.locator('#um-base').selectOption(base);
+  if (ownIcon) {
+    // "File…" as the author presses it: the open dialog answers with the
+    // file, and the slot holds THE FILE — the install copies it in.
+    await ed.app.evaluate(({ dialog }, file) => {
+      dialog.showOpenDialog = (async () => ({ canceled: false, filePaths: [file] })) as typeof dialog.showOpenDialog;
+    }, ownIcon);
+    await press(page, page.locator('button.um-pick[data-for="um-art-icon"]'));
+    await expect(page.locator('#um-art-icon')).toHaveValue(ownIcon);
+  }
   const note = await settled(page, `installing ${c.file}`, '#um-note', '#ue-err', () => page.locator('#um-ok').click());
   expect(note).toContain('installed');
   expect(ed.errors).toEqual([]);
   const made = readInstalledMod(GAME).creatures.find((x) => x.file === c.file);
   expect(made, `${c.file} is in the manifest`).toBeTruthy();
   return made!.id;
+}
+
+/**
+ * An icon of the author's own, on disk: the shipped Wood Elf's texture pair
+ * copied into a folder under _tmp, as a picture someone drew would sit.
+ */
+function ownIcon(): string {
+  const dir = join(REPO_ROOT, '_tmp', 'e2e-own-icon', 'boneicon');
+  rmSync(join(dir, '..'), { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true });
+  const src = join(DATA, 'Textures', 'Interface', 'CombatArena', 'Faces', 'Preseve');
+  for (const f of ['ico_Woodelf_128.xdb', 'ico_Woodelf_128.dds']) writeFileSync(join(dir, f), readFileSync(join(src, f)));
+  return join(dir, 'ico_Woodelf_128.xdb');
 }
 
 /** A creature's own record out of the mod's creature table. */
@@ -660,7 +683,7 @@ test('a row of seven tiers is made in the Units window, each base linked to its 
   await expect(ourTown).toHaveText(/Bone Court.*ours/);
 
   for (const t of ROW) {
-    t.base.id = await makeCreature(page, t.base, t.tier);
+    t.base.id = await makeCreature(page, t.base, t.tier, '', t.tier === 1 ? ownIcon() : '');
     t.up.id = await makeCreature(page, t.up, t.tier, t.base.id);
     t.alt.id = await makeCreature(page, t.alt, t.tier, t.base.id);
     await press(page, unitRow(page, t.base.name).locator('button', { hasText: '✎' }));
@@ -672,6 +695,17 @@ test('a row of seven tiers is made in the Units window, each base linked to its 
     expect(saved).toContain('installed');
     expect(ed.errors).toEqual([]);
   }
+
+  // Tier 1's base wears an icon of the author's own: the manifest names the
+  // mod's copy, the archive carries it under the creature — and the original
+  // goes now, so every build after this one does without it.
+  const original = join(REPO_ROOT, '_tmp', 'e2e-own-icon', 'boneicon', 'ico_Woodelf_128.xdb');
+  const t1 = readInstalledMod(GAME).creatures.find((c) => c.id === ROW[0]!.base.id)!;
+  expect(isCopyOf(t1.from?.icon, original, true), 'its icon is the mod\'s copy').toBe(true);
+  const iconCopy = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
+    .find((e) => e.name.split(String.fromCharCode(92)).join('/').endsWith(`/art/own/boneicon/ico_Woodelf_128.dds`));
+  expect(iconCopy?.data.equals(readFileSync(original.replace(/\.xdb$/, '.dds'))), 'the archive carries the picture').toBe(true);
+  rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-icon'), { recursive: true, force: true });
 
   // The manifest, and the records the game reads.
   const creatures = readInstalledMod(GAME).creatures;

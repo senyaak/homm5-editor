@@ -18,9 +18,9 @@
 
 // needs: data
 import { ABILITY_TABLE } from '../src/mods/ability-files.ts';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, posix } from 'node:path';
+import { isAbsolute, join, posix } from 'node:path';
 import { buildCreatureMod, creaturePaths } from '../src/mods/creature-mod.ts';
 import { REFUGEE_CAMP, campPool, patchRefugeeCamp } from '../src/mods/refugee-camp.ts';
 import { addCreature, creatureLimit, newCreatureMod, removeCreature, updateCreature } from '../src/mods/mod-model.ts';
@@ -524,6 +524,36 @@ console.log('\na repaint remembered');
   check('another paint is painted afresh', !paint(red, { hue: 240 }).equals(first));
   check('and so is another texture', !paint(square(40, 40, 200), { hue: 120 }).equals(first));
   check('and the first is still what it was', paint(red, { hue: 120 }).equals(first));
+}
+
+// ---- an art slot of the author's own --------------------------------------------
+
+// The Units window's "File…" puts a file on disk in a slot. The build mounts
+// its folder, as a faction's model, and copies what it reaches under the
+// creature's art — the slot used to keep only a made-up path inside the mod,
+// and the build looked for a file nothing had copied there.
+console.log('\nan art slot of the author\'s own');
+{
+  const dir = mkdtempSync(join(tmpdir(), 'own-icon-'));
+  try {
+    const folder = join(dir, 'myicon');
+    mkdirSync(folder);
+    writeFileSync(join(folder, 'Mine.(Texture).xdb'), '<?xml version="1.0" encoding="UTF-8"?>\r\n<Texture>\r\n\t<DestName href="Mine.(Texture).dds"/>\r\n</Texture>');
+    writeFileSync(join(folder, 'Mine.(Texture).dds'), Buffer.alloc(32, 9));
+    const own = miniatureMod();
+    own.creatures[0]!.art = { icon: join(folder, 'Mine.(Texture).xdb') };
+    const c0 = own.creatures[0]!;
+    const out = byPath(buildCreatureMod(own, (rel) => data.get(rel) ?? null).files);
+    const pp = creaturePaths(c0);
+    const dds = [...out.keys()].find((k) => k.startsWith(`${pp.art}/`) && k.endsWith('Mine.(Texture).dds'));
+    check('the file and what it names are copied under the creature', !!dds && out.get(dds)!.equals(Buffer.alloc(32, 9)), dds ?? 'none');
+    check('the visual\'s icon points at the copy',
+      new RegExp(`<Icon128 href="/${pp.art.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/[^"]*Mine\\.\\(Texture\\)\\.xdb#xpointer\\(/Texture\\)"`).test(asText(out, pp.visual)));
+    check('the creature remembers the file, not the mount', c0.from?.icon === join(folder, 'Mine.(Texture).xdb'));
+    check('the other slots are still the game\'s', !!c0.from?.character && !isAbsolute(c0.from.character));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 // ---- the upgrade links ----------------------------------------------------------

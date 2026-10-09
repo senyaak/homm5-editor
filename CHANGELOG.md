@@ -22,7 +22,9 @@ pre-release.
   next install fail — of a creature, say — on a model you had forgotten.
   The copies live in `H5E/sources` beside the mod; picking the same file
   again takes it in afresh, and a copy nothing uses any more is removed.
-  The forms now show the copy's path.
+  The forms now show the copy's path. A creature's "File…" in the Units window
+  works now: it kept a made-up path inside the mod and dropped the file
+  itself, so the build looked for something never copied.
 - Installing anything into your mod is several seconds faster after the
   first time. Every install rebuilds and repacks the whole mod, and packing
   compressed every file again even though one edit changes only a few of

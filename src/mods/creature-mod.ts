@@ -74,6 +74,7 @@ import { MOD_MANIFEST, REF_TABLE, TYPES, UI_ROOT, mustRead, utf16 } from './mod-
 import type { BuildReport, DataReader, ModFile } from './mod-files.ts';
 import { ART_FIELD, ART_SLOTS, copyArt, dataPath, repaint, uidFor } from './mod-art.ts';
 import type { ArtSlot } from './mod-art.ts';
+import { isOwnFile, mountOwn } from './own-files.ts';
 import { FIRST_RECORD_ID, LAST_SHIPPED, creatureLimit, modIsEmpty } from './mod-model.ts';
 import type { CreatureMod, CreatureSpec, ModCreature } from './mod-model.ts';
 import {
@@ -157,15 +158,29 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
     // document already points at. Recorded on the creature either way — the
     // manifest is where provenance lives.
     const sources: Partial<Record<ArtSlot, string>> = {};
+    // What the copier starts from per slot. The same as the source for the
+    // game's art; for a file of the author's own — the mod's copy of it, taken
+    // in before the build (own-files.ts) — its folder is mounted, as a
+    // faction's model is, and the seed is the file as the mount sees it.
+    const seeds: Partial<Record<ArtSlot, string>> = {};
+    let artRead = read;
     for (const slot of ART_SLOTS) {
       const at = ART_FIELD[slot];
-      const found = c.art?.[slot] ?? hrefOf(at.doc === 'visual' ? visual : monster, at.field);
-      if (found) sources[slot] = dataPath(found);
+      const given = c.art?.[slot];
+      if (given && isOwnFile(given)) {
+        const own = mountOwn(artRead, given);
+        artRead = own.read;
+        sources[slot] = given;
+        seeds[slot] = own.rel;
+        continue;
+      }
+      const found = given ?? hrefOf(at.doc === 'visual' ? visual : monster, at.field);
+      if (found) sources[slot] = seeds[slot] = dataPath(found);
     }
     if (!sources.icon) throw new Error(`${c.id}: no icon — a creature without one stops the game at startup`);
     c.from = sources as Record<ArtSlot, string>;
 
-    const copied = copyArt(Object.values(sources), p.art, read, c.id);
+    const copied = copyArt(Object.values(seeds), p.art, artRead, c.id);
     // The paint, if this creature carries any. Applied to the COPIES, so the
     // game's own textures are untouched and a rebuild reproduces the same
     // creature — which is the whole reason it is written down rather than done
@@ -177,10 +192,10 @@ export function buildCreatureMod(mod: CreatureMod, read: DataReader): BuildRepor
 
     // Point the two documents at our copies and at our texts.
     for (const slot of ART_SLOTS) {
-      const src = sources[slot];
+      const src = seeds[slot];
       if (!src) continue;
       const to = copied.at.get(src);
-      if (!to) throw new Error(`${c.id}: ${slot} art ${src} is not in the game's data`);
+      if (!to) throw new Error(`${c.id}: ${slot} art ${sources[slot]} is neither in the game's data nor a file the copy could read`);
       const at = ART_FIELD[slot];
       const value = `/${to}#xpointer(/${at.type})`;
       if (at.doc === 'visual') visual = setHref(visual, at.field, value, c.visualSource);

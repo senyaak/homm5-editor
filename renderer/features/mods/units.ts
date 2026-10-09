@@ -267,14 +267,17 @@ export function initUnitsMod(): void {
     $input('um-id').value = idFrom('CREATURE_', $input('um-file').value);
   });
   $('um-ability-add').onclick = () => addAbilityRow();
-  // A file of your own for one art slot — copied into the creature's folder when
-  // it is built, exactly as the hero form does it.
+  // A file of your own for one art slot: the FILE picked, not a path inside
+  // the mod made up for it. The install takes it into the mod first and works
+  // from that copy (own-files.ts); the slot then names the copy. It used to
+  // keep only the made-up href and drop the file — so the build looked for a
+  // path nothing had ever been copied to.
   for (const btn of document.querySelectorAll<HTMLButtonElement>('button.um-pick')) {
     btn.onclick = () => {
       const target = btn.dataset.for!;
       void (async () => {
         const picked = await api.pickHeroFile({ id: $input('um-file').value.trim(), slot: target });
-        if (picked.href) $input(target).value = picked.href;
+        if (picked.from) $input(target).value = picked.from;
       })().catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
     };
   }
