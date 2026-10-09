@@ -461,11 +461,40 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(names).toContain(`Factions/${FILE}/towns/Charnel_Bonus.txt`);
   const tooltip = entries.find((e) => e.name.split(String.fromCharCode(92)).join('/') === 'UI/MPWait/PlayersList/Item/race_tooltip_e2ebone.txt')!;
   expect(tooltip.data.subarray(2).toString('utf16le')).toBe('The dead of the Bone Court');
-  // And the originals go, NOW: everything after this rebuilds the whole mod
-  // — the class, the hero, twenty-one creatures, the faction again — and
-  // every one of those builds has to manage with the mod's copies alone.
-  rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-model'), { recursive: true, force: true });
   expect(exeNumbers()).toEqual({ towns: 12, specs: 257, clamp: 8 });
+  expect(ed.errors).toEqual([]);
+});
+
+// The author moves or deletes the folder the files of theirs were picked from
+// — here, the _tmp folder this spec authored them in. The mod took copies at
+// install and works from those alone: saving the faction again rebuilds the
+// whole mod, and it comes out with the same files. (Everything after this
+// rebuilds it again — the class, the hero, twenty-one creatures — without
+// the originals too.)
+test("the author's own files can go: the mod works from its copies", { tag: '@game' }, async () => {
+  test.setTimeout(5 * 60_000);
+  const { page } = ed;
+  const ownOf = (): Map<string, Buffer> => new Map(readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
+    .map((e) => [e.name.split(String.fromCharCode(92)).join('/'), e.data] as const)
+    .filter(([n]) => n.startsWith(`Factions/${FILE}/`) && /\/own\/|\/icons\/|\/sounds\/|\/capture\//.test(n)));
+  const before = ownOf();
+  expect(before.size, 'the faction carries files of ours').toBeGreaterThan(0);
+
+  const originals = join(REPO_ROOT, '_tmp', 'e2e-own-model');
+  rmSync(originals, { recursive: true, force: true });
+  expect(existsSync(originals), 'the originals are gone').toBe(false);
+
+  await press(page, page.locator('#fac-list .um-item button[title*="change it"]').first());
+  await expect(page.locator('#facedit')).toBeVisible();
+  await press(page, page.locator('#fac-ok'));
+  await expect(page.locator('#facedit')).toBeHidden({ timeout: 300_000 });
+  await expect(page.locator('#fac-note')).toContainText(`${TYPE} = 11`);
+
+  const f = readInstalledMod(GAME).factions?.[0];
+  expect(existsSync(f!.buildings!.TB_SPECIAL_1!.model!.source), 'the manifest names a copy that is there').toBe(true);
+  const after = ownOf();
+  expect([...after.keys()].sort(), 'the same files of ours').toEqual([...before.keys()].sort());
+  for (const [name, data] of before) expect(after.get(name)!.equals(data), `${name} is the same bytes`).toBe(true);
   expect(ed.errors).toEqual([]);
 });
 
