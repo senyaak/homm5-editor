@@ -28,7 +28,10 @@ import { DATA, REPO_ROOT, closeEditor, hudSays, launchEditor } from './launch.ts
 import type { Launched } from './launch.ts';
 import { LIVE, clearMap, isModCopyOf, modGameRoot, readInstalledMod } from './mods.ts';
 import { bar } from './bar.ts';
-import { pickObject, placeAtTile, sharedKey } from './objects.ts';
+import { catalogEntry, pickObject, placeAtTile, setObjectProp, sharedKey } from './objects.ts';
+import { newMap } from './tiles.ts';
+import { creaturePaths } from '../src/mods/creature-mod.ts';
+import { children, childText, find, parse } from '../src/format/xml.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { modFile } from '../src/game/mod-paths.ts';
 import { MOD_STEM } from '../src/mods/mod-files.ts';
@@ -772,59 +775,138 @@ test("the faction's dwellings hire the row", { tag: '@game' }, async () => {
   }
 });
 
-/** The map this spec puts a town of the faction on. */
-const MAP_NAME = 'E2e Bone Map';
+/** The map this spec builds for the race: packed into the install, ready to start. */
+const MAP_NAME = 'Bone Court Test';
 
-// A TOWN OF THE FACTION ON A MAP, the way any town is put there: the palette
-// lists it (the faction writes its link file beside the shipped towns'), a
-// click places it, the map is saved — and opened again, which is where an
-// object whose model does not resolve is named on the status line.
-test('a town of the faction is placed from the palette and the map keeps it', { tag: '@game' }, async () => {
-  test.setTimeout(5 * 60_000);
+/**
+ * Put one object down through the palette and answer with its id — clicked
+ * up to three times, as 012 does it: a camera that has not finished moving
+ * turns a click into nothing, silently, and three misses is a real failure.
+ */
+async function placeFromPalette(page: Page, shared: string, x: number, y: number): Promise<string> {
+  let added: { id: string }[] = [];
+  for (let attempt = 1; attempt <= 3 && added.length !== 1; attempt++) {
+    await pickObject(page, shared);
+    const before = new Set((await page.evaluate(() => window.view.objects())).map((o) => o.id));
+    await placeAtTile(page, x, y);
+    added = (await page.evaluate(() => window.view.objects())).filter((o) => !before.has(o.id));
+    expect(added.length, `one click on ${x},${y} put down ${added.length} objects`).toBeLessThan(2);
+  }
+  expect(added, `placing ${shared} at ${x},${y} put down one object, in three tries`).toHaveLength(1);
+  return added[0]!.id;
+}
+
+/** Give the selected object an owner, in the property panel. */
+async function own(page: Page, id: string, player: string): Promise<void> {
+  // What clicking its row in the object list does.
+  await page.evaluate((oid) => window.view.select(oid), id);
+  await setObjectProp(page, 'PlayerID', player);
+}
+
+/** One field of a player in Map Properties' Players tab, the way a person sets it. */
+async function setPlayerField(page: Page, slot: number, field: string, value: string): Promise<void> {
+  await page.locator('#mp-body .mp-picker select').selectOption(String(slot));
+  const row = page.locator('#mp-body .mt-row').filter({ has: page.locator(`label[data-field="${field}"]`) }).first();
+  const control = row.locator('select');
+  await expect(control).toBeEnabled();
+  await control.selectOption(value);
+  await expect(page.locator('#mp-body .mt-row').filter({ has: page.locator(`label[data-field="${field}"]`) }).first().locator('select'))
+    .toHaveValue(value);
+}
+
+// A MAP FOR THE RACE, built the way 012 builds the Sharpshooter's — every step
+// through the editor's own windows: the palette places, the property panel
+// gives owners, Map Properties says the players' colours and red's race, Save
+// writes, Pack puts it in the install. Red is the race: a town of the faction
+// and the hero made above, the town's dwellings hiring the row; blue is one of
+// the game's own Necromancers. Two stacks of the row stand between them.
+// Started in the game, red begins with the hero of the race and his army of
+// tiers 1–3 — the thing a race of ours needs before its first turn.
+test('a map for the race: its town and hero for red, packed into the install', { tag: '@game' }, async () => {
+  test.setTimeout(10 * 60_000);
   const { page } = ed;
   await press(page, page.locator('#fac-close'));
   clearMap(GAME, DATA, MAP_NAME);
-  await bar(page, '#newmapbtn');
-  await page.locator('#nm-name').fill(MAP_NAME);
-  await page.locator('#nm-size').selectOption('72');
-  await page.locator('#nm-ok').click();
-  await expect(page.locator('#newmap')).toBeHidden({ timeout: 60_000 });
-  await expect(page.locator('#title')).toContainText(MAP_NAME, { timeout: 120_000 });
+  await newMap(page, MAP_NAME, '72');
 
-  // The palette's entry for it: a town, named by its link file.
-  const entry = await page.evaluate(async (file) => {
+  // The palette's entry for the town: listed beside the shipped towns'.
+  const town = await catalogEntry(page, `/Factions/${FILE}/${FILE}.(AdvMapTownShared).xdb`);
+  expect(town, 'the palette lists the faction\'s town').toBeTruthy();
+  expect(town!.type).toBe('AdvMapTown');
+  expect(town!.hidden).toBe(false);
+  const hero = (readInstalledMod(GAME).heroes ?? []).find((h) => h.id === HERO.id)!;
+  const necro = await page.evaluate(async () => {
     const { objects } = await window.editor.listObjects();
-    return objects.find((o) => o.shared.includes(`/Factions/${file}/`)) ?? null;
-  }, FILE);
-  expect(entry, 'the palette lists the faction\'s town').toBeTruthy();
-  expect(entry!.type).toBe('AdvMapTown');
-  expect(entry!.shared).toBe(`/Factions/${FILE}/${FILE}.(AdvMapTownShared).xdb#xpointer(/AdvMapTownShared)`);
-  expect(entry!.hidden).toBe(false);
+    return objects.find((o) => o.type === 'AdvMapHero' && !o.hidden && !o.random && o.shared.includes('/Necropolis/'))?.shared ?? '';
+  });
+  expect(necro, 'the catalogue offers a Necropolis hero').not.toBe('');
+  const creatures = readInstalledMod(GAME).creatures;
+  const stackOf = (id: string): string => `/${creaturePaths(creatures.find((c) => c.id === id)!).monster}`;
 
-  let added: { id: string; type: string; shared: string }[] = [];
-  for (let attempt = 1; attempt <= 3 && added.length !== 1; attempt++) {
-    await pickObject(page, entry!.shared);
-    const before = new Set((await page.evaluate(() => window.view.objects())).map((o) => o.id));
-    await placeAtTile(page, 30, 30);
-    added = (await page.evaluate(() => window.view.objects())).filter((o) => !before.has(o.id));
-  }
-  expect(added, 'one click put down one town').toHaveLength(1);
-  expect(added[0]!.type).toBe('AdvMapTown');
+  const townId = await placeFromPalette(page, town!.shared, 16, 16);
+  await own(page, townId, 'PLAYER_1');
+  const heroId = await placeFromPalette(page, `/${heroPaths(hero).shared}`, 22, 16);
+  await own(page, heroId, 'PLAYER_1');
+  const blueId = await placeFromPalette(page, necro, 54, 54);
+  await own(page, blueId, 'PLAYER_2');
+  // The row on the road between them: its first tier and its last.
+  await placeFromPalette(page, stackOf(ROW[0]!.base.id), 28, 22);
+  await placeFromPalette(page, stackOf(ROW[6]!.base.id), 40, 40);
+  expect(ed.errors).toEqual([]);
+
+  // The players: red is the race, blue the Necromancer's.
+  await bar(page, '#mapbtn');
+  await expect(page.locator('#mapprops')).toBeVisible();
+  await page.locator('#mp-tabs .mp-tab', { hasText: 'Players' }).click();
+  const ours = page.locator(`#mp-body .mt-row:has(label[data-field="Race"]) select option[value="${TYPE}"]`);
+  await expect(ours, 'a player can be of the race').toHaveText(/Bone Court.*ours/);
+  await setPlayerField(page, 0, 'Race', TYPE);
+  await setPlayerField(page, 0, 'Colour', 'PCOLOR_RED');
+  await setPlayerField(page, 1, 'Race', 'TOWN_NECROMANCY');
+  await setPlayerField(page, 1, 'Colour', 'PCOLOR_BLUE');
+  await page.locator('#mp-close').click();
   expect(ed.errors).toEqual([]);
 
   await bar(page, '#save');
   await hudSays(page, /saved/i, 120_000);
+
+  // On disk: two players on, red of the race and starting with our hero, the
+  // town his, the stacks of the row on the ground.
   const mapPath = join(DATA, 'Maps', 'SingleMissions', MAP_NAME, 'map.xdb');
   const xml = readFileSync(mapPath, 'latin1');
-  const town = xml.slice(xml.indexOf('<AdvMapTown'), xml.indexOf('</AdvMapTown>'));
-  expect(town, 'the map holds the town').toContain(`<Shared href="${entry!.shared}"/>`);
+  const slots = children(find(parse(/<players>[\s\S]*?<\/players>/.exec(xml)![0]), 'players')!);
+  expect(slots.filter((p) => childText(p, 'ActivePlayer') === 'true').length, 'two players on').toBe(2);
+  const red = slots.find((p) => childText(p, 'Colour') === 'PCOLOR_RED');
+  expect(red, 'red is on').toBeTruthy();
+  expect(childText(red!, 'Race'), 'red is of the race').toBe(TYPE);
+  expect(find(red!, 'MainHero')?.attrs.href ?? '', 'red starts with a hero of the map').toMatch(/^#xpointer\(id\(item_[^)]+\)\/AdvMapHero\)$/);
+  const blocks = (tag: string): string[] => xml.split(`<${tag}>`).slice(1).map((b) => b.slice(0, b.indexOf(`</${tag}>`)));
+  const townBlock = blocks('AdvMapTown').find((b) => b.includes(`/Factions/${FILE}/`));
+  expect(townBlock, 'the town is on the map').toBeTruthy();
+  expect(townBlock, '...and red\'s').toContain('<PlayerID>PLAYER_1</PlayerID>');
+  const heroBlock = blocks('AdvMapHero').find((b) => b.includes(heroPaths(hero).shared));
+  expect(heroBlock, 'our hero is red\'s').toContain('<PlayerID>PLAYER_1</PlayerID>');
+  for (const t of [ROW[0]!, ROW[6]!]) {
+    expect(xml, `a stack of ${t.base.id}`).toContain(creaturePaths(creatures.find((c) => c.id === t.base.id)!).monster);
+  }
 
-  // Opened again: the town is there and has its model.
+  // Into the install, where the game reads a map from.
+  const archive = modFile(GAME, 'map', MAP_NAME);
+  await ed.app.evaluate(({ dialog }, save) => {
+    dialog.showSaveDialog = (async () => ({ canceled: false, filePath: save })) as typeof dialog.showSaveDialog;
+  }, archive);
+  await bar(page, '#pack');
+  await hudSays(page, /^packed → /, 120_000);
+  const names = readEntries(readFileSync(archive)).map((e) => e.name.split(String.fromCharCode(92)).join('/'));
+  expect(names.some((n) => n.endsWith('map.xdb')), 'the archive holds the map').toBe(true);
+  expect(names.some((n) => n.includes('map-tag')), 'and the tag the lobby lists').toBe(true);
+
+  // Opened again: every object has its model.
   await page.evaluate((p) => window.view.open(p), mapPath);
-  await expect(page.locator('#hud')).toContainText('placed 1');
-  await expect(page.locator('#hud'), 'its model resolves').not.toContainText('no model for');
-  // By what it points at: an object read back from a file is listed without the fragment.
-  expect((await page.evaluate(() => window.view.objects().map((o) => o.shared))).map(sharedKey)).toEqual([sharedKey(entry!.shared)]);
+  await expect(page.locator('#hud')).toContainText('placed 5');
+  await expect(page.locator('#hud'), 'every model resolves').not.toContainText('no model for');
+  expect((await page.evaluate(() => window.view.objects().map((o) => o.shared))).map(sharedKey))
+    .toContain(sharedKey(town!.shared));
   // The mod windows are the launcher's: closed, the map gives them back.
   await bar(page, '#closemapbtn');
   await expect(page.locator('#empty')).toBeVisible();
@@ -868,6 +950,8 @@ test('what the mod still names will not go — the window says who', { tag: '@ga
 // And then taken apart in the order the refusals ask for: the tiers off the
 // faction, each base's links, the creatures, the hero, his class.
 test('taken apart in the order the refusals ask for', { tag: '@game' }, async () => {
+  // Live, the race stays in the game to be played — nothing is swept up.
+  test.skip(LIVE, 'live run: the race is left in the game');
   test.setTimeout(15 * 60_000);
   const { page } = ed;
   await press(page, page.locator('#facbtn'));
@@ -922,6 +1006,8 @@ test('taken apart in the order the refusals ask for', { tag: '@game' }, async ()
 });
 
 test('removing it puts the shipped numbers back', { tag: '@game' }, async () => {
+  // Live, the race stays in the game to be played — nothing is swept up.
+  test.skip(LIVE, 'live run: the race is left in the game');
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   await press(page, page.locator('#fac-list .um-item button[title="remove it from the mod"]').first());
