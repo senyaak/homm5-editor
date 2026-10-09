@@ -26,6 +26,7 @@ import type { Assets } from '../game/assets.ts';
 import { EDITOR_ABILITIES } from '../mods/ability-files.ts';
 import { readStats } from '../mods/creatures.ts';
 import type { CreatureStats } from '../mods/creatures.ts';
+import { townTypeFor } from '../mods/factions.ts';
 
 /** One choice in a picker: an engine id (or a ref href) and a display label. */
 export interface RosterEntry {
@@ -87,6 +88,30 @@ const RACES: RosterEntry[] = [
   { id: 'TOWN_STRONGHOLD', name: 'Stronghold' },
 ];
 
+/** The town types after the last shipped one in the mounted `types.xml` — a mod's factions. */
+function modRaces(data: Assets): RosterEntry[] {
+  const types = data.text('types.xml') ?? '';
+  const last = types.indexOf('<Item>TOWN_STRONGHOLD</Item>');
+  if (last < 0) return [];
+  const end = types.indexOf('</EnumEntries>', last);
+  const ids = [...types.slice(last, end < 0 ? undefined : end).matchAll(/<Item>(TOWN_[A-Z0-9_]+)<\/Item>/g)]
+    .map((m) => m[1]!).filter((id) => id !== 'TOWN_STRONGHOLD');
+  if (!ids.length) return [];
+  // The race's name, by the folder the faction lives in.
+  const names = new Map<string, string>();
+  for (const dir of data.dirs('Factions')) {
+    let folders: string[];
+    try { folders = readdirSync(dir); } catch { continue; }
+    for (const file of folders) {
+      const raw = data.bytes(`Factions/${file}/race.txt`);
+      if (!raw || raw.length < 2) continue;
+      const text = (raw[0] === 0xff && raw[1] === 0xfe ? raw.toString('utf16le', 2) : raw.toString('utf8')).replace(/\0+$/, '').trim();
+      if (text) names.set(townTypeFor(file), text);
+    }
+  }
+  return ids.map((id) => ({ id, name: names.has(id) ? `${names.get(id)} (ours)` : id }));
+}
+
 export class Registry {
   private cache = new Map<string, RosterEntry[]>();
   private data: Assets;
@@ -123,8 +148,17 @@ export class Registry {
     return this.memo('skills', () => byLabel(readRefTable(this.data, SKILL_TABLE)));
   }
 
-  /** Player races — the fixed `TOWN_*` enum. */
-  races(): RosterEntry[] { return RACES; }
+  /**
+   * Player races — the game's eight, and the factions a mounted mod adds.
+   *
+   * The enum is closed in the executable's sense only: a faction appends its
+   * type to `types.xml`'s `TownType` after the last shipped one, and a map's
+   * player of that race has to be able to say so. Named by the race's own
+   * text (`Factions/<file>/race.txt`), as the mod windows name it.
+   */
+  races(): RosterEntry[] {
+    return this.memo('races', () => [...RACES, ...modRaces(this.data)]);
+  }
 
   /**
    * Every object of a class — the type-constrained picker the original editor

@@ -17,7 +17,9 @@
 //   node tools/test-faction-mod.ts [dataRoot]
 
 // needs: data
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { Registry } from '../src/schema/registry.ts';
 import { join } from 'node:path';
 import { MOD_MANIFEST, dataReader, TYPES, UI_ROOT } from '../src/mods/mod-files.ts';
 import { buildCreatureMod } from '../src/mods/creature-mod.ts';
@@ -100,6 +102,25 @@ console.log('the model');
   removeFaction(mod, 'Alpha');
   check('the ones after a removal move down', mod.factions!.length === 1 && mod.factions![0]!.number === SHIPPED_TOWN_TYPES);
   check('the grid is five by six', GRID.columns === 5 && GRID.rows === 6);
+}
+
+console.log('a map\'s player can be of the race');
+{
+  // The editor listed the eight races from a table in its source, so a map's
+  // player could never be of a faction. They are read from the mounted
+  // types.xml now — the shipped ones first, the mod's after.
+  const root = mkdtempSync(join(tmpdir(), 'races-'));
+  try {
+    writeFileSync(join(root, 'types.xml'), '<EnumEntries>\r\n\t<Item>TOWN_NO_TYPE</Item>\r\n\t<Item>TOWN_STRONGHOLD</Item>\r\n\t<Item>TOWN_BONE_COURT</Item>\r\n</EnumEntries>\r\n<EnumEntries>\r\n\t<Item>RACE_STRONGHOLD</Item>\r\n</EnumEntries>');
+    mkdirSync(join(root, 'Factions', 'BoneCourt'), { recursive: true });
+    writeFileSync(join(root, 'Factions', 'BoneCourt', 'race.txt'), Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('Bone Court', 'utf16le')]));
+    const races = new Registry(root).races();
+    check('the eight and "random" first, as shipped', races.slice(0, 9).map((r) => r.id).join() === 'TOWN_NO_TYPE,TOWN_HEAVEN,TOWN_PRESERVE,TOWN_ACADEMY,TOWN_DUNGEON,TOWN_NECROMANCY,TOWN_INFERNO,TOWN_FORTRESS,TOWN_STRONGHOLD');
+    check('then the faction, by its race\'s name', races.length === 10 && races[9]!.id === 'TOWN_BONE_COURT' && races[9]!.name === 'Bone Court (ours)',
+      JSON.stringify(races[9]));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 }
 
 console.log('what a race needs to start a game');
