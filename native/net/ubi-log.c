@@ -75,7 +75,7 @@ static void ubi_log_flush(void) {
   stamped[at++] = ' ';
   for (int i = 0; g_ubiLine[i] && at < (int)sizeof(stamped) - 1; i++) stamped[at++] = g_ubiLine[i];
   stamped[at] = 0;
-  log_line_now(stamped);
+  if (H5E_DEV) log_line_now(stamped);
 }
 
 /**

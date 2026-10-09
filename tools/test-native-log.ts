@@ -29,7 +29,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 import {
-  LOG_UNITS_BY_DEFAULT, asLogUnit, buildExtension, logDefines, logUnits,
+  LOG_UNITS_DEV, asLogUnit, buildExtension, logDefines, logUnits,
 } from '../src/mods/extension.ts';
 
 const here = join(import.meta.dirname, '..');
@@ -108,12 +108,12 @@ const mute = units.filter((u) => u.about.length < 10);
 check('every file opens with a line saying what it is for', mute.length === 0,
   mute.map((u) => u.file).join(', '));
 
-// The default list is the one thing here written by hand rather than read out
-// of the sources, so it is the one thing that can name something that is gone.
+// The development list is the one thing here written by hand rather than read
+// out of the sources, so it is the one thing that can name something that is gone.
 let defaultsOk = true;
-try { logDefines(here, []); } catch (e) { defaultsOk = false; check('defaults', false, String(e)); }
+try { logDefines(here, []); } catch (e) { defaultsOk = false; check('the development list', false, String(e)); }
 if (defaultsOk) {
-  check('every default unit exists', true, LOG_UNITS_BY_DEFAULT.join(', '));
+  check('every development unit exists', true, LOG_UNITS_DEV.join(', '));
 }
 
 for (const typed of ['combat/spell-resolve', 'combat/spell-resolve.c', 'native/combat/spell-resolve.c',
@@ -125,10 +125,20 @@ let refused = false;
 try { logDefines(here, ['combat/no-such-file']); } catch { refused = true; }
 check('a file that does not exist is refused', refused);
 
+// LOGS ARE FOR DEVELOPMENT ONLY: an ordinary build asks nobody, and is not a
+// development build — H5E_DEV gates the file, its pruning and the few lines
+// that speak past every unit's switch.
 const off = logDefines(here, []);
-check('every unit gets a -D, on or off', off.length === units.length, `${off.length} defines`);
-check('the ones not asked for are 0',
-  off.filter((d) => d.endsWith('=0')).length === units.length - LOG_UNITS_BY_DEFAULT.length);
+check('every unit gets a -D, on or off, and H5E_DEV one too', off.length === units.length + 1, `${off.length} defines`);
+check('an ordinary build: nothing on, not a development one', off.every((d) => d.endsWith('=0')) && off.includes('-DH5E_DEV=0'));
+check('"none" is the same build', JSON.stringify(logDefines(here, ['none'])) === JSON.stringify(off));
+const dev = logDefines(here, ['dev']);
+check('--dev: a development build, its list on and nothing else',
+  dev.includes('-DH5E_DEV=1') && dev.filter((d) => d.startsWith('-DH5E_LOG_') && d.endsWith('=1')).length === LOG_UNITS_DEV.length);
+const named = logDefines(here, ['combat/spell-resolve']);
+check('naming a file makes a development build, with that file on too',
+  named.includes('-DH5E_DEV=1') && named.includes('-DH5E_LOG_combat_spell_resolve=1')
+  && named.filter((d) => d.startsWith('-DH5E_LOG_') && d.endsWith('=1')).length === LOG_UNITS_DEV.length + 1);
 
 // ---------------------------------------------------------------------------
 console.log('\nand a unit that was not asked for is not in the DLL');
@@ -150,10 +160,28 @@ function has(dll: string, text: string): boolean {
   return readFileSync(dll).includes(Buffer.from(text, 'latin1'));
 }
 
-const quiet = buildExtension(here, () => {}, ['none']);
+/**
+ * What a development build says whatever was asked for — the load report, a
+ * line written past every switch, and the log file's own name — and an
+ * ordinary build must not carry at all: no file is named, so none is made.
+ */
+const DEV_ONLY = [
+  { what: 'the load report', bytes: Buffer.from('--- homm5-editor extension loaded', 'latin1') },
+  { what: 'a line past every switch', bytes: Buffer.from('no room in our lua table for ', 'latin1') },
+  { what: 'the log files\' own pattern', bytes: Buffer.from('homm5-editor-*.log', 'utf16le') },
+];
+
+const quiet = buildExtension(here, () => {}, []);
 const quietBytes = readFileSync(quiet).length;
 for (const { unit, text } of SAMPLES) {
-  check(`"${text.trim()}" is gone with --log none`, !has(quiet, text), unit);
+  check(`"${text.trim()}" is gone from an ordinary build`, !has(quiet, text), unit);
+}
+for (const { what, bytes } of DEV_ONLY) {
+  check(`${what} is not in an ordinary build`, !readFileSync(quiet).includes(bytes));
+}
+const devDll = buildExtension(here, () => {}, ['dev']);
+for (const { what, bytes } of DEV_ONLY) {
+  check(`...and is in a development one`, readFileSync(devDll).includes(bytes), what);
 }
 
 // The other half: the same sentences, from a build that asked for them. Without
@@ -168,7 +196,7 @@ check('asking for them costs bytes', loudBytes > quietBytes,
   `${quietBytes} silent, ${loudBytes} with three files speaking`);
 
 // Left as the ordinary build, so a run of this does not leave a DLL behind that
-// says either more or less than a plain `npm run build-native` would.
+// says more than a plain `npm run build-native` would.
 buildExtension(here, () => {});
 
 console.log(failures ? `\n${failures} FAILED\n` : '\nall ok\n');

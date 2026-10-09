@@ -71,16 +71,20 @@ const ZIG = join('node_modules', '@zigc', 'win32-x64', 'bin', 'zig.exe');
 // either.
 
 /**
- * On unless a build says otherwise: did the mod load, did it crash — and, while
- * the multiplayer agent is still only watching, what it saw.
+ * What a DEVELOPMENT build says without being asked: did the mod load, did it
+ * crash — and, while the multiplayer agent is still only watching, what it saw.
  *
- * `net_agent` is here because at this stage its log IS the feature: the flag is
- * off in every install that did not ask for it, and in one that did, a build
- * without these lines would install a hook that says nothing. It comes out of
- * this list the day the agent starts carrying datagrams instead of counting
- * them.
+ * Only a development build. An ordinary build — what a plain `build-native`,
+ * the first run and the editor's install make — writes NO log at all: no file,
+ * no line, not even a crash (Senya, 2026-10-09: logs are for development
+ * only). A build is a development one when it is asked to be (`--dev`, the
+ * word `dev`) or asked for any unit by name; then these speak too.
+ *
+ * `net_agent` is here because at this stage its log IS the feature: in an
+ * install that turned the agent on, a development build without these lines
+ * would install a hook that says nothing.
  */
-export const LOG_UNITS_BY_DEFAULT = [
+export const LOG_UNITS_DEV = [
   'homm5_editor',
   'core_faults',
   'net_agent',
@@ -162,20 +166,19 @@ export function logDefines(editorRoot: string, asked: readonly string[]): string
   const units = logUnits(editorRoot);
   const known = new Set(units.map((u) => u.unit));
 
-  for (const unit of LOG_UNITS_BY_DEFAULT) {
+  for (const unit of LOG_UNITS_DEV) {
     if (!known.has(unit)) {
-      throw new Error(`no native file defines LOG_UNIT ${unit}\n  LOG_UNITS_BY_DEFAULT in src/mods/extension.ts names a unit that no longer exists`);
+      throw new Error(`no native file defines LOG_UNIT ${unit}\n  LOG_UNITS_DEV in src/mods/extension.ts names a unit that no longer exists`);
     }
   }
 
-  // `none` is the build meant for playing: not the defaults either, not one
-  // string of ours left in the DLL. It is a word rather than a second flag
-  // because it belongs to the same question — who speaks — and the answer here
-  // is nobody.
-  const silent = asked.some((t) => t.trim() === 'none');
-  const on = new Set<string>(silent ? [] : LOG_UNITS_BY_DEFAULT);
-  for (const typed of asked) {
-    if (typed.trim() === 'none') continue;
+  // Nothing asked, or `none`: the ordinary build, which says nothing at all.
+  // `dev`, or any unit by name: a development build, the dev set speaking too.
+  const words = asked.map((t) => t.trim()).filter((t) => t && t !== 'none');
+  const dev = words.length > 0;
+  const on = new Set<string>(dev ? LOG_UNITS_DEV : []);
+  for (const typed of words) {
+    if (typed === 'dev') continue;
     const unit = asLogUnit(typed);
     if (!known.has(unit)) {
       const near = units.map((u) => u.file.replace(/\.c$/, '')).join('\n    ');
@@ -183,7 +186,12 @@ export function logDefines(editorRoot: string, asked: readonly string[]): string
     }
     on.add(unit);
   }
-  return units.map(({ unit }) => `-DH5E_LOG_${unit}=${on.has(unit) ? 1 : 0}`);
+  // H5E_DEV gates what speaks whatever the units say — the log file itself,
+  // its pruning, the few lines written past every switch (native/core/log.c).
+  return [
+    `-DH5E_DEV=${dev ? 1 : 0}`,
+    ...units.map(({ unit }) => `-DH5E_LOG_${unit}=${on.has(unit) ? 1 : 0}`),
+  ];
 }
 
 /**
@@ -204,8 +212,9 @@ export function logDefines(editorRoot: string, asked: readonly string[]): string
  * under a path with spaces in it.
  *
  * `logging` names the files that may speak — see `logDefines`. The default is
- * the two units that answer "did it load" and "did it crash"; anything else has
- * to be asked for, and `['none']` builds a DLL with no logging in it at all.
+ * nobody: a DLL with no logging in it at all, which is what a game gets.
+ * `['dev']` is a development build (load, crash, the agent); naming a file
+ * makes one too, with that file speaking as well.
  */
 export function buildExtension(
   editorRoot: string,

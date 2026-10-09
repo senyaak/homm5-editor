@@ -175,7 +175,8 @@ BOOL WINAPI DllMain(HINSTANCE self, DWORD reason, LPVOID reserved) {
   // and an offset in the Windows event log, and working back from that costs a
   // launch each time. This changes nothing about the crash — it writes down the
   // registers and the return addresses first.
-  install_fault_report(self);
+  // A development build only: the report is a log, and an ordinary build has none.
+  if (H5E_DEV) install_fault_report(self);
   // The MAP EDITOR is a different executable, and every hook below this line
   // is built against the game's image — bytes at addresses the editor uses for
   // other things. The one instrument that knows both executables is the RMG

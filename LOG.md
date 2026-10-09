@@ -9,6 +9,12 @@ unreadable anyway.
 
 So a build says only what it was asked for, and the asking is per FILE.
 
+**And logs are for development only** (Senya, 2026-10-09). An ordinary build —
+a plain `npm run build-native`, the editor's first run, every install from
+the editor — writes no log at all: no file is made, no old one pruned, not
+even a crash is written down. A development build is asked for with `--dev`,
+or by naming any file with `--log`.
+
 ## Reading the log
 
 Each launch writes its own file beside the executable:
@@ -48,16 +54,19 @@ Lists everything there is to ask for. A name that matches no file is refused
 with the list, rather than quietly turning nothing on.
 
 ```bash
-npm run build-native -- --log none
+npm run build-native            # the ordinary build — a game's: no log at all
+npm run build-native -- --dev   # the development set below, nothing else
 ```
 
-A build for playing: no logging in it at all, not even the two defaults below.
+Naming any file is a development build too: the set below speaks alongside it.
 
 It is the **preprocessor** doing the cutting, so a file nobody named costs the
-DLL nothing — not the call, not the format, not the sentence. Measured: 97 792
-bytes with `--log none`, 99 840 as it builds by default, 120 832 with all
-forty-five files speaking. `tools/test-native-log.ts` proves it by compiling
-twice and looking for the same sentences in both.
+DLL nothing — not the call, not the format, not the sentence; and an ordinary
+build carries none of the log's own machinery either (`H5E_DEV`, top of
+`native/core/log.c`). Measured 09.10.2026: 135 168 bytes ordinary, 185 344
+with three files speaking. `tools/test-native-log.ts` proves it by compiling
+both ways and looking for the same sentences — and the log file pattern — in
+both.
 
 **After a rebuild the DLL has to reach the game**, or the run you are about to
 watch is the old build:
@@ -67,23 +76,26 @@ npm run install-native
 ```
 
 **And `npm test` puts a SILENT one there.** `test-native-log` builds the
-extension twice to prove the switches cut what they say they cut, and the last
-build it leaves behind is the ordinary one — which `install-native` then carries
-into the game if you run it after. It cost a play-through on 10.08.2026: a run
-that should have printed a line per spell wrote five lines and stopped. If a run
-is being watched, build with `--log` and install AFTER the suite, not before.
+extension both ways to prove the switches cut what they say they cut, and the
+last build it leaves behind is the ordinary one — which `install-native` then
+carries into the game if you run it after. It cost a play-through on
+10.08.2026: a run that should have printed a line per spell wrote five lines and
+stopped. If a run is being watched, build with `--dev` or `--log` and install
+AFTER the suite, not before.
 
-## What speaks without being asked
+## What a development build says without being asked
 
-Two units, because they are how anybody finds out the mod is there at all and
-what it was doing when it stopped:
+Only a development build. These are how anybody finds out the mod is there at
+all and what it was doing when it stopped — and, while the multiplayer agent is
+still only watching, what it saw:
 
 | unit | what it says |
 | --- | --- |
 | `homm5-editor` | `--- homm5-editor extension loaded`, then which hooks went in |
 | `core/faults` | on an access violation: the registers, and the return addresses still on the stack |
+| `net/agent`, `net/relay`, `net/lobby` | the multiplayer agent's traffic |
 
-Both are in `LOG_UNITS_BY_DEFAULT` in [src/mods/extension.ts](src/mods/extension.ts),
+They are `LOG_UNITS_DEV` in [src/mods/extension.ts](src/mods/extension.ts),
 which is checked against the sources — it cannot name a unit that no longer
 exists.
 
@@ -154,12 +166,9 @@ Three things this could have and does not, each deferred on purpose rather than
 forgotten. Each says what would settle it, so a decision made once does not have
 to be argued again from scratch.
 
-**Whether the crash report ships.** `core/faults.c` and the roll-call are on by
-default, and `--log none` silences even them for a build meant purely for
-playing. *What would settle it:* the first time this mod is handed to somebody
-who is not building it. Until then the question is theoretical — the author
-rebuilds for every change, so nothing is ever shipped that could not be rebuilt
-louder.
+**Whether the crash report ships** — settled 09.10.2026: it does not. Logs are
+for development only, the crash report with them; a crash to look into is
+reproduced with a `--dev` build.
 
 **Writing from a thread of its own.** Proposed and turned down. With the volume
 cut, a run writes tens of lines rather than hundreds, and the file open per line

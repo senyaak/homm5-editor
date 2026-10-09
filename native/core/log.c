@@ -11,6 +11,15 @@
 #undef LOG_UNIT
 #define LOG_UNIT core_log
 
+// A DEVELOPMENT BUILD OR NOT — handed in by the build (src/mods/extension.ts,
+// `logDefines`). Logs are for development only: an ordinary build, the one a
+// game gets, writes no file at all — no line, no crash report, and no pruning
+// of the logs a development build left behind. Even the few lines below that
+// speak past every per-file switch are gated by this.
+#ifndef H5E_DEV
+#error "H5E_DEV is not defined: build the extension with npm run build-native"
+#endif
+
 // ---------------------------------------------------------------------------
 // Where we live, and what sits beside us.
 
@@ -161,6 +170,7 @@ static void prune_old_logs(void) {
 
 /** Called once, before anything logs: this run's file, and room for it. */
 static void start_this_run_log(void) {
+  if (!H5E_DEV) return;
   name_this_run();
   prune_old_logs();
 }
@@ -182,6 +192,7 @@ static void console_line(const char *text);
 static LONG g_logSeq = 0;
 
 static void log_line_now(const char *text) {
+  if (!H5E_DEV) return;
   console_line(text);
   WCHAR path[MAX_PATH];
   beside_us(g_logName, path);

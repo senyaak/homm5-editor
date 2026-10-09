@@ -14,6 +14,12 @@ pre-release.
 
 ## Unreleased
 
+- The game extension writes no log unless it is built for development. An
+  ordinary build — what the editor installs — wrote a file beside the game on
+  every launch (the load report, crashes, the multiplayer agent's traffic)
+  and pruned the older ones; now it writes nothing and touches no log files.
+  `npm run build-native -- --dev` builds the development one; naming files
+  with `--log` does too.
 - Files of your own — a model, a picture, a track, a sound you pick for a
   faction, a hero, an artifact — are copied into the mod the moment it is
   installed, and from then on only that copy is used. The mod used to

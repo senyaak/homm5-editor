@@ -86,4 +86,9 @@ if (args.includes('--editor')) {
   }
 }
 
-console.log('\nLaunch H5_Game_H5E.exe. The newest bin/homm5-editor-*.log says whether it loaded.');
+// Only a development build names its log files at all (native/core/log.c,
+// H5E_DEV) — the same marker test-native-log looks for.
+const dev = readFileSync(built).includes(Buffer.from('homm5-editor-*.log', 'utf16le'));
+console.log(dev
+  ? '\nLaunch H5_Game_H5E.exe. The newest bin/homm5-editor-*.log says whether it loaded.'
+  : '\nLaunch H5_Game_H5E.exe. An ordinary build writes no log — build with --dev to see one.');

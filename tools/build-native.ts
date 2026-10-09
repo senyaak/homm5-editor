@@ -1,18 +1,18 @@
 // Build the extension the game loads — native/homm5-editor.c into a 32-bit DLL.
 //
-//   node tools/build-native.ts [--out <dir>] [--log <files>]
+//   node tools/build-native.ts [--out <dir>] [--dev] [--log <files>]
 //
-// `--log` names the extension's own files that may write to the log, by their
-// path under `native/`:
+// LOGS ARE FOR DEVELOPMENT ONLY. A plain build writes no log at all — no file,
+// no line, no crash report — and that is what a game gets.
 //
+//   npm run build-native                    # the ordinary build: silent
+//   npm run build-native -- --dev           # the load and crash reports, the agent
 //   npm run build-native -- --log combat/spell-resolve,lua/battle
+//                                           # --dev, and those files speaking too
 //   npm run build-native -- --list-log      # what there is to ask for
-//   npm run build-native -- --log none      # a DLL that says nothing at all
 //
 // Everything not named is cut out by the preprocessor, so it costs the built
-// DLL nothing. Two units speak without being asked — the load report and the
-// crash report — because they are how anybody finds out the mod is there and
-// what it did when it stopped. See the bottom of native/core/log.c.
+// DLL nothing. See the bottom of native/core/log.c.
 //
 // The compile itself lives in src/extension.ts (`buildExtension`), because the
 // editor's first run does the same thing without a terminal to run this in —
@@ -29,7 +29,7 @@ import { copyFileSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import {
-  EXTENSION_DLL, LOG_UNITS_BY_DEFAULT, buildExtension, logUnits,
+  EXTENSION_DLL, LOG_UNITS_DEV, buildExtension, logUnits,
 } from '../src/mods/extension.ts';
 
 const here = resolve(import.meta.dirname, '..');
@@ -52,16 +52,18 @@ if (args.includes('--list-log')) {
   }
   console.log('\nname them with --log, comma separated:');
   console.log('  npm run build-native -- --log combat/spell-resolve,lua/battle');
-  console.log('\n--log none silences even the two that speak by default');
-  console.log(`(${LOG_UNITS_BY_DEFAULT.join(', ')} — the load report and the crash report).`);
+  console.log('\nany of them makes a development build, as --dev does, in which these speak too:');
+  console.log(`  ${LOG_UNITS_DEV.join(', ')} — the load report, the crash report, the agent.`);
+  console.log('without either, the build writes no log at all.');
   process.exit(0);
 }
 
 // Commas or repeated flags, because both get typed. `--log a,b` and
 // `--log a --log b` mean the same thing.
-const logging = args
-  .flatMap((arg, i) => (arg === '--log' ? (args[i + 1] ?? '').split(',') : []))
-  .filter((s) => s.trim() !== '');
+const logging = [
+  ...(args.includes('--dev') ? ['dev'] : []),
+  ...args.flatMap((arg, i) => (arg === '--log' ? (args[i + 1] ?? '').split(',') : [])),
+].filter((s) => s.trim() !== '');
 
 const dll = buildExtension(here, (s) => console.log(s), logging);
 

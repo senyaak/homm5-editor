@@ -103,22 +103,25 @@ cost a launch.
 
 ## Getting the mod to say something
 
-**A default build is nearly silent, on purpose.** The extension's logging is
-switched on per FILE, at compile time, and everything not asked for is cut out
-by the preprocessor:
+**Logs are for development only.** A default build writes no log at all — no
+file, not even a crash report. A development build is `--dev` (the load and
+crash reports, the multiplayer agent), or any file named with `--log`, which
+is `--dev` plus that file; everything not asked for is cut out by the
+preprocessor:
 
 ```bash
+npm run build-native -- --dev
 npm run build-native -- --log combat/spell-resolve,lua/battle
 npm run build-native -- --list-log
 npm run install-native
 ```
 
-Each launch then writes `bin/homm5-editor-<date>-<time>.log`.
+A development build's launch then writes `bin/homm5-editor-<date>-<time>.log`.
 
 Read [LOG.md](LOG.md) before deciding a hook "did not install" or a feature
 "says nothing" — most of the reports that used to be in the log, including
 "how many patches went in", now need their own file named. It lists every file,
-what it would tell you, and the two units that speak without being asked.
+what it would tell you, and what a development build says without being asked.
 
 **Install the logging build LAST.** `tools/test-native-log.ts` builds its own
 quiet and loud copies into the same `native/build/`, so running it after
