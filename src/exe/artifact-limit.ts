@@ -27,10 +27,10 @@
 // table's own name, and for the one `mov eax,N; ret` that agrees with it, holds
 // on any build where those two shapes survive.
 
-import { copyFileSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PATCHED_EXE, SHIPPED_EXE } from './creature-limit.ts';
-import { refuseIfRunning } from '../game/running.ts';
+import { refuseIfRunning, replaceFile } from '../game/running.ts';
 
 /** How many artifacts the game ships with, and so what the sites hold unpatched. */
 export const ORIGINAL_ARTIFACTS = 97;
@@ -276,7 +276,7 @@ export function setArtifactLimit(gameRoot: string, limit: number): ArtifactExeRe
   const temp = `${target}.new`;
   writeFileSync(temp, patch.data);
   try {
-    renameSync(temp, target);
+    replaceFile(temp, target);
   } catch (e) {
     try { unlinkSync(temp); } catch { /* the message below is what matters */ }
     throw new Error(`cannot write ${target} — close the game first (${e instanceof Error ? e.message : String(e)})`);

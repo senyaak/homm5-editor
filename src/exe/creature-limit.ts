@@ -28,10 +28,10 @@
 // verified against the stub they claim to reach before anything is written.
 // docs/NEW_CREATURES.md in the port has the evidence for each offset.
 
-import { copyFileSync, existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { refuseIfRunning } from '../game/running.ts';
+import { refuseIfRunning, replaceFile } from '../game/running.ts';
 
 /** What the shipped executables count up to. */
 export const ORIGINAL_LIMIT = 180;
@@ -351,7 +351,7 @@ export function setCreatureLimit(gameRoot: string, limit: number): ExeResult {
   const temp = `${target}.new`;
   writeFileSync(temp, patch.data);
   try {
-    renameSync(temp, target);
+    replaceFile(temp, target);
   } catch (e) {
     // Windows refuses to replace a running executable, which is exactly what
     // happens when the game is open — say so instead of reporting a rename.

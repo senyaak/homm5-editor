@@ -13,10 +13,10 @@
 // one the extension is imported into: it is created once from the shipped
 // one and kept, so the bit stays set across every ceiling moved after it.
 
-import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PATCHED_EXE } from './creature-limit.ts';
-import { refuseIfRunning } from '../game/running.ts';
+import { refuseIfRunning, replaceFile } from '../game/running.ts';
 
 export const LARGE_ADDRESS_AWARE = 0x20;
 
@@ -65,7 +65,7 @@ export function setLargeAddressAware(gameRoot: string, on: boolean): LargeAddres
   const temp = `${target}.new`;
   writeFileSync(temp, patched);
   try {
-    renameSync(temp, target);
+    replaceFile(temp, target);
   } catch (e) {
     try { unlinkSync(temp); } catch { /* the message below is what matters */ }
     throw new Error(`cannot write ${target} — close the game first (${e instanceof Error ? e.message : String(e)})`);

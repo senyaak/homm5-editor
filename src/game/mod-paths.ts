@@ -32,10 +32,11 @@
 // The literals are unique in the file, so a search for them holds on any build
 // where they survive.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { PATCHED_EXE, SHIPPED_EXE } from '../exe/creature-limit.ts';
+import { replaceFile } from './running.ts';
 
 /** The folder our build reads, relative to the game root. */
 export const MOD_DIR = 'H5E';
@@ -246,7 +247,7 @@ export function setModPaths(gameRoot: string, to: 'ours' | 'shipped'): ModPathsR
   const temp = `${target}.new`;
   writeFileSync(temp, patch.data);
   try {
-    renameSync(temp, target);
+    replaceFile(temp, target);
   } catch (e) {
     try { unlinkSync(temp); } catch { /* the message below is what matters */ }
     throw new Error(`cannot write ${target} — close the game first (${e instanceof Error ? e.message : String(e)})`);

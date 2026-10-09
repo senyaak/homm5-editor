@@ -18,12 +18,12 @@
 // (native/faction/race-order.c) — docs/engineInternals/FACTIONS.md, "the
 // twelfth slot".
 
-import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PATCHED_EXE } from './creature-limit.ts';
 import { TOWN_SPEC_TABLE, TOWN_TYPE_TABLE, findLoadSite, setTableLimit } from './table-limit.ts';
 import type { TableExeResult, TableSpec } from './table-limit.ts';
-import { refuseIfRunning } from '../game/running.ts';
+import { refuseIfRunning, replaceFile } from '../game/running.ts';
 import { SHIPPED_RMG_PRESETS, SHIPPED_TOWN_TYPES } from '../mods/factions.ts';
 import { SHIPPED_TOWN_SPECS } from '../mods/town-files.ts';
 
@@ -94,7 +94,7 @@ export function setFactionLimits(gameRoot: string, factions: number, namedTowns:
     const temp = `${target}.new`;
     writeFileSync(temp, buf);
     try {
-      renameSync(temp, target);
+      replaceFile(temp, target);
     } catch (e) {
       try { unlinkSync(temp); } catch { /* the message below is what matters */ }
       throw new Error(`cannot write ${target} — close the game first (${e instanceof Error ? e.message : String(e)})`);

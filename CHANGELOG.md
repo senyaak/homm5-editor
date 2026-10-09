@@ -14,6 +14,13 @@ pre-release.
 
 ## Unreleased
 
+- An install could refuse with "the game has H5_Game_H5E.exe open — close
+  it" when no game was running. About a second after the editor rewrites the
+  executable, something on the machine (a virus scanner, by the look of it)
+  opens it for a few milliseconds, and an install that came right after
+  another one could land in that moment. A lock that lets go within half a
+  second is no longer taken for the game, and writing over the file waits
+  that long too.
 - A faction's town that looks like another town on the map now stands on
   that town's ground too. It kept its donor's: the tiles it blocks, the
   ground cut out under the model, and the tile a hero enters by. No two of

@@ -21,7 +21,7 @@
 // and neither is in the other's way. What is asked about is our copy and the
 // extension beside it.
 
-import { closeSync, existsSync, openSync } from 'node:fs';
+import { closeSync, existsSync, openSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { EXTENSION_DLL } from '#src/mods/extension.ts';
@@ -69,6 +69,33 @@ function locked(path: string): boolean {
 }
 
 /**
+ * How long a lock may last and still be somebody else's glance, not the game.
+ *
+ * Measured 09.10.2026 on the live install: about a second after the executable
+ * in `bin/` is replaced, something on the machine (a scanner, by the look of
+ * it — the same write under `_tmp/` is never touched) opens it without
+ * sharing writes for about twelve milliseconds. A live e2e run's next install
+ * landed in that window and was told the game was open, with no game started.
+ * A running game holds the file for as long as it runs.
+ */
+const GLANCE_MS = 500;
+
+/** A synchronous pause — the install is synchronous, and the wait is short. */
+function pause(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/** Locked, and still locked after a glance's worth of looking again. */
+function lockedForGood(path: string): boolean {
+  const until = Date.now() + GLANCE_MS;
+  while (locked(path)) {
+    if (Date.now() >= until) return true;
+    pause(20);
+  }
+  return false;
+}
+
+/**
  * The first file of ours the game is holding, or null when nothing is held.
  *
  * A path rather than a boolean, because the two files fail for different
@@ -77,9 +104,28 @@ function locked(path: string): boolean {
 export function heldByRunningGame(gameRoot: string): string | null {
   for (const rel of heldWhilePlaying()) {
     const path = join(gameRoot, rel);
-    if (locked(path)) return path;
+    if (lockedForGood(path)) return path;
   }
   return null;
+}
+
+/**
+ * Move a freshly written file over the one it replaces, waiting out a glance
+ * (`GLANCE_MS`) — the same twelve milliseconds that can fall between the check
+ * above and the write. Throws what the last try threw.
+ */
+export function replaceFile(temp: string, target: string): void {
+  const until = Date.now() + GLANCE_MS;
+  for (;;) {
+    try {
+      renameSync(temp, target);
+      return;
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      if (!(code === 'EBUSY' || code === 'EPERM' || code === 'EACCES') || Date.now() >= until) throw e;
+      pause(20);
+    }
+  }
 }
 
 /** The same question as a yes or no, for a caller that only wants to warn. */
