@@ -39,6 +39,7 @@ import type { PickerRace, RaceTraits } from './race-order.ts';
 import { SPECIAL_BUTTON, SPECIAL_BUTTON_SHARED, addTownButtons, factionScriptFile, factionScriptPath } from './town-button.ts';
 import type { TownButton, TownButtonRow } from './town-button.ts';
 import { featureLines } from './town-features.ts';
+import { factionLua } from './camp-script.ts';
 import { heroHref, heroPaths } from './heroes.ts';
 import type { HeroSpec } from './heroes.ts';
 import { UI_ROOT, mustRead, utf16 } from './mod-files.ts';
@@ -208,7 +209,7 @@ export function buildFactions(
     // The centre button and the faction's Lua.
     if (town.button) buttons.push({ ...town.button, town: f.number });
     features.push(...featureLines(f.number, town.features));
-    files.push(factionScriptFile(f.file, f.script ?? '', { name: f.type, number: f.number }));
+    files.push(factionScriptFile(f.file, factionLua(f), { name: f.type, number: f.number }));
   }
 
   files.push(

@@ -14,6 +14,13 @@ pre-release.
 
 ## Unreleased
 
+- A faction's building can be a refugee camp, from the Factions window:
+  give it a button, tick "Refugee camp" and pick the tiers. Each week the
+  camp rolls creatures of those tiers — the mod's own among them — and sells
+  them through the game's hire screen: one offer per level of the building,
+  the dearer the fewer. The camp's Lua is written for you after the faction's
+  script; a script that defines the button's function too is refused by name.
+  Until now only a hand-made test faction had one.
 - An install could refuse with "the game has H5_Game_H5E.exe open — close
   it" when no game was running. About a second after the editor rewrites the
   executable, something on the machine (a virus scanner, by the look of it)

@@ -26,7 +26,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { join } from 'node:path';
 import { DATA, REPO_ROOT, closeEditor, hudSays, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { LIVE, clearMap, isModCopyOf, modGameRoot, readInstalledMod } from './mods.ts';
+import { LIVE, REAL_GAME, clearMap, isModCopyOf, modGameRoot, readInstalledMod } from './mods.ts';
 import { bar } from './bar.ts';
 import { catalogEntry, pickObject, placeAtTile, setObjectProp, sharedKey } from './objects.ts';
 import { newMap } from './tiles.ts';
@@ -45,6 +45,7 @@ import { heroHref, heroPaths } from '../src/mods/heroes.ts';
 import { settled } from './trace.ts';
 import { HERO_GROUP } from '../src/mods/shared-groups.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
+import { pictureIcon } from '../src/mods/faction-icons.ts';
 
 let ed: Launched;
 const GAME = modGameRoot();
@@ -125,25 +126,31 @@ const NECRO_GATE = 'Necromancy-Gate_AI.xdb';
 /** Necropolis's entrance tile, from the town's tile: the faction stands on its ground. */
 const NECRO_ENTRANCE = [1, -5] as const;
 
-/** A 16×16 magenta PNG of ours. */
-function ownPicture(name: string): string {
+/**
+ * A picture of ours: one of the game's own textures as the PNG an author would
+ * have made of it. A real picture, not a test pattern — the live run puts this
+ * faction in the game, and a flat magenta square read there as "no icon"
+ * (Senya, 10.10).
+ */
+function ownPicture(name: string, dds: string): string {
   const dir = join(REPO_ROOT, '_tmp', 'e2e-own-model');
   mkdirSync(dir, { recursive: true });
-  const rgba = new Uint8Array(16 * 16 * 4);
-  for (let i = 0; i < 16 * 16; i++) { rgba[i * 4] = 255; rgba[i * 4 + 2] = 255; rgba[i * 4 + 3] = 255; }
+  const img = decodeDDSBuffer(readFileSync(join(DATA, dds)));
   const path = join(dir, `${name}.png`);
-  writeFileSync(path, Buffer.from(pngDataUri(16, 16, rgba).split(',')[1]!, 'base64'));
+  writeFileSync(path, Buffer.from(pngDataUri(img.width, img.height, img.rgba).split(',')[1]!, 'base64'));
   return path;
 }
+const PIT_PICTURE = 'UI/TownHall/necropolis/128/UnearthedGraves.dds';
+const TOWER_PICTURE = 'Textures/Interface/CombatArena/Faces/Necropolis/ico_SceletonArcher_128.dds';
+const SIGN_PICTURE = 'UI/TownHall/necropolis/128/s1.dds';
 
-/** The centre pixel of a DDS in the archive: magenta means the picture of ours. */
-function centreIsMagenta(names: string[], entries: { name: string; data: Buffer }[], path: string): boolean {
+/** Is a DDS in the archive the picture of ours, as the mod fits it to `size`? Pixel for pixel. */
+function isThePicture(entries: { name: string; data: Buffer }[], path: string, picture: string, size: number): boolean {
   const e = entries.find((x) => x.name.split(String.fromCharCode(92)).join('/') === path);
   if (!e) return false;
   const img = decodeDDSBuffer(e.data);
-  const at = ((img.height >> 1) * img.width + (img.width >> 1)) * 4;
-  void names;
-  return img.rgba[at] === 255 && img.rgba[at + 1] === 0 && img.rgba[at + 2] === 255;
+  const want = pictureIcon(picture, size);
+  return img.width === want.width && img.height === want.height && Buffer.from(img.rgba).equals(Buffer.from(want.rgba));
 }
 
 const cell = (page: Page, x: number, y: number): Locator => page.locator(`#fac-grid .fc-cell[data-x="${x}"][data-y="${y}"]`);
@@ -229,8 +236,16 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
   await gold.dispatchEvent('change');
   await editor.locator('select').nth(1).selectOption('3');               // Town level (after Needs)
   const lua = editor.locator('input[placeholder="no button"]');
+  await expect(editor.locator('.fc-camp'), 'no camp without a button').toBeDisabled();
   await lua.fill('BonePit');
   await lua.dispatchEvent('change');
+  // And the button opens a refugee camp — the probe's Bone Pit: a week's roll
+  // over tiers three to six, sold through the hire screen. Its Lua is the
+  // editor's to write.
+  await expect(editor.locator('.fc-camp')).toBeEnabled();
+  await editor.locator('.fc-camp').check();
+  await editor.locator('.fc-camp-min').selectOption('3');
+  await editor.locator('.fc-camp-max').selectOption('6');
 
   // The special beside it needs the pit (Haven's own tree): the dependency
   // picker offers the cell above in the same column.
@@ -274,7 +289,9 @@ test('a town without magic, a named town, a script — and it saves', { tag: '@g
   await page.locator('#fac-towns .town-file').fill('Ossuary');
   await page.locator('#fac-towns .town-name').fill('The Ossuary');
   await page.locator('#fac-towns .town-bio').fill('Where the bones are kept.');
-  await page.locator('#fac-script').fill('function BonePit(town)\n  H5ELog(1);\nend;');
+  // The author's own Lua — the camp's is written after it. Defining BonePit
+  // here as well is refused (tools/test-camp-script.ts).
+  await page.locator('#fac-script').fill('-- The Bone Court\'s own words.\nBONE_COURT_MOTTO = "The dead keep their count.";');
   // The pit's button is drawn in the icon theme, so the theme is asked for.
   await expect(page.locator('#fac-missing')).toHaveText(/icon theme/);
   await page.locator('#fac-icons').check();
@@ -316,9 +333,9 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.race?.name).toBe('Bone Court');
   expect(f!.towns).toEqual([{ file: 'Ossuary', name: 'The Ossuary', biography: 'Where the bones are kept.', bonus: 'TOWN_NO_BONUS' }]);
   expect(f!.buildings?.TB_SHIPYARD).toBeNull();
-  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 3, button: { lua: 'BonePit' } });
+  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 3, button: { lua: 'BonePit', camp: { minTier: 3, maxTier: 6 } } });
   expect(f!.buildings?.TB_DWELLING_5).toEqual({ requires: [] });
-  expect(f!.script).toContain('function BonePit');
+  expect(f!.script).toContain('BONE_COURT_MOTTO');
   expect(f!.icons?.field).toEqual([58, 28, 66, 255]);
   expect(f!.alignment).toBe('evil');
   expect(f!.ai?.skillsLike).toBe('TOWN_NECROMANCY');
@@ -338,6 +355,14 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(names.some((n) => /^Factions\/E2eBone\/town\/GameMechanics\/TownBuildingSharedStats\/Haven\/Special_1\//.test(n)), "the pit's record was").toBe(true);
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   const text = (p: string): string => entries.find((e) => e.name.split('\\').join('/') === p)!.data.toString('latin1');
+  // The faction's Lua: the author's words, then the camp the button opens.
+  const factionLua = text(`scripts/homm5-editor/faction-${FILE}.lua`);
+  expect(factionLua).toContain('BONE_COURT_MOTTO');
+  expect(factionLua).toContain('function BonePit(town)');
+  expect(factionLua).toContain('BonePit_MIN_TIER = 3;');
+  expect(factionLua).toContain('BonePit_MAX_TIER = 6;');
+  expect(factionLua).toContain('H5EHireScreen("bought=BonePit_Bought"');
+  expect(factionLua.indexOf('BONE_COURT_MOTTO')).toBeLessThan(factionLua.indexOf('function BonePit('));
   expect(text('types.xml')).toContain(`<Item>${TYPE}</Item>`);
   expect(text('types.xml')).toContain('<Item>RACE_E2E_BONE</Item>');
   expect(text('UI/UIGameRoot.(UIGameRoot).xdb')).toContain('<ID>town_buildings_8</ID>');
@@ -392,12 +417,12 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await at.nth(1).fill('340');
   await at.nth(2).fill('10');
   // And a picture of ours for the pit's icon — the same field shape.
-  const pitIcon = ownPicture('pit');
+  const pitIcon = ownPicture('pit', PIT_PICTURE);
   await page.locator('#fac-cell .fc-file').first().fill(pitIcon);
 
   // A picture for the siege tower's portrait, a tooltip for the picker, the
   // first exterior stage as a model of ours, and a bonus said in words.
-  const towerPic = ownPicture('tower');
+  const towerPic = ownPicture('tower', TOWER_PICTURE);
   await page.locator('#fac-pictures .fc-file').nth(3).fill(towerPic);
   await page.locator('#fac-race-tooltip').fill('The dead of the Bone Court');
   const necro = ownNecroTown();
@@ -410,7 +435,7 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await page.locator('#fac-exterior-gates-file').fill(join(necro, '..', NECRO_GATE));
   await expect(page.locator('#fac-exterior-gates')).toBeDisabled();
   await page.locator('#fac-exterior-ground').selectOption('TOWN_NECROMANCY');
-  const signPic = ownPicture('sign');
+  const signPic = ownPicture('sign', SIGN_PICTURE);
   await page.locator('#fac-pictures .fc-file').nth(11).fill(signPic);
   await page.locator('#fac-pictures .fc-file').nth(12).fill(signPic);
   // And the siege gate as a model of ours — the same Necropolis model will
@@ -419,13 +444,15 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await page.locator('#fac-siege-own .fc-siege-gate-models').fill(necro);
   // A town track of ours: the game plays music from loose files, so the
   // install copies it under Music/H5E/<faction>/ and the row points there.
+  // Real ones, the game's own Necropolis theme and guild click: the live run
+  // plays them in the game.
   const ogg = join(REPO_ROOT, '_tmp', 'e2e-own-model', 'town.ogg');
-  writeFileSync(ogg, 'OggS');
+  writeFileSync(ogg, readFileSync(join(REAL_GAME, 'Music', 'Town-Themes', 'Town-Necropolis.ogg')));
   await press(page, page.locator('#facedit summary', { hasText: 'Tracks and sounds of your own' }));
   await page.locator('#fac-tracks .fc-file').first().fill(ogg);
   // And the guild's click as a WAV of ours — a binary inside the mod, not a loose file.
   const wav = join(REPO_ROOT, '_tmp', 'e2e-own-model', 'click.wav');
-  writeFileSync(wav, 'RIFF....WAVEfmt ');
+  writeFileSync(wav, readFileSync(join(DATA, 'bin', 'Sounds', 'DBF6AE46-D441-478F-A9C4-5C5819F02C77')));   // MageGuild.xdb's
   await page.locator('#fac-sounds .fc-file').nth(1).fill(wav);
 
   // One more named town, and the shipyard is kept after all.
@@ -478,9 +505,9 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(names).toContain(`Factions/${FILE}/siege/gate_1/${FILE}_gate_1.(ArenaModObject).xdb`);
   expect(f?.towns[1]?.bonusText).toBe('A marketplace from the first day.');
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
-  expect(centreIsMagenta(names, entries, `Factions/${FILE}/icons/special_1_1.dds`), "the pit's icon is the picture").toBe(true);
-  expect(centreIsMagenta(names, entries, `Factions/${FILE}/icons/tower.dds`), "the tower's portrait is the picture").toBe(true);
-  expect(centreIsMagenta(names, entries, `Factions/${FILE}/capture/02Red/Flag.(Texture).dds`), 'the flag is the picture, in every colour').toBe(true);
+  expect(isThePicture(entries, `Factions/${FILE}/icons/special_1_1.dds`, pitIcon, 128), "the pit's icon is the picture").toBe(true);
+  expect(isThePicture(entries, `Factions/${FILE}/icons/tower.dds`, towerPic, 128), "the tower's portrait is the picture").toBe(true);
+  expect(isThePicture(entries, `Factions/${FILE}/capture/02Red/Flag.(Texture).dds`, signPic, 55), 'the flag is the picture, in every colour').toBe(true);
   expect(names).toContain(`Factions/${FILE}/town/own/necro/Necromancy-town.xdb`);
   expect(names).toContain(`Factions/${FILE}/towns/Charnel_Bonus.txt`);
   const tooltip = entries.find((e) => e.name.split(String.fromCharCode(92)).join('/') === 'UI/MPWait/PlayersList/Item/race_tooltip_e2ebone.txt')!;
@@ -518,6 +545,7 @@ test("the author's own files can go: the mod works from its copies", { tag: '@ga
   const f = readInstalledMod(GAME).factions?.[0];
   expect(existsSync(f!.buildings!.TB_SPECIAL_1!.model!.source), 'the manifest names a copy that is there').toBe(true);
   expect((f!.exterior as { ground?: string }).ground, '...and kept').toBe('TOWN_NECROMANCY');
+  expect(f!.buildings?.TB_SPECIAL_1?.button?.camp, 'the camp kept as well').toEqual({ minTier: 3, maxTier: 6 });
   const after = ownOf();
   expect([...after.keys()].sort(), 'the same files of ours').toEqual([...before.keys()].sort());
   for (const [name, data] of before) expect(after.get(name)!.equals(data), `${name} is the same bytes`).toBe(true);

@@ -453,6 +453,16 @@ hero with some skill — the script decides at each opening. `tools/test-camp-sc
 lints it, checks every name it shouts against `advmap-startup.lua`, and
 tries every outcome of the draw for pools of one to eight.
 
+**In the Factions window (2026-10-10):** a building's button can say it
+opens a camp — `BuildingEdit.button.camp = { minTier, maxTier }`, the
+"Refugee camp" row under "Button → Lua". The build writes the camp after the
+author's script (`factionLua`), and refuses a script that defines the
+button's function too. Until then only the probe had a camp, by hand; e2e
+018's Bone Pit was a button calling an author's function that only logged —
+"not working" once logs went dev-only (Senya, launch of 10.10). 018's pit is
+Haven's one-level training grounds, so its camp opens one offer; the probe's
+three levels came from Stronghold's Hall of Trial (`from`).
+
 **Inside the screen — the hire source.** An object of ours laid out as a
 dwelling's: the entries vector `{count, vector<creature>}` 0x44 bytes before
 it (so the engine's own `Entries`, `CopyEntries` and `Items` run on it

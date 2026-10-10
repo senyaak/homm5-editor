@@ -6,7 +6,7 @@
 // needs: data
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { campScript, campOffers, CAMP_LEVELS, luaBuildingName } from '../src/mods/camp-script.ts';
+import { campScript, campOffers, CAMP_LEVELS, factionLua, luaBuildingName } from '../src/mods/camp-script.ts';
 import { luaConstantWarnings, luaDiagnostics } from '../src/script/lua-lint.ts';
 import { dataDir } from './game-dir.ts';
 
@@ -168,6 +168,28 @@ console.log("every name of the game's the script reads is declared");
     check('the building is named the way a map names one', lua.includes(`GetTownBuildingLevel(town, ${luaBuildingName('TB_SPECIAL_1')})`));
     check("and that name is the game's own", declared.has('TOWN_BUILDING_SPECIAL_1'));
   }
+}
+
+// A faction says it per building (`button.camp`) and the build writes the
+// camp after the author's script — the Factions window's way to it.
+console.log("the faction's Lua");
+{
+  const throws = (name: string, f: () => unknown, mentions: string): void => {
+    try { f(); check(name, false, 'did not throw'); } catch (e) { check(name, (e as Error).message.includes(mentions), (e as Error).message); }
+  };
+  const base = { file: 'E2eBone', script: 'function Hello(town)\n  H5EMessageBox("hi");\nend;' };
+  const camp = { TB_SPECIAL_1: { button: { lua: 'BonePit', camp: { minTier: 3, maxTier: 6 } } } };
+  const out = factionLua({ ...base, buildings: camp });
+  check("the author's script first, the camp after", out.startsWith(base.script) && out.endsWith(lua), `${out.length} chars`);
+  check('a button without a camp writes none', factionLua({ ...base, buildings: { TB_SPECIAL_1: { button: { lua: 'BonePit' } } } }) === base.script);
+  check('a dropped building is no camp', factionLua({ ...base, buildings: { TB_SPECIAL_1: null } }) === base.script);
+  check('unsaid tiers are one to seven', factionLua({ file: 'X', buildings: { TB_SPECIAL_2: { button: { lua: 'Camp', camp: {} } } } })
+    .includes('Camp_MIN_TIER = 1;\nCamp_MAX_TIER = 7;'));
+  check('the level is read from the building the camp is of', factionLua({ file: 'X', buildings: { TB_SPECIAL_2: { button: { lua: 'Camp', camp: {} } } } })
+    .includes('GetTownBuildingLevel(town, TOWN_BUILDING_SPECIAL_2)'));
+  throws('the script defining the camp\'s function is refused', () => factionLua({ file: 'E2eBone', script: 'function BonePit(town)\nend;', buildings: camp }), 'defines BonePit too');
+  throws('tiers out of order are refused', () => factionLua({ file: 'X', buildings: { TB_SPECIAL_1: { button: { lua: 'C', camp: { minTier: 5, maxTier: 2 } } } } }), 'tiers 5 to 2');
+  throws('a tier past seven is refused', () => factionLua({ file: 'X', buildings: { TB_SPECIAL_1: { button: { lua: 'C', camp: { maxTier: 8 } } } } }), 'within one to seven');
 }
 
 if (failures) {

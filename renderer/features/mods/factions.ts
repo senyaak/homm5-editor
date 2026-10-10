@@ -1202,7 +1202,45 @@ function drawCellEditor(): void {
         box.appendChild(where);
       }
     }
-    textRow('Button → Lua', edit.button?.lua, 'no button', (v) => put({ button: v ? { lua: v } : undefined }));
+    textRow('Button → Lua', edit.button?.lua, 'no button', (v) => {
+      const camp = edits[current.key]?.button?.camp;
+      put({ button: v ? { lua: v, ...(camp ? { camp } : {}) } : undefined });
+      campBox.disabled = !v;
+      for (const t of tiers) t.disabled = !v || !campBox.checked;
+    });
+    // Or the button opens a refugee camp: the function is written for it
+    // (camp-script.ts) — a week's roll over those tiers, the hire screen's.
+    const row = document.createElement('div');
+    row.className = 'on-row';
+    const l = document.createElement('span');
+    l.textContent = 'Refugee camp';
+    const campBox = document.createElement('input');
+    campBox.type = 'checkbox';
+    campBox.className = 'fc-camp';
+    campBox.title = 'the button opens a refugee camp: each week it rolls creatures of these tiers and sells them through the hire screen, one offer per level of the building — the Lua is written for it';
+    campBox.checked = !!edit.button?.camp;
+    campBox.disabled = !edit.button?.lua;
+    const tierOptions = [1, 2, 3, 4, 5, 6, 7].map((n) => ({ id: String(n), label: `tier ${n}` }));
+    const tiers = (['minTier', 'maxTier'] as const).map((side) => {
+      const sel = document.createElement('select');
+      sel.className = `fc-camp-${side === 'minTier' ? 'min' : 'max'}`;
+      fillSelect(sel, tierOptions, String(edit.button?.camp?.[side] ?? (side === 'minTier' ? 1 : 7)));
+      sel.disabled = !campBox.checked;
+      return sel;
+    });
+    const setCamp = (): void => {
+      const lua = edits[current.key]?.button?.lua;
+      if (!lua) return;
+      const [min, max] = tiers.map((t) => Number(t.value)) as [number, number];
+      put({ button: { lua, ...(campBox.checked ? { camp: { minTier: min, maxTier: max } } : {}) } });
+      for (const t of tiers) t.disabled = !campBox.checked;
+    };
+    campBox.onchange = setCamp;
+    for (const t of tiers) t.onchange = setCamp;
+    const to = document.createElement('span');
+    to.textContent = 'to';
+    row.append(l, campBox, tiers[0]!, to, tiers[1]!);
+    box.appendChild(row);
   }
   const violated = (edit.requires ?? current.requires).filter((k) => !dependableFrom(x, y, current.type).includes(k) && !all.some((b) => b.type === current.type && b.key === k));
   if (violated.length) {

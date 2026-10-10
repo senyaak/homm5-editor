@@ -54,6 +54,7 @@
 // for a hero with some skill: the script decides per opening.
 
 import { TOWN_BUILDINGS } from './town-button.ts';
+import type { BuildingEdit } from './town-files.ts';
 
 /** What a camp of that level offers: how many creatures, and what they cost. */
 export interface CampLevel {
@@ -98,6 +99,31 @@ export interface CampScript {
   /** The tiers the roll draws from. The shipped camp's pool is tiers three to six. */
   minTier?: number;
   maxTier?: number;
+}
+
+/**
+ * The faction's Lua as the mod writes it: the author's script, then a camp for
+ * every building whose button says it opens one (`BuildingEdit.button.camp`).
+ * Refused, by name, when the author's script defines the button's function
+ * too — two definitions, and the later one would quietly win — or when the
+ * tiers are not a range of one to seven.
+ */
+export function factionLua(f: { file: string; script?: string; buildings?: Readonly<Record<string, BuildingEdit | null>> }): string {
+  const camps: string[] = [];
+  for (const [key, edit] of Object.entries(f.buildings ?? {})) {
+    const camp = edit?.button?.camp;
+    if (!camp) continue;
+    const lua = edit!.button!.lua;
+    const [min, max] = [camp.minTier ?? 1, camp.maxTier ?? 7];
+    if (!(Number.isInteger(min) && Number.isInteger(max) && min >= 1 && max <= 7 && min <= max)) {
+      throw new Error(`${f.file}: the camp of ${key} draws tiers ${min} to ${max} — a range within one to seven`);
+    }
+    if (new RegExp(`\\bfunction\\s+${lua}\\s*\\(`).test(f.script ?? '')) {
+      throw new Error(`${f.file}: ${lua} opens ${key}'s refugee camp, and the faction's script defines ${lua} too — rename one`);
+    }
+    camps.push(campScript({ lua, building: key.split('/')[0]!, minTier: min, maxTier: max }));
+  }
+  return [f.script ?? '', ...camps].filter((s) => s.trim()).join('\n\n');
 }
 
 /**

@@ -245,9 +245,18 @@ export interface BuildingEdit {
   /**
    * The town screen's centre button opens it: the map function the click
    * calls, with the town's script name. One building of a town at most — the
-   * dial has one such button (town-button.ts).
+   * dial has one such button (town-button.ts). With `camp` the function is
+   * not the author's: the click opens a REFUGEE CAMP — a week's roll over
+   * every creature of those tiers, sold through the game's hire screen
+   * (camp-script.ts) — and the faction's Lua gets it written out.
    */
-  button?: { lua: string };
+  button?: { lua: string; camp?: CampTiers };
+}
+
+/** The tiers a refugee camp rolls its week from; one to seven when unsaid. */
+export interface CampTiers {
+  minTier?: number;
+  maxTier?: number;
 }
 
 export function buildingKey(type: string, level: number): BuildingKey {
