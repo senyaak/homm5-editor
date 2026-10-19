@@ -461,7 +461,9 @@ button's function too. Until then only the probe had a camp, by hand; e2e
 018's Bone Pit was a button calling an author's function that only logged —
 "not working" once logs went dev-only (Senya, launch of 10.10). 018's pit is
 Haven's one-level training grounds, so its camp opens one offer; the probe's
-three levels came from Stronghold's Hall of Trial (`from`).
+three levels came from Stronghold's Hall of Trial (`from`). Its tiers are two
+to seven — every tier but the first (Senya, 2026-10-19); the probe's three to
+six were the shipped camp's pool.
 
 **Inside the screen — the hire source.** An object of ours laid out as a
 dwelling's: the entries vector `{count, vector<creature>}` 0x44 bytes before

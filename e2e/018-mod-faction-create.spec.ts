@@ -240,12 +240,13 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
   await lua.fill('BonePit');
   await lua.dispatchEvent('change');
   // And the button opens a refugee camp — the probe's Bone Pit: a week's roll
-  // over tiers three to six, sold through the hire screen. Its Lua is the
+  // over every tier but the first (Senya, 19.10; the probe's was three to six,
+  // the game's own camp's pool), sold through the hire screen. Its Lua is the
   // editor's to write.
   await expect(editor.locator('.fc-camp')).toBeEnabled();
   await editor.locator('.fc-camp').check();
-  await editor.locator('.fc-camp-min').selectOption('3');
-  await editor.locator('.fc-camp-max').selectOption('6');
+  await editor.locator('.fc-camp-min').selectOption('2');
+  await editor.locator('.fc-camp-max').selectOption('7');
 
   // The special beside it needs the pit (Haven's own tree): the dependency
   // picker offers the cell above in the same column.
@@ -333,7 +334,7 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.race?.name).toBe('Bone Court');
   expect(f!.towns).toEqual([{ file: 'Ossuary', name: 'The Ossuary', biography: 'Where the bones are kept.', bonus: 'TOWN_NO_BONUS' }]);
   expect(f!.buildings?.TB_SHIPYARD).toBeNull();
-  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 3, button: { lua: 'BonePit', camp: { minTier: 3, maxTier: 6 } } });
+  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 3, button: { lua: 'BonePit', camp: { minTier: 2, maxTier: 7 } } });
   expect(f!.buildings?.TB_DWELLING_5).toEqual({ requires: [] });
   expect(f!.script).toContain('BONE_COURT_MOTTO');
   expect(f!.icons?.field).toEqual([58, 28, 66, 255]);
@@ -359,8 +360,8 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   const factionLua = text(`scripts/homm5-editor/faction-${FILE}.lua`);
   expect(factionLua).toContain('BONE_COURT_MOTTO');
   expect(factionLua).toContain('function BonePit(town)');
-  expect(factionLua).toContain('BonePit_MIN_TIER = 3;');
-  expect(factionLua).toContain('BonePit_MAX_TIER = 6;');
+  expect(factionLua).toContain('BonePit_MIN_TIER = 2;');
+  expect(factionLua).toContain('BonePit_MAX_TIER = 7;');
   expect(factionLua).toContain('H5EHireScreen("bought=BonePit_Bought"');
   expect(factionLua.indexOf('BONE_COURT_MOTTO')).toBeLessThan(factionLua.indexOf('function BonePit('));
   expect(text('types.xml')).toContain(`<Item>${TYPE}</Item>`);
@@ -545,7 +546,7 @@ test("the author's own files can go: the mod works from its copies", { tag: '@ga
   const f = readInstalledMod(GAME).factions?.[0];
   expect(existsSync(f!.buildings!.TB_SPECIAL_1!.model!.source), 'the manifest names a copy that is there').toBe(true);
   expect((f!.exterior as { ground?: string }).ground, '...and kept').toBe('TOWN_NECROMANCY');
-  expect(f!.buildings?.TB_SPECIAL_1?.button?.camp, 'the camp kept as well').toEqual({ minTier: 3, maxTier: 6 });
+  expect(f!.buildings?.TB_SPECIAL_1?.button?.camp, 'the camp kept as well').toEqual({ minTier: 2, maxTier: 7 });
   const after = ownOf();
   expect([...after.keys()].sort(), 'the same files of ours').toEqual([...before.keys()].sort());
   for (const [name, data] of before) expect(after.get(name)!.equals(data), `${name} is the same bytes`).toBe(true);
