@@ -14,6 +14,13 @@ pre-release.
 
 ## Unreleased
 
+- A faction's button on the town screen does what it says again. With the
+  extension the editor installs, a click — the refugee camp's, say — was
+  queued for the map's script but did not run while the town screen was
+  open, so nothing happened; it ran only for a build made with that file's
+  logging on. The step that runs it had been written inside a log line, and
+  a log line nobody asked for is cut out with everything handed to it. Four
+  instruments of the random map generator's port were lost the same way.
 - A faction's building can be a refugee camp, from the Factions window:
   give it a button, tick "Refugee camp" and pick the tiers. Each week the
   camp rolls creatures of those tiers — the mod's own among them — and sells

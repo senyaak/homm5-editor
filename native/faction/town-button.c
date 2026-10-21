@@ -322,7 +322,12 @@ static int __thiscall own_button_handler(void *screen, void *msg) {
     return 1;
   }
   log_text("town button: said to the map: ", line);
-  log_line(tick_the_map_scripts() ? "town button:   and the scheduler was ticked once, so it ran now" : "town button:   but the scheduler could not be ticked");
+  // The tick OUTSIDE the log: a log macro drops its arguments in a file not
+  // asked to speak, and this tick was one — every build without
+  // `--log faction/town-button` queued the click and never ran it (the Bone
+  // Pit's button, 2026-10-21). tools/test-native-log.ts holds the rule.
+  int ran = tick_the_map_scripts();
+  log_line(ran ? "town button:   and the scheduler was ticked once, so it ran now" : "town button:   but the scheduler could not be ticked");
   return 1;
 }
 

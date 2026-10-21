@@ -160,6 +160,15 @@ reads is a build with no warnings.
 it matches its own path, that no two share a name, and that the `#undef` is
 there. It runs as part of `npm test`.
 
+**What a log line is handed must only READ.** In a file not asked to speak the
+macro never evaluates its arguments — that is how the sentence costs nothing —
+so `log_line(install_x() ? "in" : "out")` installs nothing in every build that
+did not ask for that file. It happened twice: the town button's scheduler tick
+(every ordinary build queued the click's Lua and never ran it — the faction's
+camp did nothing, 2026-10-21) and six hook installs in `homm5-editor.c`. Call
+it on its own line and log the result. The same test lists every function a
+log argument calls and fails on any that is not on its list of readers.
+
 ## What was deliberately left undone
 
 Three things this could have and does not, each deferred on purpose rather than

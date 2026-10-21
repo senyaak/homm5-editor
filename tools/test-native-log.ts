@@ -95,6 +95,57 @@ for (const file of files) {
 }
 
 // ---------------------------------------------------------------------------
+// A log macro DROPS ITS ARGUMENTS in a file not asked to speak — the same
+// `if (LOG_ON)` that cuts the sentence never evaluates what was handed to it.
+// So an argument may only READ. Two kinds of doing hid in one: the town
+// screen's tick (`log_line(tick_the_map_scripts() ? …)`), which left every
+// ordinary build's town button queueing its Lua and never running it — the
+// Bone Pit "stopped working" on 2026-10-21 — and six hook installs in
+// homm5-editor.c, gone from every build since that file went dev-only.
+// Every function an argument calls is on this list of readers, or the check
+// fails: call it on a line of its own and log the result, or, if it only
+// reads, add it here and say so.
+const LOG_ARGUMENT_READERS = new Set([
+  'GetLastError', 'GetModuleHandleW', '__builtin_return_address', 'NODE_KEY', 'NODE_VALUE',
+  'class_name_of', 'g_spellCount', 'g_spellElement', 'game_base', 'hero_proper_of', 'howMany',
+  'module_message_type', 'readable', 'readable_bytes', 'selection', 'string_text', 'vtable_length', 'window_base',
+]);
+/** Every function a gated log macro's arguments call, with its line. */
+function callsInLogArguments(text: string): Array<{ name: string; line: number }> {
+  const src = text.replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length)).replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  const out: Array<{ name: string; line: number }> = [];
+  const macro = /\blog_(line|num|text|hex|object|name)\s*\(/g;
+  for (let m = macro.exec(src); m; m = macro.exec(src)) {
+    let i = m.index + m[0].length, depth = 1, inString = false;
+    for (; i < src.length && depth; i++) {
+      const c = src[i];
+      if (inString) { if (c === '\\') i++; else if (c === '"') inString = false; continue; }
+      if (c === '"') inString = true; else if (c === '(') depth++; else if (c === ')') depth--;
+    }
+    const args = src.slice(m.index + m[0].length, i - 1).replace(/"(?:\\.|[^"\\])*"/g, '""');
+    const line = src.slice(0, m.index).split('\n').length;
+    for (const c of args.matchAll(/\b([A-Za-z_][A-Za-z0-9_]*)\s*\(/g)) {
+      if (!['sizeof', 'DWORD', 'BYTE', 'int'].includes(c[1]!)) out.push({ name: c[1]!, line });
+    }
+  }
+  return out;
+}
+console.log('\nwhat a log line is handed only reads');
+{
+  const sample = 'if (x) log_line(install_it() ? "in" : "out");\nlog_num("left ", GetLastError());\n// log_line(commented());\n';
+  const found = callsInLogArguments(sample).map((c) => c.name);
+  check('the check finds a call hidden in a log line, and not one in a comment', found.join(',') === 'install_it,GetLastError', found.join(','));
+  const doing: string[] = [];
+  for (const file of files) {
+    if (relative(NATIVE, file).split(sep).join('/') === 'core/log.c') continue;
+    for (const c of callsInLogArguments(readFileSync(file, 'latin1'))) {
+      if (!LOG_ARGUMENT_READERS.has(c.name)) doing.push(`${relative(here, file).split(sep).join('/')}:${c.line} ${c.name}()`);
+    }
+  }
+  check('no log line is handed a call that does something', doing.length === 0, doing.join('; '));
+}
+
+// ---------------------------------------------------------------------------
 console.log('\nwhat a build can be asked for');
 
 const units = logUnits(here);
