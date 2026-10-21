@@ -1761,6 +1761,8 @@ export interface ModsFactionDataResult {
   dwellings: RosterEntryDTO[];
   /** The ten exterior stages, in the engine's order. */
   exteriorStages: string[];
+  /** How many levels a building may have — the game's `BLD_UPG_1…n`. */
+  buildingLevels: number;
   /**
    * Every skill and perk, the mod's own after the shipped, with what each
    * shipped race's AI thinks it is worth — the table a race of ours is given a

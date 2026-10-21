@@ -14,6 +14,14 @@ pre-release.
 
 ## Unreleased
 
+- A faction's building has as many levels as you say, from one up to the
+  game's five: the Factions window has a "Levels" choice on a building's
+  first level. A level past the ones its donor had starts as the level below
+  — the same cell, its price, its model — and gets its own tab for its name,
+  description, price and town level. Fewer levels drop the ones above. Until
+  now a building had exactly as many levels as the town it came from, so a
+  one-level building could never be upgraded. A refugee camp past its third
+  level sells as at its third.
 - A faction's button on the town screen does what it says again. With the
   extension the editor installs, a click — the refugee camp's, say — was
   queued for the map's script but did not run while the town screen was

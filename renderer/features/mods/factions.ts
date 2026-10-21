@@ -806,7 +806,37 @@ function effectiveBuildings(): TreeBuilding[] {
     const theirs = from ? trees.get(from) : null;
     if (theirs) out.push(...theirs.buildings.filter((b) => b.type === type));
   }
+  // As many levels as the author said (`levels`): past the records, the one
+  // below again — what the copier makes of it (town-files.ts); fewer, the
+  // levels above are not there.
+  for (const [key, edit] of Object.entries(edits)) {
+    if (!edit?.levels) continue;
+    const { type } = parseKey(key);
+    const mine = out.filter((b) => b.type === type).sort((a, b) => a.level - b.level);
+    for (const b of mine) if (b.level > edit.levels) out.splice(out.indexOf(b), 1);
+    let below = mine[mine.length - 1];
+    for (let n = (below?.level ?? 0) + 1; below && n <= edit.levels; n++) {
+      // Its texts and price are the level below's until edited, as in the copy.
+      const made: TreeBuilding = { ...below, key: keyOf(type, n), level: n, requires: [below.key] };
+      out.push(made);
+      below = made;
+    }
+  }
   return out;
+}
+
+/** How many levels the records of a type have, before `levels` says otherwise. */
+function recordLevels(type: string): number {
+  if (!tree) return 0;
+  const from = edits[type]?.from;
+  const source = from && from !== tree.type ? trees.get(from) : tree;
+  return (source?.buildings ?? []).filter((b) => b.type === type).length;
+}
+
+/** Say how many levels a type has: the edits of the levels above go with them. */
+function setLevels(type: string, levels: number): void {
+  for (let l = levels + 1; l <= (facData?.buildingLevels ?? 5); l++) delete edits[keyOf(type, l)];
+  setEdit(type, { levels: levels === recordLevels(type) ? undefined : levels });
 }
 
 /** Where a level stands: the edit's cell, else the tree's. */
@@ -1007,6 +1037,14 @@ function drawCellEditor(): void {
   dropBtn.textContent = dropped ? 'keep it' : (current.level === 1 ? 'drop the building' : `drop level ${current.level} and above`);
   dropBtn.title = 'a dropped building is never copied: no record, no text, no icon, no cell';
   dropBtn.onclick = () => {
+    // A level the author added is taken back by saying one fewer.
+    if (!dropped && current.level > 1 && current.level > recordLevels(current.type)) {
+      setLevels(current.type, current.level - 1);
+      picked = { ...picked!, key: keyOf(current.type, current.level - 1) };
+      drawGrid();
+      drawCellEditor();
+      return;
+    }
     if (dropped) {
       const { type, level } = parseKey(current.key);
       for (let l = 1; l <= level; l++) if (edits[keyOf(type, l)] === null) delete edits[keyOf(type, l)];
@@ -1115,6 +1153,24 @@ function drawCellEditor(): void {
     box.appendChild(row);
   }
   if (current.level === 1) {
+    {
+      // How many levels: the author's, up to the game's ceiling — another
+      // town's count is an example, not a template (Senya, 2026-10-21).
+      const row = document.createElement('label');
+      row.className = 'on-row';
+      const l = document.createElement('span');
+      l.textContent = 'Levels';
+      const sel = document.createElement('select');
+      sel.className = 'fc-levels-count';
+      const ceiling = facData?.buildingLevels ?? 5;
+      const records = recordLevels(current.type);
+      fillSelect(sel, Array.from({ length: ceiling }, (_, i) => ({ id: String(i + 1), label: `${i + 1}${i + 1 === records ? ' (the records\')' : ''}` })),
+        String(edit.levels ?? records));
+      sel.title = `how many levels the building has, one to ${ceiling}; past the records each new one is the level below again, its name, price and cell then yours to change`;
+      sel.onchange = () => { setLevels(current.type, Number(sel.value)); drawGrid(); drawCellEditor(); };
+      row.append(l, sel);
+      box.appendChild(row);
+    }
     {
       const row = document.createElement('label');
       row.className = 'on-row';

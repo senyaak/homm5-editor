@@ -20,7 +20,7 @@ import { dataReader } from '#src/mods/mod-files.ts';
 import { addFaction, removeFaction, updateFaction } from '#src/mods/mod-model.ts';
 import { townTypeFor } from '#src/mods/factions.ts';
 import type { FactionSpec } from '#src/mods/factions.ts';
-import { EXTERIOR_STAGES, SHIPPED_TOWN_ORDINALS } from '#src/mods/town-files.ts';
+import { EXTERIOR_STAGES, SHIPPED_TOWN_ORDINALS, buildingLevelCeiling } from '#src/mods/town-files.ts';
 import { readTownTree } from '#src/mods/town-tree.ts';
 import { TOWN_BUILDINGS } from '#src/mods/town-button.ts';
 import { Registry, gameText } from '#src/schema/registry.ts';
@@ -112,6 +112,8 @@ export function registerModFactions(): void {
       })),
       dwellings: (mod?.dwellings ?? []).map((d) => ({ id: d.file })),
       exteriorStages: [...EXTERIOR_STAGES],
+      // How many levels a building may have: the game's enum, read, not assumed.
+      buildingLevels: buildingLevelCeiling(dataReader(gameData())),
       skillValues: readSkillAiRows(data.text(SKILL_TABLE) ?? '', (href) => gameText(data, href), mod?.skills ?? []),
     };
   });

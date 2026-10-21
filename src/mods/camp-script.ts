@@ -230,6 +230,11 @@ export function campScript(spec: CampScript): string {
     `function ${n}(town)`,
     `  local level = GetTownBuildingLevel(town, ${building});`,
     `  local rule = ${n}_LEVELS[level];`,
+    // A building may have more levels than the camp has rules (the author
+    // says how many, up to the game's five): above the last, the last.
+    `  if rule == nil and level > ${CAMP_LEVELS.length} then`,
+    `    rule = ${n}_LEVELS[${CAMP_LEVELS.length}];`,
+    '  end;',
     '  if rule == nil then',
     '    return nil;',
     '  end;',

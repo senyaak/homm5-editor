@@ -247,12 +247,31 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
   await editor.locator('.fc-camp').check();
   await editor.locator('.fc-camp-min').selectOption('2');
   await editor.locator('.fc-camp-max').selectOption('7');
+  // THREE LEVELS, which Haven's training grounds have not: how many is the
+  // author's to say (Senya, 21.10 — another town is an example, not a
+  // template). Each new level stands in the pit's cell, one up its stack,
+  // and is named and priced on its own tab; the camp opens one more offer
+  // per level.
+  await editor.locator('.fc-levels-count').selectOption('3');
+  await expect(cell(page, 5, 3).locator('.fc-levels i')).toHaveCount(3);
+  for (const [level, name, price] of [[2, 'Bone Yard', '4000'], [3, 'Bone Market', '8000']] as const) {
+    await press(page, editor.locator('.fc-level-tabs button', { hasText: `level ${level}` }));
+    await expect(page.locator('#fac-cell')).toContainText(`TB_SPECIAL_1/${level}`);
+    await editor.locator('input[placeholder]').first().fill(name);
+    const levelGold = editor.locator('.fc-resources input').last();
+    await levelGold.fill(price);
+    await levelGold.dispatchEvent('change');
+  }
+  await expect(cell(page, 5, 3).locator('.fc-levels i.edited')).toHaveCount(3);
 
-  // The special beside it needs the pit (Haven's own tree): the dependency
-  // picker offers the cell above in the same column.
+  // Haven's Hall of Heroes stood under the pit, needing it — Haven's own
+  // building, read as the pit's upgrade (Senya, 21.10). The dependency
+  // picker offers the cell above in the same column; then it goes.
   await press(page, cell(page, 5, 4));
   await expect(page.locator('#fac-cell')).toContainText('TB_SPECIAL_2');
   await expect(editor.locator('select').first()).toHaveValue('TB_SPECIAL_1');
+  await press(page, page.locator('#fac-cell button', { hasText: 'drop the building' }));
+  await expect(cell(page, 5, 4)).toHaveClass(/dropped/);
   expect(ed.errors).toEqual([]);
 });
 
@@ -334,7 +353,10 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.race?.name).toBe('Bone Court');
   expect(f!.towns).toEqual([{ file: 'Ossuary', name: 'The Ossuary', biography: 'Where the bones are kept.', bonus: 'TOWN_NO_BONUS' }]);
   expect(f!.buildings?.TB_SHIPYARD).toBeNull();
-  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 3, button: { lua: 'BonePit', camp: { minTier: 2, maxTier: 7 } } });
+  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 3, levels: 3, button: { lua: 'BonePit', camp: { minTier: 2, maxTier: 7 } } });
+  expect(f!.buildings?.['TB_SPECIAL_1/2']).toMatchObject({ name: 'Bone Yard', cost: { Gold: 4000 } });
+  expect(f!.buildings?.['TB_SPECIAL_1/3']).toMatchObject({ name: 'Bone Market', cost: { Gold: 8000 } });
+  expect(f!.buildings?.TB_SPECIAL_2, "Haven's Hall of Heroes is gone").toBeNull();
   expect(f!.buildings?.TB_DWELLING_5).toEqual({ requires: [] });
   expect(f!.script).toContain('BONE_COURT_MOTTO');
   expect(f!.icons?.field).toEqual([58, 28, 66, 255]);
@@ -354,6 +376,10 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(has(`scripts/homm5-editor/faction-${FILE}.lua`), 'the script').toBe(true);
   expect(has(`Factions/${FILE}/town/GameMechanics/TownBuildingSharedStats/Haven/Shipyard/Shipyard.xdb`), "the shipyard's record was never copied").toBe(false);
   expect(names.some((n) => /^Factions\/E2eBone\/town\/GameMechanics\/TownBuildingSharedStats\/Haven\/Special_1\//.test(n)), "the pit's record was").toBe(true);
+  for (const level of [2, 3]) {
+    expect(has(`Factions/${FILE}/town/GameMechanics/TownBuildingSharedStats/Haven/Special_1/Training_Grounds_L${level}.xdb`), `the pit's level ${level}`).toBe(true);
+  }
+  expect(names.some((n) => /TownBuildingSharedStats\/Haven\/Special_2\//.test(n)), "the Hall of Heroes' record was never copied").toBe(false);
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   const text = (p: string): string => entries.find((e) => e.name.split('\\').join('/') === p)!.data.toString('latin1');
   // The faction's Lua: the author's words, then the camp the button opens.
@@ -401,6 +427,8 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await expect(page.locator('#fac-donor-note')).toContainText('building records of TOWN_HEAVEN');
   await expect(cell(page, 5, 5)).toHaveClass(/dropped/);
   await expect(cell(page, 5, 3)).toContainText('Bone Pit');
+  await expect(cell(page, 5, 3).locator('.fc-levels i'), 'the pit\'s three levels, back from the manifest').toHaveCount(3);
+  await expect(cell(page, 5, 4)).toHaveClass(/dropped/);
   await expect(page.locator('#fac-towns .town-name')).toHaveValue('The Ossuary');
 
   // A model of OUR OWN for the pit: the Necropolis graves as a folder on

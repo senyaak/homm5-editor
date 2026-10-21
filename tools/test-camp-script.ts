@@ -170,6 +170,12 @@ console.log("every name of the game's the script reads is declared");
   }
 }
 
+// A building has as many levels as the author says, up to five; the camp has
+// three rules, and a level past them is not a camp gone quiet.
+console.log('levels past the rules');
+check('a level past the last rule takes the last', lua.includes(`if rule == nil and level > ${CAMP_LEVELS.length} then`)
+  && lua.includes(`rule = BonePit_LEVELS[${CAMP_LEVELS.length}];`));
+
 // A faction says it per building (`button.camp`) and the build writes the
 // camp after the author's script — the Factions window's way to it.
 console.log("the faction's Lua");

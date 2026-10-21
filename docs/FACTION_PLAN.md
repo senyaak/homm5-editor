@@ -459,11 +459,22 @@ opens a camp — `BuildingEdit.button.camp = { minTier, maxTier }`, the
 author's script (`factionLua`), and refuses a script that defines the
 button's function too. Until then only the probe had a camp, by hand; e2e
 018's Bone Pit was a button calling an author's function that only logged —
-"not working" once logs went dev-only (Senya, launch of 10.10). 018's pit is
-Haven's one-level training grounds, so its camp opens one offer; the probe's
-three levels came from Stronghold's Hall of Trial (`from`). Its tiers are two
-to seven — every tier but the first (Senya, 2026-10-19); the probe's three to
-six were the shipped camp's pool.
+"not working" once logs went dev-only (Senya, launch of 10.10). Its tiers are
+two to seven — every tier but the first (Senya, 2026-10-19); the probe's three
+to six were the shipped camp's pool. Then the button did nothing at all in an
+ordinary build: the scheduler's tick had been written inside a log line, which
+a file not asked to speak drops with its arguments (2026-10-21, LOG.md).
+
+**How many levels is the author's (2026-10-21).** Senya: "another town is an
+example, not a template — the editor gives freedom". `BuildingEdit.levels`,
+the "Levels" choice on a building's first level, one to the game's
+`BLD_UPG_1…5` (read from types.xml): past the records, each level is the one
+below copied before the walk — same cell, one up its stack
+(`UIStackPosition`), needing that level, texts of its own — then named and
+priced on its own tab; fewer drops the ones above. 018's pit is Haven's
+one-level training grounds given three (Bone Pit, Bone Yard, Bone Market),
+and Haven's Hall of Heroes, which stood under it needing it and read as its
+upgrade, is dropped. A camp past its third level sells as at its third.
 
 **Inside the screen — the hire source.** An object of ours laid out as a
 dwelling's: the entries vector `{count, vector<creature>}` 0x44 bytes before

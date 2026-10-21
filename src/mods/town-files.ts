@@ -225,6 +225,14 @@ export interface BuildingEdit {
    * A record with no such row does nothing whatever the engine has.
    */
   grants?: Grant | null;
+  /**
+   * How many levels the building has — the author's to say, one up to the
+   * game's ceiling (`BLD_UPG_1…5`). Past the records it has, each new level
+   * is the one below copied (its cell, its price, its model; texts of its
+   * own, which `TYPE/n` then edits like any level's); fewer drops the levels
+   * above. On the whole building's key. The records' count when absent.
+   */
+  levels?: number;
   /** Its name on the build screen; the donor's when absent. */
   name?: string;
   description?: string;
@@ -543,6 +551,17 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
   // has its dependencies rewritten before the walk as well, or the walk
   // would reach the dropped record through the old list. The grid loses
   // the building's cell here too (and the slot, when it was the last).
+  // What the walk reads: the documents rewritten (or made) here first, then
+  // the folders of ours, then the game's data.
+  const readSeeded: DataReader = (rel) => {
+    const text = seeded.get(rel);
+    if (text) return Buffer.from(text, 'latin1');
+    for (const own of owns) {
+      const data = own(rel);
+      if (data) return data;
+    }
+    return read(rel);
+  };
   let build = mustRead(read, donorBuildDefinition(donorOrdinal, read));
   const edits = buildingEdits(spec);
   if (edits) {
@@ -595,13 +614,54 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       if (!fromOrdinal) throw new Error(`${edit.from} is not a shipped town — a building comes from one of ${Object.keys(SHIPPED_TOWN_ORDINALS).join(', ')}`);
       build = replaceGridSlot(build, type, gridSlotText(mustRead(read, donorBuildDefinition(fromOrdinal, read)), type));
     }
+    // HOW MANY LEVELS, the author's to say (`levels`) and nobody's template:
+    // each level past the records' is the one below copied — the same cell,
+    // one higher in its stack, needing that level, with texts of its own —
+    // put in the list before the walk, so the walk copies it like any record
+    // and the edits below name it by its key. Fewer than the records are
+    // the ones above dropped (below). The ceiling is the game's enum.
+    const ceiling = buildingLevelCeiling(read);
+    for (const [key, edit] of Object.entries(edits)) {
+      if (!edit?.levels) continue;
+      const { type, level } = parseBuildingKey(key);
+      if (level !== 1) throw new Error(`${key}: how many levels is the whole building's — say it on ${type}`);
+      if (!Number.isInteger(edit.levels) || edit.levels < 1 || edit.levels > ceiling) {
+        throw new Error(`${key}: ${edit.levels} levels — a building has one to ${ceiling} (the game's BLD_UPG_1…${ceiling})`);
+      }
+      const mine = listedBuildings(donor, source, readSeeded).filter((b) => b.type === type).sort((a, b) => a.level - b.level);
+      if (!mine.length) throw new Error(`${spec.donor} has no ${type} to give levels to`);
+      let below = mine[mine.length - 1]!;
+      for (let n = below.level + 1; n <= edit.levels; n++) {
+        const path = below.path.replace(/(?:_L\d+)?\.xdb$/i, `_L${n}.xdb`);
+        let text = (seeded.get(below.path) ?? mustRead(read, below.path))
+          .replace(/<Upgrade>BLD_UPG_\d<\/Upgrade>/, `<Upgrade>BLD_UPG_${n}</Upgrade>`)
+          .replace(/<UIStackPosition>\d+<\/UIStackPosition>/, `<UIStackPosition>${n - 1}</UIStackPosition>`)
+          .replace(/[ \t]*<dependencies(?:\/>|>[\s\S]*?<\/dependencies>)/,
+            ['\t<dependencies>', `\t\t<Item href="/${below.path}#xpointer(/${BUILDING_RECORD})"/>`, '\t</dependencies>'].join(EOL));
+        for (const field of ['NameFileRef', 'DescriptionFileRef']) {
+          const href = hrefOf(text, field);
+          const at = href && resolve(below.path, href);
+          if (!at) continue;
+          const copy = at.replace(/(?:_L\d+)?(\.txt)$/i, `_L${n}$1`);
+          seeded.set(copy, seeded.get(at) ?? mustRead(read, at));
+          text = setHref(text, field, `/${copy}`, `${type} level ${n}`);
+        }
+        once(text, `<Upgrade>BLD_UPG_${n}</Upgrade>`, `${type} level ${n}`);
+        seeded.set(path, text);
+        const item = `<Item href="/${path}#xpointer(/${BUILDING_RECORD})"/>`;
+        donor = insertAfterLine(donor, once(donor, below.item, `${below.key} in ${spec.donor}'s list`), [item]);
+        build = addGridCell(build, type, below.level, n);
+        below = { key: buildingKey(type, n), type, level: n, path, item };
+      }
+    }
     seeded.set(source, donor);
-    const listed = listedBuildings(donor, source, read);
+    const listed = listedBuildings(donor, source, readSeeded);
     const byKey = new Map(listed.map((b) => [b.key, b]));
     const dropped = new Set<string>();
     for (const [key, edit] of Object.entries(edits)) {
       const { type, level } = parseBuildingKey(key);
       if (!byKey.has(key)) throw new Error(`${spec.donor} has no building ${key} — it has ${[...byKey.keys()].join(', ')}`);
+      if (edit?.levels) for (const b of listed) if (b.type === type && b.level > edit.levels) dropped.add(b.path);
       if (edit !== null) continue;
       for (const b of listed) if (b.type === type && b.level >= level) dropped.add(b.path);
     }
@@ -625,7 +685,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
         });
         const block = items.length ? ['\t<dependencies>', ...items, '\t</dependencies>'].join(EOL) : '\t<dependencies/>';
         const re = /[ \t]*<dependencies(?:\/>|>[\s\S]*?<\/dependencies>)/;
-        const record = mustRead(read, b.path);
+        const record = seeded.get(b.path) ?? mustRead(read, b.path);
         if (!re.test(record)) throw new Error(`${b.key}: no <dependencies> in ${b.path}`);
         seeded.set(b.path, record.replace(re, block));
         continue;
@@ -637,15 +697,6 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     }
     if (dropped.size) seeded.set(source, town);
   }
-  const readSeeded: DataReader = (rel) => {
-    const text = seeded.get(rel);
-    if (text) return Buffer.from(text, 'latin1');
-    for (const own of owns) {
-      const data = own(rel);
-      if (data) return data;
-    }
-    return read(rel);
-  };
   const copy = copyArt([source], p.art, readSeeded, `town:${spec.file}`, { stopAt: TOWN_STOP_AT, leave: TOWN_LEAVE });
   // A document a model of ours names and its folder has not is a refusal,
   // not a note: the game's data is not looked in for a mounted path, and a
@@ -1111,6 +1162,29 @@ function gridCell(slot: string, type: string, level: number): [number, number] {
   const close = slot.indexOf('\n\t\t\t\t</Item>', at);
   if (!start || close < 0) throw new Error(`build grid: ${type} level ${level} is not laid out as the game writes it`);
   return [start, slot.indexOf('\n', close + 1) + 1];
+}
+
+/**
+ * The grid with a cell for `type` at `level`, a copy of its cell at `below` —
+ * the same place, one higher in the stack, as a shipped building's levels
+ * stand (Stronghold's Hall of Trial: three on 4,2). A type with no slot (the
+ * grail) is left as it is: it was never on the grid.
+ */
+export function addGridCell(build: string, type: string, below: number, level: number): string {
+  const span = gridSlot(build, type);
+  if (!span) return build;
+  const [s, e] = span;
+  const slot = build.slice(s, e);
+  const [cs, ce] = gridCell(slot, type, below);
+  const cell = slot.slice(cs, ce).replace(`<Upgrade>BLD_UPG_${below}</Upgrade>`, `<Upgrade>BLD_UPG_${level}</Upgrade>`);
+  return build.slice(0, s) + slot.slice(0, ce) + cell + slot.slice(ce) + build.slice(e);
+}
+
+/** How many levels the game's enum has (`EBuildingUpgrade`: BLD_UPG_1…n), read from its types.xml. */
+export function buildingLevelCeiling(read: DataReader): number {
+  const levels = [...mustRead(read, 'types.xml').matchAll(/<Name>BLD_UPG_(\d+)<\/Name>/g)].map((m) => Number(m[1]));
+  if (!levels.length) throw new Error('types.xml names no BLD_UPG_ levels');
+  return Math.max(...levels);
 }
 
 /** The grid without the cell for `type` at `level`, and without the slot when that was its last cell. */

@@ -127,6 +127,44 @@ check('the other records are the donor\'s', text(edited, edited.records.get('TB_
 throws('a resource that is not one', () => build({ 'TB_TAVERN': { cost: { Iron: 1 } as never } }), 'Iron');
 throws('a cell for a level the slot has not', () => build({ 'TB_TAVERN': { slot: { x: 1, y: 1 } }, 'TB_TAVERN/2': { slot: { x: 1, y: 1 } } }), 'TB_TAVERN/2');
 
+// As many levels as the author says, not as many as the donor had: Haven's
+// training grounds have one; the Bone Pit wants three (Senya, 21.10 — "the
+// editor gives freedom; another town is an example, not a template").
+console.log('levels of the author\'s own');
+{
+  const three = build({
+    'TB_SPECIAL_1': { levels: 3, name: 'Bone Pit' },
+    'TB_SPECIAL_1/2': { name: 'Bone Yard', cost: { Gold: 4000 } },
+    'TB_SPECIAL_1/3': { name: 'Bone Market', description: 'Three a week.', devLevel: 9 },
+  });
+  check('three records of the type', ['TB_SPECIAL_1', 'TB_SPECIAL_1/2', 'TB_SPECIAL_1/3'].every((k) => three.records.has(k)) && !three.records.has('TB_SPECIAL_1/4'));
+  check('38 records: 36 and the two new', three.records.size === 38, `${three.records.size}`);
+  const l2 = text(three, three.records.get('TB_SPECIAL_1/2')!);
+  const l3 = text(three, three.records.get('TB_SPECIAL_1/3')!);
+  check('level 2 is BLD_UPG_2, one higher in the stack', l2.includes('<Upgrade>BLD_UPG_2</Upgrade>') && l2.includes('<UIStackPosition>1</UIStackPosition>'));
+  check('and needs level 1, only it', l2.includes(`<Item href="/${three.records.get('TB_SPECIAL_1')}#xpointer(/TownBuildingSharedStats)"/>`) && (l2.match(/<Item href=/g) ?? []).length === 1);
+  check('level 3 needs level 2', l3.includes(`<Item href="/${three.records.get('TB_SPECIAL_1/2')}#xpointer(/TownBuildingSharedStats)"/>`) && l3.includes('<UIStackPosition>2</UIStackPosition>'));
+  const name = (t: string): string => utf16(three, /<NameFileRef href="\/([^"#]+)/.exec(t)![1]!);
+  check('each level has its own name', name(text(three, three.records.get('TB_SPECIAL_1')!)) === 'Bone Pit' && name(l2) === 'Bone Yard' && name(l3) === 'Bone Market', `${name(l2)} / ${name(l3)}`);
+  check('its own description, the one below\'s when unsaid', utf16(three, /<DescriptionFileRef href="\/([^"#]+)/.exec(l3)![1]!) === 'Three a week.'
+    && utf16(three, /<DescriptionFileRef href="\/([^"#]+)/.exec(l2)![1]!) === utf16(plain, /<DescriptionFileRef href="\/([^"#]+)/.exec(text(plain, plain.records.get('TB_SPECIAL_1')!))![1]!));
+  check('its own price and town level', l2.includes('<Gold>4000</Gold>') && l3.includes('<DevLevelNeeded>9</DevLevelNeeded>'));
+  check('the town lists all three', (text(three, three.paths.shared).match(/Training_Grounds(?:_L\d)?\.xdb/g) ?? []).length === 3);
+  check('the three stand stacked in one cell', JSON.stringify(cells(text(three, three.paths.build), 'TB_SPECIAL_1')) === '[{"level":1,"x":5,"y":3},{"level":2,"x":5,"y":3},{"level":3,"x":5,"y":3}]',
+    JSON.stringify(cells(text(three, three.paths.build), 'TB_SPECIAL_1')));
+  const moved = build({ 'TB_SPECIAL_1': { levels: 2, slot: { x: 5, y: 6 } } });
+  check('moving the building moves its new level with it', JSON.stringify(cells(text(moved, moved.paths.build), 'TB_SPECIAL_1')) === '[{"level":1,"x":5,"y":6},{"level":2,"x":5,"y":6}]');
+  const five = build({ 'TB_SPECIAL_1': { levels: 5 } });
+  check('up to the game\'s five', five.records.has('TB_SPECIAL_1/5'));
+  const fewer = build({ 'TB_TOWN_HALL': { levels: 2 } });
+  check('fewer: the levels above dropped', fewer.records.has('TB_TOWN_HALL/2') && !fewer.records.has('TB_TOWN_HALL/3') && !fewer.records.has('TB_TOWN_HALL/4')
+    && cells(text(fewer, fewer.paths.build), 'TB_TOWN_HALL').length === 2);
+  check('the same count changes nothing', text(build({ 'TB_FORT': { levels: 3 } }), plain.records.get('TB_FORT')!) === text(plain, plain.records.get('TB_FORT')!));
+  throws('past the game\'s ceiling', () => build({ 'TB_SPECIAL_1': { levels: 6 } }), 'one to 5');
+  throws('none at all', () => build({ 'TB_SPECIAL_1': { levels: 0.5 } }), 'one to 5');
+  throws('said on a level, not the building', () => build({ 'TB_TOWN_HALL/2': { levels: 3 } }), 'say it on TB_TOWN_HALL');
+}
+
 console.log('a model of our own, on disk');
 {
   // The graves again, but as a folder of ours: the three documents beside
