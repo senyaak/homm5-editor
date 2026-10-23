@@ -230,10 +230,13 @@ export function geometryOf(modelPath: string, files: ReadonlyMap<string, Buffer>
   const model = files.get(modelPath)?.toString('latin1');
   if (!model) throw new Error(`${what}: no model at ${modelPath}`);
   const href = hrefOf(model, 'Geometry');
-  const docPath = href && resolve(modelPath, href);
-  const doc = docPath && files.get(docPath)?.toString('latin1');
+  // A geometry written inline (Necropolis's breached siege gate) is the
+  // model's own document: its box and hull are edited there.
+  const inline = href?.startsWith('#') ? /<Geometry href="#[^"]*"[^>]*>([\s\S]*?)<\/Geometry>\s*<\/Geometry>/.exec(model)?.[1] : undefined;
+  const docPath = inline !== undefined ? modelPath : href && resolve(modelPath, href);
+  const doc = inline !== undefined ? model : docPath && files.get(docPath)?.toString('latin1');
   if (!docPath || !doc) throw new Error(`${what}: ${modelPath} names no geometry the files hold`);
-  const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(doc)?.[1];
+  const uid = /<uid>([0-9A-Fa-f-]{36})<\/uid>/.exec(inline ?? doc)?.[1];
   const binPath = uid && `bin/Geometries/${uid.toUpperCase()}`;
   const bin = binPath && files.get(binPath);
   if (!binPath || !bin) throw new Error(`${what}: ${docPath} names no geometry binary the files hold`);

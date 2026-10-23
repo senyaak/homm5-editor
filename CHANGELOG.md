@@ -14,6 +14,11 @@ pre-release.
 
 ## Unreleased
 
+- A model whose geometry is written inside the model document — as in
+  Necropolis's breached siege gate — can be a siege part or a town-screen
+  building of your own. Until now the Factions window refused it with "names
+  no geometry the files hold", because it only looked for the geometry as a
+  document of its own.
 - Choosing a town under "Exterior" in the Factions window now fills every
   stage row, the gate and the ground with that town, where you can see it,
   the way a preset fills a creature's form. A row you change afterwards is

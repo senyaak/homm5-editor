@@ -22,7 +22,7 @@
 
 import { test, expect } from '@playwright/test';
 import type { Locator, Page } from '@playwright/test';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DATA, REPO_ROOT, closeEditor, hudSays, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
@@ -123,6 +123,32 @@ function ownNecroTown(): string {
   return join(dir, 'Necromancy-town.xdb');
 }
 const NECRO_GATE = 'Necromancy-Gate_AI.xdb';
+
+/**
+ * Necropolis's siege gate as a folder of ours: its three models (whole,
+ * breached, razed) with their geometries, hulls, materials and texture, the
+ * binaries under bin/, and the tower's texture one of its materials names
+ * beside itself. What the skeletons and the materials named from the data
+ * root reach stays the data's. The gate used to be the whole town's
+ * model, and the siege stood a town where its gate is (Senya, 24.10).
+ */
+function ownNecroGate(): string[] {
+  const dir = join(REPO_ROOT, '_tmp', 'e2e-own-model', 'necro-gate');
+  mkdirSync(join(dir, 'bin', 'Geometries'), { recursive: true });
+  mkdirSync(join(dir, 'bin', 'AIGeometries'), { recursive: true });
+  const src = join(DATA, 'Arenas', 'CombatArena', 'Necropolisarena');
+  const files = readdirSync(src).filter((f) => f.startsWith('gate1_') || f.startsWith('siege_tower1_u1r1-Gates.(Texture)') || f === 'gater0_AI.xdb');
+  for (const f of files) writeFileSync(join(dir, f), readFileSync(join(src, f)));
+  for (const f of files.filter((n) => n.endsWith('.xdb'))) {
+    for (const [, uid] of readFileSync(join(src, f), 'latin1').matchAll(/<uid>([0-9A-F-]{36})<\/uid>/gi)) {
+      for (const kind of ['Geometries', 'AIGeometries']) {
+        const bin = join(DATA, 'bin', kind, uid!.toUpperCase());
+        if (existsSync(bin)) writeFileSync(join(dir, 'bin', kind, uid!.toUpperCase()), readFileSync(bin));
+      }
+    }
+  }
+  return ['gate1_u1r0.xdb', 'gate1_u1r1.xdb', 'gate1_u1r2.xdb'].map((f) => join(dir, f));
+}
 /** Necropolis's entrance tile, from the town's tile: the faction stands on its ground. */
 const NECRO_ENTRANCE = [1, -5] as const;
 
@@ -492,10 +518,13 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   const signPic = ownPicture('sign', SIGN_PICTURE);
   await page.locator('#fac-pictures .fc-file').nth(11).fill(signPic);
   await page.locator('#fac-pictures .fc-file').nth(12).fill(signPic);
-  // And the siege gate as a model of ours — the same Necropolis model will
-  // do: what is under test is the part standing where the donor's stands.
+  // And the siege gate as models of ours — Necropolis's gate, whole, breached
+  // and razed, standing where the donor's stands.
+  const gateModels = ownNecroGate();
   await press(page, page.locator('#facedit summary', { hasText: 'Siege parts of your own' }));
-  await page.locator('#fac-siege-own .fc-siege-gate-models').fill(necro);
+  await page.locator('#fac-siege-own .fc-siege-gate-models').fill(gateModels[0]!);
+  await page.locator('#fac-siege-own .fc-siege-gate-damaged').fill(gateModels[1]!);
+  await page.locator('#fac-siege-own .fc-siege-gate-destroyed').fill(gateModels[2]!);
   // A town track of ours: the game plays music from loose files, so the
   // install copies it under Music/H5E/<faction>/ and the row points there.
   // Real ones, the game's own Necropolis theme and guild click: the live run
@@ -547,9 +576,11 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   const record = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
     .find((e) => e.name.split(String.fromCharCode(92)).join('/') === `Factions/${FILE}/${FILE}.(AdvMapTownShared).xdb`)!.data.toString('latin1');
   expect(/<activeTiles>\s*<Item>\s*<x>(-?\d+)<\/x>\s*<y>(-?\d+)<\/y>/.exec(record)?.slice(1)).toEqual(NECRO_ENTRANCE.map(String));
-  const siege = f?.siege as { arena?: string; gate?: { models?: string[] } } | undefined;
+  const siege = f?.siege as { arena?: string; gate?: { models?: string[]; damaged?: string[]; destroyed?: string[] } } | undefined;
   expect(siege?.arena).toBe('TOWN_HEAVEN');
-  expect(siege?.gate?.models?.length === 1 && isCopyOf(siege.gate.models[0], necro, true)).toBe(true);
+  expect(siege?.gate?.models?.length === 1 && isCopyOf(siege.gate.models[0], gateModels[0]!, true), 'the whole gate').toBe(true);
+  expect(isCopyOf(siege?.gate?.damaged?.[0], gateModels[1]!, true), 'the breached gate').toBe(true);
+  expect(isCopyOf(siege?.gate?.destroyed?.[0], gateModels[2]!, true), 'the razed gate').toBe(true);
   expect(isCopyOf(f?.race?.tracks?.town, ogg)).toBe(true);
   expect(isCopyOf(f?.race?.sounds?.guild, wav)).toBe(true);
   expect(names).toContain(`Factions/${FILE}/sounds/guild.(Sound).xdb`);
@@ -557,6 +588,11 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(existsSync(join(GAME, 'Music', 'H5E', FILE, 'town.ogg')), 'the track is copied loose under the game').toBe(true);
   expect(names).toContain(`Factions/${FILE}/music/town.(Music).xdb`);
   expect(names).toContain(`Factions/${FILE}/siege/gate_1/${FILE}_gate_1.(ArenaModObject).xdb`);
+  // The gate's object names Necropolis's gate at each ruin level, not a town.
+  const gateObject = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
+    .find((e) => e.name.split(String.fromCharCode(92)).join('/') === `Factions/${FILE}/siege/gate_1/${FILE}_gate_1.(ArenaModObject).xdb`)!.data.toString('latin1');
+  const ruinModels = [...gateObject.matchAll(/<Model href="\/([^"#]+)#/g)].map((m) => m[1]!.split('/').pop());
+  expect(ruinModels, 'whole, breached, razed').toEqual(['gate1_u1r0.xdb', 'gate1_u1r1.xdb', 'gate1_u1r2.xdb']);
   expect(f?.towns[1]?.bonusText).toBe('A marketplace from the first day.');
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   expect(isThePicture(entries, `Factions/${FILE}/icons/special_1_1.dds`, pitIcon, 128), "the pit's icon is the picture").toBe(true);

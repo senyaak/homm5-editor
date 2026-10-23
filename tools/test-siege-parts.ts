@@ -124,6 +124,52 @@ console.log('with another town\'s arena');
   check('the gate of ours has no animation', !object.includes('<AnimSet href') && (object.match(/<Model href/g) ?? []).length === 3);
 }
 
+// Necropolis's siege gate as a folder of ours: whole, breached, razed — and
+// the breached one keeps its geometry INLINE in the model document.
+console.log('a gate whose breached model holds its geometry inline');
+{
+  const dir = join(root, 'necro-gate');
+  mkdirSync(join(dir, 'bin', 'Geometries'), { recursive: true });
+  mkdirSync(join(dir, 'bin', 'AIGeometries'), { recursive: true });
+  const src = 'Arenas/CombatArena/Necropolisarena';
+  const names = ['gate1_u1r0.xdb', 'gate1_u1r0-geom.xdb', 'gate1_u1r0-geom-AI.xdb', 'gate1_u1r0-Gates.(Material).xdb', 'gate1_u1r0-GateR1_M.(Material).xdb',
+    'gate1_u1r0-Gates_2.(Texture).xdb', 'gate1_u1r0-Gates_2.(Texture).dds', 'siege_tower1_u1r1-Gates.(Texture).xdb', 'siege_tower1_u1r1-Gates.(Texture).dds',
+    'gate1_u1r1.xdb', 'gater0_AI.xdb', 'gate1_u1r2.xdb', 'gate1_u1r2-geom.xdb', 'gate1_u1r2-GateR2_M.(Material).xdb', 'gate1_u1r2-pasted__Gates.3.(Material).xdb'];
+  for (const f of names) {
+    const data = read(`${src}/${f}`);
+    if (!data) throw new Error(`no ${src}/${f} in the data`);
+    writeFileSync(join(dir, f), data);
+    if (!f.endsWith('.xdb')) continue;
+    for (const [, uid] of data.toString('latin1').matchAll(/<uid>([0-9A-F-]{36})<\/uid>/gi)) {
+      for (const kind of ['Geometries', 'AIGeometries']) {
+        const bin = read(`bin/${kind}/${uid!.toUpperCase()}`);
+        if (bin) writeFileSync(join(dir, 'bin', kind, uid!.toUpperCase()), bin);
+      }
+    }
+  }
+  const [r0, r1, r2] = ['gate1_u1r0.xdb', 'gate1_u1r1.xdb', 'gate1_u1r2.xdb'].map((f) => join(dir, f));
+  const t = build({ arena: 'TOWN_HEAVEN', gate: { models: [r0!], damaged: [r1], destroyed: [r2] } });
+  const object = text(t, 'Factions/Test/siege/gate_1/Test_gate_1.(ArenaModObject).xdb');
+  const models = [...object.matchAll(/<Model href="\/([^"#]+)/g)].map((m) => m[1]!);
+  check('whole, breached, razed are the three of ours', models.join(' ') === ['r0/own/necro-gate/gate1_u1r0.xdb', 'r1/own/necro-gate/gate1_u1r1.xdb', 'r2/own/necro-gate/gate1_u1r2.xdb']
+    .map((m) => `Factions/Test/siege/gate_1/${m}`).join(' '), models.join(' '));
+  const breachedDoc = text(t, models[1]!);
+  const bin = t.files.find((f) => f.path === `bin/Geometries/${uidOf(breachedDoc)}`)?.data;
+  const box = bin && positionsBox(bin);
+  const donorGate = text(t, 'Factions/Test/town/Arenas/CombatArena/NewGrassarena_siege/gate_u1r0.xdb');
+  const donorGeom = /<Geometry href="([^"#]+)/.exec(donorGate)?.[1];
+  const donorDoc = donorGeom ? text(t, `Factions/Test/town/Arenas/CombatArena/NewGrassarena_siege/${donorGeom}`) : donorGate;
+  const donorBin = t.files.find((f) => f.path === `bin/Geometries/${uidOf(donorDoc)}`)!.data;
+  const donorBox = positionsBox(donorBin)!;
+  check('the inline geometry is moved to the donor gate\'s spot', !!box && Math.abs(box.cx - donorBox.cx) < 0.01 && Math.abs(box.cy - donorBox.cy) < 0.01,
+    box ? `${box.cx.toFixed(1)},${box.cy.toFixed(1)} vs ${donorBox.cx.toFixed(1)},${donorBox.cy.toFixed(1)}` : 'no binary');
+  const center = /<Center>\s*<x>([^<]*)<\/x>\s*<y>([^<]*)<\/y>/.exec(breachedDoc);
+  check('its box is rewritten in the model', !!center && !!box && Math.abs(Number(center[1]) - box.cx) < 0.01 && Math.abs(Number(center[2]) - box.cy) < 0.01, center?.slice(1).join(','));
+  // Haven's gate has no hull (`<AIGeometry/>`), so neither has ours.
+  check("the donor gate's hull serves, in the model — Haven's none", breachedDoc.includes('<AIGeometry/>') && !breachedDoc.includes('gater0_AI'));
+  check("and its own hull is not copied", !t.files.some((f) => f.path.endsWith('gater0_AI.xdb')));
+}
+
 console.log('refusals');
 throws('a wall count that is not four', () => build({ arena: 'TOWN_HEAVEN', walls: { models: [whole, whole] } }), '4 piece(s), 2 model(s)');
 throws('a file that is not there', () => build({ arena: 'TOWN_HEAVEN', moat: { models: [join(root, 'nothing.xdb')] } }), 'no such file');
