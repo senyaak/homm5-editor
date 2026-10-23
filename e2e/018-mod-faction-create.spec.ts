@@ -46,6 +46,7 @@ import { settled } from './trace.ts';
 import { HERO_GROUP } from '../src/mods/shared-groups.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
 import { pictureIcon } from '../src/mods/faction-icons.ts';
+import { resolve as resolveHref } from '../src/mods/mod-art.ts';
 
 let ed: Launched;
 const GAME = modGameRoot();
@@ -302,8 +303,57 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
   await expect(editor.locator('select').first()).toHaveValue('TB_SPECIAL_1');
   await press(page, page.locator('#fac-cell button', { hasText: 'drop the building' }));
   await expect(cell(page, 5, 4)).toHaveClass(/dropped/);
+
+  // The rest of the tree is the Court's too, not Haven's left standing (Senya,
+  // 21.10 and 24.10): Haven's Stables and Farms go — the Knights' Arena needed
+  // the Stables, so it is re-parented first, or the copy refuses — and every
+  // dwelling and the grail are named and described in the Court's words.
+  await press(page, cell(page, 3, 5));
+  await expect(page.locator('#fac-cell')).toContainText('TB_DWELLING_6');
+  await expect(editor.locator('select').first()).toHaveValue('TB_SPECIAL_4');
+  await editor.locator('select').first().selectOption('');
+  await expect(cell(page, 3, 5).locator('.fc-arrow')).toHaveCount(0);
+  for (const [x, y, type] of [[3, 4, 'TB_SPECIAL_4'], [5, 2, 'TB_SPECIAL_5']] as const) {
+    await press(page, cell(page, x, y));
+    await expect(page.locator('#fac-cell')).toContainText(type);
+    await press(page, page.locator('#fac-cell button', { hasText: 'drop the building' }));
+    await expect(cell(page, x, y)).toHaveClass(/dropped/);
+  }
+  for (const d of COURT_DWELLINGS) {
+    await press(page, cell(page, d.x, d.y));
+    await expect(page.locator('#fac-cell')).toContainText(`TB_DWELLING_${d.tier}`);
+    for (const [level, name] of d.names.entries()) {
+      if (level) await press(page, editor.locator('.fc-level-tabs button', { hasText: 'level 2' }));
+      await expect(page.locator('#fac-cell')).toContainText(`TB_DWELLING_${d.tier}${level ? '/2' : ''}`);
+      await editor.locator('input[placeholder]').first().fill(name);
+      await editor.locator('textarea').first().fill(d.description(level));
+    }
+    await expect(cell(page, d.x, d.y)).toContainText(d.names[0]);
+  }
+  await press(page, cell(page, 2, 6));
+  await expect(page.locator('#fac-cell')).toContainText('TB_GRAIL');
+  await editor.locator('input[placeholder]').first().fill(COURT_GRAIL.name);
+  await editor.locator('textarea').first().fill(COURT_GRAIL.description);
+  await expect(cell(page, 2, 6)).toContainText(COURT_GRAIL.name);
   expect(ed.errors).toEqual([]);
 });
+
+/** The Court's dwellings, in Haven's cells: per tier its two levels' names, and what each says. */
+const COURT_DWELLINGS = [
+  { tier: 1, x: 5, y: 1, names: ['Костница', 'Большая костница'], kin: 'скелетов' },
+  { tier: 2, x: 2, y: 2, names: ['Курган', 'Чумной курган'], kin: 'ходячих мертвецов' },
+  { tier: 3, x: 3, y: 2, names: ['Склеп теней', 'Склеп стенаний'], kin: 'призраков' },
+  { tier: 4, x: 3, y: 3, names: ['Кровавый особняк', 'Кровавый дворец'], kin: 'вампиров' },
+  { tier: 5, x: 4, y: 4, names: ['Гробница магов', 'Гробница архимагов'], kin: 'личей' },
+  { tier: 6, x: 3, y: 5, names: ['Могильник', 'Великий могильник'], kin: 'умертвий' },
+  { tier: 7, x: 4, y: 6, names: ['Драконье кладбище', 'Кладбище теней'], kin: 'костяных драконов' },
+].map((d) => ({
+  ...d,
+  description: (level: number): string => level
+    ? `Перестроенное жилище ${d.tier}-го круга Двора: здесь нанимают улучшенных ${d.kin}, все — из кости.`
+    : `Жилище ${d.tier}-го круга Двора: здесь поднимают ${d.kin}, все — из кости.`,
+}));
+const COURT_GRAIL = { name: 'Костяной трон', description: 'Святыня Двора, выстроенная вокруг Грааля.' };
 
 test('a town without magic, a named town, a script — and it saves', { tag: '@game' }, async () => {
   test.setTimeout(10 * 60_000);
@@ -387,7 +437,19 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.buildings?.['TB_SPECIAL_1/2']).toMatchObject({ name: 'Bone Yard', cost: { Gold: 4000 }, devLevel: 0 });
   expect(f!.buildings?.['TB_SPECIAL_1/3']).toMatchObject({ name: 'Bone Market', cost: { Gold: 8000 }, devLevel: 0 });
   expect(f!.buildings?.TB_SPECIAL_2, "Haven's Hall of Heroes is gone").toBeNull();
-  expect(f!.buildings?.TB_DWELLING_5).toEqual({ requires: [] });
+  expect(f!.buildings?.TB_DWELLING_5).toMatchObject({ requires: [] });
+  // Haven's Stables and Farms are gone, the Arena that needed them re-parented,
+  // and every dwelling and the grail say the Court's words.
+  expect(f!.buildings?.TB_SPECIAL_4, "Haven's Stables are gone").toBeNull();
+  expect(f!.buildings?.TB_SPECIAL_5, "Haven's Farms are gone").toBeNull();
+  expect(f!.buildings?.TB_DWELLING_6).toMatchObject({ requires: [] });
+  for (const d of COURT_DWELLINGS) {
+    for (const [level, name] of d.names.entries()) {
+      const key = `TB_DWELLING_${d.tier}${level ? '/2' : ''}`;
+      expect(f!.buildings?.[key], key).toMatchObject({ name, description: d.description(level) });
+    }
+  }
+  expect(f!.buildings?.TB_GRAIL).toMatchObject(COURT_GRAIL);
   expect(f!.script).toContain('BONE_COURT_MOTTO');
   expect(f!.icons?.field).toEqual([58, 28, 66, 255]);
   expect(f!.alignment).toBe('evil');
@@ -412,6 +474,19 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(names.some((n) => /TownBuildingSharedStats\/Haven\/Special_2\//.test(n)), "the Hall of Heroes' record was never copied").toBe(false);
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   const text = (p: string): string => entries.find((e) => e.name.split('\\').join('/') === p)!.data.toString('latin1');
+  // What the game shows: the names the town's records point at, as texts.
+  const byPath = new Map(entries.map((e) => [e.name.split('\\').join('/').toLowerCase(), e.data]));
+  const shownNames = new Set([...byPath].filter(([p, data]) => p.startsWith(`factions/${FILE.toLowerCase()}/`) && p.endsWith('.xdb') && data.includes('<NameFileRef'))
+    .map(([p, data]) => {
+      const href = /<NameFileRef href="([^"]+)"/.exec(data.toString('latin1'))?.[1];
+      const at = href ? resolveHref(p, href) : null;
+      return at ? byPath.get(at.toLowerCase())?.subarray(2).toString('utf16le').trim() : undefined;
+    })
+    .filter((n): n is string => !!n));
+  for (const name of [...COURT_DWELLINGS.flatMap((d) => d.names), COURT_GRAIL.name]) expect(shownNames.has(name), `the town shows ${name}`).toBe(true);
+  for (const haven of ['Крестьянские хижины', 'Рыцарская арена', 'Небесный алтарь', 'Часовой Эльрата', 'Конюшни', 'Фермы']) {
+    expect(shownNames.has(haven), `no ${haven} of Haven's is left`).toBe(false);
+  }
   expect(text(`Factions/${FILE}/town/GameMechanics/TownBuildingSharedStats/Haven/Special_1/Training_Grounds.xdb`),
     'the pit asks for town level 1').toContain('<DevLevelNeeded>1</DevLevelNeeded>');
   for (const level of [2, 3]) {
