@@ -280,12 +280,24 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
   // template). Each new level stands in the pit's cell, one up its stack,
   // and is named and priced on its own tab; the camp opens one more offer
   // per level.
+  // Said in the Court's words, and drawn: before the levels, so they start as it.
+  await editor.locator('textarea').first().fill(PIT_WORDS[0]);
+  const pitIcon = ownPicture('pit', PIT_PICTURE);
+  await editor.locator('.fc-file').first().fill(pitIcon);
   await editor.locator('.fc-levels-count').selectOption('3');
   await expect(cell(page, 5, 3).locator('.fc-levels i')).toHaveCount(3);
   for (const [level, name, price] of [[2, 'Bone Yard', '4000'], [3, 'Bone Market', '8000']] as const) {
     await press(page, editor.locator('.fc-level-tabs button', { hasText: `level ${level}` }));
     await expect(page.locator('#fac-cell')).toContainText(`TB_SPECIAL_1/${level}`);
+    // A new level starts as the pit AS EDITED, every field filled where it is
+    // seen — not as Haven's training grounds it is copied from.
+    await expect(editor.locator('input[placeholder]').first(), `level ${level} starts with the pit's name`).toHaveValue('Bone Pit');
+    await expect(editor.locator('textarea').first()).toHaveValue(PIT_WORDS[0]);
+    await expect(editor.locator('.fc-resources input').last()).toHaveValue('2000');
+    await expect(editor.locator('.fc-dev-level')).toHaveValue('1');
+    await expect(editor.locator('.fc-file').first(), "and the pit's icon").toHaveValue(pitIcon);
     await editor.locator('input[placeholder]').first().fill(name);
+    await editor.locator('textarea').first().fill(PIT_WORDS[level - 1]!);
     const levelGold = editor.locator('.fc-resources input').last();
     await levelGold.fill(price);
     await levelGold.dispatchEvent('change');
@@ -337,6 +349,13 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
   await expect(cell(page, 2, 6)).toContainText(COURT_GRAIL.name);
   expect(ed.errors).toEqual([]);
 });
+
+/** What the pit's three levels say: its own words, not Haven's training grounds'. */
+const PIT_WORDS = [
+  'Яма, куда Двор сбрасывает кости павших. Раз в неделю из неё поднимаются мертвецы на продажу.',
+  'Кладбище при яме: из него поднимается вдвое больше мертвецов.',
+  'Костяной рынок: мертвецов здесь продают втрое больше.',
+] as const;
 
 /** The Court's dwellings, in Haven's cells: per tier its two levels' names, and what each says. */
 const COURT_DWELLINGS = [
@@ -433,9 +452,9 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.race?.name).toBe('Bone Court');
   expect(f!.towns).toEqual([{ file: 'Ossuary', name: 'The Ossuary', biography: 'Where the bones are kept.', bonus: 'TOWN_NO_BONUS' }]);
   expect(f!.buildings?.TB_SHIPYARD).toBeNull();
-  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 1, levels: 3, button: { lua: 'BonePit', camp: { minTier: 2, maxTier: 7 } } });
-  expect(f!.buildings?.['TB_SPECIAL_1/2']).toMatchObject({ name: 'Bone Yard', cost: { Gold: 4000 }, devLevel: 0 });
-  expect(f!.buildings?.['TB_SPECIAL_1/3']).toMatchObject({ name: 'Bone Market', cost: { Gold: 8000 }, devLevel: 0 });
+  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', description: PIT_WORDS[0], cost: { Gold: 2000 }, devLevel: 1, levels: 3, button: { lua: 'BonePit', camp: { minTier: 2, maxTier: 7 } } });
+  expect(f!.buildings?.['TB_SPECIAL_1/2']).toMatchObject({ name: 'Bone Yard', description: PIT_WORDS[1], cost: { Gold: 4000 }, devLevel: 0 });
+  expect(f!.buildings?.['TB_SPECIAL_1/3']).toMatchObject({ name: 'Bone Market', description: PIT_WORDS[2], cost: { Gold: 8000 }, devLevel: 0 });
   expect(f!.buildings?.TB_SPECIAL_2, "Haven's Hall of Heroes is gone").toBeNull();
   expect(f!.buildings?.TB_DWELLING_5).toMatchObject({ requires: [] });
   // Haven's Stables and Farms are gone, the Arena that needed them re-parented,
@@ -671,6 +690,7 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   expect(f?.towns[1]?.bonusText).toBe('A marketplace from the first day.');
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   expect(isThePicture(entries, `Factions/${FILE}/icons/special_1_1.dds`, pitIcon, 128), "the pit's icon is the picture").toBe(true);
+  for (const level of [2, 3]) expect(isThePicture(entries, `Factions/${FILE}/icons/special_1_${level}.dds`, pitIcon, 128), `level ${level} has the pit's icon`).toBe(true);
   expect(isThePicture(entries, `Factions/${FILE}/icons/tower.dds`, towerPic, 128), "the tower's portrait is the picture").toBe(true);
   expect(isThePicture(entries, `Factions/${FILE}/capture/02Red/Flag.(Texture).dds`, signPic, 55), 'the flag is the picture, in every colour').toBe(true);
   expect(names).toContain(`Factions/${FILE}/town/own/necro/Necromancy-town.xdb`);

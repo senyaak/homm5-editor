@@ -857,10 +857,34 @@ function recordLevels(type: string): number {
   return (source?.buildings ?? []).filter((b) => b.type === type).length;
 }
 
-/** Say how many levels a type has: the edits of the levels above go with them. */
+/**
+ * Say how many levels a type has: the edits and icons of the levels above go
+ * with them. A level added past the records starts as the level below AS IT
+ * STANDS — its name, description, price, town level and icon written into its
+ * own fields, where the author sees them and changes the difference — not as
+ * the donor's record it is copied from (Senya, 23.10: a preset fills the rows).
+ */
 function setLevels(type: string, levels: number): void {
-  for (let l = levels + 1; l <= (facData?.buildingLevels ?? 5); l++) delete edits[keyOf(type, l)];
+  const had = Math.max(effectiveBuildings().filter((b) => b.type === type).length, recordLevels(type));
+  for (let l = levels + 1; l <= (facData?.buildingLevels ?? 5); l++) {
+    delete edits[keyOf(type, l)];
+    delete pictures.buildings[keyOf(type, l)];
+  }
   setEdit(type, { levels: levels === recordLevels(type) ? undefined : levels });
+  for (let n = had + 1; n <= levels; n++) {
+    const below = keyOf(type, n - 1);
+    const shown = effectiveBuildings().find((b) => b.key === below);
+    if (!shown) break;
+    const said = edits[below] ?? {};
+    setEdit(keyOf(type, n), {
+      name: said.name ?? shown.name,
+      description: said.description ?? shown.description,
+      cost: { ...shown.cost, ...said.cost },
+      devLevel: said.devLevel ?? shown.devLevel,
+    });
+    const icon = pictures.buildings[below];
+    if (icon) pictures.buildings[keyOf(type, n)] = icon;
+  }
 }
 
 /** Where a level stands: the edit's cell, else the tree's. */
