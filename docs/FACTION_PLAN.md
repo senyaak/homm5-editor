@@ -770,6 +770,27 @@ recommendation on record: build it AS that switch when the asset editor's
 foundation stands, not before; until then the data side keeps going (siege
 parts of ours, music of ours), which needs no viewer.
 
+### 2f. TODO — a preview of the exterior on its ground (Senya, 2026-10-23)
+
+A town has ONE ground plan (`blockedTiles`, `holeTiles`, `activeTiles`,
+`PossessionMarkerTile` — on the `AdvMapTownShared`, `GROUND_PLAN`) for all
+ten exterior stages; a stage swaps only its model and effect. Each shipped
+model is shaped for its own town's plan and covers exactly its hole tiles
+(where the terrain is not drawn and the model's own pad lies), and no two
+shipped towns share a plan. So a mix of stages from towns of different
+shapes leaves holes open — black — on the stages that do not match: the
+stripe before the gate (Haven's plan under Necropolis's first stage, 09.10)
+and the cut-outs round the walls (Necropolis's plan under Haven's walled
+stages, 23.10, Senya's screenshot) are the one mistake seen from both sides.
+
+Not a refusal (Senya: leave the holes, the author decides): a PREVIEW in the
+Factions window — the ten stages, each drawn over the chosen ground plan,
+its hole tiles marked where the model does not cover them — so the author
+sees before the game does. A model of the author's own is only checkable
+this way, by its geometry against the holes. e2e 018 keeps its mix
+(Necropolis's first stage, Haven's nine, Necropolis's ground) on purpose:
+it is the case the preview has to show.
+
 ### 3. Fixes: large addresses — DONE (2026-09-19, `src/exe/large-address.ts`, the `large-addresses` flag in the Crashes group, off by default)
 
 The executable is not `LARGEADDRESSAWARE`: 2 GB, and a faction's copied
