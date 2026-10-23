@@ -14,6 +14,9 @@ pre-release.
 
 ## Unreleased
 
+- A faction's building can ask for any town level, 1 or 7 as well as the
+  0, 3, 6 … 15 the game's own buildings use: "Town level" in the Factions
+  window is a number now, not a list of those six. Blank keeps the donor's.
 - A faction's building has as many levels as you say, from one up to the
   game's five: the Factions window has a "Levels" choice on a building's
   first level. A level past the ones its donor had starts as the level below

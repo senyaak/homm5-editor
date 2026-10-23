@@ -1146,10 +1146,24 @@ function drawCellEditor(): void {
     row.className = 'on-row';
     const l = document.createElement('span');
     l.textContent = 'Town level';
-    const sel = document.createElement('select');
-    fillSelect(sel, [{ id: '', label: `the donor's (${current.devLevel})` }, ...[0, 3, 6, 9, 12, 15].map((n) => ({ id: String(n), label: String(n) }))], edit.devLevel === undefined ? '' : String(edit.devLevel));
-    sel.onchange = () => put({ devLevel: sel.value === '' ? undefined : Number(sel.value) });
-    row.append(l, sel);
+    // Any whole number: the town's level counts what stands in it, and the
+    // shipped records' 0, 3, 6 … 15 are what Ubisoft chose, not a rule
+    // (Senya, 2026-10-23: the Bone Pit at 1).
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.step = '1';
+    input.className = 'narrow fc-dev-level';
+    input.placeholder = `${current.devLevel}`;
+    input.title = `the town level it asks for, any whole number — blank keeps the donor's ${current.devLevel}`;
+    input.value = edit.devLevel === undefined ? '' : String(edit.devLevel);
+    input.oninput = () => {
+      const v = input.value.trim();
+      const n = Number(v);
+      if (v !== '' && !(Number.isInteger(n) && n >= 0)) return;
+      put({ devLevel: v === '' ? undefined : n });
+    };
+    row.append(l, input);
     box.appendChild(row);
   }
   if (current.level === 1) {

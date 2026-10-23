@@ -238,7 +238,7 @@ export interface BuildingEdit {
   description?: string;
   /** The resources named change; the rest keep the donor's price. */
   cost?: Partial<Record<Resource, number>>;
-  /** The town level it asks for (`DevLevelNeeded`: 0, 3, 6, 9, 12, 15). */
+  /** The town level it asks for (`DevLevelNeeded`) — any whole number; the shipped records use 0, 3 … 15. */
   devLevel?: number;
   /** What has to stand first, replacing the donor's list; `[]` for nothing. */
   requires?: readonly BuildingKey[];
@@ -802,6 +802,8 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       text = text.slice(0, at) + text.slice(at).replace(new RegExp(`<${resource}>\\d+</${resource}>`), `<${resource}>${amount}</${resource}>`);
     }
     if (edit.devLevel !== undefined) {
+      // Any whole number: the shipped 0, 3 … 15 are a choice, not the rule.
+      if (!Number.isInteger(edit.devLevel) || edit.devLevel < 0) throw new Error(`${key}: town level ${edit.devLevel} — a whole number, 0 or more`);
       once(text, '<DevLevelNeeded>', `${key} town level`);
       text = text.replace(/<DevLevelNeeded>\d+<\/DevLevelNeeded>/, `<DevLevelNeeded>${edit.devLevel}</DevLevelNeeded>`);
     }

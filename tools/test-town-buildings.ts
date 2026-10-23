@@ -160,6 +160,10 @@ console.log('levels of the author\'s own');
   check('fewer: the levels above dropped', fewer.records.has('TB_TOWN_HALL/2') && !fewer.records.has('TB_TOWN_HALL/3') && !fewer.records.has('TB_TOWN_HALL/4')
     && cells(text(fewer, fewer.paths.build), 'TB_TOWN_HALL').length === 2);
   check('the same count changes nothing', text(build({ 'TB_FORT': { levels: 3 } }), plain.records.get('TB_FORT')!) === text(plain, plain.records.get('TB_FORT')!));
+  const one = build({ 'TB_SPECIAL_1': { devLevel: 1 } });
+  check('a town level of any whole number, 1 among them', text(one, one.records.get('TB_SPECIAL_1')!).includes('<DevLevelNeeded>1</DevLevelNeeded>'));
+  throws('a town level below nothing', () => build({ 'TB_SPECIAL_1': { devLevel: -1 } }), 'a whole number, 0 or more');
+  throws('a town level in pieces', () => build({ 'TB_SPECIAL_1': { devLevel: 2.5 } }), 'a whole number, 0 or more');
   throws('past the game\'s ceiling', () => build({ 'TB_SPECIAL_1': { levels: 6 } }), 'one to 5');
   throws('none at all', () => build({ 'TB_SPECIAL_1': { levels: 0.5 } }), 'one to 5');
   throws('said on a level, not the building', () => build({ 'TB_TOWN_HALL/2': { levels: 3 } }), 'say it on TB_TOWN_HALL');
