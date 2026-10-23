@@ -261,6 +261,9 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
     const levelGold = editor.locator('.fc-resources input').last();
     await levelGold.fill(price);
     await levelGold.dispatchEvent('change');
+    // No town level asked: the level below standing is enough (Senya, 23.10 —
+    // the copied record asked for 6, Haven's training grounds' own).
+    await editor.locator('label.on-row', { hasText: 'Town level' }).locator('select').selectOption('0');
   }
   await expect(cell(page, 5, 3).locator('.fc-levels i.edited')).toHaveCount(3);
 
@@ -354,8 +357,8 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.towns).toEqual([{ file: 'Ossuary', name: 'The Ossuary', biography: 'Where the bones are kept.', bonus: 'TOWN_NO_BONUS' }]);
   expect(f!.buildings?.TB_SHIPYARD).toBeNull();
   expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 3, levels: 3, button: { lua: 'BonePit', camp: { minTier: 2, maxTier: 7 } } });
-  expect(f!.buildings?.['TB_SPECIAL_1/2']).toMatchObject({ name: 'Bone Yard', cost: { Gold: 4000 } });
-  expect(f!.buildings?.['TB_SPECIAL_1/3']).toMatchObject({ name: 'Bone Market', cost: { Gold: 8000 } });
+  expect(f!.buildings?.['TB_SPECIAL_1/2']).toMatchObject({ name: 'Bone Yard', cost: { Gold: 4000 }, devLevel: 0 });
+  expect(f!.buildings?.['TB_SPECIAL_1/3']).toMatchObject({ name: 'Bone Market', cost: { Gold: 8000 }, devLevel: 0 });
   expect(f!.buildings?.TB_SPECIAL_2, "Haven's Hall of Heroes is gone").toBeNull();
   expect(f!.buildings?.TB_DWELLING_5).toEqual({ requires: [] });
   expect(f!.script).toContain('BONE_COURT_MOTTO');
@@ -382,6 +385,10 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(names.some((n) => /TownBuildingSharedStats\/Haven\/Special_2\//.test(n)), "the Hall of Heroes' record was never copied").toBe(false);
   const entries = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)));
   const text = (p: string): string => entries.find((e) => e.name.split('\\').join('/') === p)!.data.toString('latin1');
+  for (const level of [2, 3]) {
+    expect(text(`Factions/${FILE}/town/GameMechanics/TownBuildingSharedStats/Haven/Special_1/Training_Grounds_L${level}.xdb`),
+      `level ${level} asks for no town level`).toContain('<DevLevelNeeded>0</DevLevelNeeded>');
+  }
   // The faction's Lua: the author's words, then the camp the button opens.
   const factionLua = text(`scripts/homm5-editor/faction-${FILE}.lua`);
   expect(factionLua).toContain('BONE_COURT_MOTTO');
