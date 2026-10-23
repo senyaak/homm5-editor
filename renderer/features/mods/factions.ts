@@ -388,8 +388,13 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
     fillSelect($select(`fac-siege-${part}`), townOptions(data, part === 'arena' ? 'the donor\'s siege' : 'as the arena\'s'), typeof v === 'string' ? v : '');
   }
   drawSiegeOwn();
-  const exterior: ExteriorMix = typeof existing?.exterior === 'string' ? { stages: {} } : (existing?.exterior ?? { stages: {} });
-  fillSelect($select('fac-exterior'), townOptions(data, 'the donor\'s'), typeof existing?.exterior === 'string' ? existing.exterior : '');
+  // A whole exterior is its ten stages, its gate and its ground, said in the
+  // rows as a preset says them (see the Exterior select's handler).
+  const whole = typeof existing?.exterior === 'string' ? existing.exterior : '';
+  const exterior: ExteriorMix = whole
+    ? { stages: Object.fromEntries(data.exteriorStages.map((s) => [s, whole])), gates: whole, ground: whole }
+    : (existing?.exterior as ExteriorMix | undefined) ?? { stages: {} };
+  fillSelect($select('fac-exterior'), townOptions(data, 'the donor\'s'), whole);
   {
     const gates = exterior.gates ?? '';
     const own = /^[A-Za-z]:[\\/]|^[\\/]{2}/.test(gates);
@@ -577,7 +582,7 @@ function readDwellings(): ModsFactionPayload['dwellings'] {
   return Object.keys(out).length ? out : undefined;
 }
 
-/** The ten exterior stages, each a town or the whole exterior's. */
+/** The ten exterior stages, each a town's (the donor's when blank) or a model of the author's own. */
 function drawStages(data: ModsFactionDataResult, current: ExteriorMix['stages']): void {
   const box = $('fac-stages');
   box.innerHTML = '';
@@ -591,7 +596,7 @@ function drawStages(data: ModsFactionDataResult, current: ExteriorMix['stages'])
     sel.dataset.stage = stage;
     const value = (current as Record<string, string>)[stage] ?? '';
     const own = /^[A-Za-z]:[\\/]|^[\\/]{2}/.test(value);
-    fillSelect(sel, townOptions(data, 'as the exterior'), own ? '' : value);
+    fillSelect(sel, townOptions(data, 'the donor\'s'), own ? '' : value);
     // Or a model of ours at the stage: the file's path rides on the row, and
     // the select stands down while it is there.
     sel.dataset.file = own ? value : '';
@@ -621,22 +626,41 @@ function drawStages(data: ModsFactionDataResult, current: ExteriorMix['stages'])
   }
 }
 
-function readExterior(): ModsFactionPayload['exterior'] {
-  const whole = $select('fac-exterior').value;
-  const gates = $input('fac-exterior-gates-file').value.trim() || $select('fac-exterior-gates').value;
-  const said = $select('fac-exterior-ground').value;
-  const stages: Record<string, string> = {};
-  for (const el of document.querySelectorAll<HTMLSelectElement>('.fc-stage')) {
-    const v = el.dataset.file || el.value;
-    if (v) stages[el.dataset.stage!] = v;
+/**
+ * The Exterior select is a PRESET (Senya, 2026-10-23): it says the ten stage
+ * rows, the gate and the ground, all of one town, where they can be seen —
+ * and a stage changed afterwards is visibly the difference. A model or a
+ * gate of the author's own in a row goes with it; that is what a preset does.
+ */
+function applyExteriorPreset(town: string): void {
+  for (const row of document.querySelectorAll<HTMLElement>('#fac-stages .on-row')) {
+    const sel = row.querySelector<HTMLSelectElement>('.fc-stage')!;
+    const file = row.querySelector<HTMLInputElement>('.fc-stage-file')!;
+    file.value = '';
+    sel.dataset.file = '';
+    sel.disabled = false;
+    sel.value = town;
   }
-  if (!Object.keys(stages).length && !gates && (!said || said === whole)) return whole || undefined;
-  // A whole exterior with a stage or a gate said differently is a mix whose
-  // unsaid stages are the whole's — which the copier reads as the donor's, so
-  // the whole is spelt out per stage; and its ground, the copier's default for
-  // a mix being the gate's town.
-  if (whole) for (const stage of (facData?.exteriorStages ?? [])) stages[stage] ??= whole;
-  const ground = said || whole;
+  $input('fac-exterior-gates-file').value = '';
+  $select('fac-exterior-gates').disabled = false;
+  $select('fac-exterior-gates').value = town;
+  $select('fac-exterior-ground').value = town;
+}
+
+/**
+ * What the rows say. Every stage, the gate and the ground of one town is that
+ * town's whole exterior, said once; nothing said is the donor's; anything
+ * else is a mix, its blank rows the donor's.
+ */
+function readExterior(): ModsFactionPayload['exterior'] {
+  const gates = $input('fac-exterior-gates-file').value.trim() || $select('fac-exterior-gates').value;
+  const ground = $select('fac-exterior-ground').value;
+  const rows = [...document.querySelectorAll<HTMLSelectElement>('.fc-stage')].map((el) => ({ stage: el.dataset.stage!, value: el.dataset.file || el.value }));
+  const first = rows[0]?.value ?? '';
+  if (first && rows.every((r) => r.value === first) && gates === first && (ground === first || !ground)) return first;
+  const stages: Record<string, string> = {};
+  for (const r of rows) if (r.value) stages[r.stage] = r.value;
+  if (!Object.keys(stages).length && !gates && !ground) return undefined;
   return { stages: stages as ExteriorMix['stages'], ...(gates ? { gates } : {}), ...(ground ? { ground } : {}) };
 }
 
@@ -1472,6 +1496,7 @@ export function initFactionsMod(): void {
   // watches (form-gate.ts), and the identifier is one of them.
   $('fac-file').addEventListener('input', () => { $input('fac-type').value = $input('fac-file').value.trim() ? townTypeFor($input('fac-file').value) : ''; });
   $('fac-town-add').onclick = () => { if (facData) addTownRow(facData); };
+  $select('fac-exterior').addEventListener('change', () => applyExteriorPreset($select('fac-exterior').value));
   $('fac-exterior-gates-file').addEventListener('input', () => {
     const own = !!$input('fac-exterior-gates-file').value.trim();
     $select('fac-exterior-gates').disabled = own;

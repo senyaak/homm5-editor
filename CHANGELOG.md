@@ -14,6 +14,13 @@ pre-release.
 
 ## Unreleased
 
+- Choosing a town under "Exterior" in the Factions window now fills every
+  stage row, the gate and the ground with that town, where you can see it,
+  the way a preset fills a creature's form. A row you change afterwards is
+  visibly the difference. Until now the rows went on saying "as the
+  exterior" and a stage changed by itself kept the donor's other nine
+  unseen. A town has one ground plan for all ten stages, so mixed shapes
+  leave black cut-outs in the game.
 - A creature in the Units window can look like another one and keep its own
   numbers: "Look of…" under Appearance takes another creature's figure, map
   model, icons and shot, and leaves the stats, the name, the description and

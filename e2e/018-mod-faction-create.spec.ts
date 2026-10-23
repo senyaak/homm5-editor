@@ -466,6 +466,21 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await page.locator('#fac-race-tooltip').fill('The dead of the Bone Court');
   const necro = ownNecroTown();
   await press(page, page.locator('#facedit summary', { hasText: 'stage by stage' }));
+  // The Exterior select is a preset: it SAYS the ten rows, the gate and the
+  // ground, one town's all — a town has one ground plan for its ten stages
+  // (Senya, 23.10). Back to the donor's, and the rows say nothing again.
+  const stageRows = page.locator('#fac-stages .fc-stage');
+  await expect(stageRows).toHaveCount(10);
+  await page.locator('#fac-exterior').selectOption('TOWN_DUNGEON');
+  for (const row of await stageRows.all()) await expect(row).toHaveValue('TOWN_DUNGEON');
+  await expect(page.locator('#fac-exterior-gates')).toHaveValue('TOWN_DUNGEON');
+  await expect(page.locator('#fac-exterior-ground')).toHaveValue('TOWN_DUNGEON');
+  await page.locator('#fac-exterior').selectOption('');
+  for (const row of await stageRows.all()) await expect(row).toHaveValue('');
+  await expect(page.locator('#fac-exterior-ground')).toHaveValue('');
+  // Then the mix this spec keeps on purpose — the first stage a model of ours,
+  // the other nine the donor's, the ground Necropolis's: holes at the walled
+  // stages, the case the preview of FACTION_PLAN 2f has to show.
   await page.locator('#fac-stages .fc-stage-file').first().fill(necro);
   await expect(page.locator('#fac-stages .fc-stage').first()).toBeDisabled();
   // The gate hull as an AIGeometry of ours (the same folder holds Necropolis's),
