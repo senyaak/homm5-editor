@@ -81,6 +81,22 @@ async function loadUnitPreset(): Promise<void> {
   for (const id of p.stats.abilities) addAbilityRow(id);
   showAbilityLine();
   for (const [input, slot] of UM_ART) $input(input).value = p.art[slot] ?? '';
+  $('um-look-name').textContent = 'the preset\'s';
+}
+
+/**
+ * Look like another creature, keeping everything else: the donor IS the look —
+ * the two documents a creature is copied from (its visual: combat model,
+ * icons, shot; its map stack) — so it moves, and the four art slots with it;
+ * the stats, the name, the description and the abilities stay as they are.
+ * What the Bone Court's row is made of: a Necropolis creature's numbers on a
+ * skeleton (the probe, 2026-09-18).
+ */
+async function loadUnitLook(id: string, label: string): Promise<void> {
+  const p = await api.modPreset(id);
+  $input('um-donor').value = id;
+  for (const [input, slot] of UM_ART) $input(input).value = p.art[slot] ?? '';
+  $('um-look-name').textContent = label;
 }
 
 async function submitUnitsMod(): Promise<void> {
@@ -213,6 +229,7 @@ async function editCreature(id: string): Promise<void> {
   // recorded show none, and the update keeps the sources they already have.
   $input('um-donor').value = c.donor ?? '';
   $('um-donor-name').textContent = c.donor ?? 'not recorded — its own art is kept';
+  $('um-look-name').textContent = c.donor ? `${c.donor}'s` : 'its own';
   $input('um-id').disabled = true;
   $input('um-file').disabled = true;
   $('um-editing').textContent = `${c.name || c.id} — id and files are fixed; everything else can move`;
@@ -236,6 +253,7 @@ async function newCreature(): Promise<void> {
   // already has is refused after a full rebuild.
   $input('um-donor').value = '';
   $('um-donor-name').textContent = 'nothing yet — the form is blank';
+  $('um-look-name').textContent = 'the preset\'s';
   for (const id of ['um-file', 'um-id', 'um-name', 'um-desc']) $input(id).value = '';
   for (const [input] of UM_ART) $input(input).value = '';
   // Nothing raises a blank creature — the same default the game gives a neutral.
@@ -291,6 +309,16 @@ export function initUnitsMod(): void {
         $('um-donor-name').textContent = label;
         void loadUnitPreset().then(() => gateUnits().check()).catch(() => {});
         gateUnits().check();
+      });
+    })().catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
+  };
+
+  $('um-look-pick').onclick = () => {
+    void (async () => {
+      const creatures = (await api.modFormData()).donors;
+      pickPreset('Look like', creatures.map((c) => ({ id: c.id, label: c.name || c.id })), (id, label) => {
+        void loadUnitLook(id, label).then(() => gateUnits().check())
+          .catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
       });
     })().catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
   };

@@ -32,7 +32,9 @@ export function pickPreset(
     const q = search.value.trim().toLowerCase();
     const box = $('pp-list');
     box.innerHTML = '';
-    const hits = entries.filter((x) => !q || x.label.toLowerCase().includes(q));
+    // By what is shown or by what it is: "Скелет" finds three skeletons, its
+    // CREATURE_SKELETON_ARCHER finds the one.
+    const hits = entries.filter((x) => !q || x.label.toLowerCase().includes(q) || x.id.toLowerCase().includes(q));
     // The lists this picker was written for are a hundred long; the object
     // catalogue is two thousand, and building all of them as buttons is a
     // visible pause on every keystroke. Showing a page and saying how much is
@@ -42,6 +44,8 @@ export function pickPreset(
       row.className = 'um-mod';
       row.style.cssText = 'display:block;width:100%;text-align:left';
       row.textContent = e.label;
+      row.title = e.id;
+      row.dataset.id = e.id;
       row.onclick = () => {
         modDialog('presetpick').close();
         ppChoose?.(e.id, e.label);

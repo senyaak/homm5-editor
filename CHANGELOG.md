@@ -14,6 +14,15 @@ pre-release.
 
 ## Unreleased
 
+- A creature in the Units window can look like another one and keep its own
+  numbers: "Look of…" under Appearance takes another creature's figure, map
+  model, icons and shot, and leaves the stats, the name, the description and
+  the abilities as they are — a lich's numbers on a skeleton. Until now a
+  creature looked like the creature its numbers came from, unless every art
+  path was typed in by hand.
+- The "start from" pickers find a creature, hero or class by its id as well
+  as by its name: CREATURE_SKELETON_ARCHER finds the one, where "Скелет" finds
+  three.
 - A faction's building can ask for any town level, 1 or 7 as well as the
   0, 3, 6 … 15 the game's own buildings use: "Town level" in the Factions
   window is a number now, not a list of those six. Blank keeps the donor's.

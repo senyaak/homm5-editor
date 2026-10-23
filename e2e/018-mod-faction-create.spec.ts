@@ -593,7 +593,9 @@ test("the author's own files can go: the mod works from its copies", { tag: '@ga
 
 /** The class of our own this spec makes, and the hero of it and of the race. */
 const CLASS = { id: 'HERO_CLASS_E2E_REAPER', name: 'Reaper of the e2e' };
-const HERO = { id: 'E2eBoneLord', name: 'Bone Lord of the e2e' };
+// Brem, as the probe's lord was (TestBrem, 'Брем Костяной') — not Ossir, a ranger of the
+// elves, which is what the race's hero was until 23.10.
+const HERO = { id: 'E2eBoneLord', name: 'Брем Костяной', preset: 'Brem' };
 
 // A CLASS OF OUR OWN AND A HERO OF IT AND OF THE RACE. His race is his
 // TownType — not his class: the class decides what a level-up offers, the
@@ -631,8 +633,8 @@ test('a class of our own, and a hero of it and of the race, made in the Heroes w
   await expect(page.locator('#heroedit')).toBeVisible();
   await press(page, page.locator('#he-preset-pick'));
   await expect(page.locator('#presetpick')).toBeVisible();
-  await page.locator('#pp-search').fill('Ossir');
-  await press(page, page.locator('#pp-list button', { hasText: 'Ossir' }).first());
+  await page.locator('#pp-search').fill(HERO.preset);
+  await press(page, page.locator('#pp-list button', { hasText: HERO.preset }).first());
   await expect(page.locator('#he-model')).not.toHaveValue('', { timeout: 30_000 });
 
   // The faction is offered beside the game's eight, marked as the mod's.
@@ -664,6 +666,9 @@ test('a class of our own, and a hero of it and of the race, made in the Heroes w
   expect(doc, 'his document says his race').toContain(`<TownType>${TYPE}</TownType>`);
   expect(doc, '...and his class, ours').toContain(`<Class>${CLASS.id}</Class>`);
   expect(doc, 'and that the race may draw him').toContain('<ScenarioHero>false</ScenarioHero>');
+  // Brem's face (shipped as Rutger's texture) and a knight's figure — no elf of the Preserve.
+  expect(doc, "he wears Brem's face").toContain('Heaven_Rutger_128x128');
+  expect(doc, '...and nothing of the Preserve').not.toContain('/Preserve/');
   expect(archiveText(HERO_GROUP), 'the random hero pool lists him').toContain(heroHref(heroPaths(hero!)));
   await press(page, page.locator('#hm-close'));
 });
@@ -690,32 +695,95 @@ test('until it has creatures, the race says it cannot start a game', { tag: '@ga
   expect(ed.errors).toEqual([]);
 });
 
-/** The row: per tier a base creature, its upgrade and the second upgrade — by file stem, filled with ids as they are made. */
-const ROW = [1, 2, 3, 4, 5, 6, 7].map((tier) => ({
-  tier,
-  base: { file: `E2eBoneT${tier}`, name: `T${tier} base of the e2e`, id: '' },
-  up: { file: `E2eBoneT${tier}Up`, name: `T${tier} upgrade of the e2e`, id: '' },
-  alt: { file: `E2eBoneT${tier}Alt`, name: `T${tier} second of the e2e`, id: '' },
-}));
+/**
+ * THE BONE COURT'S ROW, as the probe made it (_tmp/town12-units.ts, Senya
+ * 2026-09-18) and as Senya remembered it on 23.10, when this spec's row came
+ * out as wood elves and the race's hero started with them: every warrior a
+ * skeleton, with a Necropolis creature's numbers, name and words and its
+ * undead nature; each tier painted its own colour, so the tiers tell apart.
+ *
+ * Per tier, the three Necropolis creatures whose numbers it takes (base,
+ * upgrade, second upgrade) — and by position the skeleton it looks like.
+ */
+const NECRO_ROW: readonly (readonly [string, string, string])[] = [
+  ['CREATURE_SKELETON', 'CREATURE_SKELETON_ARCHER', 'CREATURE_SKELETON_WARRIOR'],
+  ['CREATURE_WALKING_DEAD', 'CREATURE_ZOMBIE', 'CREATURE_DISEASE_ZOMBIE'],
+  ['CREATURE_MANES', 'CREATURE_GHOST', 'CREATURE_POLTERGEIST'],
+  ['CREATURE_VAMPIRE', 'CREATURE_VAMPIRE_LORD', 'CREATURE_NOSFERATU'],
+  ['CREATURE_LICH', 'CREATURE_DEMILICH', 'CREATURE_LICH_MASTER'],
+  ['CREATURE_WIGHT', 'CREATURE_WRAITH', 'CREATURE_BANSHEE'],
+  ['CREATURE_BONE_DRAGON', 'CREATURE_SHADOW_DRAGON', 'CREATURE_HORROR_DRAGON'],
+];
+const SKELETON_LOOKS = ['CREATURE_SKELETON', 'CREATURE_SKELETON_ARCHER', 'CREATURE_SKELETON_WARRIOR'] as const;
+/** Each tier's paint, the probe's: hue turned (the window's −180…180), a tint at 75 %, saturation 150 %. */
+const TIER_PAINT: readonly { hue: number; tint: string }[] = [
+  { hue: 0, tint: '#ebe1c8' }, { hue: -120, tint: '#c82828' }, { hue: -80, tint: '#f0961e' },
+  { hue: -60, tint: '#e6dc28' }, { hue: 0, tint: '#32be46' }, { hue: 100, tint: '#3c78e6' },
+  { hue: 160, tint: '#aa3cd2' },
+];
 
-/** Press a row's button in the Units list, by the creature's name. */
-const unitRow = (page: Page, name: string): Locator => page.locator('#um-list .um-item', { hasText: name }).first();
+interface RowCreature { file: string; donor: string; look: string; name: string; id: string }
+/** The row: per tier a base creature, its upgrade and the second upgrade — by file stem; names and ids filled as they are made. */
+const ROW = [1, 2, 3, 4, 5, 6, 7].map((tier) => {
+  const [base, up, alt] = NECRO_ROW[tier - 1]!;
+  const one = (file: string, donor: string, k: number): RowCreature => ({ file, donor, look: SKELETON_LOOKS[k]!, name: '', id: '' });
+  return { tier, base: one(`E2eBoneT${tier}`, base, 0), up: one(`E2eBoneT${tier}Up`, up, 1), alt: one(`E2eBoneT${tier}Alt`, alt, 2) };
+});
 
 /**
- * One creature, through the Units window: a preset, its identity, the race
- * and the tier, and the link to its base. Its id comes back off the manifest.
+ * A creature's row in the Units list, by its id — the line ends "· <id>".
+ * Not by name: "Зомби Двора" is inside "Чумные зомби Двора" to a search that
+ * ignores case.
  */
-async function makeCreature(page: Page, c: { file: string; name: string }, tier: number, base = '', ownIcon = ''): Promise<string> {
+const unitRow = (page: Page, c: { id: string }): Locator =>
+  page.locator('#um-list .um-item').filter({ has: page.locator('.grow i', { hasText: new RegExp(`· ${c.id}$`) }) });
+
+/** Pick a creature in the preset list by its id — the list searches ids too. */
+async function pickCreature(page: Page, opener: Locator, id: string): Promise<void> {
+  await press(page, opener);
+  await expect(page.locator('#presetpick')).toBeVisible();
+  await page.locator('#pp-search').fill(id);
+  await press(page, page.locator(`#pp-list button[data-id="${id}"]`));
+  await expect(page.locator('#presetpick')).toBeHidden();
+}
+
+/**
+ * One creature, through the Units window, the probe's way: the Necropolis
+ * creature's preset — numbers, name, words, abilities — then the LOOK of a
+ * skeleton, which keeps them; what a skeleton cannot do goes (it has no
+ * flying and no two-tile animations, and only the archer shoots); the second
+ * tier is not undead (Senya, launch 41 — an undead stack's morale is always
+ * 0, so the race's morale shows on that tier alone). Then its identity, the
+ * race, the tier and the link to its base. Its id comes back off the manifest.
+ */
+async function makeCreature(page: Page, c: RowCreature, tier: number, base = '', ownIcon = ''): Promise<string> {
   await press(page, page.locator('#um-new'));
   await expect(page.locator('#unitedit')).toBeVisible();
   // A new form names no links: what the last creature linked is not this one's.
   await expect(page.locator('#um-base')).toHaveValue('');
   await expect(page.locator('#um-upgrade')).toHaveValue('');
-  await press(page, page.locator('#um-donor-pick'));
-  await expect(page.locator('#presetpick')).toBeVisible();
-  await page.locator('#pp-search').fill('Лесные стрелки');
-  await press(page, page.locator('#pp-list button').first());
-  await expect(page.locator('#um-shots')).toHaveValue('16');
+  await pickCreature(page, page.locator('#um-donor-pick'), c.donor);
+  await expect(page.locator('#um-name')).not.toHaveValue('');
+  const stats = { attack: await page.locator('#um-attack').inputValue(), health: await page.locator('#um-health').inputValue() };
+  const words = await page.locator('#um-desc').inputValue();
+  // The look of a skeleton: its documents and art, and nothing else of it.
+  await pickCreature(page, page.locator('#um-look-pick'), c.look);
+  await expect(page.locator('#um-look-name')).not.toHaveText("the preset's");
+  await expect(page.locator('#um-attack'), "the look keeps the Necropolis creature's numbers").toHaveValue(stats.attack);
+  await expect(page.locator('#um-health')).toHaveValue(stats.health);
+  await expect(page.locator('#um-desc'), '...and its words').toHaveValue(words);
+  await page.locator('#um-fly').uncheck();
+  await page.locator('#um-size').fill('1');
+  if (c.look !== 'CREATURE_SKELETON_ARCHER') {
+    await page.locator('#um-shots').fill('0');
+    await page.locator('#um-range').fill('0');
+  }
+  if (tier === 2) {
+    const undead = page.locator('#um-abilities label').filter({ has: page.locator('option[value="ABILITY_UNDEAD"]:checked') });
+    if (await undead.count()) await press(page, undead.locator('button'));
+    await expect(undead).toHaveCount(0);
+  }
+  c.name = `${await page.locator('#um-name').inputValue()} Двора`;
   await page.locator('#um-file').fill(c.file);
   await page.locator('#um-name').fill(c.name);
   await page.locator('#um-town').selectOption(TYPE);
@@ -739,16 +807,41 @@ async function makeCreature(page: Page, c: { file: string; name: string }, tier:
 }
 
 /**
- * An icon of the author's own, on disk: the shipped Wood Elf's texture pair
- * copied into a folder under _tmp, as a picture someone drew would sit.
+ * An icon of the author's own, on disk: the shipped skeleton's face copied
+ * into a folder under _tmp, as a picture someone drew would sit. (A wood
+ * elf's until 23.10 — and the race's first tier looked it.)
  */
+const OWN_ICON = 'ico_Sceleton_128';
 function ownIcon(): string {
   const dir = join(REPO_ROOT, '_tmp', 'e2e-own-icon', 'boneicon');
   rmSync(join(dir, '..'), { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  const src = join(DATA, 'Textures', 'Interface', 'CombatArena', 'Faces', 'Preseve');
-  for (const f of ['ico_Woodelf_128.xdb', 'ico_Woodelf_128.dds']) writeFileSync(join(dir, f), readFileSync(join(src, f)));
-  return join(dir, 'ico_Woodelf_128.xdb');
+  const src = join(DATA, 'Textures', 'Interface', 'CombatArena', 'Faces', 'Necropolis');
+  for (const f of [`${OWN_ICON}.xdb`, `${OWN_ICON}.dds`]) writeFileSync(join(dir, f), readFileSync(join(src, f)));
+  return join(dir, `${OWN_ICON}.xdb`);
+}
+
+/**
+ * A tier's paint, through the brush on the creature's row: every texture of
+ * its copy — the icon the hire screen and the army show first — turned to
+ * the tier's colour, so seven tiers of skeletons tell apart.
+ */
+async function paintCreature(page: Page, c: RowCreature, tier: number): Promise<void> {
+  const paint = TIER_PAINT[tier - 1]!;
+  await press(page, unitRow(page, c).locator('.um-paint'));
+  await expect(page.locator('#recolor')).toBeVisible();
+  await expect(page.locator('#rc-previews canvas').first()).toBeVisible({ timeout: 60_000 });
+  await page.locator('#rc-hue').fill(String(paint.hue));
+  await page.locator('#rc-sat').fill('150');
+  await page.locator('#rc-tint').fill(paint.tint);
+  await page.locator('#rc-tintk').fill('75');
+  await page.locator('#rc-ok').click();
+  await expect(page.locator('#rc-note')).toContainText(/repainted \d+ texture/, { timeout: 120_000 });
+  await expect(page.locator('#rc-err')).toHaveText('');
+  await press(page, page.locator('#rc-close'));
+  expect(readInstalledMod(GAME).creatures.find((x) => x.id === c.id)?.recolor, `${c.file} carries its tier's paint`)
+    .toMatchObject({ hue: paint.hue, saturation: 1.5 });
+  expect(ed.errors).toEqual([]);
 }
 
 /** A creature's own record out of the mod's creature table. */
@@ -774,11 +867,22 @@ test('a row of seven tiers is made in the Units window, each base linked to its 
   await expect(ourTown, 'the faction is a town a creature can be of').toHaveCount(1);
   await expect(ourTown).toHaveText(/Bone Court.*ours/);
 
+  const original = join(REPO_ROOT, '_tmp', 'e2e-own-icon', 'boneicon', `${OWN_ICON}.xdb`);
   for (const t of ROW) {
     t.base.id = await makeCreature(page, t.base, t.tier, '', t.tier === 1 ? ownIcon() : '');
+    if (t.tier === 1) {
+      // Tier 1's base wears an icon of the author's own: the manifest names
+      // the mod's copy, the archive carries it under the creature — before
+      // the tier's paint goes over it.
+      const t1 = readInstalledMod(GAME).creatures.find((c) => c.id === t.base.id)!;
+      expect(isCopyOf(t1.from?.icon, original, true), 'its icon is the mod\'s copy').toBe(true);
+      const iconCopy = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
+        .find((e) => e.name.split(String.fromCharCode(92)).join('/').endsWith(`/art/own/boneicon/${OWN_ICON}.dds`));
+      expect(iconCopy?.data.equals(readFileSync(original.replace(/\.xdb$/, '.dds'))), 'the archive carries the picture').toBe(true);
+    }
     t.up.id = await makeCreature(page, t.up, t.tier, t.base.id);
     t.alt.id = await makeCreature(page, t.alt, t.tier, t.base.id);
-    await press(page, unitRow(page, t.base.name).locator('button', { hasText: '✎' }));
+    await press(page, unitRow(page, t.base).locator('button', { hasText: '✎' }));
     await expect(page.locator('#unitedit')).toBeVisible();
     await expect(page.locator('#um-base')).toHaveValue('');
     await page.locator('#um-upgrade').selectOption(t.up.id);
@@ -786,18 +890,30 @@ test('a row of seven tiers is made in the Units window, each base linked to its 
     const saved = await settled(page, `linking ${t.base.file}`, '#um-note', '#ue-err', () => page.locator('#um-ok').click());
     expect(saved).toContain('installed');
     expect(ed.errors).toEqual([]);
+    for (const c of [t.base, t.up, t.alt]) await paintCreature(page, c, t.tier);
   }
-
-  // Tier 1's base wears an icon of the author's own: the manifest names the
-  // mod's copy, the archive carries it under the creature — and the original
-  // goes now, so every build after this one does without it.
-  const original = join(REPO_ROOT, '_tmp', 'e2e-own-icon', 'boneicon', 'ico_Woodelf_128.xdb');
-  const t1 = readInstalledMod(GAME).creatures.find((c) => c.id === ROW[0]!.base.id)!;
-  expect(isCopyOf(t1.from?.icon, original, true), 'its icon is the mod\'s copy').toBe(true);
-  const iconCopy = readEntries(readFileSync(modFile(GAME, 'mod', MOD_STEM)))
-    .find((e) => e.name.split(String.fromCharCode(92)).join('/').endsWith(`/art/own/boneicon/ico_Woodelf_128.dds`));
-  expect(iconCopy?.data.equals(readFileSync(original.replace(/\.xdb$/, '.dds'))), 'the archive carries the picture').toBe(true);
+  // The original icon goes now, so every build after this one does without it.
   rmSync(join(REPO_ROOT, '_tmp', 'e2e-own-icon'), { recursive: true, force: true });
+
+  // What the row IS: a Necropolis creature's numbers on a skeleton, per tier.
+  {
+    const shipped = (await page.evaluate(async (ids) => Promise.all(ids.map((id) => window.editor.modPreset(id))),
+      ROW.flatMap((t) => [t.base.donor, t.up.donor, t.alt.donor])));
+    const made = readInstalledMod(GAME).creatures;
+    for (const [i, c] of ROW.flatMap((t) => [t.base, t.up, t.alt]).entries()) {
+      const m = made.find((x) => x.id === c.id)!;
+      const from = shipped[i]!;
+      expect(m.donor, `${c.file} looks like ${c.look}`).toBe(c.look);
+      expect(m.stats, `${c.file} has ${c.donor}'s numbers`).toMatchObject({
+        attack: from.stats.attack, defence: from.stats.defence, health: from.stats.health,
+        speed: from.stats.speed, initiative: from.stats.initiative, flying: false, combatSize: 1,
+      });
+      expect(m.name).toBe(`${from.name} Двора`);
+      expect(m.description).toBe(from.description);
+      const tier = Number(/T(\d)/.exec(c.file)![1]);
+      expect(m.stats.abilities.includes('ABILITY_UNDEAD'), `${c.file}: undead but on tier 2`).toBe(tier !== 2 && from.stats.abilities.includes('ABILITY_UNDEAD'));
+    }
+  }
 
   // The manifest, and the records the game reads.
   const creatures = readInstalledMod(GAME).creatures;
@@ -1026,14 +1142,14 @@ test('what the mod still names will not go — the window says who', { tag: '@ga
 
   // A base: its two upgrades name it, and the faction's tier hires it.
   await press(page, page.locator('#unitsbtn'));
-  await press(page, unitRow(page, first!.base.name).locator('button[title="remove it from the mod"]'));
+  await press(page, unitRow(page, first!.base).locator('button[title="remove it from the mod"]'));
   await expect(page.locator('#ask'), 'nothing is asked').toBeHidden();
   const why = page.locator('#um-err');
   await expect(why).toContainText(`creature ${first!.up.id} is its upgrade`);
   await expect(why).toContainText(`creature ${first!.alt.id} is its upgrade`);
   await expect(why).toContainText(`faction ${FILE}'s tier 1 hires it`);
   // An upgrade: the base upgrades into it.
-  await press(page, unitRow(page, first!.up.name).locator('button[title="remove it from the mod"]'));
+  await press(page, unitRow(page, first!.up).locator('button[title="remove it from the mod"]'));
   await expect(page.locator('#ask')).toBeHidden();
   await expect(why).toContainText(`creature ${first!.base.id} upgrades into it`);
   expect(readInstalledMod(GAME).creatures.filter((c) => c.stats.town === TYPE)).toHaveLength(21);
@@ -1058,16 +1174,16 @@ test('taken apart in the order the refusals ask for', { tag: '@game' }, async ()
   await press(page, page.locator('#fac-close'));
 
   await press(page, page.locator('#unitsbtn'));
-  const remove = async (c: { name: string; file: string }): Promise<void> => {
-    await press(page, unitRow(page, c.name).locator('button[title="remove it from the mod"]'));
+  const remove = async (c: RowCreature): Promise<void> => {
+    await press(page, unitRow(page, c).locator('button[title="remove it from the mod"]'));
     await expect(page.locator('#ask')).toBeVisible();
     await page.locator('#ask-yes').click();
-    await expect(page.locator('#um-list')).not.toContainText(c.name, { timeout: 120_000 });
+    await expect(unitRow(page, c)).toHaveCount(0, { timeout: 120_000 });
     await expect(page.locator('#um-err')).toHaveText('');
     expect(readInstalledMod(GAME).creatures.some((x) => x.file === c.file), `${c.file} is out of the manifest`).toBe(false);
   };
   for (const t of ROW) {
-    await press(page, unitRow(page, t.base.name).locator('button', { hasText: '✎' }));
+    await press(page, unitRow(page, t.base).locator('button', { hasText: '✎' }));
     await page.locator('#um-upgrade').selectOption('');
     await page.locator('#um-upgrade2').selectOption('');
     const saved = await settled(page, `unlinking ${t.base.file}`, '#um-note', '#ue-err', () => page.locator('#um-ok').click());
