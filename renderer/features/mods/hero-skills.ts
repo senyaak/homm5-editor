@@ -62,6 +62,7 @@ const PICTURES = ['hk-pic-1', 'hk-pic-2', 'hk-pic-3', 'hk-pic-4'];
 function showKind(): void {
   const perk = $select('hk-kind').value === 'perk';
   for (const el of document.querySelectorAll<HTMLElement>('.hk-perk')) el.style.display = perk ? '' : 'none';
+  for (const el of document.querySelectorAll<HTMLElement>('.hk-racial')) el.style.display = perk ? 'none' : '';
   const rows = document.querySelectorAll<HTMLElement>('.hk-pic-row');
   const labels = perk ? ['Picture (grey)', 'Picture (lit)'] : ['Picture I', 'Picture II', 'Picture III', 'Picture IV'];
   rows.forEach((row, i) => {
@@ -112,6 +113,21 @@ function skillEffects(): Record<string, number> {
     if (stat) out[stat] = (out[stat] ?? 0) + amount;
   }
   return out;
+}
+
+/** The other three names of a racial, by level. */
+const LEVEL_NAMES = ['hk-name-2', 'hk-name-3', 'hk-name-4'];
+
+/**
+ * A racial's four names, when any of the other three is said: the first is
+ * the name as typed, and a level left blank is the name with its numeral, as
+ * the copier names all four when none is said (hero-skills.ts).
+ */
+function levelNames(): string[] | undefined {
+  const said = LEVEL_NAMES.map((id) => $input(id).value.trim());
+  if ($select('hk-kind').value === 'perk' || !said.some((n) => n)) return undefined;
+  const name = $input('hk-name').value.trim();
+  return [name, ...said.map((n, i) => n || `${name} ${['II', 'III', 'IV'][i]}`)];
 }
 
 /** What the picture rows currently hold, trailing blanks dropped. */
@@ -179,7 +195,9 @@ async function editSkill(id: string): Promise<void> {
   $input('hk-id').disabled = true;         // classes and heroes name it
   $select('hk-kind').value = s.kind;
   $input('hk-name').value = s.name;
+  LEVEL_NAMES.forEach((id, i) => { $input(id).value = s.names?.[i + 1] ?? ''; });
   $input('hk-desc').value = s.description;
+  $input('hk-common').value = s.commonDescription ?? '';
   const drawn = s.pictures?.length ? s.pictures : s.picture ? [s.picture] : [];
   PICTURES.forEach((id, i) => { $input(id).value = drawn[i] ?? ''; });
   await fillSkillForm();
@@ -222,7 +240,9 @@ async function submitSkill(): Promise<void> {
       kind,
       heroClass: $select('hk-class').value,
       name: $input('hk-name').value,
+      ...(levelNames() ? { names: levelNames()! } : {}),
       description: $input('hk-desc').value,
+      ...(kind === 'racial' && $input('hk-common').value.trim() ? { commonDescription: $input('hk-common').value.trim() } : {}),
       // One row filled is one texture for every level; more than one is a
       // drawing per level, and the record repeats the last to fill the rest.
       ...(pictures().length === 1 ? { picture: pictures()[0]! } : {}),
@@ -333,7 +353,9 @@ export function initHeroSkills(): void {
     $input('hk-id').disabled = false;
     $input('hk-id').value = '';
     $input('hk-name').value = '';
+    for (const id of LEVEL_NAMES) $input(id).value = '';
     $input('hk-desc').value = '';
+    $input('hk-common').value = '';
     for (const id of PICTURES) $input(id).value = '';
     $('hk-effects').innerHTML = '';
     scripts.map = '';

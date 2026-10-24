@@ -243,6 +243,13 @@
             </div>
             <label class="on-row um-span"><span>Identifier<b class="req">*</b></span><input id="hc-id" type="text" spellcheck="false" autocomplete="off" placeholder="HERO_CLASS_…" title="ours, appended after the game's nine. A hero's document names it, so it cannot be renamed afterwards."></label>
             <label class="on-row"><span>Name<b class="req">*</b></span><input id="hc-name" type="text" autocomplete="off" title="what the hero screen prints under his portrait"></label>
+            <!-- Not a field of the class record: the engine decides who learns
+                 spells by the barbarian's racial, and the extension answers
+                 the class instead (src/mods/magic-kind.ts). -->
+            <label class="on-row"><span>Magic</span><select id="hc-magic" title="whether its heroes learn spells — a class without magic never does, its book stays empty (the Heroes III yogi)">
+              <option value="spellbook">learns spells</option>
+              <option value="none">none — learns no spell</option>
+            </select></label>
           </div>
         </fieldset>
         <fieldset>
@@ -313,7 +320,11 @@
             </label>
             <label class="on-row"><span>Class<b class="req">*</b></span><select id="hk-class" title="the class this belongs to — one of ours"></select></label>
             <label class="on-row"><span>Name<b class="req">*</b></span><input id="hk-name" type="text" autocomplete="off" title="a racial is named at four levels; one name here becomes «name I…IV»"></label>
+            <!-- A racial's other three names, when they are not the first with
+                 a numeral: the shipped ones are four words («Мщение»). -->
+            <label class="on-row um-span hk-racial"><span>Names II–IV</span><input id="hk-name-2" type="text" autocomplete="off" placeholder="name at the second level — blank: «name II»"><input id="hk-name-3" type="text" autocomplete="off" placeholder="third"><input id="hk-name-4" type="text" autocomplete="off" placeholder="fourth"></label>
             <label class="on-row um-span"><span>Description</span><input id="hk-desc" type="text" autocomplete="off" placeholder="what it does, in words"></label>
+            <label class="on-row um-span hk-racial"><span>All levels</span><input id="hk-common" type="text" autocomplete="off" placeholder="what the four levels share — the line under every one" title="a racial's common description"></label>
             <!-- A racial is drawn four times and a perk twice (grey, lit), so
                  the pictures are a row apiece rather than one field: a skill
                  ported from Heroes III has a drawing per level and the last one

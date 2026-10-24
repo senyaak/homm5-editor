@@ -179,6 +179,7 @@ async function editClass(id: string): Promise<void> {
   $input('hc-id').value = c.id;
   $input('hc-id').disabled = true;      // the id is what heroes name
   $input('hc-name').value = c.name;
+  $select('hc-magic').value = c.magic ?? 'spellbook';
   $input('hc-off').value = String(c.attributes.offence);
   $input('hc-def').value = String(c.attributes.defence);
   $input('hc-sp').value = String(c.attributes.spellpower);
@@ -218,6 +219,7 @@ function payload(): Parameters<typeof api.installHeroClass>[0] {
     },
     ...(preferredSpells.length ? { preferredSpells } : {}),
     allowedPerks: [...allowedNow()].map((perk) => ({ perk, dependencies: dependencies.get(perk) ?? [] })),
+    ...($select('hc-magic').value === 'none' ? { magic: 'none' as const } : {}),
   };
 }
 
@@ -259,6 +261,7 @@ export function initHeroClasses(): void {
     $input('hc-id').disabled = false;
     $input('hc-id').value = '';
     $input('hc-name').value = '';
+    $select('hc-magic').value = 'spellbook';
     $input('hc-donor').value = '';
     $('hc-donor-name').textContent = 'nothing yet — the form is blank';
     for (const id of ATTRS) $input(id).value = '0';

@@ -45,7 +45,9 @@ import { heroHref, heroPaths } from '../src/mods/heroes.ts';
 import { settled } from './trace.ts';
 import { HERO_GROUP } from '../src/mods/shared-groups.ts';
 import { decodeDDSBuffer } from '../src/format/dds.ts';
-import { pictureIcon } from '../src/mods/faction-icons.ts';
+import { BONE_ON_PLUM, pictureIcon } from '../src/mods/faction-icons.ts';
+import { Painter, pt, star } from '../src/format/paint.ts';
+import { MAGIC_FILE } from '../src/mods/magic-kind.ts';
 import { resolve as resolveHref } from '../src/mods/mod-art.ts';
 
 let ed: Launched;
@@ -820,8 +822,54 @@ test("the author's own files can go: the mod works from its copies", { tag: '@ga
   expect(ed.errors).toEqual([]);
 });
 
-/** The class of our own this spec makes, and the hero of it and of the race. */
-const CLASS = { id: 'HERO_CLASS_E2E_REAPER', name: 'Reaper of the e2e' };
+/**
+ * The class of our own this spec makes — the probe's Bone Lord, now through
+ * the windows: no magic, might over magic in the Barbarian's shape, and a
+ * racial of its own where his Blood Rage is (Senya, 25.10).
+ */
+const CLASS = { id: 'HERO_CLASS_E2E_BONE_LORD', name: 'Костяной владыка' };
+/** Its racial: four names, words, a line for all four, and a drawing per level. */
+const LORE = {
+  id: 'HERO_SKILL_E2E_BONE_LORE',
+  names: ['Костяное знание', 'Глубокое костяное знание', 'Полное костяное знание', 'Совершенное костяное знание'],
+  description: 'Знание костей мёртвых: герой ведёт войско костяных, и оно слушает его.',
+  common: 'Расовое умение Костяного Двора.',
+} as const;
+/** The class's weights, the probe's — the racial's two points and the rest. */
+const LORD_WEIGHTS: Readonly<Record<string, number>> = {
+  [LORE.id]: 2, HERO_SKILL_OFFENCE: 15, HERO_SKILL_DEFENCE: 15, HERO_SKILL_LEADERSHIP: 12, HERO_SKILL_LUCK: 12,
+  HERO_SKILL_LOGISTICS: 10, HERO_SKILL_WAR_MACHINES: 10, HERO_SKILL_LEARNING: 8, HERO_SKILL_SORCERY: 4,
+  HERO_SKILL_LIGHT_MAGIC: 3, HERO_SKILL_DARK_MAGIC: 3, HERO_SKILL_DESTRUCTIVE_MAGIC: 3, HERO_SKILL_SUMMONING_MAGIC: 3,
+};
+const LORD_ATTRIBUTES = { 'hc-off': 45, 'hc-def': 35, 'hc-sp': 5, 'hc-kn': 15 } as const;
+
+/**
+ * The racial, drawn — not borrowed: a skull on the Court's plum, ringed in
+ * old gold, a star per level under it, so the hero screen says the level
+ * without reading (the probe's, _tmp/town12-icons.ts). Four PNGs.
+ */
+function lorePictures(): string[] {
+  const dir = join(REPO_ROOT, '_tmp', 'e2e-own-model');
+  mkdirSync(dir, { recursive: true });
+  const t = BONE_ON_PLUM;
+  return [1, 2, 3, 4].map((level) => {
+    const p = new Painter(512);
+    p.disc(0.50, 0.50, 0.47, t.field);
+    p.ring(0.50, 0.50, 0.47, 0.035, t.rim);
+    p.disc(0.50, 0.42, 0.22, t.ink);
+    p.rect(0.36, 0.50, 0.28, 0.16, t.ink);
+    p.disc(0.42, 0.40, 0.055, t.field);
+    p.disc(0.58, 0.40, 0.055, t.field);
+    p.polygon([pt(0.50, 0.46), pt(0.47, 0.53), pt(0.53, 0.53)], t.field);
+    for (let i = 0; i < 4; i++) p.rect(0.40 + i * 0.055, 0.60, 0.035, 0.06, t.field);
+    for (const x of [[0.50], [0.44, 0.56], [0.38, 0.50, 0.62], [0.35, 0.45, 0.55, 0.65]][level - 1]!) p.polygon(star(x, 0.78, 0.045, 0.02), t.accent);
+    const image = p.image(128);
+    const uri = pngDataUri(image.width, image.height, image.rgba);
+    const file = join(dir, `bone_lore_${level}.png`);
+    writeFileSync(file, Buffer.from(uri.slice(uri.indexOf(',') + 1), 'base64'));
+    return file;
+  });
+}
 // Brem, as the probe's lord was (TestBrem, 'Брем Костяной') — not Ossir, a ranger of the
 // elves, which is what the race's hero was until 23.10.
 const HERO = { id: 'E2eBoneLord', name: 'Брем Костяной', preset: 'Brem' };
@@ -844,17 +892,72 @@ test('a class of our own, and a hero of it and of the race, made in the Heroes w
   await press(page, page.locator('#hm-tabs button', { hasText: 'Classes' }));
   await press(page, page.locator('#hc-new'));
   await expect(page.locator('#classedit')).toBeVisible();
+  // From the Barbarian — might over magic — and then the Court's own numbers.
+  // A class and its racial cannot name each other before both exist: the
+  // racial's two points wait on Offence until it does (as 004's Witch).
   await press(page, page.locator('#hc-donor-pick'));
   await expect(page.locator('#presetpick')).toBeVisible();
-  await page.locator('#pp-search').fill('NECROMANCER');
-  await press(page, page.locator('#pp-list button', { hasText: 'NECROMANCER' }).first());
+  await page.locator('#pp-search').fill('BARBARIAN');
+  await press(page, page.locator('#pp-list button', { hasText: 'BARBARIAN' }).first());
   await expect(page.locator('#hc-skill-total')).toHaveText(/100/);
   await page.locator('#hc-id').fill(CLASS.id);
   await page.locator('#hc-name').fill(CLASS.name);
+  // No magic: its heroes learn no spell, in a town with no guild.
+  await page.locator('#hc-magic').selectOption('none');
+  const before: Record<string, number> = { ...LORD_WEIGHTS, HERO_SKILL_OFFENCE: LORD_WEIGHTS.HERO_SKILL_OFFENCE! + LORD_WEIGHTS[LORE.id]! };
+  delete before[LORE.id];
+  for (const input of await page.locator('#hc-skills input[data-skill]').all()) {
+    await input.fill(String(before[(await input.getAttribute('data-skill'))!] ?? 0));
+  }
+  for (const [id, value] of Object.entries(LORD_ATTRIBUTES)) await page.locator(`#${id}`).fill(String(value));
+  await expect(page.locator('#hc-skill-total')).toHaveText('100 ✓');
+  await expect(page.locator('#hc-attr-total')).toHaveText('100 ✓');
   const made = await settled(page, 'installing the class', '#hm-note', '#hc-err',
     () => page.locator('#hc-ok').click());
   expect(made).toContain('Installed');
   await expect(page.locator('#hc-list')).toContainText(CLASS.name);
+  expect(ed.errors).toEqual([]);
+
+  // Its racial, Bone Lore: four names, its words, and four drawings.
+  await press(page, page.locator('#hm-tabs button', { hasText: 'Skills' }));
+  await press(page, page.locator('#hk-new'));
+  await expect(page.locator('#skilledit')).toBeVisible();
+  await page.locator('#hk-id').fill(LORE.id);
+  await page.locator('#hk-kind').selectOption('racial');
+  await page.locator('#hk-class').selectOption(CLASS.id);
+  await page.locator('#hk-name').fill(LORE.names[0]);
+  for (const level of [2, 3, 4] as const) await page.locator(`#hk-name-${level}`).fill(LORE.names[level - 1]);
+  await page.locator('#hk-desc').fill(LORE.description);
+  await page.locator('#hk-common').fill(LORE.common);
+  const pictures = lorePictures();
+  for (const [i, file] of pictures.entries()) await page.locator(`#hk-pic-${i + 1}`).fill(file);
+  const learned = await settled(page, 'installing the racial', '#hm-note', '#hk-err',
+    () => page.locator('#hk-ok').click());
+  expect(learned).toContain('Installed');
+  await expect(page.locator('#hk-list')).toContainText(LORE.names[0]);
+
+  // And the class weights it now — its two points off Offence.
+  await press(page, page.locator('#hm-tabs button', { hasText: 'Classes' }));
+  await press(page, page.locator('#hc-list .um-item', { hasText: CLASS.name }).first().locator('button', { hasText: '✎' }));
+  await expect(page.locator('#classedit')).toBeVisible();
+  await expect(page.locator('#hc-magic'), 'the class says it has no magic').toHaveValue('none');
+  await page.locator(`#hc-skills input[data-skill="${LORE.id}"]`).fill(String(LORD_WEIGHTS[LORE.id]));
+  await page.locator('#hc-skills input[data-skill="HERO_SKILL_OFFENCE"]').fill(String(LORD_WEIGHTS.HERO_SKILL_OFFENCE));
+  await expect(page.locator('#hc-skill-total')).toHaveText('100 ✓');
+  const reweighed = await settled(page, 'reweighting the class', '#hm-note', '#hc-err',
+    () => page.locator('#hc-ok').click());
+  expect(reweighed).toContain('Updated');
+  {
+    const mod = readInstalledMod(GAME);
+    const cls = (mod.classes ?? []).find((c) => c.id === CLASS.id);
+    expect(cls?.magic, 'the class learns no spell').toBe('none');
+    expect(Object.fromEntries(cls!.skills.filter((w) => w.prob).map((w) => [w.skill, w.prob])), "the probe's weights").toEqual(LORD_WEIGHTS);
+    expect(cls!.attributes).toEqual({ offence: 45, defence: 35, spellpower: 5, knowledge: 15 });
+    expect(readFileSync(join(GAME, MAGIC_FILE), 'latin1'), 'the extension reads it as a class without magic').toMatch(new RegExp(`^class ${cls!.number} none$`, 'm'));
+    const lore = (mod.skills ?? []).find((s) => s.id === LORE.id);
+    expect(lore).toMatchObject({ kind: 'racial', heroClass: CLASS.id, name: LORE.names[0], names: [...LORE.names], description: LORE.description, commonDescription: LORE.common });
+    expect(lore!.pictures, 'a drawing per level').toHaveLength(4);
+  }
   expect(ed.errors).toEqual([]);
 
   await press(page, page.locator('#hm-tabs button', { hasText: 'Heroes' }));
@@ -874,8 +977,12 @@ test('a class of our own, and a hero of it and of the race, made in the Heroes w
   await page.locator('#he-town').selectOption(TYPE);
   await expect(page.locator('#he-class'), 'a faction of ours names no class; the preset\'s stays').toHaveValue(classBefore);
   // ...and the class is chosen on its own: ours.
-  await expect(page.locator(`#he-class option[value="${CLASS.id}"]`)).toHaveText(/Reaper of the e2e.*ours/);
+  await expect(page.locator(`#he-class option[value="${CLASS.id}"]`)).toHaveText(new RegExp(`${CLASS.name}.*ours`));
   await page.locator('#he-class').selectOption(CLASS.id);
+  // He starts knowing the racial, at its first level.
+  await expect(page.locator(`#he-primary option[value="${LORE.id}"]`)).toHaveText(/ours/);
+  await page.locator('#he-primary').selectOption(LORE.id);
+  await page.locator('#he-primary-mastery').selectOption('MASTERY_BASIC');
   await page.locator('#he-id').fill(HERO.id);
   await page.locator('#he-name').fill(HERO.name);
   await expect(page.locator('#he-ok')).toBeEnabled();
@@ -891,7 +998,9 @@ test('a class of our own, and a hero of it and of the race, made in the Heroes w
   expect(hero, 'the manifest holds him').toBeTruthy();
   expect(hero!.town).toBe(TYPE);
   expect(hero!.heroClass).toBe(CLASS.id);
+  expect(hero!.primarySkill).toEqual({ skill: LORE.id, mastery: 'MASTERY_BASIC' });
   const doc = archiveText(heroPaths(hero!).shared);
+  expect(doc, 'his first skill is the racial').toContain(LORE.id);
   expect(doc, 'his document says his race').toContain(`<TownType>${TYPE}</TownType>`);
   expect(doc, '...and his class, ours').toContain(`<Class>${CLASS.id}</Class>`);
   expect(doc, 'and that the race may draw him').toContain('<ScenarioHero>false</ScenarioHero>');
@@ -1438,6 +1547,7 @@ test('taken apart in the order the refusals ask for', { tag: '@game' }, async ()
   await page.locator('#ask button', { hasText: 'Remove' }).click();
   await expect(page.locator('#hc-list')).not.toContainText(CLASS.name, { timeout: 120_000 });
   expect((readInstalledMod(GAME).classes ?? []).some((c) => c.id === CLASS.id), 'the class is out of the manifest').toBe(false);
+  expect((readInstalledMod(GAME).skills ?? []).some((s) => s.id === LORE.id), 'and its racial went with it').toBe(false);
   await press(page, page.locator('#hm-close'));
   await press(page, page.locator('#facbtn'));
   await expect(page.locator('#facmod')).toBeVisible();
