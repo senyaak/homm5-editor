@@ -15,7 +15,7 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { dataReader } from '../src/mods/mod-files.ts';
-import { buildTown, dropGridCell, moveGridCell, parseBuildingKey } from '../src/mods/town-files.ts';
+import { SHIPPED_TOWN_ORDINALS, buildTown, dropGridCell, moveGridCell, parseBuildingKey } from '../src/mods/town-files.ts';
 import type { TownBuild, TownSpec } from '../src/mods/town-files.ts';
 import { positionsBox, wideBase } from '../src/scene/geometry.ts';
 import { BONE_ON_PLUM } from '../src/mods/faction-icons.ts';
@@ -353,6 +353,41 @@ console.log('what a building does');
   throws("an effect is the whole building's", () => build({ 'TB_TOWN_HALL/2': { grants: { like: 'TOWN_HEAVEN' } } }), 'whole building');
   throws('a building with no effect has none to grant', () => build({ 'TB_TAVERN': { grants: { like: 'TOWN_HEAVEN' } } }), 'no effect to grant');
   throws('a town that is not shipped', () => build({ 'TB_SPECIAL_1': { grants: { like: 'TOWN_TEST' } } }), 'not a shipped town');
+}
+
+console.log('an empty tree, and a preset put whole');
+{
+  // `tree: 'empty'`: a building is there only when put (`from`); a preset is
+  // a town's whole tree put. On Haven's base, Haven put whole is the donor's
+  // records, now with the effects they had; Necropolis put whole is its tree,
+  // its own records needing each other, nothing of Haven's left.
+  const typesOf = (t: TownBuild): string[] => [...new Set([...t.records.keys()].map((k) => parseBuildingKey(k).type))];
+  const empty = buildTown({ ...base, tree: 'empty' }, HEAVEN, read);
+  check('nothing put: no building at all', empty.records.size === 0, `${empty.records.size}`);
+  check('and no cell on the grid', slots(text(empty, empty.paths.build)).every((s) => cells(text(empty, empty.paths.build), s).length === 0));
+  const one = buildTown({ ...base, tree: 'empty', buildings: { TB_TAVERN: { from: 'TOWN_HEAVEN' } } }, HEAVEN, read);
+  check('one put: one building', [...one.records.keys()].join() === 'TB_TAVERN', [...one.records.keys()].join());
+  const havenWhole = Object.fromEntries(typesOf(plain).map((t) => [t, { from: 'TOWN_HEAVEN' }]));
+  const haven = buildTown({ ...base, tree: 'empty', buildings: havenWhole }, HEAVEN, read);
+  check("Haven put whole is the donor's records", [...haven.records].every(([k, p]) => plain.records.get(k) === p) && haven.records.size === plain.records.size, `${haven.records.size}`);
+  check("and does what Haven's buildings do", haven.features.length > 0 && plain.features.length === 0, `${haven.features.length}`);
+  const necroPlain = buildTown({ ...base, donor: 'TOWN_NECROMANCY' }, SHIPPED_TOWN_ORDINALS.TOWN_NECROMANCY!, read);
+  const necroWhole = Object.fromEntries(typesOf(necroPlain).map((t) => [t, { from: 'TOWN_NECROMANCY' }]));
+  const necro = buildTown({ ...base, tree: 'empty', buildings: necroWhole }, HEAVEN, read);
+  check("Necropolis put whole on Haven's base: Necropolis's types", typesOf(necro).sort().join() === typesOf(necroPlain).sort().join(), typesOf(necro).sort().join());
+  check('its own records, every level', [...necro.records.values()].every((p) => p.includes('/Necromancy/')) && necro.records.size === necroPlain.records.size, `${necro.records.size}`);
+  check("nothing of Haven's is copied", !necro.files.some((f) => /TownBuildingSharedStats\/Haven\//.test(f.path)));
+  const crypt = text(necro, necro.records.get('TB_DWELLING_2')!);
+  const cryptNeeds = [...(/<dependencies>([\s\S]*?)<\/dependencies>/.exec(crypt)?.[1] ?? '').matchAll(/href="([^"#]+)/g)].map((m) => m[1]!);
+  check('what a record of it needs is a record of it', cryptNeeds.length > 0 && cryptNeeds.every((h) => !h.includes('/Haven/')), cryptNeeds.join(' '));
+  // Dungeon's dwelling 6 needs its SPECIAL_6, a type Haven has not: the need
+  // is the record put beside it, not "the donor's of that type" (refused).
+  const dungeonPlain = buildTown({ ...base, donor: 'TOWN_DUNGEON' }, SHIPPED_TOWN_ORDINALS.TOWN_DUNGEON!, read);
+  const dungeon = buildTown({ ...base, tree: 'empty', buildings: Object.fromEntries(typesOf(dungeonPlain).map((t) => [t, { from: 'TOWN_DUNGEON' }])) }, HEAVEN, read);
+  check("Dungeon put whole on Haven's base: its dwelling 6 needs its own SPECIAL_6",
+    text(dungeon, dungeon.records.get('TB_DWELLING_6')!).includes(`/${dungeon.records.get('TB_SPECIAL_6')}#xpointer`));
+  throws('an edit of a building never put', () => buildTown({ ...base, tree: 'empty', buildings: { TB_TAVERN: { name: 'x' } } }, HEAVEN, read), 'give TB_TAVERN a town');
+  check('a dropped level of one put is no mistake', buildTown({ ...base, tree: 'empty', buildings: { TB_TOWN_HALL: { from: 'TOWN_HEAVEN' }, 'TB_TOWN_HALL/4': null } }, HEAVEN, read).records.size === 3);
 }
 
 console.log("the dwellings' creatures — all three of a tier");

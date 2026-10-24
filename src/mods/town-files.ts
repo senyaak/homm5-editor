@@ -182,6 +182,15 @@ export interface TownSpec {
    */
   buildings?: Readonly<Record<BuildingKey, BuildingEdit | null>>;
   /**
+   * `'empty'`: the tree starts EMPTY, not as the donor's — a building is in
+   * the town only when `buildings` puts it, by naming where it comes from
+   * (`from`, the donor among the eight), and every donor building not put is
+   * dropped. A preset is the eight's tree put whole (Senya, 2026-10-25: the
+   * tree is the author's, a town is an example). The donor's tree with the
+   * edits over it when absent.
+   */
+  tree?: 'empty';
+  /**
    * The race as such — its name, the silo's income, the native war machine,
    * the moat: the type's record in `TownTypesInfo` (town-type-info.ts). The
    * donor's record under our type when absent, its name included.
@@ -563,7 +572,9 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     return read(rel);
   };
   let build = mustRead(read, donorBuildDefinition(donorOrdinal, read));
-  const edits = buildingEdits(spec);
+  const edits = spec.tree === 'empty'
+    ? emptyTree(spec, buildingEdits(spec), listedBuildings(seeded.get(source) ?? mustRead(read, source), source, read))
+    : buildingEdits(spec);
   if (edits) {
     let donor = seeded.get(source) ?? mustRead(read, source);
     // A building taken from another town goes into the donor's list BEFORE
@@ -585,8 +596,15 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
         for (const dep of dependencyItems(record, b.path)) {
           const [t, l] = typeAndLevel(mustRead(read, dep.path), dep.path);
           if (t === type) continue;
-          const on = mine.find((m) => m.type === t && m.level === l);
-          if (!on) throw new Error(`${edit.from}'s ${b.key} needs ${buildingKey(t, l)}, which ${spec.donor} has not — re-parent it (requires)`);
+          // Whoever gives OUR town that type: a town it is taken from too, or
+          // the donor. Taken from the same town as this one, the record named
+          // is the one the list takes as well — a preset's tree stays whole.
+          const giver = edits[t]?.from ?? spec.donor;
+          if (giver === edit.from) continue;
+          const on = giver === spec.donor
+            ? mine.find((m) => m.type === t && m.level === l)
+            : listedBuildings(mustRead(read, donorTown(giver, read)), donorTown(giver, read), read).find((m) => m.type === t && m.level === l);
+          if (!on) throw new Error(`${edit.from}'s ${b.key} needs ${buildingKey(t, l)}, which ${giver} has not — re-parent it (requires)`);
           record = record.replace(`href="${dep.href}"`, `href="/${on.path}#xpointer(/${BUILDING_RECORD})"`);
         }
         seeded.set(b.path, record);
@@ -1137,6 +1155,24 @@ function buildingEdits(spec: TownSpec): Readonly<Record<BuildingKey, BuildingEdi
     if (edit.name !== undefined || edit.description !== undefined) throw new Error(`${spec.file}: a town without magic never shows its guild — ${key} has no name to give`);
   }
   return { ...spec.buildings, [GUILD_BUILDING]: { from: GUILD_STUB_DONOR, ...guild } };
+}
+
+/**
+ * An empty tree's edits as the copier applies them (`TownSpec.tree`): every
+ * building of the donor's list that the spec does not PUT — name with `from`
+ * — dropped. An edit of a building never put is a mistake, not a building.
+ */
+function emptyTree(spec: TownSpec, edits: Readonly<Record<BuildingKey, BuildingEdit | null>> | undefined,
+  donorList: readonly ListedBuilding[]): Readonly<Record<BuildingKey, BuildingEdit | null>> {
+  const out: Record<BuildingKey, BuildingEdit | null> = { ...(edits ?? {}) };
+  for (const [key, edit] of Object.entries(out)) {
+    const { type } = parseBuildingKey(key);
+    if (edit !== null && out[type] !== null && !out[type]?.from) {
+      throw new Error(`${spec.file}: ${key} is edited, but an empty tree holds only what is put — give ${type} a town (from)`);
+    }
+  }
+  for (const b of donorList) if (b.level === 1 && !out[b.type]?.from) out[b.type] = null;
+  return out;
 }
 
 /** The text without the line `at` falls on. */

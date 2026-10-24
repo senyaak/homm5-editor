@@ -2,15 +2,19 @@
 //
 // A faction is most of what the mod already knows how to make — creatures,
 // heroes, classes — gathered under one type, plus the town: a shipped one
-// copied and made ours. So the form is built the way the town is built: a
-// DONOR is chosen and everything is the donor's until said otherwise. "Fill
-// from donor" reads the donor's building tree onto a grid drawn like the
-// game's own build screen (five by six; one building per cell; its upgrade
-// levels stacked on it unless a level is given a cell of its own; a
-// dependency an arrow from the cell above in the same column), and every
-// edit is a DIFF against the donor — `BuildingEdit` per level — which is
-// what the copier applies (src/mods/town-files.ts). Nothing typed here is
-// the town; the town is the donor with these said over it.
+// copied and made ours. The DONOR is the town's base — its screen, exterior,
+// siege — and everything there is the donor's until said otherwise.
+//
+// The building TREE is the author's and starts empty (Senya, 2026-10-25): a
+// building stands in it because it was put there, as a building of one of
+// the eight towns (`from`), into a cell of a grid drawn like the game's own
+// build screen (five by six; one building per cell; its upgrade levels
+// stacked on it unless a level is given a cell of its own; a dependency an
+// arrow from the cell above in the same column). A PRESET puts a town's
+// whole tree. Every field of a building shows what it is — the record's
+// value until changed, as a preset fills a creature's form — and the
+// manifest keeps what differs (`BuildingEdit` per level), which is what the
+// copier applies (src/mods/town-files.ts, `tree: 'empty'`).
 //
 // What the form offers is read from the main process through
 // mods:faction-data — the eight donors, the enums, the mod's own creatures —
@@ -47,12 +51,20 @@ const AI_ROLES: readonly { key: keyof SkillValues; label: string; title: string 
   { key: 'collectorSupplier', label: 'collector', title: 'a hero that gathers and supplies' },
   { key: 'freelancer', label: 'freelancer', title: 'a hero that roams' },
 ];
-/** The donor's tree, once filled; the grid is drawn from it. */
+/** The donor's tree — the base's, whose buildings a model of ours can stand in place of. */
 let tree: FactionTreeDTO | null = null;
-/** Trees of the towns buildings were taken from (`from`), by type. */
+/** The eight towns' trees, by type: what a building is put from. Loaded when the form opens. */
 const trees = new Map<string, FactionTreeDTO>();
-/** The edits, by key — the diff the copier applies. */
+/**
+ * The tree, by key — the copier's `buildings`: a building is in it when its
+ * first level names its town (`from`); the rest of an edit is what differs
+ * from that town's record. A level dropped is `null`.
+ */
 let edits: Record<BuildingKey, BuildingEdit | null> = {};
+/** A building taken out this session, by type: its first level's edit as it was, so "keep it" puts it back as it stood. */
+let takenOut: Record<string, BuildingEdit> = {};
+/** The town an empty cell's "Put here" last offered, so the next cell offers it again. */
+let putTown = '';
 /** The cell and level under the editor. */
 let picked: { x: number; y: number; key: BuildingKey | null } | null = null;
 /** Siege parts of our own: per part, per piece, the three ruin levels' files. */
@@ -232,7 +244,13 @@ function drawPictures(): void {
 function readPictures(): IconPictures | undefined {
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(pictures)) {
-    if (k === 'buildings') { if (Object.keys(pictures.buildings).length) out.buildings = { ...pictures.buildings }; continue; }
+    if (k === 'buildings') {
+      // Only the levels the tree holds: a picture of a building taken out goes with it.
+      const standing = new Set(effectiveBuildings().filter((b) => !isDropped(b.key)).map((b) => b.key));
+      const kept = Object.fromEntries(Object.entries(pictures.buildings).filter(([key]) => standing.has(key)));
+      if (Object.keys(kept).length) out.buildings = kept;
+      continue;
+    }
     if (k === 'kingdom') {
       const g = v as Record<string, string>;
       const four = ['0', '1', '2', '3'].map((i) => g[i]);
@@ -335,6 +353,8 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   tree = null;
   trees.clear();
   edits = { ...(existing?.buildings ?? {}) };
+  takenOut = {};
+  putTown = '';
   picked = null;
   {
     const p = existing?.pictures;
@@ -358,7 +378,8 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   $input('fac-race-tooltip').value = existing?.race?.tooltip ?? '';
   $input('fac-name').value = existing?.name ?? '';
   fillSelect($select('fac-donor'), data.donors.map((d) => ({ id: d.type, label: d.label })), existing?.donor ?? data.donors[0]!.type);
-  $('fac-donor-note').textContent = existing ? 'the tree below is the donor\'s with the faction\'s edits over it' : 'press to load the donor\'s tree';
+  fillSelect($select('fac-preset'), data.donors.map((d) => ({ id: d.type, label: d.label })), existing?.donor ?? data.donors[0]!.type);
+  $('fac-preset-note').textContent = existing ? '' : 'the tree is empty — put buildings in its cells, or load a town\'s whole tree';
   $select('fac-magic').value = existing?.magic ?? 'guild';
   fillSelect($select('fac-school-1'), SCHOOLS.map((s) => ({ id: s, label: s.replace('MAGIC_SCHOOL_', '').toLowerCase() })), existing?.magicSchools?.[0] ?? SCHOOLS[2]!);
   fillSelect($select('fac-school-2'), SCHOOLS.map((s) => ({ id: s, label: s.replace('MAGIC_SCHOOL_', '').toLowerCase() })), existing?.magicSchools?.[1] ?? SCHOOLS[1]!);
@@ -434,9 +455,37 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   drawCellEditor();
   watchForm();
   openOnTop('facedit');
-  // An existing faction's tree is loaded at once — the grid is where the edits
-  // live, and a form without it shows the edits as keys and nothing else.
-  if (existing) await loadTree(existing.donor, true);
+  // The eight trees at once: a building is put from any of them, and an
+  // existing faction's grid is drawn from the ones it names.
+  try {
+    await Promise.all(data.donors.map((d) => ensureTree(d.type)));
+    tree = trees.get($select('fac-donor').value) ?? null;
+    if (existing && existing.tree !== 'empty') edits = asEmptyTree(edits, existing.donor);
+  } catch (e) {
+    $('fac-form-err').textContent = e instanceof Error ? e.message : String(e);
+  }
+  drawGrid();
+  drawCellEditor();
+  formGate().check();
+}
+
+/**
+ * A faction saved before the tree started empty — the donor's tree with
+ * edits over it — as the tree it was: each donor building not dropped PUT,
+ * from the donor, and doing what it did then, which was nothing of its own
+ * (a donor's building granted no effect unless told to).
+ */
+function asEmptyTree(old: Record<BuildingKey, BuildingEdit | null>, donor: string): Record<BuildingKey, BuildingEdit | null> {
+  const out: Record<BuildingKey, BuildingEdit | null> = {};
+  const base = trees.get(donor)?.buildings ?? [];
+  for (const [key, edit] of Object.entries(old)) if (!(parseKey(key).type in old && old[parseKey(key).type] === null)) out[key] = edit;
+  for (const type of new Set(base.map((b) => b.type))) {
+    const edit = old[type];
+    if (edit === null) continue;
+    if (edit?.from) continue;
+    out[type] = { ...(edit ?? {}), from: donor, ...(edit?.grants === undefined ? { grants: null } : {}) };
+  }
+  return out;
 }
 
 function showSchools(): void {
@@ -813,20 +862,18 @@ function readTowns(): ModsFactionPayload['towns'] {
 
 // --- the grid -----------------------------------------------------------------
 
+/** The town a type is put from — or was, when it was taken out this session. */
+const fromOf = (type: string): string | undefined => edits[type]?.from ?? takenOut[type]?.from;
+
 /**
- * The buildings as the faction has them: the donor's, with a type taken from
- * another town replaced by that town's records of it.
+ * The buildings as the faction has them: each type put, as its town's records
+ * of it — and one taken out this session, struck through until saved.
  */
 function effectiveBuildings(): TreeBuilding[] {
-  if (!tree) return [];
   const out: TreeBuilding[] = [];
-  const replaced = new Set<string>();
-  for (const [key, edit] of Object.entries(edits)) {
-    if (edit?.from && edit.from !== tree.type) replaced.add(parseKey(key).type);
-  }
-  for (const b of tree.buildings) if (!replaced.has(b.type)) out.push(b);
-  for (const type of replaced) {
-    const from = edits[type]?.from;
+  const types = new Set([...Object.keys(edits).map((k) => parseKey(k).type), ...Object.keys(takenOut)]);
+  for (const type of types) {
+    const from = fromOf(type);
     const theirs = from ? trees.get(from) : null;
     if (theirs) out.push(...theirs.buildings.filter((b) => b.type === type));
   }
@@ -851,10 +898,8 @@ function effectiveBuildings(): TreeBuilding[] {
 
 /** How many levels the records of a type have, before `levels` says otherwise. */
 function recordLevels(type: string): number {
-  if (!tree) return 0;
-  const from = edits[type]?.from;
-  const source = from && from !== tree.type ? trees.get(from) : tree;
-  return (source?.buildings ?? []).filter((b) => b.type === type).length;
+  const from = fromOf(type);
+  return ((from && trees.get(from)?.buildings) || []).filter((b) => b.type === type).length;
 }
 
 /**
@@ -888,7 +933,8 @@ function setLevels(type: string, levels: number): void {
 }
 
 /** Where a level stands: the edit's cell, else the tree's. */
-const cellOf = (b: TreeBuilding): { x: number; y: number } | null => edits[b.key]?.slot ?? b.cell;
+const cellOf = (b: TreeBuilding): { x: number; y: number } | null =>
+  edits[b.key]?.slot ?? (edits[b.key] === null && b.level === 1 ? takenOut[b.type]?.slot : undefined) ?? b.cell;
 
 /** Whether a key is dropped: its own edit is null, or a lower level's is. */
 function isDropped(key: BuildingKey): boolean {
@@ -920,17 +966,58 @@ function gridCells(): HTMLElement[] {
         cell.dataset.x = String(x);
         cell.dataset.y = String(y);
         cell.onmousedown = () => {
-          if (!tree) return;
-          const here = effectiveBuildings().filter((b) => { const c = cellOf(b); return c?.x === x && c?.y === y; }).sort((a, b) => a.level - b.level);
+          const here = standingAt(x, y);
           picked = { x, y, key: here[0]?.key ?? null };
           drawGrid();
           drawCellEditor();
+        };
+        // A building is DRAGGED to an empty cell, with the levels standing in
+        // its cell; what it needs is the cell above in its new column, and a
+        // need that no longer is says so on the cell.
+        cell.ondragstart = (ev) => {
+          if (!standingAt(x, y).length) { ev.preventDefault(); return; }
+          ev.dataTransfer?.setData('text/plain', `${x},${y}`);
+        };
+        // Any cell takes the drop — a taken one to say what holds it.
+        cell.ondragover = (ev) => { ev.preventDefault(); if (!standingAt(x, y).length) cell.classList.add('over'); };
+        cell.ondragleave = () => cell.classList.remove('over');
+        cell.ondrop = (ev) => {
+          ev.preventDefault();
+          cell.classList.remove('over');
+          const [fx, fy] = (ev.dataTransfer?.getData('text/plain') ?? '').split(',').map(Number) as [number, number];
+          if (fx && fy) moveCell(fx, fy, x, y);
         };
         grid.appendChild(cell);
       }
     }
   }
   return [...grid.children] as HTMLElement[];
+}
+
+/** The levels standing in a cell, lowest first. */
+function standingAt(x: number, y: number): TreeBuilding[] {
+  return effectiveBuildings().filter((b) => { const c = cellOf(b); return c?.x === x && c?.y === y; }).sort((a, b) => a.level - b.level);
+}
+
+/** Move what stands in one cell to an empty one: each level's cell said, or forgotten when it is its record's own. */
+function moveCell(fx: number, fy: number, tx: number, ty: number): void {
+  const here = standingAt(fx, fy);
+  if (!here.length || (fx === tx && fy === ty)) return;
+  const there = standingAt(tx, ty);
+  if (there.length) { $('fac-form-err').textContent = `cell ${tx},${ty} holds ${there[0]!.key}`; return; }
+  $('fac-form-err').textContent = '';
+  for (const b of here) {
+    if (edits[b.key] === null) continue;
+    setEdit(b.key, { slot: b.cell?.x === tx && b.cell?.y === ty ? undefined : { x: tx, y: ty } });
+  }
+  picked = { x: tx, y: ty, key: here[0]!.key };
+  drawGrid();
+  drawCellEditor();
+}
+
+/** What a level standing at (x, y) needs that is not the cell above in its column — the screen draws no arrow for it. */
+function violatedNeeds(b: TreeBuilding, x: number, y: number, all: readonly TreeBuilding[]): BuildingKey[] {
+  return (edits[b.key]?.requires ?? b.requires).filter((k) => !dependableFrom(x, y, b.type).includes(k) && !all.some((o) => o.type === b.type && o.key === k));
 }
 
 function drawGrid(): void {
@@ -940,11 +1027,12 @@ function drawGrid(): void {
     const here = all.filter((b) => { const c = cellOf(b); return c?.x === x && c?.y === y; });
     cell.className = 'fc-cell';
     cell.innerHTML = '';
+    cell.draggable = here.some((b) => !isDropped(b.key));
     if (picked?.x === x && picked?.y === y) cell.classList.add('on');
     if (!here.length) {
       cell.classList.add('empty');
-      cell.textContent = tree ? '+' : '';
-      cell.title = tree ? 'empty — click to put a building here' : 'fill from the donor first';
+      cell.textContent = '+';
+      cell.title = 'empty — click to put a building here, or drag one onto it';
       continue;
     }
     // The lowest level here names the cell; the rest are its stack.
@@ -962,13 +1050,15 @@ function drawGrid(): void {
     for (const b of here) {
       const i = document.createElement('i');
       i.textContent = String(b.level);
-      if (edits[b.key] !== undefined) i.classList.add('edited');
+      // Edited: anything said of it beyond whose it is.
+      const e = edits[b.key];
+      if (e === null || (e && Object.keys(e).some((k) => k !== 'from'))) i.classList.add('edited');
       if (isDropped(b.key)) i.style.textDecoration = 'line-through';
       levels.appendChild(i);
     }
     cell.append(type, name, levels);
     if (here.every((b) => isDropped(b.key))) cell.classList.add('dropped');
-    if (edits[first.type]?.from) cell.classList.add('from');
+    if (fromOf(first.type) !== $select('fac-donor').value) cell.classList.add('from');
     const requires = edit?.requires ?? first.requires;
     if (requires.length) {
       const arrow = document.createElement('span');
@@ -977,7 +1067,12 @@ function drawGrid(): void {
       arrow.title = `needs ${requires.join(', ')}`;
       cell.appendChild(arrow);
     }
-    cell.title = here.map((b) => `${b.key}: ${edits[b.key]?.name ?? b.name}`).join(NL);
+    cell.title = here.map((b) => `${b.key}: ${edits[b.key]?.name ?? b.name} (${fromOf(b.type)})`).join(NL);
+    const violated = isDropped(first.key) ? [] : here.flatMap((b) => violatedNeeds(b, x, y, all));
+    if (violated.length) {
+      cell.classList.add('warn');
+      cell.title += `${NL}needs ${violated.join(', ')}, which is not the cell above in this column`;
+    }
   }
 }
 
@@ -996,7 +1091,7 @@ function dependableFrom(x: number, y: number, self: string): BuildingKey[] {
 function drawCellEditor(): void {
   const box = $('fac-cell');
   box.innerHTML = '';
-  if (!picked || !tree) {
+  if (!picked) {
     box.innerHTML = '<div class="um-empty">no cell chosen</div>';
     return;
   }
@@ -1009,39 +1104,82 @@ function drawCellEditor(): void {
   box.appendChild(head);
 
   if (!here.length) {
-    // An empty cell: a building the donor has can be MOVED here (a level of
-    // it, or the whole stack); one it has not is TAKEN from another town.
-    const row = document.createElement('div');
-    row.className = 'on-row';
-    const label = document.createElement('span');
-    label.textContent = 'Put here';
-    const sel = document.createElement('select');
-    const choices: { id: string; label: string }[] = [];
-    for (const b of all) choices.push({ id: `move:${b.key}`, label: `move ${b.key} (${edits[b.key]?.name ?? b.name})` });
-    const have = new Set(all.map((b) => b.type));
-    for (const t of facData?.buildingTypes ?? []) if (!have.has(t)) choices.push({ id: `take:${t}`, label: `take ${t} from another town…` });
-    fillSelect(sel, [{ id: '', label: '—' }, ...choices], '');
-    sel.onchange = () => {
-      const [what, key] = sel.value.split(':') as [string, string];
-      if (what === 'move') {
-        setEdit(key, { slot: { x, y } });
-        picked = { x, y, key };
-      } else if (what === 'take') {
-        const from = $select('fac-donor').value === 'TOWN_HEAVEN' ? 'TOWN_STRONGHOLD' : 'TOWN_HEAVEN';
-        setEdit(key, { from, slot: { x, y } });
-        picked = { x, y, key };
-        void ensureTree(from).then(() => { drawGrid(); drawCellEditor(); });
-      }
-      drawGrid();
-      drawCellEditor();
-    };
-    row.append(label, sel);
-    box.appendChild(row);
+    putRows(box, x, y, all, []);
     return;
   }
 
   const current = here.find((b) => b.key === picked!.key) ?? here[0]!;
   picked.key = current.key;
+  drawBuildingEditor(box, x, y, all, here, current);
+}
+
+/**
+ * An empty cell's rows — or one whose buildings are all taken out, which a
+ * building put here replaces: a building of the tree MOVED here (a level of
+ * it, or the whole stack), or a NEW one — any type a town of the eight has
+ * and the tree has not yet, as that town's building.
+ */
+function putRows(box: HTMLElement, x: number, y: number, all: readonly TreeBuilding[], struck: readonly TreeBuilding[]): void {
+  {
+    const townRow = document.createElement('div');
+    townRow.className = 'on-row';
+    const townLabel = document.createElement('span');
+    townLabel.textContent = 'Of the town';
+    const town = document.createElement('select');
+    town.className = 'fc-put-town';
+    fillSelect(town, (facData?.donors ?? []).map((d) => ({ id: d.type, label: d.label })), putTown || $select('fac-donor').value);
+    town.title = 'whose building a new one is: its levels, cells, price, words and effect come with it, all yours to change';
+    townRow.append(townLabel, town);
+    const row = document.createElement('div');
+    row.className = 'on-row';
+    const label = document.createElement('span');
+    label.textContent = 'Put here';
+    const sel = document.createElement('select');
+    sel.className = 'fc-put';
+    const fill = (): void => {
+      const choices: { id: string; label: string }[] = [];
+      for (const b of all) if (!isDropped(b.key)) choices.push({ id: `move:${b.key}`, label: `move ${b.key} (${edits[b.key]?.name ?? b.name})` });
+      const have = new Set(all.filter((b) => !isDropped(b.key)).map((b) => b.type));
+      for (const b of trees.get(town.value)?.buildings ?? []) {
+        if (b.level === 1 && !have.has(b.type)) choices.push({ id: `new:${b.type}`, label: `new: ${b.type} (${b.name})` });
+      }
+      fillSelect(sel, [{ id: '', label: '—' }, ...choices], '');
+    };
+    fill();
+    town.onchange = () => { putTown = town.value; fill(); };
+    sel.onchange = () => {
+      const [what, key] = sel.value.split(':') as [string, string];
+      // What was taken out here is forgotten: the cell is the new one's.
+      for (const b of struck) {
+        if (b.level !== 1) continue;
+        delete takenOut[b.type];
+        for (const k of Object.keys(edits)) if (parseKey(k).type === b.type && edits[k] === null) delete edits[k];
+      }
+      if (what === 'move') {
+        setEdit(key, { slot: { x, y } });
+        picked = { x, y, key };
+      } else if (what === 'new') {
+        // Every level of it, stood where it stands in its town, the first
+        // here; the levels that stood apart keep their own cells.
+        for (const l of Object.keys(edits).filter((k) => parseKey(k).type === key)) delete edits[l];
+        delete takenOut[key];
+        const first = trees.get(town.value)!.buildings.find((b) => b.type === key && b.level === 1)!;
+        setEdit(key, { from: town.value, ...(first.cell?.x === x && first.cell?.y === y ? {} : { slot: { x, y } }) });
+        for (const b of trees.get(town.value)!.buildings) {
+          if (b.type === key && b.level > 1 && b.cell?.x === first.cell?.x && b.cell?.y === first.cell?.y) setEdit(b.key, first.cell?.x === x && first.cell?.y === y ? {} : { slot: { x, y } });
+        }
+        picked = { x, y, key };
+      }
+      drawGrid();
+      drawCellEditor();
+    };
+    row.append(label, sel);
+    box.append(townRow, row);
+  }
+}
+
+/** The editor of one building standing in a cell, level by level. */
+function drawBuildingEditor(box: HTMLElement, x: number, y: number, all: readonly TreeBuilding[], here: readonly TreeBuilding[], current: TreeBuilding): void {
   // The levels here, as tabs; a level of the type standing elsewhere is listed too, greyed.
   const tabs = document.createElement('div');
   tabs.className = 'fc-level-tabs';
@@ -1058,24 +1196,28 @@ function drawCellEditor(): void {
   const edit = edits[current.key] ?? {};
   const dropped = isDropped(current.key);
   const put = (patch: Partial<BuildingEdit>): void => { setEdit(current.key, patch); drawGrid(); };
-  const textRow = (label: string, value: string | undefined, donor: string, on: (v: string) => void, multi = false): void => {
+  // A field SHOWS the record's value until changed — as a preset fills a
+  // form (Senya, 2026-10-25) — and the edit keeps only what differs: typing
+  // the record's value back, or clearing the field, is no edit. `hint` is a
+  // field with no value of the record's to show (the button's Lua).
+  const textRow = (label: string, value: string | undefined, record: string, on: (v: string | undefined) => void, multi = false, hint = false): void => {
     const row = document.createElement('label');
     row.className = 'on-row';
     const l = document.createElement('span');
     l.textContent = label;
     const input = multi ? document.createElement('textarea') : document.createElement('input');
     if (input instanceof HTMLInputElement) { input.type = 'text'; input.spellcheck = false; }
-    input.placeholder = donor;
-    input.value = value ?? '';
-    input.title = `blank keeps the donor's: ${donor}`;
-    input.oninput = () => on(input.value);
+    input.placeholder = record;
+    input.value = value ?? (hint ? '' : record);
+    input.title = hint ? record : `the record's: ${record}`;
+    input.oninput = () => on(input.value === '' || (!hint && input.value === record) ? undefined : input.value);
     row.append(l, input);
     box.appendChild(row);
   };
 
   const status = document.createElement('div');
   status.className = 'um-note';
-  status.textContent = `${current.key} — ${current.type}${edits[current.type]?.from ? `, taken from ${edits[current.type]!.from}` : ''}${dropped ? ' — DROPPED' : ''}`;
+  status.textContent = `${current.key} — ${current.type}, ${fromOf(current.type) ?? '?'}'s${dropped ? ' — DROPPED' : ''}`;
   box.appendChild(status);
 
   const actions = document.createElement('div');
@@ -1093,10 +1235,13 @@ function drawCellEditor(): void {
       drawCellEditor();
       return;
     }
+    const { type, level } = parseKey(current.key);
     if (dropped) {
-      const { type, level } = parseKey(current.key);
       for (let l = 1; l <= level; l++) if (edits[keyOf(type, l)] === null) delete edits[keyOf(type, l)];
+      // Taken out whole: put back as it stood.
+      if (takenOut[type] && edits[type] === undefined) { edits[type] = takenOut[type]!; delete takenOut[type]; }
     } else {
+      if (level === 1) takenOut[type] = edits[type]!;
       edits[current.key] = null;
     }
     drawGrid();
@@ -1111,7 +1256,11 @@ function drawCellEditor(): void {
   reset.onclick = () => { delete edits[current.key]; drawGrid(); drawCellEditor(); formGate().check(); };
   actions.appendChild(reset);
   box.appendChild(actions);
-  if (dropped) return;
+  if (dropped) {
+    // Everything here taken out: the cell is free for another building.
+    if (here.every((b) => isDropped(b.key))) putRows(box, x, y, all, here);
+    return;
+  }
 
   // Where it stands, and what it takes to build.
   {
@@ -1158,12 +1307,12 @@ function drawCellEditor(): void {
     row.append(l, sel);
     box.appendChild(row);
   }
-  textRow('Name', edit.name, current.name, (v) => put({ name: v || undefined }));
+  textRow('Name', edit.name, current.name, (v) => put({ name: v }));
   box.appendChild(fileRow('Icon', pictures.buildings[current.key] ?? '', 'picture', (v) => {
     if (v) pictures.buildings[current.key] = v; else delete pictures.buildings[current.key];
     formGate().check();
   }, "a picture of yours for this level's icon on the build screen, 128×128; blank is the theme's, or the donor's"));
-  textRow('Description', edit.description, current.description, (v) => put({ description: v || undefined }), true);
+  textRow('Description', edit.description, current.description, (v) => put({ description: v }), true);
   {
     const row = document.createElement('div');
     row.className = 'on-row';
@@ -1177,10 +1326,11 @@ function drawCellEditor(): void {
       const input = document.createElement('input');
       input.type = 'number'; input.min = '0';
       input.placeholder = String(current.cost[r]);
-      input.value = edit.cost?.[r] === undefined ? '' : String(edit.cost[r]);
+      input.value = String(edit.cost?.[r] ?? current.cost[r]);
       input.oninput = () => {
         const cost = { ...(edits[current.key]?.cost ?? {}) };
-        if (input.value.trim() === '') delete cost[r]; else cost[r] = Number(input.value);
+        const v = input.value.trim();
+        if (v === '' || Number(v) === current.cost[r]) delete cost[r]; else cost[r] = Number(v);
         put({ cost: Object.keys(cost).length ? cost : undefined });
       };
       label.appendChild(input);
@@ -1203,13 +1353,13 @@ function drawCellEditor(): void {
     input.step = '1';
     input.className = 'narrow fc-dev-level';
     input.placeholder = `${current.devLevel}`;
-    input.title = `the town level it asks for, any whole number — blank keeps the donor's ${current.devLevel}`;
-    input.value = edit.devLevel === undefined ? '' : String(edit.devLevel);
+    input.title = `the town level it asks for, any whole number — the record's is ${current.devLevel}`;
+    input.value = String(edit.devLevel ?? current.devLevel);
     input.oninput = () => {
       const v = input.value.trim();
       const n = Number(v);
       if (v !== '' && !(Number.isInteger(n) && n >= 0)) return;
-      put({ devLevel: v === '' ? undefined : n });
+      put({ devLevel: v === '' || n === current.devLevel ? undefined : n });
     };
     row.append(l, input);
     box.appendChild(row);
@@ -1237,14 +1387,42 @@ function drawCellEditor(): void {
       const row = document.createElement('label');
       row.className = 'on-row';
       const l = document.createElement('span');
-      l.textContent = 'Take from';
+      l.textContent = 'Town';
       const sel = document.createElement('select');
-      fillSelect(sel, townOptions(facData!, 'the donor'), edits[current.type]?.from ?? '');
-      sel.title = 'the whole building — every level, its cell, its effect — from another shipped town';
+      sel.className = 'fc-from';
+      const having = (facData?.donors ?? []).filter((d) => trees.get(d.type)?.buildings.some((b) => b.type === current.type));
+      fillSelect(sel, having.map((d) => ({ id: d.type, label: d.label })), fromOf(current.type) ?? '');
+      sel.title = 'whose building it is — every level, its cells, its words and its effect — from the eight that have one';
       sel.onchange = () => {
-        setEdit(current.type, { from: sel.value || undefined });
-        if (sel.value) void ensureTree(sel.value).then(() => { drawGrid(); drawCellEditor(); });
+        setEdit(current.type, { from: sel.value });
         drawGrid();
+        drawCellEditor();
+      };
+      row.append(l, sel);
+      box.appendChild(row);
+    }
+    {
+      // What it DOES: its town's effect, none, or another town's building's
+      // of the same type (town-features.ts). Its town's unless said.
+      const row = document.createElement('label');
+      row.className = 'on-row';
+      const l = document.createElement('span');
+      l.textContent = 'Effect';
+      const sel = document.createElement('select');
+      sel.className = 'fc-grants';
+      const g = edit.grants;
+      const value = g === undefined ? '' : g === null ? 'none' : g.building && g.building !== current.type ? `${g.like}:${g.building}` : g.like;
+      const options = [
+        { id: '', label: `${fromOf(current.type) ?? 'its town'}'s — what it does there` },
+        { id: 'none', label: 'none — it only stands (a button may give it one)' },
+        ...(facData?.donors ?? []).map((d) => ({ id: d.type, label: `like ${d.label}'s ${current.type}` })),
+      ];
+      if (value.includes(':')) options.push({ id: value, label: `like ${g!.like}'s ${g!.building}` });
+      fillSelect(sel, options, value);
+      sel.title = "the engine's compiled effect a building of a shipped town has, level for level; a building of ours does what its town's does unless told otherwise";
+      sel.onchange = () => {
+        const v = sel.value;
+        put({ grants: v === '' ? undefined : v === 'none' ? null : v.includes(':') ? { like: v.split(':')[0]!, building: v.split(':')[1]! } : { like: v } });
       };
       row.append(l, sel);
       box.appendChild(row);
@@ -1292,7 +1470,9 @@ function drawCellEditor(): void {
         const wl = document.createElement('span');
         wl.textContent = 'Stands';
         sel.className = 'fc-model-place';
-        const droppedTypes = [...new Set(all.filter((b) => b.level === 1 && isDropped(b.key)).map((b) => b.type))];
+        // The base's buildings that are not the base's in the tree: their
+        // spots on its screen are free.
+        const droppedTypes = [...new Set((tree?.buildings ?? []).filter((b) => b.level === 1 && (isDropped(b.key) || fromOf(b.type) !== $select('fac-donor').value)).map((b) => b.type))];
         fillSelect(sel, [{ id: '', label: 'at a point (x, y, z)' }, ...droppedTypes.map((t) => ({ id: t, label: `where ${t} stood` }))], edit.model?.place ?? '');
         sel.disabled = !edit.model;
         sel.title = "a dropped building leaves its spot, camera and pick hull; a point is in the scene's own units";
@@ -1325,7 +1505,7 @@ function drawCellEditor(): void {
       put({ button: v ? { lua: v, ...(camp ? { camp } : {}) } : undefined });
       campBox.disabled = !v;
       for (const t of tiers) t.disabled = !v || !campBox.checked;
-    });
+    }, false, true);
     // Or the button opens a refugee camp: the function is written for it
     // (camp-script.ts) — a week's roll over those tiers, the hire screen's.
     const row = document.createElement('div');
@@ -1360,7 +1540,7 @@ function drawCellEditor(): void {
     row.append(l, campBox, tiers[0]!, to, tiers[1]!);
     box.appendChild(row);
   }
-  const violated = (edit.requires ?? current.requires).filter((k) => !dependableFrom(x, y, current.type).includes(k) && !all.some((b) => b.type === current.type && b.key === k));
+  const violated = violatedNeeds(current, x, y, all);
   if (violated.length) {
     const warn = document.createElement('div');
     warn.className = 'um-note';
@@ -1386,16 +1566,21 @@ async function ensureTree(type: string): Promise<void> {
   trees.set(type, await api.factionTree(type));
 }
 
-/** Load the donor's tree onto the grid. `keep` keeps the edits — an existing faction's. */
-async function loadTree(donor: string, keep: boolean): Promise<void> {
+/**
+ * A PRESET: a town's whole tree put — every building of it, as its records
+ * say, each field showing them — in place of whatever the tree held.
+ */
+async function loadPreset(town: string): Promise<void> {
   $('fac-form-err').textContent = '';
-  if (!keep && Object.keys(edits).length && !await ask('Filling from the donor forgets every building edit made so far. Fill anyway?', 'Fill')) return;
+  if (Object.keys(edits).length && !await ask('Loading a preset puts that town\'s whole tree in place of this one, and forgets every building edit made so far. Load it?', 'Load')) return;
   try {
-    tree = await api.factionTree(donor);
-    if (!keep) edits = {};
-    for (const edit of Object.values(edits)) if (edit?.from) await ensureTree(edit.from);
+    await ensureTree(town);
+    const theirs = trees.get(town)!;
+    edits = {};
+    takenOut = {};
+    for (const type of new Set(theirs.buildings.map((b) => b.type))) edits[type] = { from: town };
     picked = null;
-    $('fac-donor-note').textContent = `${tree.buildings.length} building records of ${donor} on the grid`;
+    $('fac-preset-note').textContent = `${theirs.buildings.length} building records of ${town} on the grid`;
     drawGrid();
     drawCellEditor();
     formGate().check();
@@ -1413,7 +1598,6 @@ const formGate = (): { check: () => void; rewatch: () => void } => (gate ??= req
   fields: { identifier: 'fac-file', race: 'fac-race-name', 'town name': 'fac-name' },
   extra: () => {
     const missing: string[] = [];
-    if (!tree) missing.push('the donor\'s tree (Fill from donor)');
     const towns = readTowns();
     if (!towns.length) missing.push('a named town');
     if (towns.some((t) => !t.file || !t.name)) missing.push('every named town\'s id and name');
@@ -1426,6 +1610,31 @@ const formGate = (): { check: () => void; rewatch: () => void } => (gate ??= req
   watch: '#facedit .town-file, #facedit .town-name, #fac-icons',
 }));
 const watchForm = (): void => { formGate().rewatch(); };
+
+/**
+ * The tree as the copier takes it: what is put, with what differs. A
+ * building taken out whole is simply not there; a town without magic builds
+ * Stronghold's five stubs in the guild's place, so the guild says nothing of
+ * whose it is (town-files.ts, `buildingEdits`).
+ */
+function readBuildings(magic: 'guild' | 'none'): Record<BuildingKey, BuildingEdit | null> {
+  const out: Record<BuildingKey, BuildingEdit | null> = {};
+  for (const [key, edit] of Object.entries(edits)) {
+    const { type } = parseKey(key);
+    if (edits[type] === null || !edits[type]?.from) continue;
+    if (magic === 'none' && type === 'TB_MAGIC_GUILD' && edit) {
+      const rest: BuildingEdit = { ...edit };
+      delete rest.from;
+      delete rest.name;
+      delete rest.description;
+      delete rest.grants;
+      if (Object.keys(rest).length) out[key] = rest;
+      continue;
+    }
+    out[key] = edit;
+  }
+  return out;
+}
 
 function readPayload(): ModsFactionPayload {
   const file = $input('fac-file').value.trim();
@@ -1449,7 +1658,8 @@ function readPayload(): ModsFactionPayload {
     name: $input('fac-name').value.trim(),
     race,
     towns: readTowns(),
-    buildings: edits,
+    tree: 'empty',
+    buildings: readBuildings(magic),
   };
   if (magic === 'none') p.magic = 'none';
   else p.magicSchools = [$select('fac-school-1').value, $select('fac-school-2').value];
@@ -1514,7 +1724,9 @@ export function initFactionsMod(): void {
     });
   };
   $('fac-ok').onclick = () => { void submitFaction(); };
-  $('fac-fill').onclick = () => { void loadTree($select('fac-donor').value, false); };
+  $('fac-fill').onclick = () => { void loadPreset($select('fac-preset').value); };
+  // The base is the screen the buildings stand on: its spots are what a model of ours can take.
+  $select('fac-donor').addEventListener('change', () => { tree = trees.get($select('fac-donor').value) ?? null; drawGrid(); drawCellEditor(); });
   $('fac-magic').onchange = showSchools;
   // A listener, not `oninput`: the form gate binds `oninput` on the fields it
   // watches (form-gate.ts), and the identifier is one of them.

@@ -14,6 +14,25 @@ pre-release.
 
 ## Unreleased
 
+- A faction's building tree in the Factions window starts empty and is
+  yours. Put a building of any of the eight towns in any cell ("Of the
+  town" and "Put here"), or load a town's whole tree with "Load preset" and
+  change it. Drag a building to an empty cell to move it with its levels.
+  A cell whose building needs something other than the cell above it in
+  its column is outlined, and its tooltip says what. A taken cell refuses
+  the drop and names what holds it.
+- Every field of a building now shows its record's name, description,
+  price and town level, instead of a grey hint, and the manifest keeps only
+  what you changed. A building does what it does in its town. Its "Effect"
+  can be set to none or to another town's same building. Its "Town" can be
+  any town that has that building.
+- The donor is now the faction's "Base": its town screen, exterior and
+  siege. The tree no longer starts as the donor's. A faction saved before
+  this opens as the tree it was, each building put from the donor and
+  doing nothing of its own, as before.
+- A town's tree put on another town's base keeps its own requirements.
+  Dungeon's dwelling 6 needs Dungeon's own special building, which Haven
+  has not. Before, such a tree was refused.
 - A model whose geometry is written inside the model document — as in
   Necropolis's breached siege gate — can be a siege part or a town-screen
   building of your own. Until now the Factions window refused it with "names

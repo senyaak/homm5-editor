@@ -117,6 +117,8 @@ button.he-file { margin-left: 6px; flex: 0 0 auto; }
 .fc-cell.empty { color: #6e7681; justify-content: center; align-items: center; }
 .fc-cell.dropped { text-decoration: line-through; color: #6e7681; }
 .fc-cell.from { border-style: dashed; }
+.fc-cell.warn { border-color: #d29922; }
+.fc-cell.over { border-color: #3fb950; box-shadow: 0 0 0 1px #3fb950 inset; }
 .fc-cell .fc-type { color: #8b949e; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fc-cell .fc-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fc-cell .fc-levels { display: flex; gap: 3px; }

@@ -209,24 +209,31 @@ test('the window opens on what is installed, and a blank form says what it needs
   await press(page, page.locator('#fac-new'));
   await expect(page.locator('#facedit')).toBeVisible();
   await expect(page.locator('#fac-ok')).toBeDisabled();
-  await expect(page.locator('#fac-missing')).toHaveText(/identifier.*race.*town name.*donor.*named town/);
-  // The eight donors, in the ordinals' order, Haven first.
+  await expect(page.locator('#fac-missing')).toHaveText(/identifier.*race.*town name.*named town/);
+  // The eight bases, in the ordinals' order, Haven first; and the eight presets.
   await expect(page.locator('#fac-donor option')).toHaveCount(8);
   await expect(page.locator('#fac-donor option').first()).toHaveText('Haven');
-  // The grid is drawn empty until the donor's tree is loaded.
+  await expect(page.locator('#fac-preset option')).toHaveCount(8);
+  // The tree starts EMPTY (Senya, 25.10): thirty cells, nothing in them.
   await expect(page.locator('#fac-grid .fc-cell')).toHaveCount(30);
   await expect(page.locator('#fac-grid .fc-cell.empty')).toHaveCount(30);
 });
 
-test('the identifier names the type; the donor fills the grid', { tag: '@game' }, async () => {
+test('the identifier names the type; a preset fills the empty tree, every field said', { tag: '@game' }, async () => {
   const { page } = ed;
   await page.locator('#fac-file').fill(FILE);
   await expect(page.locator('#fac-type')).toHaveValue(TYPE);
   await page.locator('#fac-race-name').fill('Bone Court');
   await page.locator('#fac-name').fill('Ossuary Town');
 
+  // An empty cell offers a building of any of the eight towns.
+  await press(page, cell(page, 1, 1));
+  await expect(page.locator('#fac-cell .fc-put-town option')).toHaveCount(8);
+  await expect(page.locator('#fac-cell .fc-put option', { hasText: 'new: TB_TOWN_HALL' })).toHaveCount(1);
+  // A PRESET puts a town's whole tree: Haven's, to make the Court of.
+  await page.locator('#fac-preset').selectOption('TOWN_HEAVEN');
   await press(page, page.locator('#fac-fill'));
-  await expect(page.locator('#fac-donor-note')).toContainText(/\d+ building records of TOWN_HEAVEN/);
+  await expect(page.locator('#fac-preset-note')).toContainText(/\d+ building records of TOWN_HEAVEN/);
   // Haven's grid, as shipped: the hall at 1,1 with its levels down the
   // column, the guild at 4,2 with five levels stacked, the shipyard at 5,5.
   await expect(cell(page, 1, 1)).toContainText('TOWN_HALL');
@@ -235,6 +242,17 @@ test('the identifier names the type; the donor fills the grid', { tag: '@game' }
   await expect(cell(page, 4, 2).locator('.fc-levels i')).toHaveCount(5);
   await expect(cell(page, 5, 5)).toContainText('SHIPYARD');
   await expect(cell(page, 2, 6)).toContainText('GRAIL');
+  await expect(page.locator('#fac-grid .fc-levels i.edited'), 'a preset put is no edit').toHaveCount(0);
+  // And every field of a building SAYS what the preset's record says —
+  // filled, not a grey hint (Senya, 25.10): Haven's training grounds.
+  await press(page, cell(page, 5, 3));
+  const editor = page.locator('#fac-cell');
+  await expect(editor.locator('input[placeholder]').first()).toHaveValue('Тренировочные залы');
+  await expect(editor.locator('textarea').first()).not.toHaveValue('');
+  for (const input of await editor.locator('.fc-resources input').all()) await expect(input).not.toHaveValue('');
+  await expect(editor.locator('.fc-dev-level')).toHaveValue('6');
+  await expect(editor.locator('.fc-from')).toHaveValue('TOWN_HEAVEN');
+  await expect(editor.locator('.fc-grants'), "and it does what Haven's does").toHaveValue('');
   // Still not enough: a named town.
   await expect(page.locator('#fac-ok')).toBeDisabled();
   await expect(page.locator('#fac-missing')).toHaveText(/named town/);
@@ -275,6 +293,9 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
   await editor.locator('.fc-camp').check();
   await editor.locator('.fc-camp-min').selectOption('2');
   await editor.locator('.fc-camp-max').selectOption('7');
+  // The camp is all it does: the preset's effect — Haven's training grounds'
+  // — is taken off.
+  await editor.locator('.fc-grants').selectOption('none');
   // THREE LEVELS, which Haven's training grounds have not: how many is the
   // author's to say (Senya, 21.10 — another town is an example, not a
   // template). Each new level stands in the pit's cell, one up its stack,
@@ -331,6 +352,21 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
     await press(page, page.locator('#fac-cell button', { hasText: 'drop the building' }));
     await expect(cell(page, x, y)).toHaveClass(/dropped/);
   }
+  // And a NEW building, another town's (Senya, 25.10): Necropolis's Unholy
+  // Temple in the Stables' freed cell, every field its own record's, and its
+  // own model on Haven's screen where the Stables stood. The type is Haven's
+  // Hall of Heroes' too, taken out above: that one is forgotten.
+  await press(page, cell(page, 3, 4));
+  await editor.locator('.fc-put-town').selectOption('TOWN_NECROMANCY');
+  await editor.locator('.fc-put').selectOption('new:TB_SPECIAL_2');
+  await expect(page.locator('#fac-cell')).toContainText("TB_SPECIAL_2, TOWN_NECROMANCY's");
+  await expect(cell(page, 3, 4)).toContainText(TEMPLE.name);
+  await expect(cell(page, 3, 4)).not.toHaveClass(/dropped/);
+  await expect(cell(page, 5, 4), "Haven's Hall of Heroes is gone with its type").toHaveClass(/empty/);
+  await expect(editor.locator('input[placeholder]').first()).toHaveValue(TEMPLE.name);
+  await expect(editor.locator('.fc-from')).toHaveValue('TOWN_NECROMANCY');
+  await page.locator('#fac-cell .fc-model').fill(TEMPLE.model);
+  await page.locator('#fac-cell .fc-model-place').selectOption('TB_SPECIAL_4');
   for (const d of COURT_DWELLINGS) {
     await press(page, cell(page, d.x, d.y));
     await expect(page.locator('#fac-cell')).toContainText(`TB_DWELLING_${d.tier}`);
@@ -347,8 +383,35 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
   await editor.locator('input[placeholder]').first().fill(COURT_GRAIL.name);
   await editor.locator('textarea').first().fill(COURT_GRAIL.description);
   await expect(cell(page, 2, 6)).toContainText(COURT_GRAIL.name);
+
+  // Moved by DRAGGING, right in the tree (Senya, 25.10): the grail to the
+  // corner. And a building may stand only under what it needs: the Altar
+  // needs the Monastery two cells up its column; dragged under the Arena,
+  // its cell says so, and dragged home it is right again.
+  await cell(page, 2, 6).dragTo(cell(page, 5, 6));
+  await expect(cell(page, 5, 6)).toContainText(COURT_GRAIL.name);
+  await expect(cell(page, 2, 6)).toHaveClass(/empty/);
+  await cell(page, 4, 6).dragTo(cell(page, 3, 6));
+  await expect(cell(page, 3, 6)).toContainText(COURT_DWELLINGS[6]!.names[0]);
+  await expect(cell(page, 3, 6)).toHaveClass(/warn/);
+  await expect(cell(page, 3, 6)).toHaveAttribute('title', /needs TB_DWELLING_5/);
+  await cell(page, 3, 6).dragTo(cell(page, 4, 6));
+  await expect(cell(page, 4, 6)).not.toHaveClass(/warn/);
+  await expect(cell(page, 3, 6)).toHaveClass(/empty/);
+  // A cell that is taken refuses the drop, by name.
+  await cell(page, 5, 6).dragTo(cell(page, 1, 1));
+  await expect(page.locator('#fac-form-err')).toContainText('cell 1,1 holds TB_TOWN_HALL');
+  await expect(cell(page, 5, 6)).toContainText(COURT_GRAIL.name);
+  // A move that lands says nothing again; the grail stays in its corner.
+  await cell(page, 5, 6).dragTo(cell(page, 3, 6));
+  await cell(page, 3, 6).dragTo(cell(page, 5, 6));
+  await expect(page.locator('#fac-form-err')).toHaveText('');
+  await expect(cell(page, 5, 6)).toContainText(COURT_GRAIL.name);
   expect(ed.errors).toEqual([]);
 });
+
+/** Necropolis's Unholy Temple: its name in the game's texts, and its model on Necropolis's screen. */
+const TEMPLE = { name: 'Храм нижнего мира', model: 'Arenas/Town/Necropolis/UnholyTemple_u1r0.xdb' } as const;
 
 /** What the pit's three levels say: its own words, not Haven's training grounds'. */
 const PIT_WORDS = [
@@ -451,17 +514,24 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.magic).toBe('none');
   expect(f!.race?.name).toBe('Bone Court');
   expect(f!.towns).toEqual([{ file: 'Ossuary', name: 'The Ossuary', biography: 'Where the bones are kept.', bonus: 'TOWN_NO_BONUS' }]);
-  expect(f!.buildings?.TB_SHIPYARD).toBeNull();
-  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ name: 'Bone Pit', description: PIT_WORDS[0], cost: { Gold: 2000 }, devLevel: 1, levels: 3, button: { lua: 'BonePit', camp: { minTier: 2, maxTier: 7 } } });
+  // The tree started empty and holds what was put: Haven's, as the preset put
+  // it, less what was taken out — which is simply not there.
+  expect(f!.tree).toBe('empty');
+  expect(f!.buildings?.TB_TAVERN, 'a building put and not changed is its town alone').toEqual({ from: 'TOWN_HEAVEN' });
+  expect(f!.buildings?.TB_SHIPYARD).toBeUndefined();
+  expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ from: 'TOWN_HEAVEN', grants: null, name: 'Bone Pit', description: PIT_WORDS[0], cost: { Gold: 2000 }, devLevel: 1, levels: 3, button: { lua: 'BonePit', camp: { minTier: 2, maxTier: 7 } } });
   expect(f!.buildings?.['TB_SPECIAL_1/2']).toMatchObject({ name: 'Bone Yard', description: PIT_WORDS[1], cost: { Gold: 4000 }, devLevel: 0 });
   expect(f!.buildings?.['TB_SPECIAL_1/3']).toMatchObject({ name: 'Bone Market', description: PIT_WORDS[2], cost: { Gold: 8000 }, devLevel: 0 });
-  expect(f!.buildings?.TB_SPECIAL_2, "Haven's Hall of Heroes is gone").toBeNull();
+  // In the Hall of Heroes' type, Necropolis's temple, where the Stables were.
+  expect(f!.buildings?.TB_SPECIAL_2).toEqual({ from: 'TOWN_NECROMANCY', slot: { x: 3, y: 4 }, model: { source: TEMPLE.model, place: 'TB_SPECIAL_4' } });
   expect(f!.buildings?.TB_DWELLING_5).toMatchObject({ requires: [] });
   // Haven's Stables and Farms are gone, the Arena that needed them re-parented,
   // and every dwelling and the grail say the Court's words.
-  expect(f!.buildings?.TB_SPECIAL_4, "Haven's Stables are gone").toBeNull();
-  expect(f!.buildings?.TB_SPECIAL_5, "Haven's Farms are gone").toBeNull();
+  expect(f!.buildings?.TB_SPECIAL_4, "Haven's Stables are gone").toBeUndefined();
+  expect(f!.buildings?.TB_SPECIAL_5, "Haven's Farms are gone").toBeUndefined();
   expect(f!.buildings?.TB_DWELLING_6).toMatchObject({ requires: [] });
+  expect(f!.buildings?.TB_DWELLING_7, 'the Altar, dragged away and home, stands where it stood').not.toHaveProperty('slot');
+  expect(f!.buildings?.TB_GRAIL, 'the grail, dragged to the corner').toMatchObject({ slot: { x: 5, y: 6 } });
   for (const d of COURT_DWELLINGS) {
     for (const [level, name] of d.names.entries()) {
       const key = `TB_DWELLING_${d.tier}${level ? '/2' : ''}`;
@@ -502,7 +572,8 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
       return at ? byPath.get(at.toLowerCase())?.subarray(2).toString('utf16le').trim() : undefined;
     })
     .filter((n): n is string => !!n));
-  for (const name of [...COURT_DWELLINGS.flatMap((d) => d.names), COURT_GRAIL.name]) expect(shownNames.has(name), `the town shows ${name}`).toBe(true);
+  for (const name of [...COURT_DWELLINGS.flatMap((d) => d.names), COURT_GRAIL.name, TEMPLE.name]) expect(shownNames.has(name), `the town shows ${name}`).toBe(true);
+  expect(has(`Factions/${FILE}/town/GameMechanics/TownBuildingSharedStats/Necromancy/Special_2/unholytemple.xdb`), "the temple is Necropolis's record").toBe(true);
   for (const haven of ['Крестьянские хижины', 'Рыцарская арена', 'Небесный алтарь', 'Часовой Эльрата', 'Конюшни', 'Фермы']) {
     expect(shownNames.has(haven), `no ${haven} of Haven's is left`).toBe(false);
   }
@@ -538,6 +609,10 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(races).toMatch(/^skillvalue 11 1 3000 4000 3000$/m);
   const buildings = readFileSync(join(GAME, BUILDINGS_FILE), 'latin1');
   expect(buildings).toMatch(/^button 11 \d+ \d+ BonePit$/m);
+  // What the buildings do: each its town's, the preset's included — but the
+  // pit (our SPECIAL_1, 17) only its camp.
+  expect(buildings, 'the preset brings what its buildings do').toMatch(/^feature 11 /m);
+  expect(buildings, "and the pit does not train Haven's peasants").not.toMatch(/^feature 11 17 /m);
   expect(exeNumbers()).toEqual({ towns: 12, specs: 256, clamp: 8 });
 });
 
@@ -554,11 +629,13 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await expect(page.locator('#fac-ai-like')).toHaveValue('TOWN_NECROMANCY');
   await expect(page.locator('#fac-ai-count')).toHaveText(/^(\d+) of \1 said$/);
   await expect(page.locator('#fac-ai-table tbody tr').filter({ has: page.locator('td.skill[title^="HERO_SKILL_ARCHERY "]') }).locator('input[data-role="commander"]')).toHaveValue('7500');
-  await expect(page.locator('#fac-donor-note')).toContainText('building records of TOWN_HEAVEN');
-  await expect(cell(page, 5, 5)).toHaveClass(/dropped/);
+  // The tree as saved: what was taken out is not there at all — its cells empty.
+  await expect(cell(page, 5, 5)).toHaveClass(/empty/);
   await expect(cell(page, 5, 3)).toContainText('Bone Pit');
   await expect(cell(page, 5, 3).locator('.fc-levels i'), 'the pit\'s three levels, back from the manifest').toHaveCount(3);
-  await expect(cell(page, 5, 4)).toHaveClass(/dropped/);
+  await expect(cell(page, 5, 4)).toHaveClass(/empty/);
+  await expect(cell(page, 3, 4)).toContainText(TEMPLE.name);
+  await expect(cell(page, 5, 6)).toContainText(COURT_GRAIL.name);
   await expect(page.locator('#fac-towns .town-name')).toHaveValue('The Ossuary');
 
   // A model of OUR OWN for the pit: the Necropolis graves as a folder on
@@ -632,14 +709,17 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   writeFileSync(wav, readFileSync(join(DATA, 'bin', 'Sounds', 'DBF6AE46-D441-478F-A9C4-5C5819F02C77')));   // MageGuild.xdb's
   await page.locator('#fac-sounds .fc-file').nth(1).fill(wav);
 
-  // One more named town, and the shipyard is kept after all.
+  // One more named town, and the shipyard after all — put back in its empty
+  // cell as Haven's, a building like any other.
   await press(page, page.locator('#fac-town-add'));
   await page.locator('#fac-towns .town-file').nth(1).fill('Charnel');
   await page.locator('#fac-towns .town-name').nth(1).fill('Charnel House');
   await page.locator('#fac-towns .town-bonus-text').nth(1).fill('A marketplace from the first day.');
   await press(page, cell(page, 5, 5));
-  await press(page, page.locator('#fac-cell button', { hasText: 'keep it' }));
-  await expect(cell(page, 5, 5)).not.toHaveClass(/dropped/);
+  await page.locator('#fac-cell .fc-put-town').selectOption('TOWN_HEAVEN');
+  await page.locator('#fac-cell .fc-put').selectOption('new:TB_SHIPYARD');
+  await expect(cell(page, 5, 5)).toContainText('SHIPYARD');
+  await expect(cell(page, 5, 5)).not.toHaveClass(/dropped|empty/);
 
   await press(page, page.locator('#fac-ok'));
   await expect(page.locator('#facedit')).toBeHidden({ timeout: 300_000 });
@@ -647,7 +727,7 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   const f = readInstalledMod(GAME).factions?.[0];
   expect(f?.number).toBe(11);
   expect(f?.towns.length).toBe(2);
-  expect(f?.buildings?.TB_SHIPYARD, 'kept: no edit at all').toBeUndefined();
+  expect(f?.buildings?.TB_SHIPYARD, "put back: Haven's, nothing changed").toEqual({ from: 'TOWN_HEAVEN' });
   // Every file of ours is the MOD'S copy now — taken in before the build,
   // and the manifest names the copy, never the place it was picked from.
   expect(isCopyOf(f?.buildings?.TB_SPECIAL_1?.model?.source, own, true), "the pit model is the mod's copy").toBe(true);

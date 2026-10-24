@@ -72,6 +72,7 @@ function factionSpecOf(p: ModsFactionPayload): FactionSpec {
   if (p.siegeShooter) spec.siegeShooter = p.siegeShooter;
   if (p.icons) spec.icons = p.icons;
   if (p.pictures && Object.keys(p.pictures).length) spec.pictures = p.pictures;
+  if (p.tree === 'empty') spec.tree = 'empty';
   if (p.buildings && Object.keys(p.buildings).length) spec.buildings = p.buildings;
   if (p.script?.trim()) spec.script = p.script;
   if (p.alignment) spec.alignment = p.alignment;
