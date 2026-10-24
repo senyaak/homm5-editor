@@ -352,21 +352,20 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
     await press(page, page.locator('#fac-cell button', { hasText: 'drop the building' }));
     await expect(cell(page, x, y)).toHaveClass(/dropped/);
   }
-  // And a NEW building, another town's (Senya, 25.10): Necropolis's Unholy
-  // Temple in the Stables' freed cell, every field its own record's, and its
-  // own model on Haven's screen where the Stables stood. The type is Haven's
-  // Hall of Heroes' too, taken out above: that one is forgotten.
-  await press(page, cell(page, 3, 4));
+  // No special building but the pit (Senya, 25.10): nothing that grows the
+  // dwellings, nothing that raises the dead. A building of ANOTHER town is
+  // put all the same, one that does nothing special: Haven's tavern taken
+  // out, and Necropolis's put in its cell, every field its own record's.
+  await press(page, cell(page, 2, 1));
+  await expect(page.locator('#fac-cell')).toContainText('TB_TAVERN');
+  await press(page, page.locator('#fac-cell button', { hasText: 'drop the building' }));
+  await expect(cell(page, 2, 1)).toHaveClass(/dropped/);
   await editor.locator('.fc-put-town').selectOption('TOWN_NECROMANCY');
-  await editor.locator('.fc-put').selectOption('new:TB_SPECIAL_2');
-  await expect(page.locator('#fac-cell')).toContainText("TB_SPECIAL_2, TOWN_NECROMANCY's");
-  await expect(cell(page, 3, 4)).toContainText(TEMPLE.name);
-  await expect(cell(page, 3, 4)).not.toHaveClass(/dropped/);
-  await expect(cell(page, 5, 4), "Haven's Hall of Heroes is gone with its type").toHaveClass(/empty/);
-  await expect(editor.locator('input[placeholder]').first()).toHaveValue(TEMPLE.name);
+  await editor.locator('.fc-put').selectOption('new:TB_TAVERN');
+  await expect(page.locator('#fac-cell')).toContainText("TB_TAVERN, TOWN_NECROMANCY's");
+  await expect(cell(page, 2, 1)).not.toHaveClass(/dropped|empty/);
   await expect(editor.locator('.fc-from')).toHaveValue('TOWN_NECROMANCY');
-  await page.locator('#fac-cell .fc-model').fill(TEMPLE.model);
-  await page.locator('#fac-cell .fc-model-place').selectOption('TB_SPECIAL_4');
+  await expect(editor.locator('input[placeholder]').first()).not.toHaveValue('');
   for (const d of COURT_DWELLINGS) {
     await press(page, cell(page, d.x, d.y));
     await expect(page.locator('#fac-cell')).toContainText(`TB_DWELLING_${d.tier}`);
@@ -410,8 +409,6 @@ test('a building is dropped, another renamed, priced and given a button', { tag:
   expect(ed.errors).toEqual([]);
 });
 
-/** Necropolis's Unholy Temple: its name in the game's texts, and its model on Necropolis's screen. */
-const TEMPLE = { name: 'Храм нижнего мира', model: 'Arenas/Town/Necropolis/UnholyTemple_u1r0.xdb' } as const;
 
 /** What the pit's three levels say: its own words, not Haven's training grounds'. */
 const PIT_WORDS = [
@@ -517,13 +514,17 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   // The tree started empty and holds what was put: Haven's, as the preset put
   // it, less what was taken out — which is simply not there.
   expect(f!.tree).toBe('empty');
-  expect(f!.buildings?.TB_TAVERN, 'a building put and not changed is its town alone').toEqual({ from: 'TOWN_HEAVEN' });
+  expect(f!.buildings?.TB_BLACKSMITH, 'a building put and not changed is its town alone').toEqual({ from: 'TOWN_HEAVEN' });
+  // Necropolis's stands at 3,1 at home; here in Haven's tavern's cell.
+  expect(f!.buildings?.TB_TAVERN, "the tavern is Necropolis's").toEqual({ from: 'TOWN_NECROMANCY', slot: { x: 2, y: 1 } });
+  // No special building but the pit (Senya, 25.10).
+  const specials = [...new Set(Object.keys(f!.buildings ?? {}).filter((k) => k.startsWith('TB_SPECIAL_') && f!.buildings![k] !== null).map((k) => k.split('/')[0]))];
+  expect(specials, 'the pit is the one special building').toEqual(['TB_SPECIAL_1']);
   expect(f!.buildings?.TB_SHIPYARD).toBeUndefined();
   expect(f!.buildings?.TB_SPECIAL_1).toMatchObject({ from: 'TOWN_HEAVEN', grants: null, name: 'Bone Pit', description: PIT_WORDS[0], cost: { Gold: 2000 }, devLevel: 1, levels: 3, button: { lua: 'BonePit', camp: { minTier: 2, maxTier: 7 } } });
   expect(f!.buildings?.['TB_SPECIAL_1/2']).toMatchObject({ name: 'Bone Yard', description: PIT_WORDS[1], cost: { Gold: 4000 }, devLevel: 0 });
   expect(f!.buildings?.['TB_SPECIAL_1/3']).toMatchObject({ name: 'Bone Market', description: PIT_WORDS[2], cost: { Gold: 8000 }, devLevel: 0 });
-  // In the Hall of Heroes' type, Necropolis's temple, where the Stables were.
-  expect(f!.buildings?.TB_SPECIAL_2).toEqual({ from: 'TOWN_NECROMANCY', slot: { x: 3, y: 4 }, model: { source: TEMPLE.model, place: 'TB_SPECIAL_4' } });
+  expect(f!.buildings?.TB_SPECIAL_2, "Haven's Hall of Heroes is gone").toBeUndefined();
   expect(f!.buildings?.TB_DWELLING_5).toMatchObject({ requires: [] });
   // Haven's Stables and Farms are gone, the Arena that needed them re-parented,
   // and every dwelling and the grail say the Court's words.
@@ -572,8 +573,9 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
       return at ? byPath.get(at.toLowerCase())?.subarray(2).toString('utf16le').trim() : undefined;
     })
     .filter((n): n is string => !!n));
-  for (const name of [...COURT_DWELLINGS.flatMap((d) => d.names), COURT_GRAIL.name, TEMPLE.name]) expect(shownNames.has(name), `the town shows ${name}`).toBe(true);
-  expect(has(`Factions/${FILE}/town/GameMechanics/TownBuildingSharedStats/Necromancy/Special_2/unholytemple.xdb`), "the temple is Necropolis's record").toBe(true);
+  for (const name of [...COURT_DWELLINGS.flatMap((d) => d.names), COURT_GRAIL.name]) expect(shownNames.has(name), `the town shows ${name}`).toBe(true);
+  expect(names.some((n) => /^Factions\/E2eBone\/town\/GameMechanics\/TownBuildingSharedStats\/Necromancy\/Tavern\//.test(n)), "the tavern is Necropolis's record").toBe(true);
+  expect(names.some((n) => /TownBuildingSharedStats\/Haven\/Tavern\//.test(n)), "and Haven's never copied").toBe(false);
   for (const haven of ['Крестьянские хижины', 'Рыцарская арена', 'Небесный алтарь', 'Часовой Эльрата', 'Конюшни', 'Фермы']) {
     expect(shownNames.has(haven), `no ${haven} of Haven's is left`).toBe(false);
   }
@@ -609,10 +611,10 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(races).toMatch(/^skillvalue 11 1 3000 4000 3000$/m);
   const buildings = readFileSync(join(GAME, BUILDINGS_FILE), 'latin1');
   expect(buildings).toMatch(/^button 11 \d+ \d+ BonePit$/m);
-  // What the buildings do: each its town's, the preset's included — but the
-  // pit (our SPECIAL_1, 17) only its camp.
-  expect(buildings, 'the preset brings what its buildings do').toMatch(/^feature 11 /m);
-  expect(buildings, "and the pit does not train Haven's peasants").not.toMatch(/^feature 11 17 /m);
+  // What the buildings do: nothing special — the pit (our SPECIAL_1) only
+  // its camp, and no other special building stands to grow a dwelling or
+  // raise the dead (Senya, 25.10).
+  expect(buildings, 'no compiled effect at all').not.toMatch(/^feature 11 /m);
   expect(exeNumbers()).toEqual({ towns: 12, specs: 256, clamp: 8 });
 });
 
@@ -634,7 +636,8 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await expect(cell(page, 5, 3)).toContainText('Bone Pit');
   await expect(cell(page, 5, 3).locator('.fc-levels i'), 'the pit\'s three levels, back from the manifest').toHaveCount(3);
   await expect(cell(page, 5, 4)).toHaveClass(/empty/);
-  await expect(cell(page, 3, 4)).toContainText(TEMPLE.name);
+  await expect(cell(page, 3, 4)).toHaveClass(/empty/);
+  await expect(cell(page, 2, 1)).toContainText('TAVERN');
   await expect(cell(page, 5, 6)).toContainText(COURT_GRAIL.name);
   await expect(page.locator('#fac-towns .town-name')).toHaveValue('The Ossuary');
 
