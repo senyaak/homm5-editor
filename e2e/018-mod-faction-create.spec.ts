@@ -439,10 +439,15 @@ const COURT_GRAIL = { name: 'Костяной трон', description: 'Свят�
 test('a guild of two schools, a named town, a script — and it saves', { tag: '@game' }, async () => {
   test.setTimeout(10 * 60_000);
   const { page } = ed;
-  // First without a guild — refused below, since the Tomb of the Magi needs
-  // one — and then with it: the Court casts (Senya, 25.10), Dark and
-  // Summoning, Necropolis's two.
-  await page.locator('#fac-magic').selectOption('none');
+  // The guild is a building like any other (Senya, 25.10): first taken out —
+  // refused below, since the Tomb of the Magi needs one — and then put back:
+  // the Court casts, Dark and Summoning, Necropolis's two. Its schools are
+  // offered while a guild stands.
+  await expect(page.locator('#fac-schools-row')).toBeVisible();
+  await press(page, cell(page, 4, 2));
+  await expect(page.locator('#fac-cell')).toContainText('TB_MAGIC_GUILD');
+  await press(page, page.locator('#fac-cell button', { hasText: 'drop the building' }));
+  await expect(cell(page, 4, 2)).toHaveClass(/dropped/);
   await expect(page.locator('#fac-schools-row')).toBeHidden();
   // What the engine compiled per race: the side the morale reads, and whose
   // skill values the AI levels a hero of the race up by.
@@ -483,14 +488,16 @@ test('a guild of two schools, a named town, a script — and it saves', { tag: '
   await expect(page.locator('#fac-ok')).toBeEnabled();
 
   // The Tomb of the Magi (Haven's Monastery) needs the guild, and a town
-  // without magic never builds one: the copier refuses, by name, and the
-  // form shows the refusal rather than closing over it.
+  // without one never builds it: the copier refuses, by name, and the form
+  // shows the refusal rather than closing over it.
   await page.locator('#fac-ok').click();
-  await expect(page.locator('#fac-form-err')).toContainText('TB_DWELLING_5 needs TB_MAGIC_GUILD', { timeout: 300_000 });
+  await expect(page.locator('#fac-form-err')).toContainText('TB_DWELLING_5 needs TB_MAGIC_GUILD, which a town without a guild never builds', { timeout: 300_000 });
   await expect(page.locator('#facedit')).toBeVisible();
   expect(ed.errors).toEqual([]);
-  // So the town has its guild, of two schools.
-  await page.locator('#fac-magic').selectOption('guild');
+  // So the guild is put back, and taught two schools.
+  await press(page, cell(page, 4, 2), /TB_DWELLING_5 needs TB_MAGIC_GUILD|^$/);
+  await press(page, page.locator('#fac-cell button', { hasText: 'keep it' }), /TB_DWELLING_5 needs TB_MAGIC_GUILD|^$/);
+  await expect(cell(page, 4, 2)).not.toHaveClass(/dropped/);
   await expect(page.locator('#fac-schools-row')).toBeVisible();
   await page.locator('#fac-school-1').selectOption('MAGIC_SCHOOL_DARK');
   await page.locator('#fac-school-2').selectOption('MAGIC_SCHOOL_SUMMONING');
@@ -513,7 +520,6 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.type).toBe(TYPE);
   expect(f!.number).toBe(11);
   expect(f!.donor).toBe('TOWN_HEAVEN');
-  expect(f!.magic, 'a town with a guild').toBeUndefined();
   expect(f!.magicSchools).toEqual(['MAGIC_SCHOOL_DARK', 'MAGIC_SCHOOL_SUMMONING']);
   expect(f!.race?.name).toBe('Bone Court');
   expect(f!.towns).toEqual([{ file: 'Ossuary', name: 'The Ossuary', biography: 'Where the bones are kept.', bonus: 'TOWN_NO_BONUS' }]);
@@ -637,7 +643,6 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await expect(page.locator('#fac-file')).toHaveValue(FILE);
   await expect(page.locator('#fac-file')).toHaveAttribute('readonly', '');
   await expect(page.locator('#fac-editing')).toContainText('ordinal 11');
-  await expect(page.locator('#fac-magic')).toHaveValue('guild');
   await expect(page.locator('#fac-school-1')).toHaveValue('MAGIC_SCHOOL_DARK');
   await expect(page.locator('#fac-school-2')).toHaveValue('MAGIC_SCHOOL_SUMMONING');
   await expect(page.locator('#fac-alignment')).toHaveValue('evil');

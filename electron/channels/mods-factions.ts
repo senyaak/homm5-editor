@@ -63,7 +63,6 @@ function factionSpecOf(p: ModsFactionPayload): FactionSpec {
     })),
   };
   if (p.race) spec.race = p.race;
-  if (p.magic) spec.magic = p.magic;
   if (p.magicSchools) spec.magicSchools = p.magicSchools;
   if (p.dwellings && Object.keys(p.dwellings).length) spec.dwellings = p.dwellings;
   if (p.siege) spec.siege = p.siege;

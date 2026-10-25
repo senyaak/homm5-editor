@@ -14,6 +14,12 @@ pre-release.
 
 ## Unreleased
 
+- The Factions window has no "Magic" choice any more: the magic guild is a
+  building of the tree like any other. A town has a guild when you put one,
+  and its two schools are offered while it stands. A town without one, taken
+  out or never put, gets the five empty records the game wants in its place,
+  as Stronghold has, and its guild button stays dark. Whatever needed the
+  guild then has to be re-parented.
 - A racial skill of your own can have four names in the Skills form ("Names
   II–IV"), and a line shared by all four levels ("All levels"). Before, it
   was one name with a numeral appended.
@@ -197,7 +203,7 @@ pre-release.
   function, taken whole from another town — is a diff the copier applies. The
   rest of the faction is beside it: which creatures the dwellings hire, whose
   siege parts and exterior stages, the race (name, silo, war machine, music,
-  moat), drawn icons, a town without magic, named towns. Installing sets the
+  moat), drawn icons, named towns. Installing sets the
   four numbers in the executable (town types, named towns, generator rows,
   the picker's clamp) and writes the extension's races, buildings and magic
   files whole; removing the last faction puts all of them back. The town
@@ -398,8 +404,8 @@ pre-release.
   heroes never learn a spell — the engine decides that by the barbarian's
   racial skill, and the extension answers the class at the two gates of
   `CanLearnSpell` instead (`native/faction/magic-kind.c`,
-  `bin/homm5-editor-magic.txt`) — and `TownSpec.magic: 'none'` a town whose
-  guild is Stronghold's five stubs with no cell, its button dark. Warcries
+  `bin/homm5-editor-magic.txt`) — and a town whose tree has no guild gets
+  Stronghold's five stubs with no cell in its place, its button dark. Warcries
   were built first and rolled back: a warcry is a charge of rage, and rage
   is the Horde's. `BuildingEdit.from` takes any building whole from another
   shipped town (records, texts, grid slot); two buildings on one grid cell

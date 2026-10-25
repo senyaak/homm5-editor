@@ -317,14 +317,19 @@ console.log('a building from another town');
   check('the guild slot taken from Stronghold is empty, and the cells are gone', cells(text(build({ 'TB_MAGIC_GUILD': { from: 'TOWN_STRONGHOLD' } }), hall.paths.build), 'TB_MAGIC_GUILD').length === 0);
 }
 
-console.log('a town without magic');
+console.log('a town without a guild');
 {
-  // The Monastery needs the guild, which such a town never builds.
-  throws('what needed the guild has to be re-parented', () => buildTown({ ...base, magic: 'none' }, HEAVEN, read), 'TB_DWELLING_5 needs TB_MAGIC_GUILD');
-  throws('the guild has no name to give', () => buildTown({ ...base, magic: 'none', buildings: { 'TB_MAGIC_GUILD/2': { name: 'x' } } }, HEAVEN, read), 'never shows its guild');
-  throws('the guild stays, as stubs', () => buildTown({ ...base, magic: 'none', buildings: { 'TB_MAGIC_GUILD': null } }, HEAVEN, read), 'do not drop');
-  throws('no schools without a guild', () => buildTown({ ...base, magic: 'none', magicSchools: ['MAGIC_SCHOOL_DARK', 'MAGIC_SCHOOL_LIGHT'], buildings: { 'TB_DWELLING_5': { requires: ['TB_FORT'] } } }, HEAVEN, read), 'no guild to teach');
-  const silent = buildTown({ ...base, magic: 'none', icons: BONE_ON_PLUM, buildings: { 'TB_DWELLING_5': { requires: ['TB_FORT'] } } }, HEAVEN, read);
+  // The guild is a building like any other: dropped, or never put in an
+  // empty tree, and its place takes Stronghold's five stubs, which the
+  // engine wants one per level. The Monastery needs the guild, which such a
+  // town never builds.
+  const noGuild = { 'TB_MAGIC_GUILD': null } as const;
+  throws('what needed the guild has to be re-parented', () => build(noGuild), 'TB_DWELLING_5 needs TB_MAGIC_GUILD, which a town without a guild never builds');
+  throws('a level of a guild the town has not', () => build({ ...noGuild, 'TB_MAGIC_GUILD/2': { name: 'x' } }), 'the town has no guild');
+  throws('no schools without a guild', () => buildTown({ ...base, magicSchools: ['MAGIC_SCHOOL_DARK', 'MAGIC_SCHOOL_LIGHT'], buildings: { ...noGuild, 'TB_DWELLING_5': { requires: ['TB_FORT'] } } }, HEAVEN, read), 'none to teach');
+  const unput = buildTown({ ...base, tree: 'empty', buildings: { TB_TAVERN: { from: 'TOWN_HEAVEN' } } }, HEAVEN, read);
+  check('an empty tree without a guild has the stubs too', unput.records.has('TB_MAGIC_GUILD/5') && text(unput, unput.records.get('TB_MAGIC_GUILD')!).includes('<UIObjectName/>'));
+  const silent = buildTown({ ...base, icons: BONE_ON_PLUM, buildings: { ...noGuild, 'TB_DWELLING_5': { requires: ['TB_FORT'] } } }, HEAVEN, read);
   const grid = text(silent, silent.paths.build);
   check('36 records still: five stubs for the guild', silent.records.size === 36, `${silent.records.size}`);
   const stub = text(silent, silent.records.get('TB_MAGIC_GUILD/3')!);
@@ -363,10 +368,13 @@ console.log('an empty tree, and a preset put whole');
   // its own records needing each other, nothing of Haven's left.
   const typesOf = (t: TownBuild): string[] => [...new Set([...t.records.keys()].map((k) => parseBuildingKey(k).type))];
   const empty = buildTown({ ...base, tree: 'empty' }, HEAVEN, read);
-  check('nothing put: no building at all', empty.records.size === 0, `${empty.records.size}`);
+  // Nothing but what the engine wants of any town: a guild record per level,
+  // the five stubs (see 'a town without a guild').
+  const built = (t: TownBuild): string[] => [...t.records.keys()].filter((k) => !k.startsWith('TB_MAGIC_GUILD'));
+  check('nothing put: no building at all', built(empty).length === 0 && empty.records.size === 5, `${empty.records.size}`);
   check('and no cell on the grid', slots(text(empty, empty.paths.build)).every((s) => cells(text(empty, empty.paths.build), s).length === 0));
   const one = buildTown({ ...base, tree: 'empty', buildings: { TB_TAVERN: { from: 'TOWN_HEAVEN' } } }, HEAVEN, read);
-  check('one put: one building', [...one.records.keys()].join() === 'TB_TAVERN', [...one.records.keys()].join());
+  check('one put: one building', built(one).join() === 'TB_TAVERN', built(one).join());
   const havenWhole = Object.fromEntries(typesOf(plain).map((t) => [t, { from: 'TOWN_HEAVEN' }]));
   const haven = buildTown({ ...base, tree: 'empty', buildings: havenWhole }, HEAVEN, read);
   check("Haven put whole is the donor's records", [...haven.records].every(([k, p]) => plain.records.get(k) === p) && haven.records.size === plain.records.size, `${haven.records.size}`);
@@ -387,7 +395,7 @@ console.log('an empty tree, and a preset put whole');
   check("Dungeon put whole on Haven's base: its dwelling 6 needs its own SPECIAL_6",
     text(dungeon, dungeon.records.get('TB_DWELLING_6')!).includes(`/${dungeon.records.get('TB_SPECIAL_6')}#xpointer`));
   throws('an edit of a building never put', () => buildTown({ ...base, tree: 'empty', buildings: { TB_TAVERN: { name: 'x' } } }, HEAVEN, read), 'give TB_TAVERN a town');
-  check('a dropped level of one put is no mistake', buildTown({ ...base, tree: 'empty', buildings: { TB_TOWN_HALL: { from: 'TOWN_HEAVEN' }, 'TB_TOWN_HALL/4': null } }, HEAVEN, read).records.size === 3);
+  check('a dropped level of one put is no mistake', buildTown({ ...base, tree: 'empty', buildings: { TB_TOWN_HALL: { from: 'TOWN_HEAVEN' }, 'TB_TOWN_HALL/4': null } }, HEAVEN, read).records.size === 3 + 5);
 }
 
 console.log("the dwellings' creatures — all three of a tier");

@@ -158,10 +158,11 @@ let one: BuildReport;
   const mod: CreatureMod = newCreatureMod();
   addFaction(mod, spec('Test', {
     icons: BONE_ON_PLUM,
-    magic: 'none',
     race: { name: 'Bone Court', siloIncome: { Gem: 1 }, music: 'TOWN_NECROMANCY' },
     buildings: {
       'TB_SHIPYARD': null,
+      // No guild: the copier puts Stronghold's stubs in its place.
+      'TB_MAGIC_GUILD': null,
       'TB_SPECIAL_1': { name: 'Bone Pit', cost: { Gold: 2000 }, devLevel: 3, slot: { x: 5, y: 5 }, button: { lua: 'BonePit' } },
       'TB_DWELLING_5': { requires: ['TB_FORT/2'] },
     },

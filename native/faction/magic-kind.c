@@ -44,7 +44,7 @@
 // engine does (slot +0x258) and answers basic mastery for a class in the
 // list, the engine's own mastery for everyone else. Both gates or neither.
 // The town's side is data alone: a guild that is five stubs and no cell
-// (src/mods/town-files.ts, `TownSpec.magic`). With no file the game is as it
+// when the tree has none (src/mods/town-files.ts). With no file the game is as it
 // was.
 
 #define MAX_MAGIC_ROWS 32

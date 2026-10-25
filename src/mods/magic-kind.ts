@@ -13,8 +13,8 @@
 // and creatures with the Rage ability. A faction without magic is the case
 // that stands: the Heroes III yogi who cannot cast.
 //
-// The town's side is data alone — `TownSpec.magic: 'none'`, a guild that is
-// five stubs and no cell (town-files.ts).
+// The town's side is data alone — a tree with no guild, whose place takes
+// five stubs and no cell (town-files.ts, `magicSchools`).
 //
 //   bin/homm5-editor-magic.txt
 //     class <ordinal> none

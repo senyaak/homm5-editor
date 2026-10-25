@@ -380,7 +380,6 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   fillSelect($select('fac-donor'), data.donors.map((d) => ({ id: d.type, label: d.label })), existing?.donor ?? data.donors[0]!.type);
   fillSelect($select('fac-preset'), data.donors.map((d) => ({ id: d.type, label: d.label })), existing?.donor ?? data.donors[0]!.type);
   $('fac-preset-note').textContent = existing ? '' : 'the tree is empty — put buildings in its cells, or load a town\'s whole tree';
-  $select('fac-magic').value = existing?.magic ?? 'guild';
   fillSelect($select('fac-school-1'), SCHOOLS.map((s) => ({ id: s, label: s.replace('MAGIC_SCHOOL_', '').toLowerCase() })), existing?.magicSchools?.[0] ?? SCHOOLS[2]!);
   fillSelect($select('fac-school-2'), SCHOOLS.map((s) => ({ id: s, label: s.replace('MAGIC_SCHOOL_', '').toLowerCase() })), existing?.magicSchools?.[1] ?? SCHOOLS[1]!);
   showSchools();
@@ -460,7 +459,7 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
   try {
     await Promise.all(data.donors.map((d) => ensureTree(d.type)));
     tree = trees.get($select('fac-donor').value) ?? null;
-    if (existing && existing.tree !== 'empty') edits = asEmptyTree(edits, existing.donor);
+    if (existing && existing.tree !== 'empty') edits = asEmptyTree(edits, existing.donor, (existing as { magic?: string }).magic === 'none');
   } catch (e) {
     $('fac-form-err').textContent = e instanceof Error ? e.message : String(e);
   }
@@ -475,21 +474,24 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
  * from the donor, and doing what it did then, which was nothing of its own
  * (a donor's building granted no effect unless told to).
  */
-function asEmptyTree(old: Record<BuildingKey, BuildingEdit | null>, donor: string): Record<BuildingKey, BuildingEdit | null> {
+function asEmptyTree(old: Record<BuildingKey, BuildingEdit | null>, donor: string, guildless: boolean): Record<BuildingKey, BuildingEdit | null> {
   const out: Record<BuildingKey, BuildingEdit | null> = {};
   const base = trees.get(donor)?.buildings ?? [];
-  for (const [key, edit] of Object.entries(old)) if (!(parseKey(key).type in old && old[parseKey(key).type] === null)) out[key] = edit;
+  // A town saved "without magic" had stubs for a guild: in the tree, it has none.
+  const gone = (type: string): boolean => old[type] === null || (guildless && type === 'TB_MAGIC_GUILD');
+  for (const [key, edit] of Object.entries(old)) if (!gone(parseKey(key).type)) out[key] = edit;
   for (const type of new Set(base.map((b) => b.type))) {
     const edit = old[type];
-    if (edit === null) continue;
+    if (gone(type)) continue;
     if (edit?.from) continue;
     out[type] = { ...(edit ?? {}), from: donor, ...(edit?.grants === undefined ? { grants: null } : {}) };
   }
   return out;
 }
 
+/** The guild's two schools, shown while the tree has a guild to teach them. */
 function showSchools(): void {
-  $('fac-schools-row').style.display = $select('fac-magic').value === 'guild' ? '' : 'none';
+  $('fac-schools-row').style.display = hasGuild() ? '' : 'none';
 }
 
 /**
@@ -1074,6 +1076,8 @@ function drawGrid(): void {
       cell.title += `${NL}needs ${violated.join(', ')}, which is not the cell above in this column`;
     }
   }
+  // The schools are the guild's: shown while one stands.
+  showSchools();
 }
 
 /** The keys a building at (x, y) may depend on: cells above in the column with nothing between. */
@@ -1613,32 +1617,24 @@ const watchForm = (): void => { formGate().rewatch(); };
 
 /**
  * The tree as the copier takes it: what is put, with what differs. A
- * building taken out whole is simply not there; a town without magic builds
- * Stronghold's five stubs in the guild's place, so the guild says nothing of
- * whose it is (town-files.ts, `buildingEdits`).
+ * building taken out whole is simply not there — the guild too, whose place
+ * the copier fills with Stronghold's five stubs (town-files.ts, `buildingEdits`).
  */
-function readBuildings(magic: 'guild' | 'none'): Record<BuildingKey, BuildingEdit | null> {
+function readBuildings(): Record<BuildingKey, BuildingEdit | null> {
   const out: Record<BuildingKey, BuildingEdit | null> = {};
   for (const [key, edit] of Object.entries(edits)) {
     const { type } = parseKey(key);
     if (edits[type] === null || !edits[type]?.from) continue;
-    if (magic === 'none' && type === 'TB_MAGIC_GUILD' && edit) {
-      const rest: BuildingEdit = { ...edit };
-      delete rest.from;
-      delete rest.name;
-      delete rest.description;
-      delete rest.grants;
-      if (Object.keys(rest).length) out[key] = rest;
-      continue;
-    }
     out[key] = edit;
   }
   return out;
 }
 
+/** Whether the tree has a guild standing: the schools are its to teach. */
+const hasGuild = (): boolean => effectiveBuildings().some((b) => b.type === 'TB_MAGIC_GUILD' && b.level === 1 && !isDropped(b.key));
+
 function readPayload(): ModsFactionPayload {
   const file = $input('fac-file').value.trim();
-  const magic = $select('fac-magic').value as 'guild' | 'none';
   const race: NonNullable<ModsFactionPayload['race']> = { name: $input('fac-race-name').value.trim() };
   if ($input('fac-race-tooltip').value.trim()) race.tooltip = $input('fac-race-tooltip').value.trim();
   const silo = readSilo();
@@ -1659,10 +1655,9 @@ function readPayload(): ModsFactionPayload {
     race,
     towns: readTowns(),
     tree: 'empty',
-    buildings: readBuildings(magic),
+    buildings: readBuildings(),
   };
-  if (magic === 'none') p.magic = 'none';
-  else p.magicSchools = [$select('fac-school-1').value, $select('fac-school-2').value];
+  if (hasGuild()) p.magicSchools = [$select('fac-school-1').value, $select('fac-school-2').value];
   const dwellings = readDwellings();
   if (dwellings) p.dwellings = dwellings;
   if ($select('fac-shooter').value) p.shooter = $select('fac-shooter').value;
@@ -1727,7 +1722,6 @@ export function initFactionsMod(): void {
   $('fac-fill').onclick = () => { void loadPreset($select('fac-preset').value); };
   // The base is the screen the buildings stand on: its spots are what a model of ours can take.
   $select('fac-donor').addEventListener('change', () => { tree = trees.get($select('fac-donor').value) ?? null; drawGrid(); drawCellEditor(); });
-  $('fac-magic').onchange = showSchools;
   // A listener, not `oninput`: the form gate binds `oninput` on the fields it
   // watches (form-gate.ts), and the identifier is one of them.
   $('fac-file').addEventListener('input', () => { $input('fac-type').value = $input('fac-file').value.trim() ? townTypeFor($input('fac-file').value) : ''; });

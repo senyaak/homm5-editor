@@ -82,7 +82,7 @@ export const SHIPPED_TOWN_ORDINALS: Readonly<Record<string, number>> = {
 
 /** The guild's building type, and the hall's: Stronghold teaches its warcries from `TB_SPECIAL_1`, three levels. */
 export const GUILD_BUILDING = 'TB_MAGIC_GUILD';
-/** Whose guild records a town without magic takes: Stronghold's, five stubs with no cell. */
+/** Whose guild records a town without a guild takes: Stronghold's, five stubs with no cell. */
 export const GUILD_STUB_DONOR = 'TOWN_STRONGHOLD';
 
 /** What a dwelling record says when it hires no second creature — shipped data's own word for none. */
@@ -105,18 +105,15 @@ export interface TownSpec {
   donor: string;
   /** What a town of this faction is called on the map. */
   name: string;
-  /** The two schools its magic guild teaches; the donor's when absent. */
-  magicSchools?: readonly [string, string];
   /**
-   * What its heroes learn in it. `'guild'` (the default) is a magic guild
-   * teaching spells of `magicSchools`. `'none'` is a town WITHOUT magic: the
-   * guild's five records become the stubs Stronghold's are — never built,
-   * never shown, the engine wanting a record per level — and its slot on
-   * the grid has no cell. The guild button stays dark, the window never
-   * opens. What needed the guild has to be re-parented. A hero learns no
-   * spell when his CLASS says so (hero-classes.ts, `magic: 'none'`).
+   * The two schools its magic guild teaches; the donor's when absent. The
+   * guild is a building like any other (Senya, 2026-10-25): a town whose
+   * tree has none — dropped, or never put — gets the five records
+   * Stronghold's are in its place, stubs never built nor shown, which the
+   * engine wants one per level; its slot has no cell, the guild button stays
+   * dark, and what needed the guild has to be re-parented.
    */
-  magic?: 'guild' | 'none';
+  magicSchools?: readonly [string, string];
   /**
    * What the dwellings hire, by tier 1–7: the base creature for the dwelling,
    * its upgrade for the upgraded one — and the expansion's SECOND upgrade,
@@ -683,9 +680,9 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       if (edit !== null) continue;
       for (const b of listed) if (b.type === type && b.level >= level) dropped.add(b.path);
     }
-    // A town without magic has no guild to build: the records stay (stubs,
+    // A town without a guild has none to build: the records stay (stubs,
     // like Stronghold's) but nothing may need them, exactly as if dropped.
-    const unbuildable = new Set(spec.magic === 'none' ? listed.filter((b) => b.type === GUILD_BUILDING).map((b) => b.path) : []);
+    const unbuildable = new Set(hasNoGuild(spec) ? listed.filter((b) => b.type === GUILD_BUILDING).map((b) => b.path) : []);
     const keyOf = new Map(listed.map((b) => [b.path, b.key]));
     let town = donor;
     for (const b of listed) {
@@ -710,7 +707,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       }
       for (const dep of dependenciesOf(seeded.get(b.path) ?? mustRead(read, b.path), b.path)) {
         if (dropped.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which is dropped — re-parent it (requires) or drop it too`);
-        if (unbuildable.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which a town without magic never builds — re-parent it (requires)`);
+        if (unbuildable.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which a town without a guild never builds — re-parent it (requires)`);
       }
     }
     if (dropped.size) seeded.set(source, town);
@@ -743,7 +740,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
     /<messagesFileRef>[\s\S]*?<\/messagesFileRef>/,
     `<messagesFileRef>${EOL}\t\t<Item href="/${p.name}"/>${EOL}\t</messagesFileRef>`,
   );
-  if (spec.magicSchools && spec.magic === 'none') throw new Error(`${spec.file}: a town without magic has no guild to teach ${spec.magicSchools.join(' and ')}`);
+  if (spec.magicSchools && hasNoGuild(spec)) throw new Error(`${spec.file}: a town without a guild has none to teach ${spec.magicSchools.join(' and ')}`);
   if (spec.magicSchools) {
     for (const [i, school] of spec.magicSchools.entries()) {
       town = town.replace(new RegExp(`<MagicSchool_${i}>[^<]*</MagicSchool_${i}>`), `<MagicSchool_${i}>${school}</MagicSchool_${i}>`);
@@ -1140,21 +1137,28 @@ function swapListed(town: string, ours: readonly ListedBuilding[], lines: readon
   return insertBeforeLine(out, once(out, '</buildings>', what), [...lines]);
 }
 
+/** Whether the town's tree has no guild: dropped, or — in an empty tree — never put. */
+function hasNoGuild(spec: TownSpec): boolean {
+  const guild = spec.buildings?.[GUILD_BUILDING];
+  return guild === null || (spec.tree === 'empty' && !guild?.from);
+}
+
 /**
- * The spec's building edits with what `magic` implies: a town without magic
- * takes Stronghold's guild — five stubs and an empty slot — unless the spec
- * says where its own come from.
+ * The spec's building edits, with Stronghold's guild — five stubs and an
+ * empty slot — in place of a guild the tree has not (`magicSchools`). A
+ * level of a guild the town has not is a mistake, not a building.
  */
 function buildingEdits(spec: TownSpec): Readonly<Record<BuildingKey, BuildingEdit | null>> | undefined {
-  if (spec.magic !== 'none') return spec.buildings;
-  const guild = spec.buildings?.[GUILD_BUILDING];
-  if (guild === null) throw new Error(`${spec.file}: a town without magic keeps the guild's records as stubs — do not drop ${GUILD_BUILDING}`);
-  // The stubs name texts the game does not ship: nothing shows them.
-  for (const [key, edit] of Object.entries(spec.buildings ?? {})) {
-    if (parseBuildingKey(key).type !== GUILD_BUILDING || !edit) continue;
-    if (edit.name !== undefined || edit.description !== undefined) throw new Error(`${spec.file}: a town without magic never shows its guild — ${key} has no name to give`);
+  if (!hasNoGuild(spec)) return spec.buildings;
+  const out: Record<BuildingKey, BuildingEdit | null> = { ...(spec.buildings ?? {}) };
+  for (const [key, edit] of Object.entries(out)) {
+    if (parseBuildingKey(key).type !== GUILD_BUILDING) continue;
+    if (edit && key !== GUILD_BUILDING) throw new Error(`${spec.file}: ${key} — the town has no guild; put one, or say nothing of it`);
+    delete out[key];
   }
-  return { ...spec.buildings, [GUILD_BUILDING]: { from: GUILD_STUB_DONOR, ...guild } };
+  // The stubs name texts the game does not ship: nothing shows them.
+  out[GUILD_BUILDING] = { from: GUILD_STUB_DONOR };
+  return out;
 }
 
 /**
