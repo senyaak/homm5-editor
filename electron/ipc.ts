@@ -1366,7 +1366,6 @@ export interface ModHeroClassDTO {
   attributes: { offence: number; defence: number; spellpower: number; knowledge: number };
   preferredSpells?: string[];
   allowedPerks?: AllowedPerkDTO[];
-  magic?: 'spellbook' | 'none';
 }
 
 /** A skill of the mod, as the list reports it. */
@@ -1402,8 +1401,6 @@ export interface ModsInstallClassPayload {
   attributes: { offence: number; defence: number; spellpower: number; knowledge: number };
   preferredSpells?: string[];
   allowedPerks?: AllowedPerkDTO[];
-  /** `'none'`: its heroes learn no spell (magic-kind.ts). Learns them when absent. */
-  magic?: 'spellbook' | 'none';
 }
 
 /** What installing a class produced. */

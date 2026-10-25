@@ -14,9 +14,6 @@ pre-release.
 
 ## Unreleased
 
-- A hero class of your own can be made without magic in the Heroes window.
-  "Magic: none" means its heroes learn no spell and keep an empty book.
-  Before, only a class written by hand could say so.
 - A racial skill of your own can have four names in the Skills form ("Names
   II–IV"), and a line shared by all four levels ("All levels"). Before, it
   was one name with a numeral appended.

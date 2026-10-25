@@ -1,5 +1,5 @@
-// A faction, authored through the windows: the donor's tree on the grid, a
-// building dropped, one renamed and given a button, a town without magic, a
+// A faction, authored through the windows: an empty tree, a town's preset put on it, a
+// building dropped, one renamed and given a button, a guild of two schools, a
 // named town, a script — saved, read back off disk, edited. Then what a race
 // is made of besides its town: a class of our own and a hero of it and of
 // the race (Heroes window, found in the race's pool); a row of seven tiers,
@@ -436,9 +436,12 @@ const COURT_DWELLINGS = [
 }));
 const COURT_GRAIL = { name: 'Костяной трон', description: 'Святыня Двора, выстроенная вокруг Грааля.' };
 
-test('a town without magic, a named town, a script — and it saves', { tag: '@game' }, async () => {
+test('a guild of two schools, a named town, a script — and it saves', { tag: '@game' }, async () => {
   test.setTimeout(10 * 60_000);
   const { page } = ed;
+  // First without a guild — refused below, since the Tomb of the Magi needs
+  // one — and then with it: the Court casts (Senya, 25.10), Dark and
+  // Summoning, Necropolis's two.
   await page.locator('#fac-magic').selectOption('none');
   await expect(page.locator('#fac-schools-row')).toBeHidden();
   // What the engine compiled per race: the side the morale reads, and whose
@@ -479,18 +482,18 @@ test('a town without magic, a named town, a script — and it saves', { tag: '@g
   await expect(page.locator('#fac-missing')).toHaveText('');
   await expect(page.locator('#fac-ok')).toBeEnabled();
 
-  // Haven's Monastery needs the guild, and a town without magic never builds
-  // one: the copier refuses, by name, and the form shows the refusal rather
-  // than closing over it.
+  // The Tomb of the Magi (Haven's Monastery) needs the guild, and a town
+  // without magic never builds one: the copier refuses, by name, and the
+  // form shows the refusal rather than closing over it.
   await page.locator('#fac-ok').click();
   await expect(page.locator('#fac-form-err')).toContainText('TB_DWELLING_5 needs TB_MAGIC_GUILD', { timeout: 300_000 });
   await expect(page.locator('#facedit')).toBeVisible();
   expect(ed.errors).toEqual([]);
-  // Re-parented to nothing — the column above it holds only the guild.
-  await press(page, cell(page, 4, 4), /TB_DWELLING_5 needs TB_MAGIC_GUILD|^$/);
-  await expect(page.locator('#fac-cell')).toContainText('TB_DWELLING_5');
-  await page.locator('#fac-cell select').first().selectOption('');
-  await expect(cell(page, 4, 4).locator('.fc-arrow')).toHaveCount(0);
+  // So the town has its guild, of two schools.
+  await page.locator('#fac-magic').selectOption('guild');
+  await expect(page.locator('#fac-schools-row')).toBeVisible();
+  await page.locator('#fac-school-1').selectOption('MAGIC_SCHOOL_DARK');
+  await page.locator('#fac-school-2').selectOption('MAGIC_SCHOOL_SUMMONING');
 
   await press(page, page.locator('#fac-ok'), /TB_DWELLING_5 needs TB_MAGIC_GUILD|^$/);
   // The town copy is the donor's whole closure: a while.
@@ -510,7 +513,8 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.type).toBe(TYPE);
   expect(f!.number).toBe(11);
   expect(f!.donor).toBe('TOWN_HEAVEN');
-  expect(f!.magic).toBe('none');
+  expect(f!.magic, 'a town with a guild').toBeUndefined();
+  expect(f!.magicSchools).toEqual(['MAGIC_SCHOOL_DARK', 'MAGIC_SCHOOL_SUMMONING']);
   expect(f!.race?.name).toBe('Bone Court');
   expect(f!.towns).toEqual([{ file: 'Ossuary', name: 'The Ossuary', biography: 'Where the bones are kept.', bonus: 'TOWN_NO_BONUS' }]);
   // The tree started empty and holds what was put: Haven's, as the preset put
@@ -527,7 +531,7 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(f!.buildings?.['TB_SPECIAL_1/2']).toMatchObject({ name: 'Bone Yard', description: PIT_WORDS[1], cost: { Gold: 4000 }, devLevel: 0 });
   expect(f!.buildings?.['TB_SPECIAL_1/3']).toMatchObject({ name: 'Bone Market', description: PIT_WORDS[2], cost: { Gold: 8000 }, devLevel: 0 });
   expect(f!.buildings?.TB_SPECIAL_2, "Haven's Hall of Heroes is gone").toBeUndefined();
-  expect(f!.buildings?.TB_DWELLING_5).toMatchObject({ requires: [] });
+  expect(f!.buildings?.TB_DWELLING_5, 'the Tomb of the Magi still needs the guild').not.toHaveProperty('requires');
   // Haven's Stables and Farms are gone, the Arena that needed them re-parented,
   // and every dwelling and the grail say the Court's words.
   expect(f!.buildings?.TB_SPECIAL_4, "Haven's Stables are gone").toBeUndefined();
@@ -598,6 +602,11 @@ test('what landed on disk is the faction as the form said it', { tag: '@game' },
   expect(text('types.xml')).toContain(`<Item>${TYPE}</Item>`);
   expect(text('types.xml')).toContain('<Item>RACE_E2E_BONE</Item>');
   expect(text('UI/UIGameRoot.(UIGameRoot).xdb')).toContain('<ID>town_buildings_8</ID>');
+  // The guild's two schools, in the town's record; and Haven's guild in the tree, five levels.
+  const town = text(`Factions/${FILE}/${FILE}.(AdvMapTownShared).xdb`);
+  expect(town).toContain('<MagicSchool_0>MAGIC_SCHOOL_DARK</MagicSchool_0>');
+  expect(town).toContain('<MagicSchool_1>MAGIC_SCHOOL_SUMMONING</MagicSchool_1>');
+  expect(names.some((n) => /TownBuildingSharedStats\/Haven\/Magic_Guild\//.test(n)), "the guild is Haven's, not Stronghold's stubs").toBe(true);
   expect(text('GameMechanics/RefTables/TownTypesInfo.xdb')).toContain(`<ID>${TYPE}</ID>`);
 
   // The extension's files beside the executable, and the executable itself.
@@ -628,7 +637,9 @@ test('editing reloads the tree with the edits over it, and saving keeps the ordi
   await expect(page.locator('#fac-file')).toHaveValue(FILE);
   await expect(page.locator('#fac-file')).toHaveAttribute('readonly', '');
   await expect(page.locator('#fac-editing')).toContainText('ordinal 11');
-  await expect(page.locator('#fac-magic')).toHaveValue('none');
+  await expect(page.locator('#fac-magic')).toHaveValue('guild');
+  await expect(page.locator('#fac-school-1')).toHaveValue('MAGIC_SCHOOL_DARK');
+  await expect(page.locator('#fac-school-2')).toHaveValue('MAGIC_SCHOOL_SUMMONING');
   await expect(page.locator('#fac-alignment')).toHaveValue('evil');
   await expect(page.locator('#fac-ai-like')).toHaveValue('TOWN_NECROMANCY');
   await expect(page.locator('#fac-ai-count')).toHaveText(/^(\d+) of \1 said$/);
@@ -824,8 +835,10 @@ test("the author's own files can go: the mod works from its copies", { tag: '@ga
 
 /**
  * The class of our own this spec makes — the probe's Bone Lord, now through
- * the windows: no magic, might over magic in the Barbarian's shape, and a
- * racial of its own where his Blood Rage is (Senya, 25.10).
+ * the windows: might over magic in the Barbarian's shape, and a racial of
+ * its own where his Blood Rage is (Senya, 25.10). It casts: a class without
+ * magic is the barbarian's, and waits until there is a way to do it well
+ * (new specialisations, or the rage).
  */
 const CLASS = { id: 'HERO_CLASS_E2E_BONE_LORD', name: 'Костяной владыка' };
 /** Its racial: four names, words, a line for all four, and a drawing per level. */
@@ -902,8 +915,6 @@ test('a class of our own, and a hero of it and of the race, made in the Heroes w
   await expect(page.locator('#hc-skill-total')).toHaveText(/100/);
   await page.locator('#hc-id').fill(CLASS.id);
   await page.locator('#hc-name').fill(CLASS.name);
-  // No magic: its heroes learn no spell, in a town with no guild.
-  await page.locator('#hc-magic').selectOption('none');
   const before: Record<string, number> = { ...LORD_WEIGHTS, HERO_SKILL_OFFENCE: LORD_WEIGHTS.HERO_SKILL_OFFENCE! + LORD_WEIGHTS[LORE.id]! };
   delete before[LORE.id];
   for (const input of await page.locator('#hc-skills input[data-skill]').all()) {
@@ -940,7 +951,6 @@ test('a class of our own, and a hero of it and of the race, made in the Heroes w
   await press(page, page.locator('#hm-tabs button', { hasText: 'Classes' }));
   await press(page, page.locator('#hc-list .um-item', { hasText: CLASS.name }).first().locator('button', { hasText: '✎' }));
   await expect(page.locator('#classedit')).toBeVisible();
-  await expect(page.locator('#hc-magic'), 'the class says it has no magic').toHaveValue('none');
   await page.locator(`#hc-skills input[data-skill="${LORE.id}"]`).fill(String(LORD_WEIGHTS[LORE.id]));
   await page.locator('#hc-skills input[data-skill="HERO_SKILL_OFFENCE"]').fill(String(LORD_WEIGHTS.HERO_SKILL_OFFENCE));
   await expect(page.locator('#hc-skill-total')).toHaveText('100 ✓');
@@ -950,10 +960,11 @@ test('a class of our own, and a hero of it and of the race, made in the Heroes w
   {
     const mod = readInstalledMod(GAME);
     const cls = (mod.classes ?? []).find((c) => c.id === CLASS.id);
-    expect(cls?.magic, 'the class learns no spell').toBe('none');
+    expect(cls?.magic, 'the class learns spells').toBeUndefined();
     expect(Object.fromEntries(cls!.skills.filter((w) => w.prob).map((w) => [w.skill, w.prob])), "the probe's weights").toEqual(LORD_WEIGHTS);
     expect(cls!.attributes).toEqual({ offence: 45, defence: 35, spellpower: 5, knowledge: 15 });
-    expect(readFileSync(join(GAME, MAGIC_FILE), 'latin1'), 'the extension reads it as a class without magic').toMatch(new RegExp(`^class ${cls!.number} none$`, 'm'));
+    const magicFile = existsSync(join(GAME, MAGIC_FILE)) ? readFileSync(join(GAME, MAGIC_FILE), 'latin1') : '';
+    expect(magicFile, 'nor does the extension take its spells away').not.toMatch(new RegExp(`^class ${cls!.number} none$`, 'm'));
     const lore = (mod.skills ?? []).find((s) => s.id === LORE.id);
     expect(lore).toMatchObject({ kind: 'racial', heroClass: CLASS.id, name: LORE.names[0], names: [...LORE.names], description: LORE.description, commonDescription: LORE.common });
     expect(lore!.pictures, 'a drawing per level').toHaveLength(4);

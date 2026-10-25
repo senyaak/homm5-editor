@@ -263,7 +263,6 @@ export function registerModHeroes(): void {
     },
     ...(p.preferredSpells?.length ? { preferredSpells: p.preferredSpells } : {}),
     ...(p.allowedPerks?.length ? { allowedPerks: p.allowedPerks } : {}),
-    ...(p.magic === 'none' ? { magic: 'none' as const } : {}),
   });
 
   const skillSpecOf = (p: ModsInstallSkillPayload): HeroSkillSpec => ({
