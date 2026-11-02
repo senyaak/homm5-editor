@@ -32,6 +32,12 @@ engine number by number is [numbers.md](numbers.md).
   for a word of the right shape. Seven battles went on a word that did not
   exist: the top creature's remaining health is computed on the spot by the
   panel, never stored.
+- **`[esp+N]` is not read by eye.** N drifts with every `push`, so one slot is
+  `[esp+8]` before two pushes and `[esp+10h]` after; one reader read three
+  times gave three different wrong answers, each a launch.
+  `node tools/net-probe.ts <exe> --frame <addr>` counts the stack —
+  push/pop, `sub/add esp`, the ebp frame and the callee's `ret N` clean-up —
+  and names every access `arg1` / `localN` from the function's entry.
 - **When a reading is disputed, measure.** A probe or a launch that
   contradicts a reading beats the reading; three conclusions in this repo were
   wrong until a battle said so.
