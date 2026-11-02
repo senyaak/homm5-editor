@@ -12,7 +12,8 @@ reads a legally installed game; nothing of the game is committed. The repo is
 - [CONTRIBUTING.md](CONTRIBUTING.md) — layout, code conventions, the one hard rule (no game content)
 - [docs/working/](docs/working/README.md) — how work is done here: tests, e2e, the game, design, mods, native, reverse engineering, git
 - [docs/README.md](docs/README.md) — formats, the map document, mods and content, what was read out of the executable
-- [ROADMAP.md](ROADMAP.md) — the plan; `SLICE_*.md` at the root — work in flight
+- [docs/todo.md](docs/todo.md) — the work list: one file per open item
+- [ROADMAP.md](ROADMAP.md) — the plan and its history; `SLICE_*.md` at the root — designs in flight
 - [CHANGELOG.md](CHANGELOG.md) — what changed, as people read it on GitHub
 - [LOG.md](LOG.md) — what the extension's development build writes
 

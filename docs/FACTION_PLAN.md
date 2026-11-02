@@ -3,8 +3,9 @@
 *Where the ninth faction stands (last brought up to date 2026-10-08), what is still unknown, and
 the order the rest is done in. The engine's side of the story — every
 address, every table, every launch that taught something — is in
-[engineInternals/FACTIONS.md](engineInternals/FACTIONS.md); this is the
-work list.*
+[engineInternals/FACTIONS.md](engineInternals/FACTIONS.md). The open work
+is cut into items in [todo.md](todo.md) (`todo/factions-*.md`); this file is
+the design and the record behind them.*
 
 ## Where it stands
 

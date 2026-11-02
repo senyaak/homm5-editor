@@ -1,5 +1,8 @@
 # SLICE — an asset editor: models, textures, animations, effects
 
+> **The work is cut into items**: [docs/todo.md](docs/todo.md), Feature 1
+> (`docs/todo/asset-editor-*.md`). This file is the design behind them.
+
 > **Status: planned, nothing started.** Written 18–19.09.2026 after a talk about
 > what the editor still has to become. Two other lines are running in parallel —
 > the frame optimisation and the factions of our own — and both come first. What
