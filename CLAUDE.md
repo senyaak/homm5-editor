@@ -1,132 +1,76 @@
-# Working on this repo
+# homm5-editor — orientation
 
-## Running the tests — always the same two things
+A map, campaign and mod editor for *Heroes of Might and Magic V: Tribes of the
+East* on Electron + TypeScript, plus a native extension of the game
+(`native/`, Zig-built C) and a byte-exact port of its random map generator. It
+reads a legally installed game; nothing of the game is committed. The repo is
+**public**.
 
-**1. Say where the game is. Every time.**
+## Where things are
+
+- [README.md](README.md) — what works, how to run it
+- [CONTRIBUTING.md](CONTRIBUTING.md) — layout, code conventions, the one hard rule (no game content)
+- [docs/working/](docs/working/README.md) — how work is done here: tests, e2e, the game, design, mods, native, reverse engineering, git
+- [docs/README.md](docs/README.md) — formats, the map document, mods and content, what was read out of the executable
+- [ROADMAP.md](ROADMAP.md) — the plan; `SLICE_*.md` at the root — work in flight
+- [CHANGELOG.md](CHANGELOG.md) — what changed, as people read it on GitHub
+- [LOG.md](LOG.md) — what the extension's development build writes
+
+## Before running anything
 
 ```bash
 export HOMM5_GAME="C:/Games/Steam/steamapps/common/Heroes of Might and Magic 5 Tribes of the East"
 ```
 
-Nothing guesses it. `tools/game-dir.ts` used to fall back to the checkout's
-parent and a worktree made that a lie, so the answer is only ever SAID —
-`--game <dir>` on a command line, or `HOMM5_GAME` / `HOMM5_ROOT` in the
-environment (both names work; two halves of the repo grew their own).
+Nothing guesses the install; without it four suites fail for a reason that is
+not the change. Run the tests of what you touched, at once; the rest only for
+a shared change or a release; the C1M1 reconstruction only before a release
+([docs/working/testing.md](docs/working/testing.md)).
 
-Forget it and **four suites fail for a reason that is not about the change**:
-`test-heroes`, `test-controller-slots`, `test-exe-import` and every e2e spec,
-each saying some version of "nobody said where the game is". That looks exactly
-like a real failure and costs a bisect to find out it is not. Measured
-08.08.2026.
+## Working rules
 
-`test-dialog-scene` was a fifth until 12.08.2026, and it lied differently: it
-guessed the install two levels above the data cache — true for a checkout that
-sits inside the game, false for every worktree — and then reported "none on
-this install" three times, as though the game shipped no dialog scenes. Every
-campaign ships them (`All_campaigns.data.h5u` alone holds 185). It now takes
-the same said answer as the rest and SKIPS its catalogue half, out loud, when
-nobody said.
+- **Never launch anything with a window** — not the game, not the editor, not
+  the packaged app. The owner plays; hand over what to start, where, and one or
+  two things to see ([the-game.md](docs/working/the-game.md)).
+- **An install is shared by every session that points at it.** Install only
+  into a copy of your own; a copy of your own is expendable.
+- **Every new test is broken on purpose once** and must go red; a check made in
+  a console goes into a test in the same commit.
+- **e2e: every gesture is followed by a check that nothing threw**, and maps
+  are built through the palette, never under the UI ([e2e.md](docs/working/e2e.md)).
+- **Separate what is proven from what is assumed.** Proven about the file is
+  not proven about the engine; "found nothing" is a property of the tool.
+- **Read the code, not the picture**; docs and the web before the disassembler
+  for the game's ordinary behaviour ([reverse-method.md](docs/working/reverse-method.md)).
+- **Show data as saved; take a value, don't derive it; a preset fills every
+  field visibly** ([editor-design.md](docs/working/editor-design.md)).
+- **A real modding tool, not workarounds**: one mod, the editor its only
+  writer; a faction's files apart; new engine tables live in our DLL; our own
+  code, never the middle of the engine's ([mods-and-the-engine.md](docs/working/mods-and-the-engine.md)).
+- **Files are changed with Edit/Write**, never by shell rewrites; code with a
+  backslash never goes through a heredoc ([shell-and-files.md](docs/working/shell-and-files.md)).
+- **Commit and push each verified change**: author the owner, committer the
+  running Claude model via `GIT_COMMITTER_*`, no `Co-Authored-By`; stage your
+  own files only; never rewrite pushed history; a user-visible change gets its
+  changelog entry in the same commit ([git.md](docs/working/git.md)).
+- **Everything in the repo and on GitHub is English.** Only the chat with the
+  owner is Russian.
+- **A task does what it says**; a neighbouring bug is named, small stale
+  comments in our code are fixed in passing ([scope-and-docs.md](docs/working/scope-and-docs.md)).
+- **One subject per file**, split past about 500 lines; a correction replaces
+  the wrong text.
 
-**2. Then one command.**
+## Traps worth knowing before touching the code
 
-```bash
-npm test
-```
-
-That is every `test-*` suite in `package.json` — **including `test-e2e-fast`**,
-which is the whole e2e set except the C1M1 reconstruction. It takes about six
-minutes, most of it the e2e half. This is the ordinary run and it is what
-"all the tests" means here.
-
-The release gate is `npm run test-e2e` — the same plus the C1M1
-reconstruction, which rebuilds a whole shipped campaign mission and takes
-fifteen minutes. Run it before a tag or a publish, and not otherwise.
-
-## Reading a failure
-
-`npm test` prints a one-line-per-suite table at the end. The e2e half tees its
-whole output to a file and says so:
-
-```
-[e2e] FAILED — the whole output is in _tmp/e2e-logs/fast-<timestamp>.log
-```
-
-Read that log, not the table. Its useful lines are `Error:` and the
-`N failed / N passed` at the end.
-
-## Three levels
-
-Every suite and every e2e test says what it needs, and the runs are cut by
-that: **nodata** (nothing — the checkout alone), **data** (the unpacked data),
-**game** (a real install: the executable, its archives).
-
-```bash
-npm run test-nodata      # the level's unit suites + test-e2e-nodata
-npm run test-data
-npm run test-game
-npm run test-rmg         # the generator's forty suites (--only rmg-)
-node tools/test-all.ts --level game --list   # what a level would run, nothing run
-```
-
-A unit suite carries one line near its top — `// needs: data` or
-`// needs: game` — and none means nodata; an e2e test carries the tag
-(`{ tag: '@game' }`, or `@nodata` in its title). The aggregator reads the
-line, it keeps no list. A new suite without the line runs at nodata, so a
-suite that then skips itself for want of the game is a missing line.
-
-## Running one suite
-
-```bash
-node tools/test-spell-mod.ts               # most read HOMM5_GAME from the environment
-node tools/test-spell-mod.ts --game ..     # or say it here
-npm run test-e2e-fast -- e2e/smoke.spec.ts # one e2e spec
-```
-
-**`test-heroes` is the exception**: it takes the unpacked-data directory as a
-POSITIONAL argument, so `--game ..` is read as that directory and the suite
-skips itself with "no unpacked data at ..". Give it nothing, or give it a data
-directory.
-
-## What to run for a change
-
-Run the suite for the thing you touched, and the whole set only when you
-touched something shared. A failure in somebody else's suite is worth
-re-running on its own before believing it.
-
-The one that stands in for launching the game is
-`node tools/test-native-anchors.ts` — it reads every address the extension
-recognises by its bytes out of the executable on disk. `tools/test-fixes.ts`
-does the same for the hand-assembled stubs: whole instructions, jumps landing
-on instruction boundaries, and the installer's patch offsets inside one
-instruction each. Both are seconds, and both catch things that would otherwise
-cost a launch.
-
-## Getting the mod to say something
-
-**Logs are for development only.** A default build writes no log at all — no
-file, not even a crash report. A development build is `--dev` (the load and
-crash reports, the multiplayer agent), or any file named with `--log`, which
-is `--dev` plus that file; everything not asked for is cut out by the
-preprocessor:
-
-```bash
-npm run build-native -- --dev
-npm run build-native -- --log combat/spell-resolve,lua/battle
-npm run build-native -- --list-log
-npm run install-native
-```
-
-A development build's launch then writes `bin/homm5-editor-<date>-<time>.log`.
-
-Read [LOG.md](LOG.md) before deciding a hook "did not install" or a feature
-"says nothing" — most of the reports that used to be in the log, including
-"how many patches went in", now need their own file named. It lists every file,
-what it would tell you, and what a development build says without being asked.
-
-**Install the logging build LAST.** `tools/test-native-log.ts` builds its own
-quiet and loud copies into the same `native/build/`, so running it after
-`install-native` leaves a DLL that is not the one you installed — and a live
-e2e run reinstalls whatever is there. That is how a probe came to write nothing
-at all while its own anchors verified fine: the file in `bin/` was 102912 bytes
-where the logging build had been 104960. Build, install, launch — and if a
-suite ran in between, install again.
+- The game must start with `bin/` as its working directory — the install's root breaks creature models quietly — [the-game.md](docs/working/the-game.md)
+- Arity of a hooked function comes from its `ret imm`, never from the pushes at its call site — [native.md](docs/working/native.md)
+- A detour's byte head is its length: whole instructions, counted per image — [native.md](docs/working/native.md)
+- A log macro's arguments are not evaluated in a quiet build; never call anything inside one — [native.md](docs/working/native.md)
+- Install the logging build LAST: `test-native-log` overwrites `native/build/` — [native.md](docs/working/native.md)
+- A vtable slot means nothing without its vtable's start; a base pointer is not the object — [native.md](docs/working/native.md)
+- The editor and the game are different builds: x87 against SSE, so read the one whose behaviour is measured — [reverse-method.md](docs/working/reverse-method.md)
+- `Math.hypot` is inexact; the map editor's FPU runs single precision, round toward zero — [numbers.md](docs/working/numbers.md)
+- Playwright restarts the worker after a failure: a cleanup in `beforeAll` wipes the chain — [e2e.md](docs/working/e2e.md)
+- A probe launching the app runs the BUILT renderer: `npm run build:renderer` first — [e2e.md](docs/working/e2e.md)
+- Never `| tail` a test run: the log keeps only what passed the pipe — [testing.md](docs/working/testing.md)
+- `test-heroes` takes the data directory positionally; `--game ..` makes it skip — [testing.md](docs/working/testing.md)

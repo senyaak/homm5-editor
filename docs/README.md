@@ -69,6 +69,9 @@ mod documents below; they move here as each gets written up.
 
 ## Working in this repo
 
+- [working/](working/README.md) — how work is done here: the tests, the e2e,
+  the game and its installs, design decisions, mods, native craft, reading the
+  executable, git.
 - [RECIPES.md](RECIPES.md) — task-first notes: how to actually make things.
 - [E2E_RECONSTRUCTION.md](E2E_RECONSTRUCTION.md) — proving the editor by rebuilding a shipped campaign.
 - [PERFORMANCE.md](PERFORMANCE.md) — the performance log: what got faster, when, by how much — kept out of the changelog.
