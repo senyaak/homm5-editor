@@ -7,6 +7,7 @@
 // import like any other.
 
 import type { EditorApi } from '#electron/ipc.ts';
+import { Refusal } from '#src/failure.ts';
 
 declare global {
   interface Window {
@@ -14,8 +15,28 @@ declare global {
   }
 }
 
-/** The main process, as this window sees it. */
-export const api: EditorApi = window.editor;
+/** A refusal arrives as an Error whose message starts with its name; it is a Refusal again here. */
+const REFUSED = /^Refusal: ([\s\S]*)$/;
+const backFromMain = (e: unknown): unknown => {
+  const m = e instanceof Error ? REFUSED.exec(e.message) : null;
+  return m ? new Refusal(m[1]!) : e;
+};
+
+/**
+ * The main process, as this window sees it: every call as the preload gives
+ * it, with a refusal made a Refusal again, so a form tells it from a failure.
+ *
+ * A copy with each function wrapped, not a Proxy: the bridge's object is
+ * frozen, and a Proxy may not hand back anything but a frozen property's own
+ * value.
+ */
+export const api: EditorApi = Object.fromEntries(
+  Object.entries(window.editor).map(([key, v]: [string, unknown]) => [key, typeof v !== 'function' ? v
+    : (...args: unknown[]) => {
+      const out = (v as (...a: unknown[]) => unknown)(...args);
+      return out instanceof Promise ? out.catch((e: unknown) => { throw backFromMain(e); }) : out;
+    }]),
+) as unknown as EditorApi;
 
 /**
  * One blob the main process offers over its scheme (electron/blobs.ts) — a

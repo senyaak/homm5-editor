@@ -25,6 +25,7 @@ import { MOD_DIR } from '#src/game/mod-paths.ts';
 import { PATCHED_EXE } from '#src/exe/creature-limit.ts';
 import { setLargeAddressAware } from '#src/exe/large-address.ts';
 import { mainFailed } from '#electron/failure.ts';
+import { isRefusal } from '#src/failure.ts';
 
 /** The install, or a refusal that says what is missing rather than throwing null. */
 function install(): string {
@@ -119,8 +120,9 @@ export function registerQol(): void {
       try {
         extension = installExtension(g, APP_ROOT).installed;
       } catch (e) {
-        // The rest still applies; the panel's note and the terminal say what did not.
-        mainFailed('installing the extension', e);
+        // The rest still applies; the panel's note says what did not, and the
+        // terminal too when it is a failure rather than a refusal.
+        if (!isRefusal(e)) mainFailed('installing the extension', e);
         notes.push(e instanceof Error ? e.message : String(e));
       }
     }

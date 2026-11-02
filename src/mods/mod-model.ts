@@ -37,6 +37,7 @@ import { SHIPPED_TOWN_TYPES, factionProblems } from './factions.ts';
 import type { FactionSpec, ModFaction } from './factions.ts';
 import type { RecolorOps } from '../format/recolor.ts';
 import type { ArtSlot } from './mod-art.ts';
+import { Refusal } from '../failure.ts';
 
 /** The last creature the shipped enum lists — our anchor for appending to it. */
 export const LAST_SHIPPED = 'CREATURE_CYCLOP_BLOODEYED';
@@ -324,10 +325,10 @@ export function addHeroClass(
   mod: CreatureMod, spec: HeroClassSpec, taken: ReadonlySet<string> = new Set(),
 ): ModHeroClass {
   if (!mod.classes) mod.classes = [];
-  if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own class`);
-  if (mod.classes.some((c) => c.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
+  if (taken.has(spec.id)) throw new Refusal(`${spec.id} is the game's own class`);
+  if (mod.classes.some((c) => c.id === spec.id)) throw new Refusal(`${spec.id} is already in the mod`);
   const problems = classProblems(spec);
-  if (problems.length) throw new Error(`${spec.id}: ${problems.join('; ')}`);
+  if (problems.length) throw new Refusal(`${spec.id}: ${problems.join('; ')}`);
   const c: ModHeroClass = { ...spec, number: SHIPPED_CLASSES + mod.classes.length };
   mod.classes.push(c);
   return c;
@@ -337,9 +338,9 @@ export function addHeroClass(
 export function updateHeroClass(mod: CreatureMod, id: string, spec: HeroClassSpec): ModHeroClass {
   const at = (mod.classes ?? []).findIndex((c) => c.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
-  if (spec.id !== id) throw new Error(`a class cannot be renamed — ${id} is what heroes name`);
+  if (spec.id !== id) throw new Refusal(`a class cannot be renamed — ${id} is what heroes name`);
   const problems = classProblems(spec);
-  if (problems.length) throw new Error(`${id}: ${problems.join('; ')}`);
+  if (problems.length) throw new Refusal(`${id}: ${problems.join('; ')}`);
   const updated: ModHeroClass = { ...spec, number: mod.classes![at]!.number };
   mod.classes![at] = updated;
   return updated;
@@ -364,14 +365,14 @@ export function removeHeroClass(mod: CreatureMod, id: string): ModHeroClass {
   const at = list.findIndex((c) => c.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
   const heroes = (mod.heroes ?? []).filter((h) => h.heroClass === id).map((h) => h.id);
-  if (heroes.length) throw new Error(`${id} is the class of ${heroes.join(', ')} — change them first`);
+  if (heroes.length) throw new Refusal(`${id} is the class of ${heroes.join(', ')} — change them first`);
   const skills = mod.skills ?? [];
   // Its own skills go first, and the weights naming them go with the record
   // being spliced out — which is why there is no sum left half-written.
   for (const owned of skills.filter((s) => s.heroClass === id)) {
     const held = (mod.heroes ?? []).filter((h) => h.primarySkill?.skill === owned.id
       || h.skills?.some((k) => k.skill === owned.id)).map((h) => h.id);
-    if (held.length) throw new Error(`${owned.id} is held by ${held.join(', ')} — change them first`);
+    if (held.length) throw new Refusal(`${owned.id} is held by ${held.join(', ')} — change them first`);
     skills.splice(skills.indexOf(owned), 1);
   }
   skills.forEach((s, i) => { s.number = SHIPPED_SKILLS + i; });
@@ -385,10 +386,10 @@ export function addHeroSkill(
   mod: CreatureMod, spec: HeroSkillSpec, taken: ReadonlySet<string> = new Set(),
 ): ModHeroSkill {
   if (!mod.skills) mod.skills = [];
-  if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own skill`);
-  if (mod.skills.some((s) => s.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
+  if (taken.has(spec.id)) throw new Refusal(`${spec.id} is the game's own skill`);
+  if (mod.skills.some((s) => s.id === spec.id)) throw new Refusal(`${spec.id} is already in the mod`);
   const problems = skillProblems(spec);
-  if (problems.length) throw new Error(`${spec.id}: ${problems.join('; ')}`);
+  if (problems.length) throw new Refusal(`${spec.id}: ${problems.join('; ')}`);
   const s: ModHeroSkill = { ...spec, number: SHIPPED_SKILLS + mod.skills.length };
   mod.skills.push(s);
   return s;
@@ -406,11 +407,11 @@ export function addSpell(
   mod: CreatureMod, spec: SpellSpec, taken: ReadonlySet<string> = new Set(),
 ): ModSpell {
   if (!mod.spells) mod.spells = [];
-  if (!/^SPELL_[A-Z0-9_]+$/.test(spec.id)) throw new Error(`${spec.id} is not a usable spell id`);
-  if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own spell`);
-  if (mod.spells.some((s) => s.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
+  if (!/^SPELL_[A-Z0-9_]+$/.test(spec.id)) throw new Refusal(`${spec.id} is not a usable spell id`);
+  if (taken.has(spec.id)) throw new Refusal(`${spec.id} is the game's own spell`);
+  if (mod.spells.some((s) => s.id === spec.id)) throw new Refusal(`${spec.id} is already in the mod`);
   const problems = spellProblems(spec);
-  if (problems.length) throw new Error(`${spec.id}: ${problems.join('; ')}`);
+  if (problems.length) throw new Refusal(`${spec.id}: ${problems.join('; ')}`);
   const s: ModSpell = { ...spec, number: SHIPPED_SPELLS + mod.spells.length };
   mod.spells.push(s);
   return s;
@@ -487,9 +488,9 @@ function hurtsSeveral(spec: SpellSpec): boolean {
 export function updateSpell(mod: CreatureMod, id: string, spec: SpellSpec): ModSpell {
   const at = (mod.spells ?? []).findIndex((s) => s.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
-  if (spec.id !== id) throw new Error(`a spell cannot be renamed — ${id} is what spellbooks store`);
+  if (spec.id !== id) throw new Refusal(`a spell cannot be renamed — ${id} is what spellbooks store`);
   const problems = spellProblems(spec);
-  if (problems.length) throw new Error(`${id}: ${problems.join('; ')}`);
+  if (problems.length) throw new Refusal(`${id}: ${problems.join('; ')}`);
   const updated: ModSpell = { ...spec, number: SHIPPED_SPELLS + at };
   mod.spells![at] = updated;
   return updated;
@@ -512,7 +513,7 @@ export function removeSpell(mod: CreatureMod, id: string): ModSpell {
   const at = list.findIndex((s) => s.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
   const holders = spellHolders(mod, id);
-  if (holders.length) throw new Error(`${id} is still named in the mod — ${holders.join('; ')} — change them first`);
+  if (holders.length) throw new Refusal(`${id} is still named in the mod — ${holders.join('; ')} — change them first`);
   const spell = list.splice(at, 1)[0]!;
   list.forEach((s, i) => { s.number = SHIPPED_SPELLS + i; });
   return spell;
@@ -522,9 +523,9 @@ export function removeSpell(mod: CreatureMod, id: string): ModSpell {
 export function updateHeroSkill(mod: CreatureMod, id: string, spec: HeroSkillSpec): ModHeroSkill {
   const at = (mod.skills ?? []).findIndex((s) => s.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
-  if (spec.id !== id) throw new Error(`a skill cannot be renamed — ${id} is what classes and heroes name`);
+  if (spec.id !== id) throw new Refusal(`a skill cannot be renamed — ${id} is what classes and heroes name`);
   const problems = skillProblems(spec);
-  if (problems.length) throw new Error(`${id}: ${problems.join('; ')}`);
+  if (problems.length) throw new Refusal(`${id}: ${problems.join('; ')}`);
   const updated: ModHeroSkill = { ...spec, number: SHIPPED_SKILLS + at };
   mod.skills![at] = updated;
   return updated;
@@ -543,17 +544,17 @@ export function removeHeroSkill(mod: CreatureMod, id: string): ModHeroSkill {
   if (at < 0) throw new Error(`${id} is not in the mod`);
   const heroes = (mod.heroes ?? []).filter((h) => h.primarySkill?.skill === id || h.skills?.some((k) => k.skill === id))
     .map((h) => h.id);
-  if (heroes.length) throw new Error(`${id} is held by ${heroes.join(', ')} — change them first`);
+  if (heroes.length) throw new Refusal(`${id} is held by ${heroes.join(', ')} — change them first`);
   // A weight naming a skill that is gone is the same parse error the class is,
   // and dropping the weight silently would leave the hundred short. The class
   // owns its racial, so the way out is to take the class out — which takes this
   // with it (removeHeroClass).
   const classes = (mod.classes ?? []).filter((c) => c.skills.some((w) => w.skill === id)).map((c) => c.id);
   if (classes.length) {
-    throw new Error(`${id} is weighted by ${classes.join(', ')} — remove the class, which takes its own skills with it`);
+    throw new Refusal(`${id} is weighted by ${classes.join(', ')} — remove the class, which takes its own skills with it`);
   }
   const branch = list.filter((s) => s.basicSkill === id).map((s) => s.id);
-  if (branch.length) throw new Error(`${id} carries ${branch.join(', ')} — remove those first`);
+  if (branch.length) throw new Refusal(`${id} carries ${branch.join(', ')} — remove those first`);
   const gone = list.splice(at, 1)[0]!;
   list.forEach((s, i) => { s.number = SHIPPED_SKILLS + i; });
   return gone;
@@ -575,10 +576,10 @@ export function addSpecialization(
   mod: CreatureMod, spec: SpecializationSpec, taken: ReadonlySet<string> = new Set(),
 ): ModSpecialization {
   if (!mod.specializations) mod.specializations = [];
-  if (!/^HERO_SPEC_[A-Z0-9_]+$/.test(spec.id)) throw new Error(`${spec.id} is not a usable specialization id`);
-  if (taken.has(spec.id)) throw new Error(`${spec.id} is the game's own specialization`);
-  if (mod.specializations.some((s) => s.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
-  if (!spec.name.trim()) throw new Error(`${spec.id}: a specialization needs a name`);
+  if (!/^HERO_SPEC_[A-Z0-9_]+$/.test(spec.id)) throw new Refusal(`${spec.id} is not a usable specialization id`);
+  if (taken.has(spec.id)) throw new Refusal(`${spec.id} is the game's own specialization`);
+  if (mod.specializations.some((s) => s.id === spec.id)) throw new Refusal(`${spec.id} is already in the mod`);
+  if (!spec.name.trim()) throw new Refusal(`${spec.id}: a specialization needs a name`);
   const s: ModSpecialization = { ...spec, number: SHIPPED_SPECIALIZATIONS + mod.specializations.length };
   mod.specializations.push(s);
   return s;
@@ -596,7 +597,7 @@ export function updateSpecialization(
 ): ModSpecialization {
   const at = (mod.specializations ?? []).findIndex((s) => s.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
-  if (spec.id !== id) throw new Error(`a specialization cannot be renamed — ${id} is what heroes name`);
+  if (spec.id !== id) throw new Refusal(`a specialization cannot be renamed — ${id} is what heroes name`);
   const updated: ModSpecialization = { ...spec, number: mod.specializations![at]!.number };
   mod.specializations![at] = updated;
   return updated;
@@ -616,7 +617,7 @@ export function removeSpecialization(mod: CreatureMod, id: string): ModSpecializ
   const at = list.findIndex((s) => s.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
   const held = (mod.heroes ?? []).filter((h) => h.specialization === id).map((h) => h.id);
-  if (held.length) throw new Error(`${id} is held by ${held.join(', ')} — change them first`);
+  if (held.length) throw new Refusal(`${id} is held by ${held.join(', ')} — change them first`);
   const gone = list.splice(at, 1)[0]!;
   list.forEach((s, i) => { s.number = SHIPPED_SPECIALIZATIONS + i; });
   return gone;
@@ -632,12 +633,12 @@ export function removeSpecialization(mod: CreatureMod, id: string): ModSpecializ
 export function addHero(mod: CreatureMod, spec: HeroSpec, taken: ReadonlySet<string> = new Set()): HeroSpec {
   if (!mod.heroes) mod.heroes = [];
   const id = spec.id.trim();
-  if (!id) throw new Error('a hero needs an identifier');
+  if (!id) throw new Refusal('a hero needs an identifier');
   // The game's own heroes are as much in the way as the mod's: the identifier
   // is the InternalName a campaign carries him by AND the stem of his files, so
   // a clash with a shipped hero is a hero who travels as somebody else.
-  if (taken.has(id)) throw new Error(`"${id}" is a hero the game already has`);
-  if (mod.heroes.some((h) => h.id === id)) throw new Error(`the mod already has a hero called "${id}"`);
+  if (taken.has(id)) throw new Refusal(`"${id}" is a hero the game already has`);
+  if (mod.heroes.some((h) => h.id === id)) throw new Refusal(`the mod already has a hero called "${id}"`);
   mod.heroes.push({ ...spec, id });
   return mod.heroes[mod.heroes.length - 1]!;
 }
@@ -651,10 +652,10 @@ export function addHero(mod: CreatureMod, spec: HeroSpec, taken: ReadonlySet<str
  */
 export function addArtifact(mod: CreatureMod, spec: ArtifactSpec): ModArtifact {
   if (!mod.artifacts) mod.artifacts = [];
-  if (mod.artifacts.some((a) => a.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
-  if (!/^ARTIFACT_[A-Z0-9_]+$/.test(spec.id)) throw new Error(`${spec.id} is not a usable artifact id`);
-  if (mod.artifacts.some((a) => a.file === spec.file)) throw new Error(`two artifacts cannot both be "${spec.file}"`);
-  if (!spec.icon && !spec.picture) throw new Error(`${spec.id}: needs either an icon href or a picture to build one from`);
+  if (mod.artifacts.some((a) => a.id === spec.id)) throw new Refusal(`${spec.id} is already in the mod`);
+  if (!/^ARTIFACT_[A-Z0-9_]+$/.test(spec.id)) throw new Refusal(`${spec.id} is not a usable artifact id`);
+  if (mod.artifacts.some((a) => a.file === spec.file)) throw new Refusal(`two artifacts cannot both be "${spec.file}"`);
+  if (!spec.icon && !spec.picture) throw new Refusal(`${spec.id}: needs either an icon href or a picture to build one from`);
   const a: ModArtifact = { ...spec, number: SHIPPED_ARTIFACTS + mod.artifacts.length };
   mod.artifacts.push(a);
   return a;
@@ -670,11 +671,11 @@ export function addArtifact(mod: CreatureMod, spec: ArtifactSpec): ModArtifact {
  */
 export function addArtifactSet(mod: CreatureMod, spec: ArtifactSetSpec): ModArtifactSet {
   if (!mod.sets) mod.sets = [];
-  if (!/^ARTFSET_EFFECT_[A-Z0-9_]+$/.test(spec.effect)) throw new Error(`${spec.effect} is not a usable set effect`);
-  if (mod.sets.some((s) => s.effect === spec.effect)) throw new Error(`${spec.effect} is already in the mod`);
-  if (SHIPPED_SET_EFFECTS_BY_NAME.includes(spec.effect)) throw new Error(`${spec.effect} is the game's own set`);
-  if (mod.sets.some((s) => s.file === spec.file)) throw new Error(`two sets cannot both be "${spec.file}"`);
-  if (spec.artifacts.length < 2) throw new Error(`${spec.effect}: a set of ${spec.artifacts.length} never combines`);
+  if (!/^ARTFSET_EFFECT_[A-Z0-9_]+$/.test(spec.effect)) throw new Refusal(`${spec.effect} is not a usable set effect`);
+  if (mod.sets.some((s) => s.effect === spec.effect)) throw new Refusal(`${spec.effect} is already in the mod`);
+  if (SHIPPED_SET_EFFECTS_BY_NAME.includes(spec.effect)) throw new Refusal(`${spec.effect} is the game's own set`);
+  if (mod.sets.some((s) => s.file === spec.file)) throw new Refusal(`two sets cannot both be "${spec.file}"`);
+  if (spec.artifacts.length < 2) throw new Refusal(`${spec.effect}: a set of ${spec.artifacts.length} never combines`);
   const s: ModArtifactSet = { ...spec, number: SHIPPED_SET_EFFECTS + mod.sets.length };
   mod.sets.push(s);
   return s;
@@ -690,10 +691,10 @@ export function addArtifactSet(mod: CreatureMod, spec: ArtifactSetSpec): ModArti
 export function updateArtifact(mod: CreatureMod, id: string, spec: ArtifactSpec): ModArtifact {
   const at = (mod.artifacts ?? []).findIndex((a) => a.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
-  if (spec.id !== id) throw new Error(`an artifact cannot be renamed — ${id} is what maps and scripts store`);
+  if (spec.id !== id) throw new Refusal(`an artifact cannot be renamed — ${id} is what maps and scripts store`);
   const kept = mod.artifacts[at]!;
   if (mod.artifacts.some((a, i) => i !== at && a.file === spec.file)) {
-    throw new Error(`two artifacts cannot both be "${spec.file}"`);
+    throw new Refusal(`two artifacts cannot both be "${spec.file}"`);
   }
   const updated: ModArtifact = { ...spec, number: kept.number };
   mod.artifacts[at] = updated;
@@ -735,8 +736,8 @@ export function removeArtifact(mod: CreatureMod, id: string): ModArtifact {
 export function updateArtifactSet(mod: CreatureMod, effect: string, spec: ArtifactSetSpec): ModArtifactSet {
   const at = (mod.sets ?? []).findIndex((s) => s.effect === effect);
   if (at < 0) throw new Error(`${effect} is not in the mod`);
-  if (spec.effect !== effect) throw new Error(`a set effect cannot be renamed — ${effect} is what the data names`);
-  if (spec.artifacts.length < 2) throw new Error(`${effect}: a set of ${spec.artifacts.length} never combines`);
+  if (spec.effect !== effect) throw new Refusal(`a set effect cannot be renamed — ${effect} is what the data names`);
+  if (spec.artifacts.length < 2) throw new Refusal(`${effect}: a set of ${spec.artifacts.length} never combines`);
   const updated: ModArtifactSet = { ...spec, number: mod.sets[at]!.number };
   mod.sets[at] = updated;
   return updated;
@@ -808,7 +809,7 @@ export function removeDwelling(mod: CreatureMod, file: string): DwellingSpec {
 export function updateCreature(mod: CreatureMod, id: string, spec: CreatureSpec): ModCreature {
   const at = mod.creatures.findIndex((c) => c.id === id);
   if (at < 0) throw new Error(`${id} is not in the mod`);
-  if (spec.id !== id) throw new Error(`a creature cannot be renamed — ${id} is what maps and scripts store`);
+  if (spec.id !== id) throw new Refusal(`a creature cannot be renamed — ${id} is what maps and scripts store`);
   refuseBadLinks(spec);
   const kept = mod.creatures[at]!;
   const updated: ModCreature = { ...spec, number: kept.number, from: kept.from };
@@ -832,7 +833,7 @@ export function removeCreature(mod: CreatureMod, id: string): ModCreature {
   // tier hiring nothing, a raise pair naming a creature the enum no longer
   // declares — the mod is ours and stays whole after every operation.
   const holders = creatureHolders(mod, id);
-  if (holders.length) throw new Error(`${id} is still named in the mod — ${holders.join('; ')} — change them first`);
+  if (holders.length) throw new Refusal(`${id} is still named in the mod — ${holders.join('; ')} — change them first`);
   const removed = mod.creatures.splice(at, 1)[0]!;
   mod.creatures.forEach((c, i) => { c.number = mod.first + i; });
   return removed;
@@ -845,9 +846,9 @@ export function removeCreature(mod: CreatureMod, id: string): ModCreature {
 export function addBuilding(mod: CreatureMod, spec: BuildingSpec): BuildingSpec {
   if (!mod.buildings) mod.buildings = [];
   const file = spec.file.trim();
-  if (!file) throw new Error('a building needs an identifier');
+  if (!file) throw new Refusal('a building needs an identifier');
   if (mod.buildings.some((b) => b.file === file)) {
-    throw new Error(`two buildings cannot both be "${file}"`);
+    throw new Refusal(`two buildings cannot both be "${file}"`);
   }
   mod.buildings.push(spec);
   return spec;
@@ -857,7 +858,7 @@ export function addBuilding(mod: CreatureMod, spec: BuildingSpec): BuildingSpec 
 export function updateBuilding(mod: CreatureMod, file: string, spec: BuildingSpec): BuildingSpec {
   const at = (mod.buildings ?? []).findIndex((b) => b.file === file);
   if (at < 0) throw new Error(`${file} is not in the mod`);
-  if (spec.file !== file) throw new Error(`a building cannot be renamed — ${file} names its folder and its files`);
+  if (spec.file !== file) throw new Refusal(`a building cannot be renamed — ${file} names its folder and its files`);
   mod.buildings[at] = spec;
   return spec;
 }
@@ -870,9 +871,9 @@ export function removeBuilding(mod: CreatureMod, file: string): BuildingSpec {
 
 /** Append a dwelling. Unlike a creature it holds no id, so order is cosmetic. */
 export function addDwelling(mod: CreatureMod, spec: DwellingSpec): DwellingSpec {
-  if (!spec.creatures.length) throw new Error(`${spec.file}: a dwelling with no creatures hires nothing`);
+  if (!spec.creatures.length) throw new Refusal(`${spec.file}: a dwelling with no creatures hires nothing`);
   if (mod.dwellings.some((d) => d.file === spec.file)) {
-    throw new Error(`two dwellings cannot both be "${spec.file}"`);
+    throw new Refusal(`two dwellings cannot both be "${spec.file}"`);
   }
   mod.dwellings.push(spec);
   return spec;
@@ -895,9 +896,9 @@ export function creatureLimit(mod: CreatureMod): number {
  */
 function refuseBadLinks(spec: CreatureSpec): void {
   const { base, upgrades = [] } = spec.stats ?? {};
-  if (base === spec.id || upgrades.includes(spec.id)) throw new Error(`${spec.id} cannot be its own upgrade or its own base`);
-  if (base && upgrades.includes(base)) throw new Error(`${spec.id} is an upgrade of ${base} and cannot upgrade into it as well`);
-  if (new Set(upgrades).size !== upgrades.length) throw new Error(`${spec.id} names one upgrade twice`);
+  if (base === spec.id || upgrades.includes(spec.id)) throw new Refusal(`${spec.id} cannot be its own upgrade or its own base`);
+  if (base && upgrades.includes(base)) throw new Refusal(`${spec.id} is an upgrade of ${base} and cannot upgrade into it as well`);
+  if (new Set(upgrades).size !== upgrades.length) throw new Refusal(`${spec.id} names one upgrade twice`);
 }
 
 /**
@@ -908,9 +909,9 @@ function refuseBadLinks(spec: CreatureSpec): void {
  * creature after it. To drop one, blank it rather than closing the gap up.
  */
 export function addCreature(mod: CreatureMod, spec: CreatureSpec): ModCreature {
-  if (mod.creatures.some((c) => c.id === spec.id)) throw new Error(`${spec.id} is already in the mod`);
-  if (!/^CREATURE_[A-Z0-9_]+$/.test(spec.id)) throw new Error(`${spec.id} is not a usable creature id`);
-  if (mod.creatures.some((c) => c.file === spec.file)) throw new Error(`two creatures cannot both be "${spec.file}"`);
+  if (mod.creatures.some((c) => c.id === spec.id)) throw new Refusal(`${spec.id} is already in the mod`);
+  if (!/^CREATURE_[A-Z0-9_]+$/.test(spec.id)) throw new Refusal(`${spec.id} is not a usable creature id`);
+  if (mod.creatures.some((c) => c.file === spec.file)) throw new Refusal(`two creatures cannot both be "${spec.file}"`);
   refuseBadLinks(spec);
   const c: ModCreature = {
     ...spec,
@@ -953,11 +954,11 @@ export function addFaction(
   mod: CreatureMod, spec: FactionSpec, taken: ReadonlySet<string> = new Set(),
 ): ModFaction {
   if (!mod.factions) mod.factions = [];
-  if (taken.has(spec.type)) throw new Error(`${spec.type} is the game's own town type`);
-  if (mod.factions.some((f) => f.type === spec.type)) throw new Error(`${spec.type} is already in the mod`);
-  if (mod.factions.some((f) => f.file === spec.file)) throw new Error(`two factions cannot both be "${spec.file}"`);
+  if (taken.has(spec.type)) throw new Refusal(`${spec.type} is the game's own town type`);
+  if (mod.factions.some((f) => f.type === spec.type)) throw new Refusal(`${spec.type} is already in the mod`);
+  if (mod.factions.some((f) => f.file === spec.file)) throw new Refusal(`two factions cannot both be "${spec.file}"`);
   const problems = factionProblems(spec);
-  if (problems.length) throw new Error(`${spec.file}: ${problems.join('; ')}`);
+  if (problems.length) throw new Refusal(`${spec.file}: ${problems.join('; ')}`);
   const f: ModFaction = { ...spec, number: SHIPPED_TOWN_TYPES + mod.factions.length };
   mod.factions.push(f);
   return f;
@@ -967,9 +968,9 @@ export function addFaction(
 export function updateFaction(mod: CreatureMod, file: string, spec: FactionSpec): ModFaction {
   const at = (mod.factions ?? []).findIndex((f) => f.file === file);
   if (at < 0) throw new Error(`${file} is not in the mod`);
-  if (spec.file !== file) throw new Error(`a faction cannot be renamed — ${file} names its folder, its type and every map that placed a town of it`);
+  if (spec.file !== file) throw new Refusal(`a faction cannot be renamed — ${file} names its folder, its type and every map that placed a town of it`);
   const problems = factionProblems(spec);
-  if (problems.length) throw new Error(`${file}: ${problems.join('; ')}`);
+  if (problems.length) throw new Refusal(`${file}: ${problems.join('; ')}`);
   const updated: ModFaction = { ...spec, number: mod.factions![at]!.number };
   mod.factions![at] = updated;
   return updated;
@@ -991,7 +992,7 @@ export function removeFaction(mod: CreatureMod, file: string): ModFaction {
   // (`CreatureTown`), so the same parse error waits for one left behind.
   const creatures = mod.creatures.filter((c) => c.stats.town === list[at]!.type).map((c) => c.id);
   const holders = [...heroes, ...creatures];
-  if (holders.length) throw new Error(`${list[at]!.type} is the town of ${holders.join(', ')} — change them first`);
+  if (holders.length) throw new Refusal(`${list[at]!.type} is the town of ${holders.join(', ')} — change them first`);
   const gone = list.splice(at, 1)[0]!;
   list.forEach((f, i) => { f.number = SHIPPED_TOWN_TYPES + i; });
   return gone;

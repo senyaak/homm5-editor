@@ -18,6 +18,7 @@ import { CAMPAIGN_TEXTS, addMission, buildNewCampaignProject, handOnTo, hasEntry
 import { modFile } from '#src/game/mod-paths.ts';
 import { childText, find, setText } from '#src/format/xml.ts';
 import { mainFailed } from '#electron/failure.ts';
+import { Refusal } from '#src/failure.ts';
 
 /** Where campaign projects live, mirroring <data>/Maps for map projects. */
 const campaignsDir = (): string => join(gameData(), 'Campaigns');
@@ -112,7 +113,7 @@ export function registerCampaigns(): void {
     if (!name) throw new Error('the campaign needs a name');
     if (/[\/:*?"<>|]/.test(name)) throw new Error('the name cannot contain \ / : * ? " < > |');
     const dir = join(campaignsDir(), name);
-    if (existsSync(dir)) throw new Error(`${dir} already exists`);
+    if (existsSync(dir)) throw new Refusal(`${dir} already exists`);
     mkdirSync(dir, { recursive: true });
     for (const f of buildNewCampaignProject(name)) writeFileSync(join(dir, f.path), f.data);
     return readCampaignDoc(dir);

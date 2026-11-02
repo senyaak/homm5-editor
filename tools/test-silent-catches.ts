@@ -31,7 +31,7 @@ const ROOT = resolve(import.meta.dirname, '..');
 const DIRS = ['renderer', 'electron', 'src'];
 const MARK = /not a failure:/;
 /** Failures thrown as UnknownFailure: still to be given a kind. Only ever lowered. */
-const UNKNOWN_AT_MOST = 33;
+const UNKNOWN_AT_MOST = 32;
 
 /** How many times a source text throws an UnknownFailure. */
 export const unknownsIn = (src: string): number =>

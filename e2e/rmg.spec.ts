@@ -296,6 +296,9 @@ test('a fixed template with everything else random draws a size it fits', { tag:
   await page.locator('#rmg-ok').click();
   await expect(page.locator('#rmg')).toBeHidden({ timeout: 4 * 60_000 });
   await expect(page.locator('#title')).toContainText(NAME, { timeout: 60_000 });
+  // The title comes before the scene: wait for the whole load, or the next
+  // test's cleanup takes the map's folder away while it is still being read.
+  await expect(page.locator('#loading'), 'the map has finished loading').not.toHaveClass(/(^|\s)on(\s|$)/, { timeout: 60_000 });
   const line = ed.log.filter((l) => l.includes('[rmg] ') && l.includes(`${NAME}.h5m`)).pop();
   expect(line).toBeDefined();
   expect(line).toMatch(/S1P2Z2M1 (72×72|96×96)/);

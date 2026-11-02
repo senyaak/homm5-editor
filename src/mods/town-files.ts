@@ -42,6 +42,7 @@ import type { OwnSiegePart, SiegePartName } from './siege-parts.ts';
 import type { BuildingModel } from './town-screen.ts';
 import { EOL, hrefOf, insertAfterLine, insertBeforeLine, once, retune, setHref } from './xml-edit.ts';
 import { TOWN_GROUP } from './shared-groups.ts';
+import { Refusal } from '../failure.ts';
 export { TOWN_GROUP };
 
 export const TOWN_CLASS = 'AdvMapTownShared';
@@ -707,7 +708,7 @@ export function buildTown(spec: TownSpec, donorOrdinal: number, read: DataReader
       }
       for (const dep of dependenciesOf(seeded.get(b.path) ?? mustRead(read, b.path), b.path)) {
         if (dropped.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which is dropped — re-parent it (requires) or drop it too`);
-        if (unbuildable.has(dep)) throw new Error(`${b.key} needs ${keyOf.get(dep)}, which a town without a guild never builds — re-parent it (requires)`);
+        if (unbuildable.has(dep)) throw new Refusal(`${b.key} needs ${keyOf.get(dep)}, which a town without a guild never builds — re-parent it (requires)`);
       }
     }
     if (dropped.size) seeded.set(source, town);

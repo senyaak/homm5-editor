@@ -19,7 +19,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PandoraContents } from '../mods/pandora-contents.ts';
-import { UnknownFailure } from '../failure.ts';
+import { noteFailure } from '../failure.ts';
 
 /** The sidecar's name inside the map folder. */
 export const PANDORA_FILE = 'pandora.json';
@@ -46,8 +46,11 @@ export function readPandoraBoxes(mapDir: string): PandoraContents[] {
     const data = JSON.parse(readFileSync(p, 'utf8')) as Partial<PandoraSidecar>;
     return Array.isArray(data.boxes) ? data.boxes : [];
   } catch (e) {
-    // Never read as "no boxes": the next write would take every box away.
-    throw new UnknownFailure(`reading ${p}`, e);
+    // Bookkeeping must not sink a map: a sidecar edited by hand into nonsense
+    // costs its contents, not the map (tools/test-pandora-store.ts) — and the
+    // loss is said, since the next save makes it final.
+    noteFailure(`reading ${p} — its boxes are lost`, e);
+    return [];
   }
 }
 

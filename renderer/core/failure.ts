@@ -12,7 +12,7 @@
 // in the trap of renderer/index.html, which shows it whole (#fatal), and the
 // harness sees it as an uncaught error.
 
-import { messageOf } from '#src/failure.ts';
+import { isRefusal, messageOf } from '#src/failure.ts';
 import { $ } from './dom.ts';
 
 export { messageOf };
@@ -27,7 +27,10 @@ const describe = (e: unknown): string =>
  * the status line as `error: …`.
  */
 export function failed(what: string, e: unknown, line?: HTMLElement | string): void {
-  console.error(`${what}: ${describe(e)}`);
+  // A refusal is an answer to the person, not a failure: shown the same way,
+  // logged as what it is, and not the console error a test fails on.
+  if (isRefusal(e)) console.info(`[refused] ${what}: ${messageOf(e)}`);
+  else console.error(`${what}: ${describe(e)}`);
   if (line === undefined) $('hud').textContent = `error: ${what}: ${messageOf(e)}`;
   else (typeof line === 'string' ? $(line) : line).textContent = messageOf(e);
 }

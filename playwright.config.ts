@@ -35,7 +35,9 @@ export default defineConfig({
   // that mattered. `PW_ALL=1` runs the whole thing anyway, for the sweep after a
   // fix; `--max-failures=N` on the command line beats both.
   maxFailures: process.env.PW_ALL ? 0 : 1,
-  reporter: [['list']],
+  // The list, and where the run's time goes: every wait over two seconds and
+  // every timeout a test went on past, with its line (e2e/waits-reporter.ts).
+  reporter: [['list'], ['./e2e/waits-reporter.ts']],
   // Artifacts (screenshots, traces) land under test-results/, which is ignored.
   outputDir: 'test-results',
 });

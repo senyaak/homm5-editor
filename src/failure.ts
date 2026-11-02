@@ -30,6 +30,23 @@ export function noteFailure(what: string, e: unknown): void {
   console.error(`[failure] ${what}: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`);
 }
 
+/**
+ * The app saying no, by one of its rules, to the person asking: a name already
+ * taken, an id the game owns, a thing still held by another. Not a failure —
+ * an outcome: shown where they act, said in words they can act on, and one a
+ * test expects by name. It crosses IPC as `Refusal: <message>` (Electron
+ * writes an error as its name and message) and is made one again on the
+ * renderer's side (renderer/core/ipc.ts).
+ */
+export class Refusal extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'Refusal';
+  }
+}
+
+export const isRefusal = (e: unknown): boolean => e instanceof Error && e.name === 'Refusal';
+
 /** A failure nobody has classified yet: what was being done, and what was caught. */
 export class UnknownFailure extends Error {
   constructor(what: string, cause: unknown) {

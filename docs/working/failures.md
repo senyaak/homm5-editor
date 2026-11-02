@@ -23,6 +23,18 @@ How the code handles an error. The e2e side of it: [e2e.md](e2e.md).
 
 A form's error line alone, or a log alone, is a swallow.
 
+## A refusal is not a failure
+
+- When the app says no by one of its rules — a name taken, an id the game
+  owns, a thing still held by another, an install not prepared — it throws
+  `Refusal` (`src/failure.ts`), worded for the person to act on.
+- It crosses IPC as `Refusal: …` and is a `Refusal` again in the renderer
+  (`renderer/core/ipc.ts`); `failed()` shows it like any failure, logs it as
+  `[refused]`, and writes no console error — so a spec that provokes it checks
+  the line it is shown in, and needs no `allow`.
+- "Not found" where the thing should be there (`… is not in the mod`) is not a
+  refusal: the person did nothing wrong. It stays an error.
+
 ## When the kind is not known yet
 
 - `throw new UnknownFailure(what, e)` (`src/failure.ts`). It reaches the
@@ -37,5 +49,6 @@ A form's error line alone, or a log alone, is a swallow.
 
 One unreadable file among many is reported (`noteFailure` / `mainFailed`) and
 skipped; the scan goes on. A read whose failure would be taken for "empty" —
-a manifest, a sidecar, a roster — throws instead: the next write would replace
-what is there with nothing.
+a mod's manifest, a roster — throws instead: the next write would replace what
+is there with nothing. Where an owner's decision says the loss is accepted
+(the Pandora sidecar costs its boxes, not the map), the loss is reported.

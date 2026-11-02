@@ -35,6 +35,7 @@ import { answer } from '#src/rmg/service.ts';
 import type { RmgAnswers, RmgPaths, RmgRequest } from '#src/rmg/service.ts';
 import { deleteUserTemplate, saveUserTemplate, userTemplateRoot } from '#src/rmg/user-templates.ts';
 import { mainFailed } from '#electron/failure.ts';
+import { Refusal } from '#src/failure.ts';
 
 /** Where mounted archives are unpacked to — the tools use the same rule under the OS temp. */
 const mountCache = (): string => join(tmpRoot(), 'mounted');
@@ -53,7 +54,7 @@ function install(source: RmgSource | undefined): { g: string; paths: RmgPaths } 
   if (!g) throw new Error('no game install configured — the generator reads the game\'s data and executable');
   const exe = join(g, PATCHED_EXE);
   if (!existsSync(exe)) {
-    throw new Error(`no ${PATCHED_EXE} — this install has not been prepared yet (start the editor with --setup and press Prepare)`);
+    throw new Refusal(`no ${PATCHED_EXE} — this install has not been prepared yet (start the editor with --setup and press Prepare)`);
   }
   return { g, paths: { gameRoot: g, dataRoot: gameData(), cacheDir: mountCache(), exe, ownRoots: ownRoots(g), mods: source?.mods ?? true } };
 }
@@ -218,14 +219,14 @@ export function registerRmg(): void {
     if (/[\\/:*?"<>|]/.test(name)) throw new Error('the name cannot contain \\ / : * ? " < > |');
     const { g, paths } = install(p);
     const archive = modFile(g, 'map', name);
-    if (existsSync(archive)) throw new Error(`${archive} already exists`);
+    if (existsSync(archive)) throw new Refusal(`${archive} already exists`);
     // The seed the way the game's dialog fills it in when nobody typed one: a
     // positive 31-bit number, which is what the engine's generator takes.
     const seed = p.seed ?? (1 + Math.floor(Math.random() * 2147483646));
     const guid = newGuid();
     const prefix = `Maps/RMG/${guid}`;
     const mapDir = join(unpackRoot(archive).root, prefix);
-    if (existsSync(mapDir)) throw new Error(`${mapDir} already exists`);
+    if (existsSync(mapDir)) throw new Refusal(`${mapDir} already exists`);
     ensureModDir(g);
 
     const { mapName: _name, seed: _seed, minimap, mods: _mods, ...wish } = p;

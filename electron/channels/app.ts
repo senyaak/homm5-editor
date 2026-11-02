@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { PATCHED_EXE } from '#src/exe/creature-limit.ts';
+import { Refusal } from '#src/failure.ts';
 
 /** The graphics answer behind `gpuReport` — see EditorApi. */
 async function gpuReport(): Promise<string> {
@@ -61,7 +62,7 @@ export function registerApp(): void {
     if (!g) throw new Error('no game install configured');
     const exe = join(g, PATCHED_EXE);
     if (!existsSync(exe)) {
-      throw new Error(`no ${PATCHED_EXE} — this install has not been prepared yet`
+      throw new Refusal(`no ${PATCHED_EXE} — this install has not been prepared yet`
         + ' (start the editor with --setup, or delete nothing and press Prepare there)');
     }
     // `bin/`, the executable's OWN folder. This is not a detail: started with the

@@ -28,6 +28,7 @@ import type {
 } from './artifact-effects.ts';
 import { artifactNumbers } from './artifacts.ts';
 import { abilityNumbers } from './ability-files.ts';
+import { Refusal } from '../failure.ts';
 
 export const EXTENSION_DLL = 'homm5-editor.dll';
 /** The export the import table names. Never called — the point is `DllMain`. */
@@ -309,7 +310,7 @@ export function installExtension(gameRoot: string, editorRoot: string): InstallR
   }
   const exe = join(gameRoot, PATCHED_EXE);
   if (!existsSync(exe)) {
-    throw new Error(`no ${exe} — the extension loads through our copy of the executable, not the game's`);
+    throw new Refusal(`no ${exe} — the extension loads through our copy of the executable, not the game's`);
   }
   // Before either write, not between them. A running game holds both of these
   // and the copy would fail with a sentence about EBUSY; worse, whichever of the

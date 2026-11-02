@@ -35,7 +35,7 @@ import { packBlobs } from '#src/scene/blob-table.ts';
 import { clearBlobs, openBlob } from '#electron/blobs.ts';
 import { MAP_SIZES } from '#src/terrain/terrain-blank.ts';
 import { watchMapDir } from '#src/map/watch.ts';
-import { UnknownFailure } from '#src/failure.ts';
+import { Refusal, UnknownFailure } from '#src/failure.ts';
 import { mainFailed } from '#electron/failure.ts';
 
 /**
@@ -275,12 +275,12 @@ export function registerMaps(): void {
     const g = gameRoot();
     if (!g) throw new Error('no game install configured — a new map needs somewhere to be a file');
     const archive = modFile(g, 'map', name);
-    if (existsSync(archive)) throw new Error(`${archive} already exists`);
+    if (existsSync(archive)) throw new Refusal(`${archive} already exists`);
     // Its path inside the archive is how the game addresses it, and the working
     // folder keeps the same shape, so packing is a copy.
     const prefix = `Maps/${p.multiplayer ? 'Multiplayer' : 'SingleMissions'}/${name}`;
     const mapDir = join(unpackRoot(archive).root, prefix);
-    if (existsSync(mapDir)) throw new Error(`${mapDir} already exists`);
+    if (existsSync(mapDir)) throw new Refusal(`${mapDir} already exists`);
 
     // The enabled-spell and artifact lists are the game's own, so they follow the
     // installed data (and any mod) rather than a list frozen into the source.

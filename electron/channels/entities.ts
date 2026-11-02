@@ -13,13 +13,15 @@ import { need, state } from '#electron/state.ts';
 import type { Session } from '#electron/state.ts';
 import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
+import { Registry } from '#src/schema/registry.ts';
 import type { RosterEntry } from '#src/schema/registry.ts';
+import { gameData, mountedAssets } from '#electron/paths.ts';
 import { deref, schemaForClass } from '#src/schema/schema.ts';
 import { buildEntity } from '#src/schema/skeleton.ts';
 import { children, find, parse, serialize, text } from '#src/format/xml.ts';
 import { readTree, setPath } from '#src/schema/tree.ts';
 import type { XmlElement, XmlNode } from '#src/format/xml.ts';
-import { isMissing, UnknownFailure } from '#src/failure.ts';
+import { isMissing, Refusal, UnknownFailure } from '#src/failure.ts';
 import { mainFailed } from '#electron/failure.ts';
 
 /**
@@ -104,8 +106,10 @@ export function registerEntities(): void {
   // Discovered from the data tree (see src/registry.ts) and cached per session, so
   // the first request for a roster scans and the rest are instant.
   ipcMain.handle('registry:roster', async (_e: IpcMainInvokeEvent, { name }: RosterPayload): Promise<RosterResult> => {
-    const session = need();
-    const r = session.registry;
+    // The game's lists do not need a map: the campaign editor asks for them
+    // with none open. A map's own registry when there is one (its folder in
+    // front of the game's), the game's with the installed mod otherwise.
+    const r = state.session?.registry ?? new Registry(mountedAssets(gameData()));
     const roster =
       name === 'spells' ? r.spells() :
       name === 'artifacts' ? r.artifacts() :
@@ -150,7 +154,7 @@ export function registerEntities(): void {
     const handle = find(body, 'Name') || find(body, 'InternalName');
     if (handle) { handle.selfClose = false; handle.children = [{ type: 'text', text: clean } as XmlNode]; }
     const file = join(session.mapDir, `${clean}.(${className}).xdb`);
-    if (existsSync(file)) throw new Error(`${basename(file)} already exists`);
+    if (existsSync(file)) throw new Refusal(`${basename(file)} already exists`);
     writeFileSync(file, `<?xml version="1.0" encoding="UTF-8"?>\n${serialize(body)}\n`, 'utf8');
     session.watch.resync();
     return { href: `${clean}.(${className}).xdb#xpointer(/${className})` };
@@ -230,7 +234,7 @@ export function registerEntities(): void {
     if (r.editable) return { href }; // already map-local
     const base = basename(r.file);
     const dest = join(session.mapDir, base);
-    if (existsSync(dest)) throw new Error(`${base} already exists in the map folder`);
+    if (existsSync(dest)) throw new Refusal(`${base} already exists in the map folder`);
     copyFileSync(r.file, dest);
     session.watch.resync();
     const ptr = href.includes('#') ? href.slice(href.indexOf('#')) : '';
