@@ -9,14 +9,16 @@
 
 name: build
 
-# Not on every push: the work here lands as a stream of small commits from a
-# machine that has the game and has already run the whole suite, so a run per
-# commit would only re-check what was checked better locally. The release
-# workflow runs these same steps before it packages anything, which is the
-# moment they actually decide something.
+# On every pull request, and on a push to main that touches more than docs.
+# Fleet work lands through pull requests (docs/fleet/README.md), so a PR's run
+# is the gate the reviewer and the merger wait for; the push run watches main
+# after a merge. What reads the data or an install is run locally.
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**', 'changes/**']
   workflow_dispatch:
 
 jobs:
@@ -35,6 +37,12 @@ jobs:
       - run: npm ci
 
       - run: npm run typecheck
+
+      # Every relative link and #anchor in the tracked docs, and the changelog
+      # fragments under changes/: both need only the checkout.
+      - run: npm run test-doc-links
+
+      - run: npm run test-changelog
 
       # The app bundle, not the exe: it is the step that would fail on a bad
       # import, and it takes seconds where packaging takes minutes.

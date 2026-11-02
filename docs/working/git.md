@@ -18,7 +18,8 @@
 - Stage your own files by name; never `git add -A`. Report somebody else's
   uncommitted change; never commit it.
 - Never amend, rebase or force-push anything already pushed. A mistake after
-  a push is left and reported.
+  a push is left and reported. The one exception is a fleet branch under its
+  claim ([../fleet/workflow.md](../fleet/workflow.md#branch)).
 - One request = one action on one branch: "this can go to main" moves that
   commit and nothing else.
 - Never commit game content ([CONTRIBUTING.md](../../CONTRIBUTING.md#the-one-hard-rule-no-game-content-in-commits)).

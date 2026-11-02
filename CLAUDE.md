@@ -13,6 +13,7 @@ reads a legally installed game; nothing of the game is committed. The repo is
 - [docs/working/](docs/working/README.md) — how work is done here: tests, e2e, the game, design, mods, native, reverse engineering, git
 - [docs/README.md](docs/README.md) — formats, the map document, mods and content, what was read out of the executable
 - [docs/todo.md](docs/todo.md) — the work list: one file per open item
+- [docs/fleet/](docs/fleet/README.md) — the agent fleet: roles, slots, claiming, review and merge through GitHub
 - [ROADMAP.md](ROADMAP.md) — the plan and its history; `SLICE_*.md` at the root — designs in flight
 - [CHANGELOG.md](CHANGELOG.md) — what changed, as people read it on GitHub
 - [LOG.md](LOG.md) — what the extension's development build writes
