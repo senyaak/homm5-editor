@@ -10,6 +10,7 @@ import { existsSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { buildRenderer } from '../tools/build-renderer.ts';
+import { enterRunQueue } from '../tools/run-queue.ts';
 import { modDir } from '../src/game/mod-paths.ts';
 import { checkDeclared, clearAll } from './artifacts.ts';
 import { hasFixture, NEED_FIXTURE, ALLOW_NO_FIXTURE } from './c1m1/shared.ts';
@@ -92,6 +93,11 @@ export function runStartsTheModChain(argv: readonly string[] = process.argv.slic
 }
 
 export default async function build(): Promise<void> {
+  // One run at a time on the machine (tools/run-queue.ts). A run through one of
+  // our runners already holds a place and passes it down; a bare
+  // `playwright test` takes its own here. Playwright keeps its own Ctrl-C, so
+  // the place goes on exit, and a killed run's ticket is cleared by the next.
+  await enterRunQueue('playwright test', { signals: false });
   await buildRenderer();
 
   // A run starts clean. A map is a file now and the app refuses to write over

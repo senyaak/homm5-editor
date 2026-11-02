@@ -15,6 +15,8 @@ import { createWriteStream, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { enterRunQueue } from './run-queue.ts';
+
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
 /** A file name that sorts by time and needs no separator to read. */
@@ -35,6 +37,9 @@ function stamp(): string {
 export async function runPlaywright(
   args: readonly string[], env: NodeJS.ProcessEnv = {}, label = 'e2e',
 ): Promise<number> {
+  // One run at a time on the machine (tools/run-queue.ts); the place is passed
+  // down to Playwright through the environment, so its setup does not queue again.
+  await enterRunQueue(`e2e ${label}`);
   const dir = join(REPO_ROOT, '_tmp', 'e2e-logs');
   mkdirSync(dir, { recursive: true });
   const path = join(dir, `${label}-${stamp()}.log`);

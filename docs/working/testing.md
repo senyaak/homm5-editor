@@ -38,7 +38,12 @@ npm run test-e2e-fast -- e2e/smoke.spec.ts   # one spec
   the log's `Error:` lines and final counts, not the table.
 - Never pipe a run through `| tail` / `| grep`: the output keeps only what
   passed the pipe.
-- Never run `npm test` beside a separate playwright run: they share sandboxes.
+- One run at a time on the machine: `npm test` (and its levels), every e2e
+  runner and a bare `playwright test` wait in one queue
+  (`tools/run-queue.ts`, kept in `%LOCALAPPDATA%/homm5-editor/run-queue/`),
+  first come first served; a dead run's place is cleared by itself. A single
+  unit suite does not queue. A queued run can wait longer than a foreground
+  command may last: start it in the background and read its log when it ends.
 
 ## What to run
 

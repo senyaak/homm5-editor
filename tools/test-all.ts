@@ -24,6 +24,8 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 
+import { enterRunQueue } from './run-queue.ts';
+
 const root = join(import.meta.dirname, '..');
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')) as { scripts: Record<string, string> };
 
@@ -71,6 +73,10 @@ if (argv.includes('--list')) {
   for (const s of suites) console.log(`  ${s.name.padEnd(26)} ${isE2e(s.name, s.cmd) ? 'e2e' : needs(s.cmd)}`);
   process.exit(0);
 }
+
+// One run at a time on the machine; the suites it starts inherit the place
+// (tools/run-queue.ts), so its e2e half does not queue behind it.
+await enterRunQueue(`npm test${level ? ` --level ${level}` : ''}${only ? ` --only ${only}` : ''}`);
 
 const blanks = process.env.HOMM5_BLANKS;
 const results: Array<{ name: string; ok: boolean; ms: number }> = [];
