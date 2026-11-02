@@ -9,6 +9,7 @@ import { note } from './trace.ts';
 import { watchFailures } from './failures.ts';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { setTimeout as delay } from 'node:timers/promises';
+import { appendFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -35,6 +36,20 @@ export const E2E_GAME = process.env.HOMM5_ROOT || join(REPO_ROOT, '_tmp', 'e2e-i
  */
 export const DATA = process.env.HOMM5_DATA || join(REPO_ROOT, 'data-unpacked');
 
+/** The app's lines that say where a run's time goes, or that it failed: echoed into the run as they come. */
+const SAID_LIVE = /^\[(ipc|main error|failure|renderer gone)\]/;
+
+/** Each launch's terminal, whole, beside the run's own log (tools/e2e-log.ts writes to the same folder). */
+const APP_LOGS = join(REPO_ROOT, '_tmp', 'e2e-logs', 'app');
+const RUN_STAMP = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+let launches = 0;
+function appLogFile(): string {
+  mkdirSync(APP_LOGS, { recursive: true });
+  const file = join(APP_LOGS, `${RUN_STAMP}-${process.pid}-${++launches}.log`);
+  note(`app log: ${file}`);
+  return file;
+}
+
 /** A launched app plus its first (only) window, ready for interaction. */
 export interface Launched {
   app: ElectronApplication;
@@ -52,6 +67,8 @@ export interface Launched {
    * silently reloaded to the start screen leaves behind.
    */
   log: string[];
+  /** The failures this launch was told to expect (`launchEditor(…, { allow })`). */
+  allow?: RegExp;
 }
 
 /**
@@ -103,20 +120,30 @@ export async function launchEditor(
   const page = await app.firstWindow();
   const { watched, mainLine } = watchFailures(app, page, opts.allow);
   const log: string[] = [];
-  // Whole lines only: a chunk can end mid-line, and a failure marker cut in two
-  // would never match.
+  // The app's own terminal, kept: every line in a file of this launch's, and
+  // the ones that say where the time goes — a slow or still-running channel, a
+  // failure — in the run's output as they come, so a test that stands still
+  // says which call is holding it.
+  const file = appLogFile();
   const reader = (): ((chunk: Buffer | string) => void) => {
+    // Whole lines only: a chunk can end mid-line, and a marker cut in two would never match.
     let rest = '';
     return (chunk) => {
       const lines = (rest + String(chunk)).split(/\r?\n/);
       rest = lines.pop() ?? '';
-      for (const line of lines) if (line.trim()) { log.push(line); mainLine(line); }
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        log.push(line);
+        appendFileSync(file, `${line}\n`);
+        if (SAID_LIVE.test(line)) note(`app: ${line}`);
+        mainLine(line);
+      }
     };
   };
   app.process().stdout?.on('data', reader());
   app.process().stderr?.on('data', reader());
   await page.waitForLoadState('domcontentloaded');
-  return { app, page, errors: watched.errors, log };
+  return { app, page, errors: watched.errors, log, ...(opts.allow ? { allow: opts.allow } : {}) };
 }
 
 /**
@@ -143,8 +170,10 @@ export async function closeEditor(ed: Launched, allow?: RegExp): Promise<void> {
   try {
     await ed.app.close();
   } finally {
-    const unexpected = allow ? ed.errors.filter((e) => !allow.test(e)) : ed.errors;
-    expect(unexpected, 'the renderer threw nothing while this ran, closing included').toEqual([]);
+    // What the launch allowed is allowed here too; `allow` adds to it.
+    const allowed = (e: string): boolean => !!ed.allow?.test(e) || !!allow?.test(e);
+    const unexpected = ed.errors.filter((e) => !allowed(e));
+    expect(unexpected, 'the app reported no failure while this ran, closing included').toEqual([]);
   }
 }
 

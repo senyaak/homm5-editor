@@ -122,10 +122,11 @@ test('applying with the game open says so instead of failing on a temp file @nod
 });
 
 test('the unmodded game being open stops nothing @nodata', async () => {
-  // Our executable here is the stand-in the lock needs (a text file), so the
-  // extension cannot go into it: that failure is the stand-in's, and allowed.
+  // Our executable here is the stand-in the lock needs (a text file), so
+  // neither the extension nor the large-address mark can go into it: those
+  // failures are the stand-in's, and allowed.
   const ed = await launchEditor({ HOMM5_ROOT: GAME, HOMM5_DOCUMENTS: DOCS }, [],
-    { allow: /installing the extension: Error: not a PE file/ });
+    { allow: /installing the extension: Error: not a PE file|setting the large-address mark: Error: not an executable/ });
   try {
     await ed.page.locator('#qolbtn').click();
     await ed.page.locator('#qol-borderless').check();

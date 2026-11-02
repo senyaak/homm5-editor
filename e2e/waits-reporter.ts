@@ -26,7 +26,12 @@ const timed = (s: TestStep): boolean =>
   (s.category === 'pw:api' || s.category === 'expect')
   && !(s.parent && (s.parent.category === 'pw:api' || s.parent.category === 'expect'));
 
-const isTimeout = (s: TestStep): boolean => !!s.error && /timeout|timed out|exceeded/i.test(s.error.message ?? '');
+/**
+ * A wait that ran out of time, by the words Playwright ends one with — not any
+ * error that mentions a timeout (an expect's call log always names its own).
+ */
+const isTimeout = (s: TestStep): boolean =>
+  !!s.error && /Timeout \d+ms exceeded|Timed out \d+ms waiting/.test(s.error.message ?? '');
 
 interface Wait { ms: number; title: string; at: string; test: string }
 
