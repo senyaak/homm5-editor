@@ -64,6 +64,7 @@
     "test-our-api": "node tools/test-our-api.ts",
     "test-doc-links": "node tools/test-doc-links.ts",
     "test-run-queue": "node tools/test-run-queue.ts",
+    "test-changelog": "node tools/test-changelog.ts",
     "test-fixes": "node tools/test-fixes.ts",
     "test-fix-map": "node tools/test-fix-map.ts",
     "test-creature-limit": "node tools/test-creature-limit.ts",

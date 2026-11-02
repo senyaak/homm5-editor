@@ -25,12 +25,16 @@
 
 ## The changelog
 
-- A user-visible change gets its changelog entry in the same commit.
+- A user-visible change adds its entry as a new file in the same commit:
+  `changes/<issue>-<slug>.md`, one entry ([changes/README.md](../../changes/README.md)).
+  Never edit CHANGELOG.md for a change.
 - The entry says what was wrong and what a person will see, in the tone of the
   others — not what changed in the code.
 - No entry for internal work: reverse engineering, tests, refactoring.
-- Performance work goes to [PERFORMANCE.md](../PERFORMANCE.md), with one line
-  and its numbers in the changelog.
+- Performance work goes to [PERFORMANCE.md](../PERFORMANCE.md), with one entry
+  and its numbers under `changes/`.
+- Before a tag: `node tools/changelog.ts --cut <version>`, then the full test
+  run ([testing.md](testing.md)).
 
 ## A public repo
 

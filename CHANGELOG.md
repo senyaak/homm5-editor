@@ -7,12 +7,15 @@ section into the release notes, so this file is what people read on GitHub.
 Written for someone deciding whether to update: what was wrong, and what they
 would have seen.
 
-`## Unreleased` collects what has landed since the last tag. `release.yml` finds
-its section by version number, so this heading is inert until it is renamed to
-one. A version with a `-` in it (`-alpha.1`, `-rc.1`) is published as a GitHub
-pre-release.
+What has landed since the last tag is one file per change under
+[changes/](changes/README.md), plus what `## Unreleased` still holds from
+before; `node tools/changelog.ts --cut <version>` folds them into a version
+section. `release.yml` finds its section by version number. A version with a
+`-` in it (`-alpha.1`, `-rc.1`) is published as a GitHub pre-release.
 
 ## Unreleased
+
+> New entries are files under `changes/`, one per change — see `changes/README.md`.
 
 - The Factions window has no "Magic" choice any more: the magic guild is a
   building of the tree like any other. A town has a guild when you put one,

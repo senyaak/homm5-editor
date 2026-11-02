@@ -51,8 +51,9 @@ a shared change or a release; the C1M1 reconstruction only before a release
   backslash never goes through a heredoc ([shell-and-files.md](docs/working/shell-and-files.md)).
 - **Commit and push each verified change**: author the owner, committer the
   running Claude model via `GIT_COMMITTER_*`, no `Co-Authored-By`; stage your
-  own files only; never rewrite pushed history; a user-visible change gets its
-  changelog entry in the same commit ([git.md](docs/working/git.md)).
+  own files only; never rewrite pushed history; a user-visible change adds its
+  changelog entry as a file under `changes/` in the same commit — never an
+  edit of CHANGELOG.md ([git.md](docs/working/git.md)).
 - **Everything in the repo and on GitHub is English.** Only the chat with the
   owner is Russian.
 - **A task does what it says**; a neighbouring bug is named, small stale
