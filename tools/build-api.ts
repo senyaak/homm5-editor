@@ -78,7 +78,9 @@ writeFileSync(OUT, JSON.stringify(api, null, 1) + '\n');
 
 // --- the doc: our write-ups first, the un-written signatures after -----------
 const curatedNames = new Set(CURATED.map((f) => f.name));
-const anchor = (s: string): string => s.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+// GitHub's heading anchor: punctuation dropped, each space a dash — so
+// "Ours · Battle" is #ours--battle (tools/test-doc-links.ts checks it).
+const anchor = (s: string): string => s.toLowerCase().replace(/[^\p{L}\p{N}\s_-]/gu, '').replace(/\s/g, '-');
 const sig = (fn: ApiDoc): string => `${fn.name}(${curatedParams(fn)})`;
 
 const byCategory = new Map<string, ApiDoc[]>();

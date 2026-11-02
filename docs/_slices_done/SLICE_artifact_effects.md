@@ -132,7 +132,7 @@ an artifact depends on.
 | [e2e/mods.ts](../../e2e/mods.ts) | ✅ The Cloak of the Undead King as a fixture — ordinary data now that §1.1(б) is answered, authored through the dialog like everything else. The probe that proved it is retired. |
 | [renderer/index.html](../../renderer/index.html), [renderer/app.ts](../../renderer/app.ts) | ✅ A Sets pane inside the Artifacts dialog, not a dialog of its own: one mod, one install. Members are ticked from a list, never typed. |
 | [electron/main.ts](../../electron/main.ts), [electron/ipc.ts](../../electron/ipc.ts) | ✅ `mods:install-set`, and `sets` in `ModListEntry` so an installed set is visible. |
-| [e2e/mod-003-artifacts-create.spec.ts](../../e2e/mod-003-artifacts-create.spec.ts) | ✅ Builds two pieces and the set they belong to; checks that borrowing a shipped effect is refused. |
+| [e2e/003-mod-artifacts-create.spec.ts](../../e2e/003-mod-artifacts-create.spec.ts) | ✅ Builds two pieces and the set they belong to; checks that borrowing a shipped effect is refused. |
 | new: the proxy DLL | Forwards `zlib1.dll`, registers Lua functions, installs detours, reads the config. Built outside this repo; the editor ships and configures it. |
 | new: `src/mods/artifact-effects.ts` | The config model + writer — what the DLL reads. |
 | [src/mods/artifacts.ts](../../src/mods/artifacts.ts) | Emit the enum entry and the set alongside the existing artifact records. |

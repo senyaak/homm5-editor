@@ -152,12 +152,12 @@ paths with a user name in them, and the person reads it before it goes anywhere.
 
 | File | What happens to it |
 | --- | --- |
-| [tools/test-renderer-ids.ts](tools/test-renderer-ids.ts) *(new)* | §1.1(а). Parses the markup, fails on a repeated `id`, naming both lines. Registered in `package.json` so `npm test` runs it. |
+| `tools/test-renderer-ids.ts` *(new)* | §1.1(а). Parses the markup, fails on a repeated `id`, naming both lines. Registered in `package.json` so `npm test` runs it. |
 | [renderer/core/dom.ts](renderer/core/dom.ts) | `$()` grows the dev-only duplicate check (§1.1(б)) — it moved here when the renderer was split. |
 | [renderer/features/mods/*.ts](renderer/features/mods) | The thirteen `.catch(() => {})` report instead of swallowing (§6.5). |
 | [renderer/page.html](renderer/page.html) | Gains a CSP (§6.2). The shell, now that the dialogs have moved out to `renderer/parts/` (done). |
-| [electron/log.ts](electron/log.ts) *(new)* | §1.1(в). Opens the run's file, subscribes to both processes, writes tagged lines. |
-| [electron/crash.ts](electron/crash.ts) *(new)* | §1.1(е). The dialog, the signature-per-session rule, the issue URL, the debugger check. |
+| `electron/log.ts` *(new)* | §1.1(в). Opens the run's file, subscribes to both processes, writes tagged lines. |
+| `electron/crash.ts` *(new)* | §1.1(е). The dialog, the signature-per-session rule, the issue URL, the debugger check. |
 | [electron/main.ts](electron/main.ts) | Calls both at startup, before the window; the `[ipc]` and `[perf]` lines stop going out as errors (§6.1). |
 | [tools/build-renderer.ts](tools/build-renderer.ts) | Assembles `renderer/parts/*.html` into the page. The CODE split needs nothing here — esbuild already bundles ESM, which `code-editor.ts`, `particles.ts` and `skinning.ts` have relied on all along. |
 | [e2e/launch.ts](e2e/launch.ts) | Already collects stdout and page errors; gains the assertion that neither the log nor `page.on('console')` holds anything at warning or error (§1.1(г)). Both, because they see different things — §5.1. |

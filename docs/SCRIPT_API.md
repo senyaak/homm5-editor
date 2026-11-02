@@ -22,13 +22,13 @@ For the task view — which call for which job — see
 - [Heroes](#heroes) — 8
 - [Objectives](#objectives) — 2
 - [Objects](#objects) — 4
-- [Ours · Artifact sets](#ours-artifact-sets) — 2
-- [Ours · Battle](#ours-battle) — 2
-- [Ours · Creatures](#ours-creatures) — 6
-- [Ours · Heroes and spells](#ours-heroes-and-spells) — 9
-- [Ours · Hiring](#ours-hiring) — 5
-- [Ours · Plumbing](#ours-plumbing) — 6
-- [Ours · Windows](#ours-windows) — 4
+- [Ours · Artifact sets](#ours--artifact-sets) — 2
+- [Ours · Battle](#ours--battle) — 2
+- [Ours · Creatures](#ours--creatures) — 6
+- [Ours · Heroes and spells](#ours--heroes-and-spells) — 9
+- [Ours · Hiring](#ours--hiring) — 5
+- [Ours · Plumbing](#ours--plumbing) — 6
+- [Ours · Windows](#ours--windows) — 4
 - [Players](#players) — 1
 - [Triggers](#triggers) — 1
 
