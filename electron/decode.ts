@@ -25,6 +25,7 @@ import type { DecodeParams, Dep } from '#src/scene/geom-cache.ts';
 import type { DecodeJob } from '#src/scene/decode-job.ts';
 import { decodeAll, jobMs, spawned } from '#electron/geom-jobs.ts';
 import { tmpRoot } from '#electron/paths.ts';
+import { isMissing, UnknownFailure } from '#src/failure.ts';
 
 /** Where the entries live: the app's own temp, never the data root (that one is a consumable). */
 export const geomCacheDir = (): string => join(tmpRoot(), 'geoms');
@@ -71,7 +72,11 @@ async function statAll(data: Assets, rels: Iterable<string>): Promise<Map<string
   const one = async (rel: string): Promise<void> => {
     for (const root of data.roots) {
       const path = join(root, rel);
-      const s = await stat(path).catch(() => null);
+      // Not in this root is the ordinary answer: the next root may have it.
+      const s = await stat(path).catch((e: unknown) => {
+        if (isMissing(e)) return null;
+        throw new UnknownFailure(`looking for ${path}`, e);
+      });
       if (s?.isFile()) { out.set(rel, { path, size: s.size, mtime: s.mtimeMs }); return; }
     }
     out.set(rel, null);

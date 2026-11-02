@@ -24,6 +24,7 @@ import { parse, serialize, find, findAll, children, text, childText, setText, se
 import type { XmlElement, XmlNode } from '../format/xml.ts';
 import { applyDefaults } from './defaults.ts';
 import type { DefaultsOptions } from './defaults.ts';
+import { noteFailure } from '../failure.ts';
 
 /** A map-space object position: tile coordinates plus height. */
 export interface MapPos {
@@ -307,7 +308,7 @@ function parseDonor(xml: string, type: string): XmlElement | null {
     // It has to actually contain the type asked for; a mismatched donor would
     // write a monster where a building was wanted.
     return children(item).some((c) => c.name === type) ? item : null;
-  } catch { return null; }
+  } catch (e) { noteFailure(`reading a donor ${type}`, e); return null; }
 }
 
 /**

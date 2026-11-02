@@ -27,6 +27,7 @@ import { openScenePayload } from '#src/dialog/open-scene.ts';
 import type { OpenSceneJob, ScenePayload } from '#src/dialog/open-scene.ts';
 import type { SceneWorkerReply } from '#electron/scene-worker.ts';
 import { APP_ROOT } from '#electron/paths.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /** The child's entry point: TypeScript from the repo, JavaScript from a build. */
 const workerFile = (): string =>
@@ -85,7 +86,8 @@ export function ensureChild(): UtilityProcess | null {
     child = proc;
     return proc;
   } catch (e) {
-    console.warn('[scene] no background builder:', e instanceof Error ? e.message : String(e));
+    // The scene is still built, in this process; the terminal says why.
+    mainFailed('starting the background scene builder', e);
     return null;
   }
 }

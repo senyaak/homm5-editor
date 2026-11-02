@@ -8,6 +8,8 @@
 
 import { ask } from '#core/dialog.ts';
 import { $ } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
+import { UnknownFailure } from '#src/failure.ts';
 import { api } from '#core/ipc.ts';
 import { mapTreeOpen, refreshMapTree } from '#features/inspector/tree.ts';
 import { mountCodeEditor } from '#features/text-editor/code-editor.ts';
@@ -39,7 +41,7 @@ export const loc = {
 /** Fetch the map's localization state (called when a map opens). */
 export async function loadLocState(): Promise<void> {
   try { loc.state = await api.locGet(); }
-  catch { loc.state = { enabled: false, base: '', languages: [] }; }
+  catch (e) { throw new UnknownFailure('reading the localization state', e); }
   if (!loc.state.languages.includes(loc.active)) loc.active = loc.state.base;
 }
 
@@ -83,7 +85,7 @@ export async function showLocRef(): Promise<void> {
   if (!loc.state.enabled || langOf(doc.ref) !== 'text' || loc.active === loc.state.base) { ref.hidden = true; return; }
   let base = '';
   try { base = (await api.readFile(locVariant(doc.ref, loc.state.base))).text; }
-  catch { /* the base may not exist yet */ }
+  catch { /* not a failure: the base text may not exist yet */ }
   ref.hidden = false;
   ref.innerHTML = '';
   const b = document.createElement('b');
@@ -105,7 +107,7 @@ async function switchLocTab(code: string): Promise<void> {
 /** Add a language: provisions a copy of every base text, then edits it. */
 async function addLocLanguage(code: string): Promise<void> {
   try { loc.state = await api.locAddLanguage({ lang: code }); markDirty(true); }
-  catch (e) { $('hud').textContent = 'could not add language: ' + (e instanceof Error ? e.message : String(e)); return; }
+  catch (e) { failed('adding a language', e); return; }
   loc.active = code;
   await openTextEdit(doc.ref, doc.label);
 }
@@ -127,7 +129,7 @@ async function openScriptList(): Promise<void> {
   scriptDialog().showModal();
   let files: string[] = [];
   try { files = (await api.mapFiles({ exts: ['.lua'] })).files; }
-  catch (e) { note.textContent = 'could not list: ' + (e instanceof Error ? e.message : String(e)); return; }
+  catch (e) { failed('listing the map scripts', e, note); return; }
   list.innerHTML = '';
   if (!files.length) {
     const d = document.createElement('div');
@@ -221,14 +223,14 @@ function renderLocDialog(): void {
 
 async function enableLoc(base: string): Promise<void> {
   try { loc.state = await api.locEnable({ base }); markDirty(true); $('hud').textContent = `localization on · base ${base}`; }
-  catch (e) { $('hud').textContent = 'could not enable: ' + (e instanceof Error ? e.message : String(e)); return; }
+  catch (e) { failed('enabling localization', e); return; }
   loc.active = loc.state.base;
   renderLocDialog();
 }
 
 async function addLocFromDialog(code: string): Promise<void> {
   try { loc.state = await api.locAddLanguage({ lang: code }); markDirty(true); }
-  catch (e) { $('hud').textContent = 'could not add language: ' + (e instanceof Error ? e.message : String(e)); return; }
+  catch (e) { failed('adding a language', e); return; }
   renderLocDialog();
 }
 
@@ -238,13 +240,13 @@ async function exportLoc(code: string): Promise<void> {
     const r = await api.locExport({ lang: code });
     if ('ok' in r) $('hud').textContent = `exported ${langName(code)} → ${r.output} (${r.entries} files)`;
     else $('hud').textContent = 'export cancelled';
-  } catch (e) { $('hud').textContent = 'export failed: ' + (e instanceof Error ? e.message : String(e)); }
+  } catch (e) { failed(`exporting ${code}`, e); }
 }
 
 async function removeLoc(code: string): Promise<void> {
   if (!await ask(`Remove ${langName(code)}? Every ${code}.txt is deleted.`, 'Remove')) return;
   try { loc.state = await api.locRemoveLanguage({ lang: code }); markDirty(true); }
-  catch (e) { $('hud').textContent = 'could not remove: ' + (e instanceof Error ? e.message : String(e)); return; }
+  catch (e) { failed(`removing ${code}`, e); return; }
   if (loc.active === code) loc.active = loc.state.base;
   renderLocDialog();
 }

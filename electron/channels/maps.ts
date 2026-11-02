@@ -35,6 +35,8 @@ import { packBlobs } from '#src/scene/blob-table.ts';
 import { clearBlobs, openBlob } from '#electron/blobs.ts';
 import { MAP_SIZES } from '#src/terrain/terrain-blank.ts';
 import { watchMapDir } from '#src/map/watch.ts';
+import { UnknownFailure } from '#src/failure.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /**
  * Where the file dialog opens. Follows the last map opened; starts at ours.
@@ -134,7 +136,7 @@ function sourceMatches(dir: string, archivePath: string): boolean {
     const src = readManifest(dir).source;
     if (!src) return false;
     return src.hash === createHash('sha1').update(readFileSync(archivePath)).digest('hex');
-  } catch { return false; }
+  } catch (e) { throw new UnknownFailure(`comparing ${dir} with ${archivePath}`, e); }
 }
 
 /**
@@ -145,10 +147,11 @@ function sourceMatches(dir: string, archivePath: string): boolean {
  * called what the file is called, which is what the picker showed to open it.
  */
 function displayName(mapDir: string): string {
-  try {
+  // No manifest: a folder opened as it stands.
+  if (existsSync(join(mapDir, MANIFEST_NAME))) {
     const src = readManifest(mapDir).source?.path;
     if (src && /\.h5m$/i.test(src)) return basename(src, extname(src));
-  } catch { /* no manifest — a folder opened as it stands */ }
+  }
   return basename(mapDir);
 }
 
@@ -177,7 +180,9 @@ function pruneWorkspaces(keep: string): void {
     .map((d) => ({ d, at: statSync(d).mtimeMs }))
     .sort((a, b) => b.at - a.at);
   for (const { d } of dirs.slice(KEEP_WORKSPACES)) {
-    try { if (status(findMapDir(d) ?? d).dirty) continue; } catch { /* unreadable — let it go */ }
+    // A workspace whose state cannot be read may hold unsaved work: it stays.
+    try { if (status(findMapDir(d) ?? d).dirty) continue; }
+    catch (e) { mainFailed(`reading the state of ${d} (kept)`, e); continue; }
     removeTree(d);
   }
 }

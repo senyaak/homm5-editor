@@ -26,6 +26,7 @@ import { join, dirname, relative, sep } from 'node:path';
 import { toAssets } from '../game/assets.ts';
 import type { Assets } from '../game/assets.ts';
 import { Registry } from '../schema/registry.ts';
+import { isMissing, noteFailure } from '../failure.ts';
 
 /** One entry of the object palette. */
 export interface PlaceableObject {
@@ -205,14 +206,15 @@ export function listPlaceable(root: string | Assets, editorRoot: string): {
   // of it was a third of the scan.
   const walk = (dir: string): void => {
     let ents: Dirent[];
-    try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try { ents = readdirSync(dir, { withFileTypes: true }); }
+    catch (err) { if (!isMissing(err)) noteFailure(`listing ${dir}`, err); return; }
     for (const ent of ents) {
       const e = ent.name;
       const full = join(dir, e);
       if (ent.isDirectory()) { walk(full); continue; }
       if (!e.toLowerCase().endsWith('.xdb')) continue;
       let xml: string;
-      try { xml = readFileSync(full, 'utf8'); } catch { continue; }
+      try { xml = readFileSync(full, 'utf8'); } catch (err) { noteFailure(`reading ${full}`, err); continue; }
       const link = readLink(xml);
       if (!link) continue;
       // A random group is not placeable as itself — stand in its first member,
@@ -229,7 +231,8 @@ export function listPlaceable(root: string | Assets, editorRoot: string): {
       // than per-icon later: the palette sorts by it, so it is needed up front.
       let meta: { name: string | null; description: string | null } = { name: null, description: null };
       const icon = iconPathFor(editorRoot, rel);
-      if (icon) { try { meta = readIconMeta(readFileSync(icon)); } catch { /* keep the file name */ } }
+      // An icon entry that will not read leaves the file name as the label — and is said.
+      if (icon) { try { meta = readIconMeta(readFileSync(icon)); } catch (err) { noteFailure(`reading the icon entry ${icon}`, err); } }
       objects.push({
         path: rel,
         name: leaf,
@@ -340,7 +343,8 @@ function unlinkedShared(
   let root = roots[0]!;
   const walk = (dir: string): void => {
     let ents: Dirent[];
-    try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try { ents = readdirSync(dir, { withFileTypes: true }); }
+    catch (err) { if (!isMissing(err)) noteFailure(`listing ${dir}`, err); return; }
     for (const ent of ents) {
       const e = ent.name;
       const full = join(dir, e);

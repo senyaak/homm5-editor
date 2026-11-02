@@ -32,6 +32,7 @@ import type { Assets } from '../game/assets.ts';
 import { Registry, gameText } from '../schema/registry.ts';
 import { readText, toAssets } from './data.ts';
 import type { DataRoot } from './data.ts';
+import { noteFailure } from '../failure.ts';
 
 export interface HireableHero {
   /** `/MapObjects/Haven/Orrin.(AdvMapHeroShared).xdb#xpointer(/AdvMapHeroShared)`. */
@@ -68,8 +69,10 @@ function readRoster(data: Assets): HireableHero[] {
     let doc;
     try {
       doc = find(parse(readText(data, path)), 'AdvMapHeroShared');
-    } catch {
-      continue; // a hero the chain names and cannot read is not on offer
+    } catch (e) {
+      // A hero the chain names and cannot read is not on offer — and is said.
+      noteFailure(`reading the hero ${path}`, e);
+      continue;
     }
     if (!doc) continue;
     if (childText(doc, 'ScenarioHero') === 'true') continue;

@@ -6,6 +6,7 @@ one-line version of the rules that matter most.
 
 - [e2e.md](e2e.md) — writing a spec: every gesture checked by its outcome, maps built through the window, chains, live runs
 - [editor-design.md](editor-design.md) — data shown as saved, presets fill every field, the gesture named, deleting, refusals, our own art
+- [failures.md](failures.md) — every catch hands the error on, reports it, or says why it is not one; UnknownFailure until it has a kind
 - [git.md](git.md) — attribution, what is committed and pushed, the changelog, a public repo
 - [mods-and-the-engine.md](mods-and-the-engine.md) — where content lives, one mod, faction files apart, new tables in our DLL, one door for a new term
 - [native.md](native.md) — hooks and arity, vtables, logs in development builds only

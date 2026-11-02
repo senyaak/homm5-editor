@@ -15,6 +15,7 @@
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { isMissing, UnknownFailure } from '../failure.ts';
 
 /** A chain of asset roots, resolved most-specific-first. */
 export interface Assets {
@@ -135,8 +136,9 @@ export function assets(roots: readonly string[]): Assets {
     dirs: (rel) => chain.map((root) => join(root, rel)).filter((p) => {
       try {
         return statSync(p).isDirectory();
-      } catch {
-        return false;
+      } catch (e) {
+        if (isMissing(e)) return false;
+        throw new UnknownFailure(`reading ${p}`, e);
       }
     }),
   };

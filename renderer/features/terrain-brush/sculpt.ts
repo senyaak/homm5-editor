@@ -23,6 +23,7 @@ import { regionDraw, setRegionDraw } from '#features/regions.ts';
 import type { TileRect } from '#features/terrain-brush/brush.ts';
 import { markDirty } from '#core/dirty.ts';
 import { $, $button, $input, $select } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { uiPrefs } from '#core/prefs.ts';
 import { activeFloor, state } from '#core/state.ts';
@@ -180,8 +181,7 @@ async function commitStroke(): Promise<void> {
   } catch (e) {
     // The GPU already shows the stroke, so a failure here means the two copies
     // disagree. Say so plainly rather than leaving a lie on screen.
-    $('hud').textContent = 'paint failed (reload to resync): '
-      + (e instanceof Error ? e.message : String(e));
+    failed('painting the ground (reload to resync)', e);
   }
 }
 
@@ -348,8 +348,7 @@ async function commitRiver(): Promise<void> {
     markDirty(true);
   } catch (e) {
     strokeVerts.clear();
-    $('hud').textContent = 'river failed (reload to resync): '
-      + (e instanceof Error ? e.message : String(e));
+    failed('carving the river (reload to resync)', e);
   }
   void fl;
 }
@@ -607,8 +606,7 @@ async function commitSculpt(): Promise<void> {
     }));
     markDirty(true);
   } catch (e) {
-    $('hud').textContent = 'sculpt failed (reload to resync): '
-      + (e instanceof Error ? e.message : String(e));
+    failed('sculpting the ground (reload to resync)', e);
   }
 }
 

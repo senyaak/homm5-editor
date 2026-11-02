@@ -10,6 +10,8 @@
 // value verbatim, so re-rendering would only risk showing something else.
 
 import { $ } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
+import { UnknownFailure } from '#src/failure.ts';
 import { api } from '#core/ipc.ts';
 import { state } from '#core/state.ts';
 import { fieldRow, rowShell, selectFrom, setProp } from '#features/inspector/controls.ts';
@@ -33,7 +35,7 @@ export async function loadProps(): Promise<void> {
   try {
     res = await api.objectProps(id);
   } catch (e) {
-    host.textContent = 'could not read properties: ' + (e instanceof Error ? e.message : String(e));
+    failed('reading the properties', e, host);
     return;
   }
   // Selection can move while the reply is in flight; showing the old object's
@@ -113,7 +115,8 @@ export async function loadProps(): Promise<void> {
     h3.title = 'Lists and sub-objects — army, buildings, triggers. Edited in the tree.';
     host.appendChild(h3);
     let data: TreeData | undefined;
-    try { data = (await api.objectTree({ id })).tree as TreeData; } catch { /* count is a nicety */ }
+    // The counts are a nicety: the rows stand without them — and the reason is said.
+    try { data = (await api.objectTree({ id })).tree as TreeData; } catch (e) { failed("reading the object's structures", e); }
     if (propsFor !== id || !state.selected || state.selected.id !== id) return;
     for (const [name, f] of structured) host.appendChild(structRow(id, res.type, name, f, dataAt(data, name)));
   }
@@ -251,7 +254,8 @@ async function loadSpecValues(type: string): Promise<Record<string, string[]>> {
   const hit = specValuesByType.get(type);
   if (hit) return hit;
   let values: Record<string, string[]> = {};
-  try { values = (await api.specValues(type)).values; } catch { /* no spec, no dropdowns */ }
+  // A type with no spec answers with no values; a throw is something else.
+  try { values = (await api.specValues(type)).values; } catch (e) { throw new UnknownFailure(`reading the values of ${type}`, e); }
   specValuesByType.set(type, values);
   return values;
 }

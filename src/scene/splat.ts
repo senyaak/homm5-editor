@@ -19,6 +19,7 @@ import type { Terrain, TextureLayer } from '../terrain/terrain.ts';
 import type { ReadXdb } from './xdb.ts';
 import type { Picture, SplatData, TileInfo } from './payload.ts';
 import { round } from './units.ts';
+import { isMissing, noteFailure } from '../failure.ts';
 
 
 // Per-vertex ground colour: blend each texture layer's representative colour
@@ -271,7 +272,8 @@ export function listTiles(root: string | Assets, thumbSize = 64): TileInfo[] {
 
   const walk = (dir: string, rel: string): void => {
     let ents;
-    try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    try { ents = readdirSync(dir, { withFileTypes: true }); }
+    catch (e) { if (!isMissing(e)) noteFailure(`listing ${dir}`, e); return; }
     for (const e of ents) {
       const full = join(dir, e.name);
       if (e.isDirectory()) { walk(full, rel ? `${rel}/${e.name}` : e.name); continue; }

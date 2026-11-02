@@ -14,6 +14,7 @@
 // could not grow (features/mods/hero-tabs.ts).
 
 import { $, $input, $select, $button, fillSelect } from '#core/dom.ts';
+import { failed, failing } from '#core/failure.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { requireFilled } from '#core/form-gate.ts';
@@ -109,7 +110,7 @@ async function editSpec(id: string): Promise<void> {
   $input('hs-percent').value = String(s.effect?.percentPerLevel ?? 0);
   $select('hs-ability').value = s.ability ?? '';
   gateSpec().rewatch();
-  void showExtensionState('hs-ext').catch(() => {});
+  void showExtensionState('hs-ext').catch(failing('reading the extension state', 'hs-ext'));
 }
 
 /** Back to making a new one — every box cleared, or the next one inherits this. */
@@ -123,8 +124,8 @@ function newSpec(): void {
   $select('hs-ability').value = '';
   gateSpec().rewatch();
   openOnTop('specedit');
-  void fillSpecForm().catch(() => {});
-  void showExtensionState('hs-ext').catch(() => {});
+  void fillSpecForm().catch(failing('filling the specialization form', 'hs-err'));
+  void showExtensionState('hs-ext').catch(failing('reading the extension state', 'hs-ext'));
 }
 
 /**
@@ -142,7 +143,7 @@ async function removeSpec(id: string, label: string): Promise<void> {
     await refreshSpecList();
     $('hm-note').textContent = `${label} removed.`;
   } catch (e) {
-    $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the heroes window', e, 'hm-err');
   }
 }
 
@@ -172,7 +173,7 @@ async function submitSpec(): Promise<void> {
     $('hm-note').textContent = `${editingSpec ? 'Updated' : 'Installed'} in `
       + `${res.archive.split(/[\\/]/).pop()} — value ${res.number}`;
   } catch (e) {
-    $('hs-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the specialization form', e, 'hs-err');
   } finally {
     ok.disabled = false;
   }
@@ -196,7 +197,7 @@ export function initSpecializations(): void {
     pane: 'hm-pane-specs',
     onShow: () => {
       void refreshSpecList().catch((e: unknown) => {
-        $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+        failed('the heroes window', e, 'hm-err');
       });
     },
   });
@@ -209,7 +210,7 @@ export function initSpecializations(): void {
       void (async () => {
         const picked = await api.pickPicture();
         if (picked) $input(btn.dataset.for!).value = picked;
-      })().catch((e) => { $('hs-err').textContent = e instanceof Error ? e.message : String(e); });
+      })().catch((e) => { failed('the specialization form', e, 'hs-err'); });
     };
   }
 }

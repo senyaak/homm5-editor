@@ -40,6 +40,8 @@ import { assets } from '../src/game/assets.ts';
 import type { Assets } from '../src/game/assets.ts';
 import { mountCreatureMods, unpackCached } from '../src/mods/mod-archive.ts';
 import { GAMEPLAY_ARCHIVE } from '../src/mods/gameplay.ts';
+import { isMissing } from '../src/failure.ts';
+import { mainFailed } from './failure.ts';
 
 /**
  * The folder holding `electron/` and `renderer/`.
@@ -68,7 +70,7 @@ export function envFileHome(): string {
   try {
     accessSync(APP_ROOT, constants.W_OK);
     return APP_ROOT;
-  } catch { return app.getPath('userData'); }
+  } catch { /* not a failure: a folder we may not write is the answer — the user's own then */ return app.getPath('userData'); }
 }
 
 // Before anything below is asked anything. It fills in whatever the shell did
@@ -134,7 +136,10 @@ export function readSettings(): Settings {
   try {
     const raw = JSON.parse(readFileSync(settingsPath(), 'utf8')) as unknown;
     return raw && typeof raw === 'object' ? raw as Settings : {};
-  } catch {
+  } catch (e) {
+    // No file yet is the ordinary start. A file that will not read is said,
+    // and the editor starts from nothing rather than not at all.
+    if (!isMissing(e)) mainFailed(`reading ${settingsPath()}`, e);
     return {};
   }
 }
@@ -263,7 +268,7 @@ export function mountedAssets(base: string): Assets {
       }
     } catch (e) {
       // A mod we cannot read must not stop the editor opening a map.
-      console.warn('[mods] not mounted:', e instanceof Error ? e.message : String(e));
+      mainFailed('mounting the installed mod', e);
     }
     // The gameplay archive, when its flag has put one in the install: the
     // pandora box's palette entry and definitions live there and nowhere else,
@@ -275,7 +280,7 @@ export function mountedAssets(base: string): Assets {
         console.log(`[mods] ${basename(gameplay)} mounted`);
       }
     } catch (e) {
-      console.warn('[mods] gameplay archive not mounted:', e instanceof Error ? e.message : String(e));
+      mainFailed('mounting the gameplay archive', e);
     }
   }
   return assets([...over, base]);

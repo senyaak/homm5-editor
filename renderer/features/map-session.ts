@@ -7,6 +7,7 @@ import { FLOOR_LABEL, explorerOpen, hideExternalChange, setCliffs, setExplorer, 
 import { buildWorld, clearWorld } from '#viewport/world.ts';
 import { markDirty } from '#core/dirty.ts';
 import { $, $button, $input } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api, fetchBlob } from '#core/ipc.ts';
 import { uiPrefs } from '#core/prefs.ts';
 import { state } from '#core/state.ts';
@@ -181,8 +182,7 @@ export async function loadMapPath(path: string | null, archive: string | null = 
     console.log(`[perf] map open tail: settings ${(tTiles - tWorld) | 0}ms · listTiles ${(tListed - tTiles) | 0}ms · palette ${(tPalette - tListed) | 0}ms · panels ${(performance.now() - tPalette) | 0}ms`);
     void initObjectPalette();
   } catch (e) {
-    $('hud').textContent = 'error: ' + (e instanceof Error ? e.message : String(e));
-    console.error(e);
+    failed('opening the map', e);
   } finally {
     state.loading = false;
     $('loading').classList.remove('on');

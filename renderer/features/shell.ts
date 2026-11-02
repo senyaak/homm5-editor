@@ -11,6 +11,7 @@ export const CLICK_SLOP = 5;
 import { ask } from '#core/dialog.ts';
 import { isDirty, markDirty, whenEdited } from '#core/dirty.ts';
 import { $, $button, $input, setChild } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { saveUiPrefs, uiPrefs } from '#core/prefs.ts';
 import { state } from '#core/state.ts';
@@ -235,8 +236,7 @@ export async function openAny(path: string | null, inner?: string, stock?: boole
     // The folder that just appeared belongs in the picker's list.
     void initPicker();
   } catch (e) {
-    $('hud').textContent = 'error: ' + (e instanceof Error ? e.message : String(e));
-    console.error(e);
+    failed('opening the archive', e);
   } finally {
     $('loading').classList.remove('on');
   }
@@ -352,8 +352,8 @@ export async function initPicker() {
     renderCats();
     renderMapList();
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    $('maplist').innerHTML = `<div class="empty">could not load the list: ${msg}</div>`;
+    $('maplist').innerHTML = '<div class="empty"></div>';
+    failed('listing the maps', e, $('maplist').firstElementChild as HTMLElement);
   }
 }
 
@@ -383,8 +383,7 @@ export function initShell(): void {
       try {
         await loadIdleSkins();
       } catch (err) {
-        console.error('idle skins', err);
-        $('hud').textContent = 'idle stance: loading animations failed — open the map again';
+        failed('loading the idle animations (open the map again)', err);
         return;
       }
     }

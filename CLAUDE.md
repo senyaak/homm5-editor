@@ -40,6 +40,9 @@ a shared change or a release; the C1M1 reconstruction only before a release
   a console goes into a test in the same commit.
 - **e2e: every gesture is followed by a check that nothing threw**, and maps
   are built through the palette, never under the UI ([e2e.md](docs/working/e2e.md)).
+- **No failure is swallowed**: every catch hands the error on, reports it
+  through its layer's reporter, or is marked `not a failure: <why>`; an
+  unclassified one is `UnknownFailure` ([failures.md](docs/working/failures.md)).
 - **Separate what is proven from what is assumed.** Proven about the file is
   not proven about the engine; "found nothing" is a property of the tool.
 - **Read the code, not the picture**; docs and the web before the disassembler

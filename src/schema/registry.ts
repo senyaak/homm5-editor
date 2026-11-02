@@ -27,6 +27,7 @@ import { EDITOR_ABILITIES } from '../mods/ability-files.ts';
 import { readStats } from '../mods/creatures.ts';
 import type { CreatureStats } from '../mods/creatures.ts';
 import { townTypeFor } from '../mods/factions.ts';
+import { isMissing, noteFailure, UnknownFailure } from '../failure.ts';
 
 /** One choice in a picker: an engine id (or a ref href) and a display label. */
 export interface RosterEntry {
@@ -101,7 +102,7 @@ function modRaces(data: Assets): RosterEntry[] {
   const names = new Map<string, string>();
   for (const dir of data.dirs('Factions')) {
     let folders: string[];
-    try { folders = readdirSync(dir); } catch { continue; }
+    try { folders = readdirSync(dir); } catch (e) { if (!isMissing(e)) noteFailure(`listing ${dir}`, e); continue; }
     for (const file of folders) {
       const raw = data.bytes(`Factions/${file}/race.txt`);
       if (!raw || raw.length < 2) continue;
@@ -123,7 +124,8 @@ export class Registry {
     const hit = this.cache.get(key);
     if (hit) return hit;
     let out: RosterEntry[];
-    try { out = build(); } catch { out = []; }
+    // A roster that failed to build is not an empty one: it is not kept, and it is said.
+    try { out = build(); } catch (e) { throw new UnknownFailure(`building the roster ${key}`, e); }
     this.cache.set(key, out);
     return out;
   }
@@ -589,7 +591,8 @@ function walkFiles(dir: string, test: (name: string) => boolean, out: string[] =
   // The directory entries carry their kind: a stat per file on top of the
   // listing was most of a class scan's time on Windows.
   let ents: Dirent[];
-  try { ents = readdirSync(dir, { withFileTypes: true }); } catch { return out; }
+  try { ents = readdirSync(dir, { withFileTypes: true }); }
+  catch (e) { if (isMissing(e)) return out; throw new UnknownFailure(`listing ${dir}`, e); }
   for (const ent of ents) {
     const full = join(dir, ent.name);
     if (ent.isDirectory()) walkFiles(full, test, out);
@@ -631,7 +634,8 @@ function rootElement(path: string): string | null {
       .replace(/<\?[\s\S]*?\?>/g, '')
       .replace(/<!--[\s\S]*?(-->|$)/g, '');
     return /<([A-Za-z_][\w.-]*)[\s/>]/.exec(head)?.[1] ?? null;
-  } catch {
+  } catch (e) {
+    noteFailure(`reading the root element of ${path}`, e);
     return null;
   } finally {
     if (fd !== undefined) closeSync(fd);
@@ -685,7 +689,9 @@ function scanClass(data: Assets, className: string): RosterEntry[] {
         } else {
           // A library entity: prefer its InternalName label.
           let internal = '';
-          try { internal = childText(parse(readFileSync(f, 'utf8')), 'InternalName'); } catch { /* keep basename */ }
+          // One that will not parse keeps its file name — and is said.
+          try { internal = childText(parse(readFileSync(f, 'utf8')), 'InternalName'); }
+          catch (e) { noteFailure(`reading the InternalName of ${f}`, e); }
           name = internal || bn.replace(/\.xdb$/, '');
         }
         out.push(group ? { id: href, name, group } : { id: href, name });

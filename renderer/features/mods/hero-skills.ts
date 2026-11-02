@@ -16,6 +16,7 @@
 // (it is opened to a class in the class form, where the gate actually lives).
 
 import { $, $input, $select, fillSelect } from '#core/dom.ts';
+import { failed, failing } from '#core/failure.ts';
 import { modDialog, openOnTop, ask } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { registerHeroTab } from '#features/mods/hero-tabs.ts';
@@ -226,7 +227,7 @@ async function removeSkill(id: string, label: string): Promise<void> {
     $('hm-note').textContent = `${label} removed.`;
     await refreshSkillList();
   } catch (e) {
-    $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the heroes window', e, 'hm-err');
   }
 }
 
@@ -270,7 +271,7 @@ async function submitSkill(): Promise<void> {
     modDialog('skilledit').close();
     await refreshSkillList();
   } catch (e) {
-    $('hk-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the skill form', e, 'hk-err');
   }
 }
 
@@ -301,7 +302,7 @@ function openSkillScript(side: Side): void {
   if (!scriptContextReady()) {
     void loadScriptContext()
       .then(() => { $('ks-info').textContent = scriptContextNote(); })
-      .catch(() => { $('ks-info').textContent = 'no completion available'; });
+      .catch(failing('loading the script completion', 'ks-info'));
   }
   if (!skillScriptEditor) {
     skillScriptEditor = mountCodeEditor($('ks-text'), () => closeSkillScript(true), (diags) => {
@@ -341,7 +342,7 @@ export function initHeroSkills(): void {
     pane: 'hm-pane-skills',
     onShow: () => {
       void refreshSkillList().catch((e: unknown) => {
-        $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+        failed('the heroes window', e, 'hm-err');
       });
     },
   });
@@ -366,13 +367,13 @@ export function initHeroSkills(): void {
     gateSkill().rewatch();
     openOnTop('skilledit');
     void fillSkillForm().catch((e: unknown) => {
-      $('hk-err').textContent = e instanceof Error ? e.message : String(e);
+      failed('the skill form', e, 'hk-err');
     });
   };
 
   $('hk-effect-add').onclick = () => {
     void ensureEffectStats().then(() => addSkillEffectRow())
-      .catch((e: unknown) => { $('hk-err').textContent = e instanceof Error ? e.message : String(e); });
+      .catch((e: unknown) => { failed('the skill form', e, 'hk-err'); });
   };
   $select('hk-kind').addEventListener('change', showKind);
   for (const btn of document.querySelectorAll<HTMLButtonElement>('button.hk-picture')) {
@@ -380,7 +381,7 @@ export function initHeroSkills(): void {
       void (async () => {
         const picked = await api.pickPicture();
         if (picked) $input(btn.dataset.for!).value = picked;
-      })().catch((e) => { $('hk-err').textContent = e instanceof Error ? e.message : String(e); });
+      })().catch((e) => { failed('the skill form', e, 'hk-err'); });
     };
   }
   $('hk-script').onclick = () => openSkillScript('map');

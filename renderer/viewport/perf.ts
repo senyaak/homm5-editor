@@ -227,5 +227,5 @@ try {
     }
   }).observe({ type: 'long-animation-frame', buffered: true });
 } catch {
-  // An older Chromium: the percentiles still work, only the attribution is gone.
+  // not a failure: an older Chromium — the percentiles still work, only the attribution is gone.
 }

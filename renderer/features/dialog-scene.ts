@@ -20,6 +20,7 @@ import type { AmbientData, GeomData } from '#src/scene/payload.ts';
 import type { SceneInfo, ScenesInFileResult } from '#electron/ipc.ts';
 import { api, fetchBlob } from '#core/ipc.ts';
 import { $, $button, $input } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { markShadowRoles } from '#viewport/shadows.ts';
 import { buildWorld, clearWorld } from '#viewport/world.ts';
 import { idleMode, setIdleMode } from '#viewport/idle.ts';
@@ -766,7 +767,7 @@ async function pick(inner: string): Promise<void> {
   try {
     await openScene(inner, source?.file);
   } catch (e) {
-    $('sc-info').textContent = e instanceof Error ? e.message : String(e);
+    failed('opening the scene', e, 'sc-info');
     return;
   }
   renderPanel();
@@ -841,7 +842,7 @@ export function initDialogScenes(): void {
     try {
       await openSceneFile(file);
     } catch (e) {
-      $('sc-info').textContent = e instanceof Error ? e.message : String(e);
+      failed('opening the scene', e, 'sc-info');
     }
   };
   // Back to the list: the scene comes DOWN, because the viewport holds one

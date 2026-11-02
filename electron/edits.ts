@@ -16,6 +16,7 @@ import { loadMap } from '#src/map/map.ts';
 import { tmpRoot } from '#electron/paths.ts';
 import { TERRAIN_FILE, terrainDoc } from '#electron/state.ts';
 import type { Session } from '#electron/state.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /** Documents an edit may touch: the map, some floors' terrain, or both. */
 export interface Touches { map?: boolean; floors?: number[] }
@@ -119,7 +120,8 @@ export function saveHistory(s: Session): void {
   try {
     mkdirSync(dirname(s.historyPath), { recursive: true });
     writeFileSync(s.historyPath, JSON.stringify(s.history.save(docsHash(s))));
-  } catch { /* a history that cannot be written is not a reason to fail an edit */ }
+  // A history that cannot be written is not a reason to fail an edit — but it is said.
+  } catch (e) { mainFailed('writing the undo history', e); }
 }
 
 export function loadHistory(s: Session): void {
@@ -127,5 +129,6 @@ export function loadHistory(s: Session): void {
     if (!existsSync(s.historyPath)) return;
     const stored = JSON.parse(readFileSync(s.historyPath, 'utf8')) as StoredHistory;
     s.history.restore(stored, docsHash(s));
-  } catch { /* an unreadable history is dropped, not repaired */ }
+  // An unreadable history is dropped, not repaired — and said.
+  } catch (e) { mainFailed('reading the undo history (dropped)', e); }
 }

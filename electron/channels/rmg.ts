@@ -34,6 +34,7 @@ import type { OfferedTemplate } from '#src/rmg/index.ts';
 import { answer } from '#src/rmg/service.ts';
 import type { RmgAnswers, RmgPaths, RmgRequest } from '#src/rmg/service.ts';
 import { deleteUserTemplate, saveUserTemplate, userTemplateRoot } from '#src/rmg/user-templates.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /** Where mounted archives are unpacked to — the tools use the same rule under the OS temp. */
 const mountCache = (): string => join(tmpRoot(), 'mounted');
@@ -123,7 +124,8 @@ function ensureChild(): UtilityProcess | null {
     child = proc;
     return proc;
   } catch (e) {
-    console.warn('[rmg] no background generator:', e instanceof Error ? e.message : String(e));
+    // The generator still runs, in this process; the terminal says why.
+    mainFailed('starting the background generator', e);
     return null;
   }
 }

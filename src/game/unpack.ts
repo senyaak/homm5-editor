@@ -192,6 +192,7 @@ export function looksLikeGameFolder(dir: string): boolean {
   try {
     return existsSync(data) && readdirSync(data).some((f) => /\.pak$/i.test(f));
   } catch {
+    // not a failure: a folder that cannot be listed does not look like a game folder.
     return false;
   }
 }

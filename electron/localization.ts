@@ -13,6 +13,7 @@
 import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Session } from '#electron/state.ts';
+import { isMissing, UnknownFailure } from '#src/failure.ts';
 
 const LOC_FILE = 'localization.json';
 
@@ -28,7 +29,7 @@ function locPath(s: Session): string { return join(s.mapDir, LOC_FILE); }
 export function readLoc(s: Session): LocConfig | null {
   const p = locPath(s);
   if (!existsSync(p)) return null;
-  try { return JSON.parse(readFileSync(p, 'utf8')) as LocConfig; } catch { return null; }
+  try { return JSON.parse(readFileSync(p, 'utf8')) as LocConfig; } catch (e) { throw new UnknownFailure(`reading ${p}`, e); }
 }
 
 export function writeLoc(s: Session, cfg: LocConfig): void {
@@ -40,10 +41,11 @@ export function writeLoc(s: Session, cfg: LocConfig): void {
 export function allTexts(root: string): string[] {
   const out: string[] = [];
   const walk = (dir: string, rel: string): void => {
-    let ents: string[]; try { ents = readdirSync(dir); } catch { return; }
+    let ents: string[]; try { ents = readdirSync(dir); } catch (err) { throw new UnknownFailure(`listing ${dir}`, err); }
     for (const e of ents) {
       const abs = join(dir, e); const r = rel ? `${rel}/${e}` : e;
-      let st; try { st = statSync(abs); } catch { continue; }
+      // Gone between the listing and now is an answer; anything else is not.
+      let st; try { st = statSync(abs); } catch (err) { if (isMissing(err)) continue; throw new UnknownFailure(`reading ${abs}`, err); }
       if (st.isDirectory()) walk(abs, r);
       else if (/\.txt$/i.test(e)) out.push(r);
     }

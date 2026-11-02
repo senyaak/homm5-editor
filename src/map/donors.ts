@@ -20,6 +20,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { mapFilesUnder } from './map-source.ts';
+import { noteFailure } from '../failure.ts';
 
 /** One `<Item …><AdvMapX>…</AdvMapX></Item>` fragment, as text. */
 export type DonorXml = string;
@@ -46,7 +47,7 @@ export function donorFor(gameData: string, type: string): DonorXml | null {
 
   for (const file of mapFiles(gameData)) {
     let xml: string;
-    try { xml = readFileSync(file, 'latin1'); } catch { continue; }
+    try { xml = readFileSync(file, 'latin1'); } catch (e) { noteFailure(`reading ${file}`, e); continue; }
     const open = `<${type}>`;
     const at = xml.indexOf(open);
     if (at < 0) continue;

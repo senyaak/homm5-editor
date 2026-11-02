@@ -17,6 +17,8 @@
 import { markDirty } from '#core/dirty.ts';
 import { fillOpen, setFillPanel } from '#features/fill.ts';
 import { $, $button, $input, $select } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
+import { UnknownFailure } from '#src/failure.ts';
 import { api } from '#core/ipc.ts';
 import { saveUiPrefs, uiPrefs } from '#core/prefs.ts';
 import { activeFloor, state } from '#core/state.ts';
@@ -96,7 +98,7 @@ export async function loadRegions(): Promise<void> {
   if (!state.world) { regionList = []; renderRegionList(); drawRegionOverlay(); return; }
   let tree: TreeData;
   try { tree = (await api.mapTree()).tree as TreeData; }
-  catch { return; }
+  catch (e) { throw new UnknownFailure('reading the regions', e); }
   const raw = dataAt(tree, 'regions');
   regionList = (Array.isArray(raw) ? raw : []).map((it, i): RegionInfo => {
     const rect = dataAt(it, 'Rect'), col = dataAt(it, 'Color');
@@ -120,7 +122,7 @@ async function setRegionField(i: number, path: TreePath, value: string): Promise
     await api.setMapPath({ path: ['regions', i, ...path], value });
     markDirty(true);
   } catch (e) {
-    $('hud').textContent = 'region: ' + (e instanceof Error ? e.message : String(e));
+    failed('setting the region', e);
   }
 }
 
@@ -160,7 +162,7 @@ export async function addRegion(r: TileRect): Promise<void> {
     markDirty(true);
     $('hud').textContent = `region ${name}: ${r.x0}, ${r.y0} — ${r.x1}, ${r.y1}`;
   } catch (e) {
-    $('hud').textContent = 'could not add region: ' + (e instanceof Error ? e.message : String(e));
+    failed('adding the region', e);
   }
   await loadRegions();
   if (mapTreeOpen() && treeTarget === MAP_TREE) await refreshMapTree();
@@ -172,7 +174,7 @@ async function removeRegion(i: number): Promise<void> {
     await api.removeMapItem({ path: ['regions', i] });
     markDirty(true);
   } catch (e) {
-    $('hud').textContent = 'could not remove region: ' + (e instanceof Error ? e.message : String(e));
+    failed('removing the region', e);
   }
   await loadRegions();
   if (mapTreeOpen() && treeTarget === MAP_TREE) await refreshMapTree();

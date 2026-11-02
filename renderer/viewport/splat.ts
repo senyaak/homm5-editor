@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 
 import { uiPrefs } from '#core/prefs.ts';
+import { failed } from '#core/failure.ts';
 import type { Floor3D, MaterialBatch } from '#core/state.ts';
 import type { IdleKind } from '#viewport/skinning.ts';
 import type { GeomPart, Instance, Picture, SplatData } from '#src/scene/payload.ts';
@@ -305,7 +306,7 @@ export function applyProjectedMaterials(fl: Floor3D): void {
   // skin drawn with the untextured stand-in is a light grey plate on the
   // ground, and an overlay drawn as a plain decal is a see-through floor.
   for (const b of fl.materialBatches.values()) {
-    try { projectMaterialBatch(fl, b); } catch (e) { console.error(`projected material failed for ${b.key}`, e); }
+    try { projectMaterialBatch(fl, b); } catch (e) { failed(`projecting the material of ${b.key}`, e); }
   }
   // The animated bodies are drawn by their own skinned meshes, not by a batch
   // (idle.ts), and they need the ground just the same: a sawmill's floor and
@@ -315,7 +316,7 @@ export function applyProjectedMaterials(fl: Floor3D): void {
   // animation on, which is why the harness, built without it, showed neither
   // (Senya).
   for (const kind of fl.idleKinds.values()) {
-    try { projectIdle(fl, kind); } catch (e) { console.error('projected material failed for an animated object', e); }
+    try { projectIdle(fl, kind); } catch (e) { failed('projecting the material of an animated object', e); }
   }
 }
 

@@ -8,6 +8,7 @@
 // recurses on the data itself, so nothing in the file is hidden.
 
 import { $ } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { roster } from '#core/rosters.ts';
 import { nameRefInput, selectFrom } from '#features/inspector/controls.ts';
@@ -122,7 +123,7 @@ export async function refreshMapTree(): Promise<void> {
   $('mt-title').textContent = treeTarget.label;
   let data: TreeData;
   try { data = await treeTarget.read(); }
-  catch (e) { body.textContent = 'could not read tree: ' + (e instanceof Error ? e.message : String(e)); return; }
+  catch (e) { failed('reading the tree', e, body); return; }
   body.innerHTML = '';
   for (const [name, raw] of Object.entries(treeTarget.fields())) {
     const field = deref(treeTarget.root, raw);
@@ -340,24 +341,24 @@ function fillArray(kids: HTMLElement, field: FieldSchema, data: TreeData | undef
 /** Run a structural list edit, then reflect dirty and rebuild the tree. */
 async function mutateList(op: () => Promise<unknown>): Promise<void> {
   try { await op(); markDirty(true); await refreshMapTree(); }
-  catch (e) { $('hud').textContent = 'tree edit failed: ' + (e instanceof Error ? e.message : String(e)); }
+  catch (e) { failed('editing a list in the tree', e); }
 }
 
 /** Replace a value list — what a single-choice list row commits through. */
 async function treeSetList(path: TreePath, values: string[]): Promise<void> {
   if (!treeTarget.setList) { $('hud').textContent = `${path.join('.')} is not a list this view can write`; return; }
   try { await treeTarget.setList(path, values); markDirty(true); $('hud').textContent = `${path.join('.')} = ${values.join(', ') || '(empty)'}`; }
-  catch (e) { $('hud').textContent = `could not set ${path.join('.')}: ` + (e instanceof Error ? e.message : String(e)); }
+  catch (e) { failed(`setting ${path.join('.')}`, e); }
 }
 
 /** The same, for whatever the tree is currently editing. */
 async function treeSet(path: TreePath, value: string): Promise<void> {
   try { await treeTarget.set(path, value); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
-  catch (e) { $('hud').textContent = `could not set ${path.join('.')}: ` + (e instanceof Error ? e.message : String(e)); }
+  catch (e) { failed(`setting ${path.join('.')}`, e); }
 }
 
 /** Write one leaf by path, then reflect dirty (the input already shows the value). */
 export async function setMapPath(path: TreePath, value: string): Promise<void> {
   try { await api.setMapPath({ path, value }); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
-  catch (e) { $('hud').textContent = `could not set ${path.join('.')}: ` + (e instanceof Error ? e.message : String(e)); }
+  catch (e) { failed(`setting ${path.join('.')}`, e); }
 }

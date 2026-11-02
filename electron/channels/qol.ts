@@ -24,6 +24,7 @@ import { heldByRunningGame } from '#src/game/running.ts';
 import { MOD_DIR } from '#src/game/mod-paths.ts';
 import { PATCHED_EXE } from '#src/exe/creature-limit.ts';
 import { setLargeAddressAware } from '#src/exe/large-address.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /** The install, or a refusal that says what is missing rather than throwing null. */
 function install(): string {
@@ -118,6 +119,8 @@ export function registerQol(): void {
       try {
         extension = installExtension(g, APP_ROOT).installed;
       } catch (e) {
+        // The rest still applies; the panel's note and the terminal say what did not.
+        mainFailed('installing the extension', e);
         notes.push(e instanceof Error ? e.message : String(e));
       }
     }
@@ -136,6 +139,7 @@ export function registerQol(): void {
       else if (wanted['stack-health-bar']) writeQolArchive(g, gameData());
       else removeQolArchive(g);
     } catch (e) {
+      mainFailed('writing the health bar archive', e);
       notes.push(e instanceof Error ? e.message : String(e));
     }
 
@@ -147,6 +151,7 @@ export function registerQol(): void {
       if (held) { /* said above; nothing in the install is touched */ }
       else setLargeAddressAware(g, !!wanted['large-addresses']);
     } catch (e) {
+      mainFailed('setting the large-address mark', e);
       notes.push(e instanceof Error ? e.message : String(e));
     }
 
@@ -161,6 +166,7 @@ export function registerQol(): void {
       else if (wanted['pandora-box']) writeGameplayArchive(g, gameData());
       else removeGameplayArchive(g);
     } catch (e) {
+      mainFailed('writing the gameplay archive', e);
       notes.push(e instanceof Error ? e.message : String(e));
     }
     const note = notes.join('; ');

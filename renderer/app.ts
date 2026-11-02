@@ -17,6 +17,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 import { $, $select, $button, $input, setChild, fillSelect } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import { uiPrefs, saveUiPrefs } from '#core/prefs.ts';
@@ -1084,7 +1085,7 @@ async function submitNewMap(): Promise<void> {
     void initPicker();
   } catch (e) {
     // Stay open on failure — a name clash is fixed by editing the name.
-    $('nm-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('making the new map', e, 'nm-err');
   } finally {
     ok.disabled = false;
   }
@@ -1190,7 +1191,7 @@ $('playbtn').onclick = async () => {
     const r = await api.launchGame();
     $('hud').textContent = `started ${r.exe}`;
   } catch (e) {
-    $('hud').textContent = `error: ${e instanceof Error ? e.message : String(e)}`;
+    failed('starting the game', e);
   }
 };
 

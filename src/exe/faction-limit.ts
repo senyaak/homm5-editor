@@ -96,7 +96,7 @@ export function setFactionLimits(gameRoot: string, factions: number, namedTowns:
     try {
       replaceFile(temp, target);
     } catch (e) {
-      try { unlinkSync(temp); } catch { /* the message below is what matters */ }
+      try { unlinkSync(temp); } catch { /* not a failure: the error thrown below is the one that matters */ }
       throw new Error(`cannot write ${target} — close the game first (${e instanceof Error ? e.message : String(e)})`);
     }
   }

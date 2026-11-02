@@ -19,6 +19,8 @@ import { buildEntity } from '#src/schema/skeleton.ts';
 import { children, find, parse, serialize, text } from '#src/format/xml.ts';
 import { readTree, setPath } from '#src/schema/tree.ts';
 import type { XmlElement, XmlNode } from '#src/format/xml.ts';
+import { isMissing, UnknownFailure } from '#src/failure.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /**
  * Entities that live BESIDE the map, listed first.
@@ -33,11 +35,12 @@ import type { XmlElement, XmlNode } from '#src/format/xml.ts';
 function mapLocalEntities(s: Session, className: string): RosterEntry[] {
   const out: RosterEntry[] = [];
   let files: string[];
-  try { files = readdirSync(s.mapDir); } catch { return out; }
+  try { files = readdirSync(s.mapDir); } catch (e) { throw new UnknownFailure(`listing ${s.mapDir}`, e); }
   for (const f of files.sort()) {
     if (!f.toLowerCase().endsWith('.xdb')) continue;
     let head: string;
-    try { head = readFileSync(join(s.mapDir, f), 'latin1').slice(0, 400); } catch { continue; }
+    try { head = readFileSync(join(s.mapDir, f), 'latin1').slice(0, 400); }
+    catch (e) { mainFailed(`reading ${f}`, e); continue; }
     // The root element IS the class, which is also what the xpointer names.
     if (!new RegExp(`<${className}[\s>]`).test(head)) continue;
     out.push({
@@ -161,7 +164,8 @@ export function registerEntities(): void {
     if (!/^[A-Za-z][A-Za-z0-9]*$/.test(className)) throw new Error(`bad class "${className}"`);
     const suffix = `.(${className}).xdb`;
     const taken = new Set<string>();
-    try { for (const f of readdirSync(session.mapDir)) if (f.endsWith(suffix)) taken.add(f.slice(0, -suffix.length)); } catch { /* no dir yet */ }
+    try { for (const f of readdirSync(session.mapDir)) if (f.endsWith(suffix)) taken.add(f.slice(0, -suffix.length)); }
+    catch (e) { if (!isMissing(e)) throw new UnknownFailure(`listing ${session.mapDir}`, e); }
     let n = 1;
     let name = `${className}_${String(n).padStart(3, '0')}`;
     while (taken.has(name)) { n++; name = `${className}_${String(n).padStart(3, '0')}`; }

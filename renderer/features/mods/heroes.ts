@@ -6,6 +6,7 @@
 // no ceiling line and no extension warning, unlike its two siblings.
 
 import { $, $input, $select, $button, fillSelect } from '#core/dom.ts';
+import { failed, failing } from '#core/failure.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { artLabels } from '#src/mods/heroes.ts';
@@ -167,8 +168,11 @@ async function heroPresetChanged(): Promise<void> {
   heroTownChanged();
 
   // And his looks, slot by slot. A preset the data cannot be read for leaves
-  // the fields as they were rather than blanking them.
-  const art = await api.heroArtOf(preset).catch(() => ({} as Record<string, string>));
+  // the fields as they were rather than blanking them — and says so.
+  const art = await api.heroArtOf(preset).catch((e: unknown) => {
+    failed("reading the preset hero's looks", e, 'he-err');
+    return {} as Record<string, string>;
+  });
   for (const [slot, id] of Object.entries(HE_ART_FIELDS)) {
     const href = art[slot];
     if (!href) continue;
@@ -283,7 +287,7 @@ async function removeHeroWithWarning(id: string, label: string): Promise<void> {
     await refreshHeroList();
     $('hm-note').textContent = `${label} removed.`;
   } catch (e) {
-    $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the heroes window', e, 'hm-err');
   }
 }
 
@@ -347,7 +351,7 @@ async function submitHeroMod(): Promise<void> {
     $('hm-note').textContent = `${editingHero ? 'Updated' : 'Installed'} in `
       + `${res.archive.split(/[\\/]/).pop()} — ${res.href}`;
   } catch (e) {
-    $('he-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the hero form', e, 'he-err');
   } finally {
     ok.disabled = false;
   }
@@ -377,7 +381,7 @@ export function initHeroesMod(): void {
     pane: 'hm-pane-heroes',
     onShow: () => {
       void refreshHeroList().catch((e: unknown) => {
-        $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+        failed('the heroes window', e, 'hm-err');
       });
     },
   });
@@ -386,9 +390,7 @@ export function initHeroesMod(): void {
     $('hm-err').textContent = '';
     $('hm-note').textContent = '';
     modDialog('heroesmod').showModal();
-    const report = (e: unknown): void => {
-      $('hm-err').textContent = e instanceof Error ? e.message : String(e);
-    };
+    const report = failing('the heroes window', 'hm-err');
     // The bar refreshes the OPEN tab's list; the form's own selects are filled
     // whichever tab that is, because the hero form is opened from the list and
     // from an edit alike.
@@ -419,7 +421,7 @@ export function initHeroesMod(): void {
     // writes into selects that must already have their options.
     heFormReady = fillHeroForm();
     void heFormReady.catch((e: unknown) => {
-      $('he-err').textContent = e instanceof Error ? e.message : String(e);
+      failed('the hero form', e, 'he-err');
     });
   };
   $('heroedit-x').onclick = () => modDialog('heroedit').close();
@@ -442,7 +444,7 @@ export function initHeroesMod(): void {
           el.append(new Option(`${artLabel(picked.href)} (yours)`, picked.href));
         }
         el.value = picked.href;
-      })().catch((e) => { $('he-err').textContent = e instanceof Error ? e.message : String(e); });
+      })().catch((e) => { failed('the hero form', e, 'he-err'); });
     };
   }
   // A picture is chosen by PATH and kept as one: the texture is built when the
@@ -453,7 +455,7 @@ export function initHeroesMod(): void {
       void (async () => {
         const picked = await api.pickPicture();
         if (picked) $input(btn.dataset.for!).value = picked;
-      })().catch((e) => { $('he-err').textContent = e instanceof Error ? e.message : String(e); });
+      })().catch((e) => { failed('the hero form', e, 'he-err'); });
     };
   }
   $select('he-town').addEventListener('change', heroTownChanged);
@@ -468,9 +470,9 @@ export function initHeroesMod(): void {
       })), (id, label) => {
         $input('he-preset').value = id;
         $('he-preset-name').textContent = label;
-        void heroPresetChanged().then(() => gateHero().check()).catch(() => {});
+        void heroPresetChanged().then(() => gateHero().check()).catch(failing('filling the hero preset', 'he-err'));
         gateHero().check();
       });
-    })().catch((e) => { $('he-err').textContent = e instanceof Error ? e.message : String(e); });
+    })().catch((e) => { failed('the hero form', e, 'he-err'); });
   };
 }

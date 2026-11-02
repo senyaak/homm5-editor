@@ -8,6 +8,7 @@
 // differ only in which tags they ask for.
 
 import type { Assets } from '../game/assets.ts';
+import { isMissing, UnknownFailure } from '../failure.ts';
 
 
 /** Reads an asset .xdb by its href, or null when it is missing. */
@@ -17,7 +18,10 @@ export type ReadXdb = (href: string) => string | null;
 export function readAsset(data: Assets, rel: string): string | null {
   try {
     return data.text(rel);
-  } catch { return null; }
+  } catch (e) {
+    if (isMissing(e)) return null;
+    throw new UnknownFailure(`reading ${rel}`, e);
+  }
 }
 
 /**

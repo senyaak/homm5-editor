@@ -15,6 +15,7 @@
 // comes FROM. After that it is ours to recolour and to edit.
 
 import { $, $input, $select, $button } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { pickPreset } from '#features/mods/preset.ts';
@@ -103,7 +104,7 @@ async function refreshBuildings(): Promise<void> {
         paint.title = `repaint ${b.file}'s textures`;
         paint.onclick = () => {
           void openRecolor({ building: b.file }, b.messages?.name || b.file).catch((e: unknown) => {
-            $('bld-err').textContent = e instanceof Error ? e.message : String(e);
+            failed('the buildings window', e, 'bld-err');
           });
         };
         row.insertBefore(paint, row.lastChild);
@@ -124,7 +125,7 @@ async function removeBuilding(b: ModBuildingDTO): Promise<void> {
     await api.removeBuilding({ file: b.file });
     await refreshBuildings();
   } catch (e) {
-    $('bld-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the buildings window', e, 'bld-err');
   }
 }
 
@@ -169,7 +170,7 @@ async function openBuildingForm(existing: ModBuildingDTO | null): Promise<void> 
   $button('bld-recolor').onclick = () => {
     if (!existing) return;
     void openRecolor({ building: existing.file }, existing.messages?.name || existing.file).catch((e: unknown) => {
-      $('bld-form-err').textContent = e instanceof Error ? e.message : String(e);
+      failed('the building form', e, 'bld-form-err');
     });
   };
   openOnTop('bldedit');
@@ -414,7 +415,7 @@ async function submitBuilding(): Promise<void> {
     await refreshBuildings();
     modDialog('bldedit').close();
   } catch (e) {
-    $('bld-form-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the building form', e, 'bld-form-err');
   } finally {
     ok.disabled = false;
   }
@@ -424,7 +425,7 @@ async function submitBuilding(): Promise<void> {
 export function initBuildingsMod(): void {
   $('bldbtn').onclick = () => {
     void openBuildings().catch((e: unknown) => {
-      $('bld-err').textContent = e instanceof Error ? e.message : String(e);
+      failed('the buildings window', e, 'bld-err');
     });
   };
   $('bld-close').onclick = () => modDialog('bldmod').close();

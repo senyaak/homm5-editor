@@ -10,6 +10,7 @@
 
 
 import { $, $input, $select, $button } from '#core/dom.ts';
+import { failed, failing } from '#core/failure.ts';
 import { modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { fillSetMembers } from '#features/mods/artifact-sets.ts';
@@ -45,9 +46,11 @@ export function initArtifactsMod(): void {
     // carrying them over from a preset would invent them.
     $('am-effects').innerHTML = '';
     openModDialog('artsmod', loadArtifactPreset);
-    void showExtensionState().catch(() => {});
+    void showExtensionState().catch(failing('reading the extension state', 'am-ext'));
   };
-  $select('am-donor').addEventListener('change', () => { void loadArtifactPreset().catch(() => {}); });
+  $select('am-donor').addEventListener('change', () => {
+    void loadArtifactPreset().catch(failing('filling the artifact preset', 'am-err'));
+  });
   $('am-close').onclick = () => modDialog('artsmod').close();
   $('am-cancel').onclick = () => modDialog('artsmod').close();
   $('am-ok').onclick = () => { void submitArtifactMod(); };
@@ -181,7 +184,7 @@ async function editArtifact(id: string): Promise<void> {
   gateArtifact().rewatch();
   openOnTop('artedit');
   $('artedit-title').textContent = 'Editing artifact';
-  void showExtensionState().catch(() => {});
+  void showExtensionState().catch(failing('reading the extension state', 'am-ext'));
 }
 
 /** Back to making a new one. */
@@ -204,7 +207,7 @@ function newArtifact(): void {
   gateArtifact().rewatch();
   openOnTop('artedit');
   $('artedit-title').textContent = 'New artifact';
-  void showExtensionState().catch(() => {});
+  void showExtensionState().catch(failing('reading the extension state', 'am-ext'));
 }
 
 /**
@@ -242,7 +245,7 @@ export async function showExtensionState(where: 'am-ext' | 'as-ext' | 'hs-ext' |
         // Each window's own line: a failure reported into the artifact form is
         // a failure nobody standing in the spell form ever sees.
         const line = { 'am-ext': 'am-err', 'as-ext': 'as-err', 'hs-ext': 'am-err', 'sm-ext': 'se-err' }[where];
-        $(line).textContent = e instanceof Error ? e.message : String(e);
+        failed('installing the extension', e, line);
         button.disabled = false;
       });
   };
@@ -284,7 +287,7 @@ async function submitArtifactMod(): Promise<void> {
     await fillSetMembers();
   } catch (e) {
     // The form's own line, not the list's behind it — see openOnTop.
-    $('ae-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the artifact form', e, 'ae-err');
   } finally {
     ok.disabled = false;
   }

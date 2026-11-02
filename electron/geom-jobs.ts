@@ -24,6 +24,7 @@ import { APP_ROOT } from '#electron/paths.ts';
 import { runDecodeJob } from '#src/scene/decode-job.ts';
 import type { DecodeJob } from '#src/scene/decode-job.ts';
 import type { GeomWorkerReply } from '#electron/geom-worker.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /** Children to keep: the machine's threads less the app's own and the GPU's, at most six. */
 const POOL = Math.max(1, Math.min(6, availableParallelism() - 2));
@@ -69,7 +70,8 @@ function spawn(): Child | null {
     children.push(child);
     return child;
   } catch (e) {
-    console.warn('[decode] no decoder processes:', e instanceof Error ? e.message : String(e));
+    // Decoding still happens, in this process; the terminal says why.
+    mainFailed('starting the decoder processes', e);
     inlineOnly = true;
     return null;
   }

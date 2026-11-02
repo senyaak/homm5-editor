@@ -57,6 +57,7 @@ import type { Assets } from '../game/assets.ts';
 import type { HommMap } from '../map/map.ts';
 import type { Terrain } from '../terrain/terrain.ts';
 import type { ReadXdb } from './xdb.ts';
+import { noteFailure } from '../failure.ts';
 import type {
   BuildSceneOptions, DecodedAhead, Floor, Footprint, GeomData, Instance, Scene, SceneAnimationOptions,
   SplatData, TileOffset, WaterData,
@@ -256,7 +257,7 @@ export function createGeomResolver(
         attachAnimation(geoms[idx]!, shared, sharedHref, data, readXdb, options.animationFps ?? 15,
           model && modelRel ? { xml: model, rel: modelRel } : null);
       }
-    } catch { idx = -1; }
+    } catch (e) { noteFailure(`decoding the model of ${sharedHref}`, e); idx = -1; }
     geomIndex.set(sharedHref, idx);
     return idx;
   };

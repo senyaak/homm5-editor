@@ -63,6 +63,7 @@
     "test-script-api": "node tools/test-script-api.ts",
     "test-our-api": "node tools/test-our-api.ts",
     "test-doc-links": "node tools/test-doc-links.ts",
+    "test-silent-catches": "node tools/test-silent-catches.ts",
     "test-run-queue": "node tools/test-run-queue.ts",
     "test-changelog": "node tools/test-changelog.ts",
     "test-fixes": "node tools/test-fixes.ts",

@@ -143,7 +143,7 @@ export class GrannyFile {
         // a file we cannot unpack degrades instead of taking the editor down.
         try {
           data = Buffer.from(decompressSection(buf, offset, size, rawSize, stop0, stop1));
-        } catch { data = null; }
+        } catch { /* not a failure: the section stays null and the file says it is unreadable (isUnreadable) */ data = null; }
       }
       const stored = data !== null;
       const reloc = new Map<number, GR2Ref>();

@@ -6,7 +6,7 @@
 
 import { updateFloorUI } from '#features/shell.ts';
 import { tileCenter } from '#core/coords.ts';
-import { $ } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { activeFloor, state } from '#core/state.ts';
 import type { Floor3D } from '#core/state.ts';
 import { drawRegionOverlay, renderRegionList } from '#features/regions.ts';
@@ -157,10 +157,7 @@ export function buildWorld(S: Scene): void {
   updateFloorUI();
   // Textured ground arrives asynchronously; the flat blend shows meanwhile.
   for (const fl of floors) {
-    upgradeToSplat(fl).catch((e: unknown) => {
-      console.error('splat failed', fl.name, e);
-      $('hud').textContent = 'ground textures: ' + (e instanceof Error ? e.message : String(e));
-    });
+    upgradeToSplat(fl).catch((e: unknown) => { failed(`drawing the ground textures of ${fl.name}`, e); });
   }
 }
 

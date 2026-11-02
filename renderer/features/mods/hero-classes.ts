@@ -20,6 +20,7 @@
 // "the Ranger, but she may pitch a plague tent" one press and one move.
 
 import { $, $input, $select } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { modDialog, openOnTop, ask } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { pickPreset } from '#features/mods/preset.ts';
@@ -203,7 +204,7 @@ The class leaves the mod, and the executable comes back down to the nine the gam
     $('hm-note').textContent = `${label} removed.`;
     await refreshClassList();
   } catch (e) {
-    $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the heroes window', e, 'hm-err');
   }
 }
 
@@ -232,7 +233,7 @@ async function submitClass(): Promise<void> {
     modDialog('classedit').close();
     await refreshClassList();
   } catch (e) {
-    $('hc-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the class form', e, 'hc-err');
   }
 }
 
@@ -245,7 +246,7 @@ export function initHeroClasses(): void {
     pane: 'hm-pane-classes',
     onShow: () => {
       void refreshClassList().catch((e: unknown) => {
-        $('hm-err').textContent = e instanceof Error ? e.message : String(e);
+        failed('the heroes window', e, 'hm-err');
       });
     },
   });
@@ -265,7 +266,7 @@ export function initHeroClasses(): void {
     gateClass().rewatch();
     openOnTop('classedit');
     void Promise.all([drawWeights(), drawPerks(new Set())]).catch((e: unknown) => {
-      $('hc-err').textContent = e instanceof Error ? e.message : String(e);
+      failed('the class form', e, 'hc-err');
     });
   };
 
@@ -288,7 +289,7 @@ export function initHeroClasses(): void {
           void drawWeights(new Map(donor.skills.map((w) => [w.skill, w.prob])));
           void drawPerks(new Set(donor.perks.map((p) => p.perk)));
         });
-    })().catch((e) => { $('hc-err').textContent = e instanceof Error ? e.message : String(e); });
+    })().catch((e) => { failed('the class form', e, 'hc-err'); });
   };
 
   $('hc-allow').onclick = () => { void move('hc-denied'); };

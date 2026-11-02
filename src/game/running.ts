@@ -57,6 +57,7 @@ function locked(path: string): boolean {
     fd = openSync(path, 'r+');
     return false;
   } catch (e) {
+    // not a failure: the refusal IS the answer this probe asks for.
     // EBUSY is Windows' sharing violation, which is what a loaded image gives.
     // EPERM and EACCES are the same refusal seen through other paths — a
     // read-only attribute among them, which is not the game running but is

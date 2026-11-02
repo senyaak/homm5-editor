@@ -30,6 +30,7 @@ async function gpuReport(): Promise<string> {
     const info = await app.getGPUInfo('basic') as Record<string, unknown>;
     lines.push(`gpu: ${JSON.stringify(info)}`);
   } catch (e) {
+    // not a failure: this IS the report, and it says the cause.
     lines.push(`gpu: unavailable (${e instanceof Error ? e.message : String(e)})`);
   }
   const switches = process.argv.filter((a) => a.startsWith('--'));

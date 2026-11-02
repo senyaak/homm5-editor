@@ -415,7 +415,7 @@ export function setTableLimit(gameRoot: string, table: TableSpec, limit: number)
   try {
     replaceFile(temp, target);
   } catch (e) {
-    try { unlinkSync(temp); } catch { /* the message below is what matters */ }
+    try { unlinkSync(temp); } catch { /* not a failure: the error thrown below is the one that matters */ }
     throw new Error(`cannot write ${target} — close the game first (${e instanceof Error ? e.message : String(e)})`);
   }
   return { path: target, what: table.what, from: patch.from, to: patch.to, changed: true, created, accessor };

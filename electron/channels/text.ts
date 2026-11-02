@@ -17,6 +17,7 @@ import { children, find, text } from '#src/format/xml.ts';
 import { TOWN_BONUS_IDS } from '#src/schema/town-bonuses.ts';
 import type { XmlElement } from '#src/format/xml.ts';
 import scriptApi from '#src/script/script-api.json' with { type: 'json' };
+import { mainFailed } from '#electron/failure.ts';
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerText(): void {
@@ -40,7 +41,8 @@ export function registerText(): void {
       for (const f of readdirSync(scripts)) {
         if (!/\.lua$/i.test(f)) continue;
         let src: string;
-        try { src = readFileSync(join(scripts, f), 'latin1'); } catch { continue; }
+        try { src = readFileSync(join(scripts, f), 'latin1'); }
+        catch (e) { mainFailed(`reading ${f} for the script vocabulary`, e); continue; }
         for (const m of src.matchAll(/^\s*function\s+([A-Za-z_]\w*)/gm)) helpers.add(m[1]!);
         // WITH LEADING WHITESPACE: advmap-startup.lua indents every one of its
         // 673 declarations by a tab, and a pattern anchored at the column

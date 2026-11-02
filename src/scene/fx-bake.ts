@@ -13,6 +13,7 @@ import { transferEffect } from './effects.ts';
 import type { FxTransfer } from './effects.ts';
 import { bakeTableData } from './fx-table.ts';
 import type { FxTableData } from './fx-table.ts';
+import { noteFailure } from '../failure.ts';
 
 /** A recording as the renderer plays it: its table, and what the batch needs to know about it. */
 export interface FxBaked {
@@ -63,7 +64,7 @@ export function bakedEffect(path: string): FxBaked | null {
   try {
     const t = transferEffect(readFileSync(path));
     have = t.particles.length ? bakeEffect(t) : null;
-  } catch { have = null; }
+  } catch (e) { noteFailure(`baking the effect ${path}`, e); have = null; }
   baked.set(path, have);
   return have;
 }

@@ -26,6 +26,7 @@ import { ensureCleanExe } from '../exe/exe-unwrap.ts';
 import { buildExtension, builtDll, extensionState, installExtension } from '../mods/extension.ts';
 import { readModPaths, setModPaths } from './mod-paths.ts';
 import { looksLikeDataRoot, looksLikeGameFolder, unpackSteps } from './unpack.ts';
+import { noteFailure } from '../failure.ts';
 
 /** Our copy of the executable, relative to the install. */
 const PATCHED_EXE = join('bin', 'H5_Game_H5E.exe');
@@ -150,7 +151,9 @@ export const STEPS: readonly Step[] = [
       if (!existsSync(exe)) return false;
       try {
         return readModPaths(readFileSync(exe)).state === 'ours';
-      } catch {
+      } catch (e) {
+        // Not done, as far as anyone can tell — the step runs and says what it finds.
+        noteFailure(`reading the mod paths of ${exe}`, e);
         return false;
       }
     },

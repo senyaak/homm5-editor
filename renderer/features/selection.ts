@@ -9,6 +9,7 @@ import * as THREE from 'three';
 
 import { markDirty } from '#core/dirty.ts';
 import { $, $input, setChild } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { activeFloor, state } from '#core/state.ts';
 import { loadProps } from '#features/inspector/panel.ts';
@@ -297,7 +298,7 @@ export async function rotateSelected(deg: number, commit = true): Promise<void> 
     await api.rotateObject(state.selected.id, r);
     markDirty(true);
   } catch (e) {
-    $('hud').textContent = 'rotate failed: ' + (e instanceof Error ? e.message : String(e));
+    failed('rotating the object', e);
   }
 }
 
@@ -308,7 +309,7 @@ export async function deleteSelected(): Promise<void> {
   try {
     await api.removeObject(id);
   } catch (e) {
-    $('hud').textContent = 'delete failed: ' + (e instanceof Error ? e.message : String(e));
+    failed('deleting the object', e);
     return;
   }
   // Only take it off screen once the map has accepted it, so a failure leaves

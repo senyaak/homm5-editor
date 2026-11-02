@@ -4,6 +4,7 @@
 // mods:recolor will write into the archive.
 
 import { $, $input, $button } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { recolorPixels } from '#src/format/recolor.ts';
@@ -136,7 +137,7 @@ async function submitRecolor(): Promise<void> {
     renderRecolorPalette(palette);
     renderRecolorPreviews();
   } catch (e) {
-    $('rc-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the paint window', e, 'rc-err');
   } finally {
     ok.disabled = false;
   }

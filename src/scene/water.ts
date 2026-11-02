@@ -23,6 +23,7 @@ import { pngDataUri } from '../format/png.ts';
 import type { Assets } from '../game/assets.ts';
 import type { Terrain } from '../terrain/terrain.ts';
 import type { WaterData } from './payload.ts';
+import { noteFailure } from '../failure.ts';
 
 
 // Sea level lives in units.ts now, beside the tile size: the anchor rule in
@@ -56,7 +57,7 @@ function seaTexture(data: Assets, size: number): string | null {
       out[o] = r / n; out[o + 1] = g / n; out[o + 2] = b / n; out[o + 3] = 255;
     }
     return pngDataUri(size, size, out);
-  } catch { return null; }
+  } catch (e) { noteFailure('drawing the water texture', e); return null; }
 }
 
 /** Vertices whose half-tile river cell is set. */

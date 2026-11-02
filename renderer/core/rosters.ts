@@ -5,6 +5,7 @@
 // the fetch, per name, so a dozen dropdowns built in one render pass ask once.
 
 import { api } from '#core/ipc.ts';
+import { UnknownFailure } from '#src/failure.ts';
 import { schemaForClass } from '#src/schema/schema.ts';
 import type { RosterEntryDTO } from '#electron/ipc.ts';
 
@@ -12,7 +13,14 @@ import type { RosterEntryDTO } from '#electron/ipc.ts';
 const rosterCache = new Map<string, Promise<RosterEntryDTO[]>>();
 export function roster(name: string): Promise<RosterEntryDTO[]> {
   let p = rosterCache.get(name);
-  if (!p) { p = api.roster(name).then((r) => r.entries).catch(() => []); rosterCache.set(name, p); }
+  if (!p) {
+    // A failed read is not kept: the next ask tries again.
+    p = api.roster(name).then((r) => r.entries).catch((e: unknown) => {
+      rosterCache.delete(name);
+      throw new UnknownFailure(`reading the roster ${name}`, e);
+    });
+    rosterCache.set(name, p);
+  }
   return p;
 }
 
@@ -21,7 +29,13 @@ export function roster(name: string): Promise<RosterEntryDTO[]> {
 const classCache = new Map<string, Promise<RosterEntryDTO[]>>();
 export function objectsOfClass(className: string): Promise<RosterEntryDTO[]> {
   let p = classCache.get(className);
-  if (!p) { p = api.objectsOfClass(className).then((r) => r.entries).catch(() => []); classCache.set(className, p); }
+  if (!p) {
+    p = api.objectsOfClass(className).then((r) => r.entries).catch((e: unknown) => {
+      classCache.delete(className);
+      throw new UnknownFailure(`listing the objects of ${className}`, e);
+    });
+    classCache.set(className, p);
+  }
   return p;
 }
 
@@ -40,5 +54,7 @@ export function canCreateClass(className: string): boolean {
  *  cached across edits — names change as the map is edited — but per render pass
  *  the same promise is reused. */
 export function mapNames(kind: string): Promise<string[]> {
-  return api.names(kind).then((r) => r.names).catch(() => []);
+  return api.names(kind).then((r) => r.names).catch((e: unknown) => {
+    throw new UnknownFailure(`listing the names of ${kind}`, e);
+  });
 }

@@ -6,6 +6,7 @@
 
 import { _electron as electron, expect } from '@playwright/test';
 import { note } from './trace.ts';
+import { watchFailures } from './failures.ts';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -39,13 +40,10 @@ export interface Launched {
   app: ElectronApplication;
   page: Page;
   /**
-   * Uncaught renderer errors, in the order they happened.
-   *
-   * Collected for every launch because the listener has to be attached before
-   * the bundle runs, and the errors worth catching are the ones thrown at its
-   * top level — by which time any test could only find the wreckage. A dead
-   * renderer keeps the whole static page, so a test asserting on markup passes
-   * happily; this array is what tells the difference.
+   * Every failure the app reported, in the order it happened, each prefixed by
+   * its source (`uncaught:`, `console:`, `main:` — e2e/failures.ts). The first
+   * one not allowed at launch has already failed the test; the list is for a
+   * spec that provokes one on purpose and asserts on it.
    */
   errors: string[];
   /**
@@ -61,7 +59,11 @@ export interface Launched {
  * @param env extra environment (e.g. HOMM5_DATA) merged over the current one.
  * @param args extra Chromium/Electron switches, appended after the app path.
  */
-export async function launchEditor(env: Record<string, string> = {}, args: string[] = []): Promise<Launched> {
+export async function launchEditor(
+  env: Record<string, string> = {},
+  args: string[] = [],
+  opts: { allow?: RegExp } = {},
+): Promise<Launched> {
   const app = await electron.launch({
     args: ['.', ...args],
     cwd: REPO_ROOT,
@@ -92,20 +94,29 @@ export async function launchEditor(env: Record<string, string> = {}, args: strin
       // drawing (electron/no-focus.ts). Overridable from the environment, for
       // the times when watching a spec run IS the point.
       HOMM5_NO_FOCUS: process.env.HOMM5_NO_FOCUS ?? '1',
+      // Under test the main process reports an unhandled throw as a line, not
+      // as a modal box (electron/main.ts).
+      HOMM5_E2E: '1',
       ...env,
     } as Record<string, string>,
   });
   const page = await app.firstWindow();
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
+  const { watched, mainLine } = watchFailures(app, page, opts.allow);
   const log: string[] = [];
-  const collect = (chunk: Buffer | string): void => {
-    for (const line of String(chunk).split(/\r?\n/)) if (line.trim()) log.push(line);
+  // Whole lines only: a chunk can end mid-line, and a failure marker cut in two
+  // would never match.
+  const reader = (): ((chunk: Buffer | string) => void) => {
+    let rest = '';
+    return (chunk) => {
+      const lines = (rest + String(chunk)).split(/\r?\n/);
+      rest = lines.pop() ?? '';
+      for (const line of lines) if (line.trim()) { log.push(line); mainLine(line); }
+    };
   };
-  app.process().stdout?.on('data', collect);
-  app.process().stderr?.on('data', collect);
+  app.process().stdout?.on('data', reader());
+  app.process().stderr?.on('data', reader());
   await page.waitForLoadState('domcontentloaded');
-  return { app, page, errors, log };
+  return { app, page, errors: watched.errors, log };
 }
 
 /**

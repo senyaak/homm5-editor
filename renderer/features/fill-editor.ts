@@ -13,6 +13,7 @@
 // a source and a mode rather than a file position.
 
 import { $, $button, $input } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { ask, modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { pickPreset } from '#features/mods/preset.ts';
@@ -199,7 +200,7 @@ function render(): void {
 async function addObject(layer: FillDraftLayer): Promise<void> {
   let entries: { id: string; label: string }[];
   try { entries = await objectChoices(); }
-  catch (e) { $('fp-err').textContent = e instanceof Error ? e.message : String(e); return; }
+  catch (e) { failed('listing the objects', e, 'fp-err'); return; }
   pickPreset('Add an object to this layer', entries, (id) => {
     const [type, path] = id.split('|');
     if (!type || !path) return;
@@ -213,7 +214,7 @@ async function addObject(layer: FillDraftLayer): Promise<void> {
 /** The draft as a preset, or null when it is not one yet. */
 function safePreset(): ReturnType<typeof presetFromDraft> | null {
   try { return presetFromDraft({ ...draft, name: draft.name || 'draft' }, 'draft'); }
-  catch { return null; }
+  catch { /* not a failure: a draft half typed is not a preset yet, and Save says why */ return null; }
 }
 
 /**
@@ -277,7 +278,7 @@ async function save(): Promise<void> {
   // Checked here as well as in the channel: the same rules, said where they can
   // still be fixed without the dialog closing.
   try { presetFromDraft(draft, 'draft'); }
-  catch (e) { $('fp-err').textContent = e instanceof Error ? e.message : String(e); return; }
+  catch (e) { failed('checking the preset', e, 'fp-err'); return; }
   const btn = $button('fp-save');
   btn.disabled = true;
   try {
@@ -285,7 +286,7 @@ async function save(): Promise<void> {
     dialog().close();
     afterSave?.(draft.name);
   } catch (e) {
-    $('fp-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('saving the preset', e, 'fp-err');
   } finally {
     btn.disabled = false;
   }

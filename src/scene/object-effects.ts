@@ -31,6 +31,7 @@ import { followHref, listItems, readAsset, readVec3, readQuat, resolveHref, dirO
 import type { Assets } from '../game/assets.ts';
 import type { ReadXdb } from './xdb.ts';
 import type { GeomData, FxInstancePayload, Picture } from './payload.ts';
+import { noteFailure } from '../failure.ts';
 
 // `<Model/>` empty and everything visible about the object a particle effect is
 // the ordinary case here, not the corner one — the anti-magic garrison wall is
@@ -298,7 +299,8 @@ export function particlesOfEffect(
         ],
         textures,
       });
-    } catch { /* one broken instance must not take the object's other instances down */ }
+    // One broken instance must not take the object's other instances down — but it is said.
+    } catch (e) { noteFailure('reading an effect instance', e); }
   }
   return out;
 }
@@ -394,7 +396,7 @@ export function clipRestBones(animXml: string, data: Assets): Map<string, BoneRe
     const root = at(0);
     out.set('__rootScale__', { pos: [0, 0, 0], quat: [0, 0, 0, 1], scale: root.scale });
     return out;
-  } catch { return null; }
+  } catch (e) { noteFailure('reading the skeleton rest pose', e); return null; }
 }
 
 /** The clip's length in seconds, from its GR2; 0 when unreadable. */
@@ -407,7 +409,7 @@ export function clipDurationSeconds(animXml: string, data: Assets): number {
     const file = GrannyFile.open(readFileSync(binPath));
     if (!file || file.isUnreadable) return 0;
     return readAnimations(file)[0]?.duration ?? 0;
-  } catch { return 0; }
+  } catch (e) { noteFailure("reading the clip's length", e); return 0; }
 }
 
 /**

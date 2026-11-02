@@ -19,6 +19,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PandoraContents } from '../mods/pandora-contents.ts';
+import { UnknownFailure } from '../failure.ts';
 
 /** The sidecar's name inside the map folder. */
 export const PANDORA_FILE = 'pandora.json';
@@ -44,8 +45,9 @@ export function readPandoraBoxes(mapDir: string): PandoraContents[] {
   try {
     const data = JSON.parse(readFileSync(p, 'utf8')) as Partial<PandoraSidecar>;
     return Array.isArray(data.boxes) ? data.boxes : [];
-  } catch {
-    return [];
+  } catch (e) {
+    // Never read as "no boxes": the next write would take every box away.
+    throw new UnknownFailure(`reading ${p}`, e);
   }
 }
 

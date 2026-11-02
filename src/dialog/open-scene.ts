@@ -24,6 +24,7 @@ import { setCompressedTextures, TEXTURE_CAP } from '../scene/materials.ts';
 import { buildScenePlay } from './play.ts';
 import type { ActorView, ShotView } from './play.ts';
 import { isArchive, sceneArchives, SCENE_FILE } from './scene-source.ts';
+import { noteFailure } from '../failure.ts';
 
 /** Where everything is. Given rather than asked for — see the head of the file. */
 export interface OpenSceneJob {
@@ -117,7 +118,7 @@ export function openScenePayload(job: OpenSceneJob): OpenSceneOut {
     // library.
     if (job.game && !existsSync(join(job.data, 'Dialogs')) && !existsSync(join(workspace, 'Dialogs'))) {
       try { extractMapFolder(sceneArchives(job.game), 'Dialogs', workspace); }
-      catch (e) { console.warn('[scene] no shared camera library:', e instanceof Error ? e.message : String(e)); }
+      catch (e) { noteFailure('unpacking the shared camera library', e); }
     }
     roots.unshift(workspace);
   }
@@ -126,7 +127,7 @@ export function openScenePayload(job: OpenSceneJob): OpenSceneOut {
   const over: string[] = [];
   if (job.game) {
     try { for (const m of mountCreatureMods(job.game, join(job.tmp, 'mods'))) over.push(m.root); }
-    catch (e) { console.warn('[mods] not mounted:', e instanceof Error ? e.message : String(e)); }
+    catch (e) { noteFailure('mounting the installed mod', e); }
   }
   const chain = assets([...roots.slice(0, -1), ...over, job.data]);
   setCompressedTextures(job.compressed);

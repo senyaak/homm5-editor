@@ -13,6 +13,7 @@
 
 import { markDirty } from '#core/dirty.ts';
 import { $, $button, $input, $select } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { activeFloor, state } from '#core/state.ts';
 import { saveUiPrefs, uiPrefs } from '#core/prefs.ts';
@@ -159,8 +160,8 @@ async function previewFill(): Promise<void> {
     if (want !== previewing) return;
     $('fill-preview').textContent = `≈ ${r.pieces} piece(s), `
       + `${Math.round((100 * r.covered) / Math.max(1, r.cells))}% of the ground covered`;
-  } catch {
-    $('fill-preview').textContent = '';
+  } catch (e) {
+    failed('previewing the fill', e, 'fill-preview');
   }
 }
 let previewing = 0;
@@ -276,7 +277,7 @@ export async function reloadPresets(keep?: string): Promise<void> {
     renderDetail();
     syncFillCount();
   } catch (e) {
-    $('fill-detail').textContent = e instanceof Error ? e.message : String(e);
+    failed('reading the fill presets', e, 'fill-detail');
   }
 }
 
@@ -347,7 +348,7 @@ export async function applyFill(): Promise<void> {
       + (r.unresolved ? ` — ${r.unresolved} skipped, no model we can decode` : '')
       + ' · one undo takes them all back';
   } catch (e) {
-    $('hud').textContent = 'fill failed: ' + (e instanceof Error ? e.message : String(e));
+    failed('filling the area', e);
   } finally {
     filling = false;
     syncFillCount();
@@ -419,7 +420,7 @@ export function initFill(): void {
           $('hud').textContent = `deleted the fill preset ${p.name}`;
         }
       } catch (e) {
-        $('hud').textContent = 'could not delete: ' + (e instanceof Error ? e.message : String(e));
+        failed(`deleting the fill preset ${p.name}`, e);
       }
     })();
   };

@@ -15,6 +15,7 @@ their number.
 
 ## Housekeeping — before work runs in parallel
 
+- [e2e-fail-fast.md](todo/e2e-fail-fast.md) — a broken step fails the test at once with the app's own report, never at a timeout
 - [file-size-guard.md](todo/file-size-guard.md) — a test that fails on a file past 500 lines, with an allowlist that only shrinks
 - [split-hot-files.md](todo/split-hot-files.md) — the files nearly every change touches, made so two changes never edit the same lines
 

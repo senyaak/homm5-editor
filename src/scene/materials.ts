@@ -22,6 +22,7 @@ import { resolveHref, dirOf } from './xdb.ts';
 import type { Assets } from '../game/assets.ts';
 import type { Mesh } from './geometry.ts';
 import type { AlphaMode, CompressedPicture, Picture } from './payload.ts';
+import { noteFailure } from '../failure.ts';
 
 /** A material as the renderer needs it: what to draw and how to blend it. */
 export interface MaterialInfo {
@@ -115,7 +116,7 @@ function materialInfo(itemXml: string, data: Assets, baseDir: string): MaterialI
     // By the document's path, as the engine goes by the document's identity.
     if (rel.replace(/^\/+/, '') === TERRAIN_SKIN_MATERIAL) info.terrainSkin = true;
     return info;
-  } catch { return NO_MATERIAL; }
+  } catch (e) { noteFailure(`reading the material ${ext[1]}`, e); return NO_MATERIAL; }
 }
 
 /** Every material, in the order <Materials> lists them. */
@@ -320,7 +321,7 @@ export function textureDataUri(model: string, data: Assets, cap: number, href?: 
     });
     byHref.set(hkey, made);
     return made;
-  } catch { return null; }
+  } catch (e) { noteFailure(`decoding the texture of ${href ?? 'a model'}`, e); return null; }
 }
 
 /**
@@ -365,5 +366,5 @@ export function particleFrame(data: Assets, size: number, href: string): Picture
       frames.delete(old);
     }
     return frame;
-  } catch { return null; }
+  } catch (e) { noteFailure(`decoding the particle frame ${href}`, e); return null; }
 }

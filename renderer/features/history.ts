@@ -4,6 +4,7 @@
 // is the button pair and the rebuild of whatever the step changed.
 
 import { $, $button } from '#core/dom.ts';
+import { failed, failing } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { state } from '#core/state.ts';
 import { markDirty } from '#core/dirty.ts';
@@ -22,7 +23,7 @@ export async function stepHistory(dir: 'undo' | 'redo'): Promise<void> {
   try {
     r = dir === 'undo' ? await api.undo() : await api.redo();
   } catch (e) {
-    $('hud').textContent = `${dir} failed: ` + (e instanceof Error ? e.message : String(e));
+    failed(dir === 'undo' ? 'undoing' : 'redoing', e);
     return;
   }
   if (!r.applied) {
@@ -43,9 +44,7 @@ export async function stepHistory(dir: 'undo' | 'redo'): Promise<void> {
     if (t.splat) fl.splat = t.splat;
     remeshFloor(fl);
     if (t.splat) {
-      await upgradeToSplat(fl).catch((e: unknown) => {
-        $('hud').textContent = 'ground textures: ' + (e instanceof Error ? e.message : String(e));
-      });
+      await upgradeToSplat(fl).catch(failing('drawing the ground textures'));
     }
   }
   renderExplorer();

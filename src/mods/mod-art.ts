@@ -11,6 +11,7 @@
 // our creature's mesh edited the original creature's.
 
 import { createHash } from 'node:crypto';
+import { noteFailure } from '../failure.ts';
 import { posix } from 'node:path';
 import { children, parse, text as textOf } from '../format/xml.ts';
 import type { XmlElement } from '../format/xml.ts';
@@ -300,7 +301,7 @@ interface UidOwner {
  */
 function uidOwners(text: string): UidOwner[] {
   let doc;
-  try { doc = parse(text); } catch { return []; }
+  try { doc = parse(text); } catch (e) { noteFailure('reading the uids of a document', e); return []; }
   const out: UidOwner[] = [];
   const rootEl = children(doc).find((c) => c.type === 'element');
   const walk = (el: XmlElement): void => {

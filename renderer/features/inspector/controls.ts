@@ -9,6 +9,7 @@
 
 import { groundAt, tileCenter } from '#core/coords.ts';
 import { $, $input } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { mapNames, roster } from '#core/rosters.ts';
 import { activeFloor, state } from '#core/state.ts';
@@ -181,7 +182,7 @@ export async function setProp(id: string, name: string, value: string): Promise<
     markDirty(true);
     $('hud').textContent = `${name} = ${value || '(empty)'}`;
   } catch (e) {
-    $('hud').textContent = `could not set ${name}: ` + (e instanceof Error ? e.message : String(e));
+    failed(`setting ${name}`, e);
   }
 }
 
@@ -205,7 +206,7 @@ async function moveSelectedTo(x: number, y: number): Promise<void> {
     await api.moveObject(state.selected.id, x, y);
     markDirty(true);
   } catch (e) {
-    $('hud').textContent = 'move failed: ' + (e instanceof Error ? e.message : String(e));
+    failed('moving the object', e);
   }
 }
 

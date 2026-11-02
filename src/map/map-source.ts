@@ -20,6 +20,7 @@ import { dirname, join } from 'node:path';
 import { readEntryFrom, readIndex } from '../format/pak.ts';
 import type { ZipIndexEntry } from '../format/pak.ts';
 import { MOD_EXT, modDir } from '../game/mod-paths.ts';
+import { isMissing, noteFailure, UnknownFailure } from '../failure.ts';
 
 /** A map the picker can offer. */
 export interface MapSource {
@@ -56,7 +57,8 @@ export function listOurMaps(gameRoot: string | null): MapSource[] {
   const dir = modDir(gameRoot);
   const out: MapSource[] = [];
   let names: string[];
-  try { names = readdirSync(dir); } catch { return out; }
+  // No folder yet: no map of ours yet.
+  try { names = readdirSync(dir); } catch (e) { if (isMissing(e)) return out; throw new UnknownFailure(`listing ${dir}`, e); }
   for (const name of names) {
     if (!name.toLowerCase().endsWith(`.${MOD_EXT.map}`)) continue;
     const path = join(dir, name);
@@ -74,7 +76,9 @@ export function listOurMaps(gameRoot: string | null): MapSource[] {
 export function mapFolderIn(archive: string): string | null {
   let index: ZipIndexEntry[];
   const fd = openSync(archive, 'r');
-  try { index = readIndex(fd, statSync(archive).size); } catch { return null; } finally { closeSync(fd); }
+  try { index = readIndex(fd, statSync(archive).size); }
+  catch (e) { noteFailure(`reading the index of ${archive}`, e); return null; }
+  finally { closeSync(fd); }
   for (const e of index) {
     const m = MAP_IN_ARCHIVE.exec(e.name);
     if (m) return `Maps/${m[1]}/${m[2]}`;
@@ -94,7 +98,9 @@ export function listStockMaps(gameRoot: string | null): MapSource[] {
   for (const path of gameArchives(gameRoot)) {
     let index: ZipIndexEntry[];
     const fd = openSync(path, 'r');
-    try { index = readIndex(fd, statSync(path).size); } catch { continue; } finally { closeSync(fd); }
+    try { index = readIndex(fd, statSync(path).size); }
+    catch (e) { noteFailure(`reading the index of ${path}`, e); continue; }
+    finally { closeSync(fd); }
     for (const e of index) {
       const m = MAP_IN_ARCHIVE.exec(e.name);
       if (!m || !PLAYABLE.test(m[1]!)) continue;
@@ -122,12 +128,14 @@ export function mapFilesUnder(dir: string, cap = Infinity): string[] {
   const walk = (at: string): void => {
     if (out.length >= cap) return;
     let names: string[];
-    try { names = readdirSync(at); } catch { return; }
+    try { names = readdirSync(at); }
+    catch (e) { if (!isMissing(e)) noteFailure(`listing ${at}`, e); return; }
     for (const name of names) {
       if (out.length >= cap) return;
       const full = join(at, name);
       let st;
-      try { st = statSync(full); } catch { continue; }
+      try { st = statSync(full); }
+      catch (e) { if (!isMissing(e)) noteFailure(`reading ${full}`, e); continue; }
       if (st.isDirectory()) walk(full);
       else if (name.toLowerCase() === 'map.xdb') out.push(full);
     }
@@ -141,7 +149,7 @@ export function gameArchives(gameRoot: string): string[] {
   const dir = join(gameRoot, PAK_DIR);
   try {
     return readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.pak')).sort().map((f) => join(dir, f));
-  } catch { return []; }
+  } catch (e) { if (isMissing(e)) return []; throw new UnknownFailure(`listing ${dir}`, e); }
 }
 
 /**
@@ -164,7 +172,9 @@ export function extractMapFolder(archives: readonly string[], inner: string, dir
   for (const archive of archives) {
     let index: ZipIndexEntry[];
     const fd = openSync(archive, 'r');
-    try { index = readIndex(fd, statSync(archive).size); } catch { continue; } finally { closeSync(fd); }
+    try { index = readIndex(fd, statSync(archive).size); }
+    catch (e) { noteFailure(`reading the index of ${archive}`, e); continue; }
+    finally { closeSync(fd); }
     for (const entry of index) {
       const name = entry.name.replace(/\\/g, '/');
       if (!name.toLowerCase().startsWith(prefix) || name.endsWith('/')) continue;

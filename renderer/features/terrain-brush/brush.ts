@@ -20,6 +20,7 @@ import { fillTool } from '#features/fill.ts';
 import { region, regionDraw } from '#features/regions.ts';
 import { markDirty } from '#core/dirty.ts';
 import { $ } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { activeFloor, state } from '#core/state.ts';
 import { committing } from '#features/terrain-brush/sculpt.ts';
@@ -172,8 +173,7 @@ export async function commitMask(walkable: boolean): Promise<void> {
     await committing(api.setMask({ floor: state.world.active, verts, walkable }));
     markDirty(true);
   } catch (e) {
-    $('hud').textContent = 'mask failed (reload to resync): '
-      + (e instanceof Error ? e.message : String(e));
+    failed('painting the walkable mask (reload to resync)', e);
   }
 }
 

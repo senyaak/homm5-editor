@@ -6,6 +6,7 @@
 // is the owning form's, and it says so through listActions.
 
 import { $, $select } from '#core/dom.ts';
+import { failed, failing } from '#core/failure.ts';
 import { ask, modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { openRecolor } from '#features/mods/recolor.ts';
@@ -197,7 +198,7 @@ export async function removeWithWarning(
     else await api.removeCreature({ id });
     await refreshModLists();
   } catch (e) {
-    $(errBox).textContent = e instanceof Error ? e.message : String(e);
+    failed(`removing ${id}`, e, errBox);
   }
 }
 
@@ -240,7 +241,7 @@ export async function refreshModLists(): Promise<void> {
         paint.title = `repaint ${c.id}'s textures`;
         paint.onclick = () => {
           void openRecolor(c.id, c.name || c.id).catch((e: unknown) => {
-            $('um-err').textContent = e instanceof Error ? e.message : String(e);
+            failed('opening the paint window', e, 'um-err');
           });
         };
         row.insertBefore(paint, row.lastChild);
@@ -286,9 +287,7 @@ export function openModDialog(id: 'unitsmod' | 'artsmod', preset: () => Promise<
   $(`${p}-err`).textContent = '';
   $(`${p}-note`).textContent = '';
   modDialog(id).showModal();
-  const report = (e: unknown): void => {
-    $(`${p}-err`).textContent = e instanceof Error ? e.message : String(e);
-  };
+  const report = failing(`opening ${id}`, `${p}-err`);
   void refreshModLists().catch(report);
   void fillModForms().then(preset).catch(report);
 }

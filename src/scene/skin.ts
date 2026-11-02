@@ -17,6 +17,7 @@ import type { GeomData } from './payload.ts';
 import { round } from './units.ts';
 import { bakeBoneTable } from './bone-table.ts';
 import { BufferGeometry } from 'three';
+import { noteFailure } from '../failure.ts';
 
 
 /** Worst bone rotation between consecutive baked samples, in degrees. */
@@ -82,7 +83,7 @@ export function modelBindSkeleton(
     const covered = skeleton.bones.filter((b) => tracked.has(b.name)).length;
     if (covered * 2 < skeleton.bones.length) return null;
     return skeleton;
-  } catch { return null; }
+  } catch (e) { noteFailure('reading a skeleton', e); return null; }
 }
 
 /**
@@ -171,7 +172,7 @@ export function attachAnimation(
     // own had baked it. The geometry is a carrier for the skeleton and nothing
     // more — no vertex is read.
     geom.skin.table = bakeBoneTable(geom.skin, new BufferGeometry(), []) ?? undefined;
-  } catch { drop(); }
+  } catch (e) { noteFailure('binding a skin to its clip', e); drop(); }
 }
 
 /** One clip baked against a model's bind pose, with the rig it plays on. */

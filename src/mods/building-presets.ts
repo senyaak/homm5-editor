@@ -11,6 +11,7 @@
 // the idea.
 
 import { readdirSync, statSync } from 'node:fs';
+import { isMissing, noteFailure } from '../failure.ts';
 import { join, posix, relative, sep } from 'node:path';
 
 import { children, find, parse, text as textOf } from '../format/xml.ts';
@@ -62,7 +63,7 @@ export function gameText(data: Assets, href: string): string {
 /** The document's root element, whatever the file is called. */
 function rootOf(xml: string): { name: string; el: ReturnType<typeof parse> } | null {
   let doc;
-  try { doc = parse(xml); } catch { return null; }
+  try { doc = parse(xml); } catch (e) { noteFailure('reading a building definition', e); return null; }
   const el = children(doc)[0];
   return el ? { name: el.name, el } : null;
 }
@@ -105,11 +106,11 @@ export function listBuildingDonors(data: Assets): BuildingDonor[] {
 /** Files under `dir`, recursively. */
 function walk(dir: string, out: string[] = []): string[] {
   let entries: string[];
-  try { entries = readdirSync(dir); } catch { return out; }
+  try { entries = readdirSync(dir); } catch (e) { if (!isMissing(e)) noteFailure(`listing ${dir}`, e); return out; }
   for (const name of entries) {
     const p = join(dir, name);
     let s;
-    try { s = statSync(p); } catch { continue; }
+    try { s = statSync(p); } catch (e) { if (!isMissing(e)) noteFailure(`reading ${p}`, e); continue; }
     if (s.isDirectory()) walk(p, out);
     else out.push(p);
   }

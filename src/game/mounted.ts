@@ -28,6 +28,7 @@ import { readIndex } from '../format/pak.ts';
 import { unpackCached } from '../mods/mod-archive.ts';
 import { MASKS, MOD_DIR } from './mod-paths.ts';
 import type { Assets } from './assets.ts';
+import { isMissing, noteFailure, UnknownFailure } from '../failure.ts';
 
 /** `H5E/*.h5m` → `.h5m` — the extensions the executable's five masks name. */
 const EXTENSIONS = new Set(MASKS.map((m) => m.ours.slice(m.ours.lastIndexOf('.')).toLowerCase()));
@@ -87,8 +88,10 @@ export function mountArchives(gameRoot: string, cacheDir: string, base: string):
     let entries;
     try {
       entries = cachedIndex(archive);
-    } catch {
-      continue; // not an archive the engine could read either
+    } catch (e) {
+      // Not an archive the engine could read either: skipped as it skips it — and said.
+      noteFailure(`reading the index of ${archive}`, e);
+      continue;
     }
     const root = unpackCached(archive, cacheDir);
     roots.push(root);
@@ -107,7 +110,7 @@ export function mountArchives(gameRoot: string, cacheDir: string, base: string):
     const p = join(base, rel);
     try {
       if (statSync(p).isFile()) return p;
-    } catch { /* not in the data either */ }
+    } catch (e) { if (!isMissing(e)) throw new UnknownFailure(`reading ${p}`, e); }
     return null;
   };
 
@@ -127,8 +130,9 @@ export function mountArchives(gameRoot: string, cacheDir: string, base: string):
     dirs: (rel) => chain.map((root) => join(root, rel)).filter((p) => {
       try {
         return statSync(p).isDirectory();
-      } catch {
-        return false;
+      } catch (e) {
+        if (isMissing(e)) return false;
+        throw new UnknownFailure(`reading ${p}`, e);
       }
     }),
   };

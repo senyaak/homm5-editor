@@ -14,7 +14,8 @@ import { launchEditor } from './launch.ts';
 test('explains itself when the machine has no WebGL', { tag: '@nodata' }, async () => {
   // --disable-gpu alone is not enough: Chromium falls back to SwiftShader and
   // WebGL still works, which is the fallback the second switch removes.
-  const ed = await launchEditor({}, ['--disable-gpu', '--disable-software-rasterizer']);
+  // The failure this spec is about, allowed so it does not end the test.
+  const ed = await launchEditor({}, ['--disable-gpu', '--disable-software-rasterizer'], { allow: /WebGL/ });
   try {
     const fatal = ed.page.locator('#fatal');
     await expect(fatal).toBeVisible();

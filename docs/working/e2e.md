@@ -4,12 +4,14 @@ How a playwright spec is written. Running the suite: [testing.md](testing.md).
 
 ## Every gesture is checked
 
-- After every click, check that the renderer threw nothing — a dead renderer
-  keeps its markup and passes text checks. Close with `closeEditor(ed)` from
-  `e2e/launch.ts` (closes AND asserts `errors === []`; expected errors as a
-  regexp: `closeEditor(ed, /WebGL/)`). In dialog specs press through a helper
-  that clicks, then asserts `ed.errors` empty and the form error empty — never
-  a bare `.click()`.
+- A failure the app reports ends the test at once, with the report
+  (`e2e/failures.ts`): a throw or unhandled rejection in the renderer, a
+  `console.error`, a `[main error]` / `[failure]` line, a dead renderer. A spec
+  that provokes one on purpose allows it at launch, as narrowly as its text:
+  `launchEditor({}, [], { allow: /WebGL/ })`. Close with `closeEditor(ed)` from
+  `e2e/launch.ts` (closes AND asserts nothing unallowed was reported). In
+  dialog specs press through a helper that clicks, then asserts the form error
+  empty — never a bare `.click()`.
 - Every gesture asserts its visible effect: the row exists and is visible
   BEFORE the click, the dialog closed, the value applied. A picker's search
   works inside the active category: pick "All" first.

@@ -6,6 +6,7 @@
 // behaviour. The file is its own document, written straight to disk on Save.
 
 import { $ } from '#core/dom.ts';
+import { failed, failing } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { roster } from '#core/rosters.ts';
 import { createText, openCreate } from '#features/inspector/refs.ts';
@@ -70,7 +71,7 @@ export function scriptRefControl(value: string, commit: (v: string) => void): HT
     if (!rv.title) return;
     void api.resolveScript({ href: rv.title })
       .then((r) => openTextEdit(r.lua, r.lua))
-      .catch((e: unknown) => { $('hud').textContent = 'cannot open script: ' + (e instanceof Error ? e.message : String(e)); });
+      .catch(failing('opening the script'));
   });
   box.append(rv, nw, edit);
   wrap.appendChild(box);
@@ -96,7 +97,7 @@ export function specRefControl(value: string, commit: (v: string) => void): HTML
     void openSpecCreate().then((choice) => {
       if (!choice) return undefined;
       return api.newSpecialization(choice).then((r) => { commit(r.href); show(r.href); });
-    }).catch((e: unknown) => { $('hud').textContent = 'cannot create specialization: ' + (e instanceof Error ? e.message : String(e)); });
+    }).catch(failing('creating a specialization'));
   });
   clear.addEventListener('click', () => { commit(''); show(''); });
   box.append(rv, nw, clear);
@@ -177,7 +178,7 @@ export async function openTextEdit(href: string, label: string): Promise<void> {
   docDialog().showModal();
   let text = '';
   try { text = (await api.readFile(file)).text; }
-  catch { $('hud').textContent = 'could not read ' + file; }
+  catch (e) { failed(`reading ${file}`, e); }
   ed.setDoc(text, lang);
   // The baseline is what the editor NOW holds, not the raw bytes: CodeMirror
   // normalises line endings (a CRLF script becomes LF), so comparing against the
@@ -221,7 +222,7 @@ export async function refreshScriptContext(): Promise<void> {
     await loadScriptContext();
     if (docDialog().open && langOf(doc.href) === 'lua') $('de-info').textContent = scriptContextNote();
   } catch (e) {
-    $('de-info').textContent = 'no completion: ' + (e instanceof Error ? e.message : String(e));
+    failed('loading the script completion', e, 'de-info');
   }
 }
 
@@ -241,7 +242,7 @@ function saveDoc(): void {
       else docDialog().close();
       if (mapTreeOpen()) void refreshMapTree();
     })
-    .catch((e: unknown) => { $('hud').textContent = 'save failed: ' + (e instanceof Error ? e.message : String(e)); });
+    .catch(failing('saving the text'));
 }
 
 /** True when the buffer differs from what was loaded. */

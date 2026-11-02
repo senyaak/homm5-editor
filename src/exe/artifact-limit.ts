@@ -31,6 +31,7 @@ import { copyFileSync, existsSync, readFileSync, unlinkSync, writeFileSync } fro
 import { join } from 'node:path';
 import { PATCHED_EXE, SHIPPED_EXE } from './creature-limit.ts';
 import { refuseIfRunning, replaceFile } from '../game/running.ts';
+import { noteFailure } from '../failure.ts';
 
 /** How many artifacts the game ships with, and so what the sites hold unpatched. */
 export const ORIGINAL_ARTIFACTS = 97;
@@ -166,7 +167,7 @@ function rememberedSites(gameRoot: string, buf: Buffer): Site[] {
   let noted: Site[];
   try {
     noted = JSON.parse(readFileSync(path, 'utf8')) as Site[];
-  } catch { return []; }
+  } catch { /* not a failure: a note that will not read is no note — the sites are searched for again */ return []; }
   // A note is a hint, never an authority: every offset is re-checked against the
   // opcode that should be in front of it, so a note left over from a different
   // executable is ignored rather than used to write into the middle of a
@@ -191,7 +192,8 @@ function merge(found: readonly Site[], noted: readonly Site[]): Site[] {
 function rememberSites(gameRoot: string, sites: readonly Site[]): void {
   try {
     writeFileSync(join(gameRoot, SITES_FILE), `${JSON.stringify(sites, null, 2)}\n`);
-  } catch { /* a note that cannot be written costs the NEXT patch, not this one */ }
+  // A note that cannot be written costs the NEXT patch, not this one — but it is said.
+  } catch (e) { noteFailure(`writing ${SITES_FILE}`, e); }
 }
 
 /** What this executable currently allows. */
@@ -278,7 +280,7 @@ export function setArtifactLimit(gameRoot: string, limit: number): ArtifactExeRe
   try {
     replaceFile(temp, target);
   } catch (e) {
-    try { unlinkSync(temp); } catch { /* the message below is what matters */ }
+    try { unlinkSync(temp); } catch { /* not a failure: the error thrown below is the one that matters */ }
     throw new Error(`cannot write ${target} — close the game first (${e instanceof Error ? e.message : String(e)})`);
   }
   return { path: target, from: patch.from, to: patch.to, changed: true, created };

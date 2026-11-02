@@ -9,6 +9,7 @@
 
 
 import { $, $input, $select, $button, fillSelect } from '#core/dom.ts';
+import { failed, failing } from '#core/failure.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { mountCodeEditor } from '#features/text-editor/code-editor.ts';
@@ -60,7 +61,7 @@ export function initArtifactSets(): void {
   $('as-new').onclick = () => {
     idTouched.set = false;
     void fillSetMembers().then(newSet).catch((e: unknown) => {
-      $('as-err').textContent = e instanceof Error ? e.message : String(e);
+      failed('the artifact set form', e, 'as-err');
     });
   };
   $('setedit-x').onclick = () => modDialog('setedit').close();
@@ -311,7 +312,7 @@ async function editArtifactSet(effect: string): Promise<void> {
   gateSet().rewatch();
   openOnTop('setedit');
   $('setedit-title').textContent = 'Editing set';
-  void showExtensionState('as-ext').catch(() => {});
+  void showExtensionState('as-ext').catch(failing('reading the extension state', 'as-ext'));
 }
 
 /** Back to making a new one. */
@@ -330,7 +331,7 @@ function newSet(): void {
   gateSet().rewatch();
   openOnTop('setedit');
   $('setedit-title').textContent = 'New set';
-  void showExtensionState('as-ext').catch(() => {});
+  void showExtensionState('as-ext').catch(failing('reading the extension state', 'as-ext'));
 }
 
 /** A set's effect value is named by nothing outside the mod, so no scan. */
@@ -340,7 +341,7 @@ async function removeSet(effect: string, label: string): Promise<void> {
     await api.removeArtifactSet({ id: effect });
     await refreshModLists();
   } catch (e) {
-    $('am-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the artifacts window', e, 'am-err');
   }
 }
 async function submitArtifactSet(): Promise<void> {
@@ -369,7 +370,7 @@ async function submitArtifactSet(): Promise<void> {
       + ' — the game will count its pieces; the bonus itself is native code';
     await refreshModLists();
   } catch (e) {
-    $('as-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the artifact set form', e, 'as-err');
   } finally {
     ok.disabled = false;
   }
@@ -393,7 +394,7 @@ function openSetScript(): void {
   if (!scriptContextReady()) {
     void loadScriptContext()
       .then(() => { $('ss-info').textContent = scriptContextNote(); })
-      .catch(() => { $('ss-info').textContent = 'no completion available'; });
+      .catch(failing('loading the script completion', 'ss-info'));
   }
   if (!setScriptEditor) {
     setScriptEditor = mountCodeEditor($('ss-text'), () => closeSetScript(true), (diags) => {
@@ -430,8 +431,7 @@ function openSetScriptSafely(): void {
   try {
     openSetScript();
   } catch (e) {
-    $('as-err').textContent = 'could not open the script editor: '
-      + (e instanceof Error ? e.message : String(e));
+    failed('opening the script editor', e, 'as-err');
   }
 }
 

@@ -10,6 +10,7 @@ import { decodeModelGeom } from './model-geom.ts';
 import type { Assets } from '../game/assets.ts';
 import type { ReadXdb } from './xdb.ts';
 import type { AmbientData } from './payload.ts';
+import { noteFailure } from '../failure.ts';
 
 const DEFAULT_AMBIENT = '/Lights/_(AmbientLight)/0_Default_AmbientLight.xdb';
 
@@ -84,5 +85,5 @@ export function loadAmbient(data: Assets, href: string | null, geo?: AmbientGeom
       whiten: 4,
       ...(dome ? { dome } : {}),
     };
-  } catch { return null; }
+  } catch (e) { noteFailure("reading the map's ambient light", e); return null; }
 }

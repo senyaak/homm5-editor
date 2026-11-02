@@ -27,6 +27,7 @@ import { pngDataUri } from '#src/format/png.ts';
 import { controlOf, deref, objectProps, objectSchema } from '#src/schema/schema.ts';
 import type { FieldSchema, RegistryName } from '#src/schema/schema.ts';
 import { find } from '#src/format/xml.ts';
+import { UnknownFailure } from '#src/failure.ts';
 
 /** The object catalogue, scanned once — 1466 small files is not a per-call cost. */
 let catalogCache: ReturnType<typeof listPlaceable> | null = null;
@@ -83,7 +84,7 @@ function linkTexture(href: string | undefined): IconResult {
   try {
     const img = decodeDDS(dds);
     return pngDataUri(img.width, img.height, img.rgba);
-  } catch { return null; }
+  } catch (e) { throw new UnknownFailure(`decoding ${dds}`, e); }
 }
 
 /**
@@ -198,7 +199,7 @@ export function registerObjects(): void {
         const icon = readIconFile(readFileSync(file));
         // A few entries hold an image declared 0x0 — a placeholder with no picture.
         if (icon) return pngDataUri(icon.w, icon.h, icon.rgba);
-      } catch { /* fall through to the entry's own texture */ }
+      } catch (e) { throw new UnknownFailure(`reading the icon cache ${file}`, e); }
     }
     // No cache entry. The cache is keyed by link path and only the game's own
     // installer writes it, so everything a MOD adds lands here — a blank tile

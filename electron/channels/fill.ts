@@ -30,6 +30,7 @@ import { presetFromDraft, readFillPresets, writeFillPresets } from '#src/fill/pr
 import type { FillObject, FillPreset } from '#src/fill/preset.ts';
 import { ensureModDir, modDir } from '#src/game/mod-paths.ts';
 import type { Assets } from '#src/game/assets.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /** Label the panel shows for presets the person here made. */
 const MINE = 'H5E/FillPresets.xml';
@@ -72,7 +73,7 @@ function presets(): FillPreset[] {
     try { out.push(...readFillPresets(readFileSync(s.file, 'utf8'), s.label)); }
     // A broken file loses its own presets, not everybody's: the game's copy is
     // outside this repo and nothing stops it being edited into invalid XML.
-    catch (e) { console.warn(`[fill] ${s.label}: ${e instanceof Error ? e.message : String(e)}`); }
+    catch (e) { mainFailed(`reading the fill presets of ${s.label}`, e); }
   }
   return out;
 }

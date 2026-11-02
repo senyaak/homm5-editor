@@ -19,6 +19,7 @@
 // See docs/engineInternals/SPELLS.md.
 
 import { $, $button, $input, $select, fillSelect } from '#core/dom.ts';
+import { failed, failing } from '#core/failure.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { requireFilled } from '#core/form-gate.ts';
@@ -376,7 +377,7 @@ async function editSpell(id: string): Promise<void> {
   $button('sm-ok').textContent = 'Save & install';
   gateSpell().rewatch();
   openOnTop('spelledit');
-  void showExtensionState('sm-ext').catch(() => {});
+  void showExtensionState('sm-ext').catch(failing('reading the extension state', 'sm-ext'));
 }
 
 /** Back to making a new one. */
@@ -392,9 +393,9 @@ function newSpell(): void {
   gateSpell().rewatch();
   openOnTop('spelledit');
   void fillSpellForm().catch((e: unknown) => {
-    $('se-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the spell form', e, 'se-err');
   });
-  void showExtensionState('sm-ext').catch(() => {});
+  void showExtensionState('sm-ext').catch(failing('reading the extension state', 'sm-ext'));
 }
 
 /** The installed spells, as the list shows them. */
@@ -429,9 +430,7 @@ async function refreshSpellList(): Promise<void> {
   }
 }
 
-const report = (e: unknown): void => {
-  $('sm-err').textContent = e instanceof Error ? e.message : String(e);
-};
+const report = failing('the spells window', 'sm-err');
 
 /**
  * Two kinds of thing name a spell, and they are treated differently.
@@ -506,7 +505,7 @@ async function submitSpell(): Promise<void> {
     $('sm-note').textContent = `installed ${res.archive}\nspell ${res.number}`;
     await refreshSpellList();
   } catch (e) {
-    $('se-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the spell form', e, 'se-err');
   } finally {
     ok.disabled = false;
   }
@@ -527,7 +526,7 @@ function openScript(): void {
   if (!scriptContextReady()) {
     void loadScriptContext()
       .then(() => { $('sms-info').textContent = scriptContextNote(); })
-      .catch(() => { $('sms-info').textContent = 'no completion available'; });
+      .catch(failing('loading the script completion', 'sms-info'));
   }
   if (!editor) {
     editor = mountCodeEditor($('sms-text'), () => closeScript(true), (diags) => {
@@ -589,7 +588,7 @@ export function initSpellsMod(): void {
   };
   $('sm-pick-picture').onclick = () => {
     void api.pickPicture().then((picked) => { if (picked) $input('sm-picture').value = picked; })
-      .catch((e: unknown) => { $('se-err').textContent = e instanceof Error ? e.message : String(e); });
+      .catch(failing('picking a picture', 'se-err'));
   };
   $('sm-script').onclick = () => openScript();
   $('sms-ok').onclick = () => closeScript(true);

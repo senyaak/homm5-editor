@@ -20,6 +20,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync, statSync, watch } from 'node:fs';
 import type { FSWatcher } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { isMissing, noteFailure } from '../failure.ts';
 
 /** What changed in the folder since the last snapshot. Paths are posix-style, relative to the watched dir. */
 export interface DirChange {
@@ -52,7 +53,7 @@ function hashFile(path: string): string | null {
   try {
     return createHash('sha1').update(readFileSync(path)).digest('hex');
   } catch {
-    // Mid-write the file may be locked or briefly gone; the next rescan sees it.
+    // not a failure: mid-write the file may be locked or briefly gone; the next rescan sees it.
     return null;
   }
 }
@@ -62,11 +63,11 @@ function snapshot(dir: string): Snapshot {
   const out: Snapshot = new Map();
   const walk = (cur: string): void => {
     let ents: string[];
-    try { ents = readdirSync(cur); } catch { return; }
+    try { ents = readdirSync(cur); } catch (err) { if (!isMissing(err)) noteFailure(`listing ${cur}`, err); return; }
     for (const e of ents) {
       const full = join(cur, e);
       let dirent;
-      try { dirent = statSync(full); } catch { continue; }
+      try { dirent = statSync(full); } catch (err) { if (!isMissing(err)) noteFailure(`reading ${full}`, err); continue; }
       if (dirent.isDirectory()) { walk(full); continue; }
       const rel = relative(dir, full).split(sep).join('/');
       if (IGNORE.test(rel)) continue;
@@ -130,6 +131,7 @@ export function watchMapDir(dir: string, onChange: (c: DirChange) => void, opts:
     // is cheap, and a missed notification is worse than a little CPU.
     watcher = watch(dir, { recursive: true }, schedule);
   } catch {
+    // not a failure: no recursive watching on this platform — polling does it.
     watcher = null;
   }
   const poller = watcher ? null : setInterval(schedule, 2000);

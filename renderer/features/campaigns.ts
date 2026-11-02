@@ -11,6 +11,8 @@
 // one — main renumbers the handovers when it writes.
 
 import { $, $input, $select, $button, fillSelect } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
+import { UnknownFailure } from '#src/failure.ts';
 import { ask, modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { roster } from '#core/rosters.ts';
@@ -71,7 +73,7 @@ export async function openCampaignList(): Promise<void> {
   list.replaceChildren();
   let campaigns: CampaignListEntry[] = [];
   try { campaigns = (await api.listCampaigns()).campaigns; }
-  catch (e) { $('hud').textContent = 'could not list campaigns: ' + msgOf(e); }
+  catch (e) { failed('listing campaigns', e); }
   if (!campaigns.length) {
     const empty = document.createElement('div');
     empty.className = 'cl-empty';
@@ -95,7 +97,7 @@ export async function openCampaignList(): Promise<void> {
 
 async function openCampaign(dir: string): Promise<void> {
   try { campDoc = await api.openCampaign(dir); }
-  catch (e) { $('hud').textContent = 'could not open: ' + msgOf(e); return; }
+  catch (e) { failed('opening the campaign', e); return; }
   modDialog('camplist').close();
   campSel = -1;
   if (!campMaps.length) {
@@ -103,7 +105,7 @@ async function openCampaign(dir: string): Promise<void> {
     // folder the archive carries it at — so an archive that holds no map folder
     // is not a mission's map.
     try { campMaps = (await api.listMaps()).maps.filter((m) => !!m.inner); }
-    catch { campMaps = []; }
+    catch (e) { throw new UnknownFailure('listing the maps a mission can use', e); }
   }
   renderCampaign();
   modDialog('campaign').showModal();
@@ -203,7 +205,8 @@ async function renderHeroSlots(): Promise<void> {
   let entryPoint = false;
   if (missionDraft.mapRel) {
     try { ({ heroes, entryPoint } = await api.mapHeroes(missionDraft.mapRel)); }
-    catch { /* an unreadable map just offers nothing */ }
+    // An unreadable map offers no heroes — and says why.
+    catch (e) { failed("reading the heroes of the mission's map", e); }
   }
   const opts = [{ id: '', label: '(default hero)' }, ...heroes.map((h) => ({ id: h, label: h }))];
 
@@ -296,8 +299,6 @@ async function bonusOptions(type: string): Promise<{ id: string; label: string }
   return [];
 }
 
-const msgOf = (e: unknown): string => (e instanceof Error ? e.message : String(e));
-
 // --- wiring -------------------------------------------------------------------
 
 /** Bind the campaign dialogs to their markup. */
@@ -309,7 +310,7 @@ export function initCampaigns(): void {
     const name = $input('cl-name').value.trim();
     if (!name) return;
     try { campDoc = await api.newCampaign(name); }
-    catch (e) { $('hud').textContent = 'could not create: ' + msgOf(e); return; }
+    catch (e) { failed('creating the campaign', e); return; }
     await openCampaign(campDoc.dir);
   };
   $input('cl-name').addEventListener('keydown', (e) => {
@@ -355,7 +356,7 @@ export function initCampaigns(): void {
       const r = await api.packCampaign(campDoc.dir);
       if (r.canceled) return;
       $('hud').textContent = `packed → ${r.output} (${((r.bytes ?? 0) / 1024) | 0} KB)`;
-    } catch (e) { $('cp-err').textContent = msgOf(e); }
+    } catch (e) { failed('packing the campaign', e, 'cp-err'); }
   };
 
   /** Write the campaign back. Returns false when main refused it. */
@@ -363,7 +364,7 @@ export function initCampaigns(): void {
     if (!campDoc) return false;
     readCampaignForm();
     try { campDoc = await api.saveCampaign(campDoc); }
-    catch (e) { $('cp-err').textContent = msgOf(e); return false; }
+    catch (e) { failed('saving the campaign', e, 'cp-err'); return false; }
     if (close) modDialog('campaign').close();
     else renderCampaign();
     return true;

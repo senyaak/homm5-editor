@@ -46,7 +46,7 @@ function loadUiPrefs(): UiPrefs {
     // Spread over the defaults so a prefs blob written by an older build (missing
     // a key added since) still yields a complete object.
     return raw ? { ...UI_PREFS_DEFAULT, ...JSON.parse(raw) } : { ...UI_PREFS_DEFAULT };
-  } catch { return { ...UI_PREFS_DEFAULT }; }
+  } catch { /* not a failure: no storage, or a blob that will not parse, means the defaults */ return { ...UI_PREFS_DEFAULT }; }
 }
 
 /** The live preferences. An ESM live binding, so importers see every save. */
@@ -59,5 +59,5 @@ export let uiPrefs = loadUiPrefs();
 export function saveUiPrefs(patch: Partial<UiPrefs>): void {
   uiPrefs = { ...uiPrefs, ...patch };
   try { localStorage.setItem(UI_PREFS_KEY, JSON.stringify(uiPrefs)); }
-  catch { /* private mode or quota: the editor still runs, just without persistence */ }
+  catch { /* not a failure: private mode or quota — the editor still runs, just without persistence */ }
 }

@@ -23,6 +23,7 @@ import { parseFootprint } from '#src/scene/scene.ts';
 import type { Footprint } from '#src/scene/payload.ts';
 import { childText } from '#src/format/xml.ts';
 import type { MapObject } from '#src/map/map.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /**
  * The types whose green tile a hero walks ON and past, rather than up to.
@@ -78,7 +79,8 @@ function terrainWalls(s: Session, floors: number, size: number): Uint8Array[] {
     // check that says "nothing is reachable" than one that quietly walks over
     // ground it never read.
     let doc;
-    try { doc = terrainDoc(s, z); } catch { wall.fill(1); out.push(wall); continue; }
+    try { doc = terrainDoc(s, z); }
+    catch (e) { mainFailed(`reading the terrain of floor ${z}`, e); wall.fill(1); out.push(wall); continue; }
     const heights = doc.heightsCopy();
     const flags = doc.flagsCopy();
     const cls = classifyTiles({

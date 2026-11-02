@@ -10,6 +10,7 @@
 // offered with a map open and without, like Play.
 
 import { $, $button, onClickAsync } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { FIX_GROUPS, NET_SWITCH, QOL_FLAGS } from '#src/mods/qol.ts';
@@ -288,7 +289,7 @@ async function apply(): Promise<void> {
     said.push('restart the game for it to take effect');
     msg.textContent = `${said.join(' · ')}.`;
   } catch (e) {
-    msg.textContent = e instanceof Error ? e.message : String(e);
+    failed('applying the game settings', e, msg);
   }
 }
 

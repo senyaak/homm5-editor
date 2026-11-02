@@ -39,6 +39,7 @@ import type { Assets, FileStat } from '../game/assets.ts';
 import type { CompressedPicture, FxInstancePayload, GeomData, GeomPart, Picture } from './payload.ts';
 import type { FxBaked } from './fx-bake.ts';
 import { fileRef, mapHandles, packBlobs, readFileRefs, unpackBlobsSync, BLOB_ALIGN } from './blob-table.ts';
+import { isMissing, noteFailure } from '../failure.ts';
 
 /** Bumped whenever what a decode or a bake writes changes shape or value. */
 export const DECODER_VERSION = 2;
@@ -165,7 +166,7 @@ function writeBlobFile(file: string, header: object, object: unknown): void {
     // On Windows a rename over a file another process has just made (or is
     // reading) is refused. A shared entry is the same bytes whoever wrote it,
     // so one that is there is the one wanted; anything else is an error.
-    try { unlinkSync(tmp); } catch { /* the tmp may have moved */ }
+    try { unlinkSync(tmp); } catch (u) { if (!isMissing(u)) noteFailure(`removing ${tmp}`, u); }
     if (!existsSync(file)) throw e;
   }
 }
@@ -201,7 +202,11 @@ function readBlobFile<H>(file: string, whole: boolean): { header: H; object: unk
       }
     }
     return { header: rest as unknown as H, object };
-  } catch (e) { if (process.env.H5E_CACHE_DEBUG) console.warn(`[geom-cache] ${file}:`, e instanceof Error ? e.message : e); return null; }
+  } catch (e) {
+    // not a failure: an entry that will not read is a miss, and is decoded again.
+    if (process.env.H5E_CACHE_DEBUG) console.warn(`[geom-cache] ${file}:`, e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 type Head<H> = { object: unknown; rest: Omit<H, 'object'>; arrays: { buffer: ArrayBuffer; at?: undefined; size?: undefined } | { buffer?: undefined; at: number; size: number } };
@@ -313,7 +318,11 @@ export function loadGeomEntry(file: string, shared: SharedLoader, whole = true):
         f.baked = resolve(f.baked) as FxBaked;
       }
     }
-  } catch (e) { if (process.env.H5E_CACHE_DEBUG) console.warn(`[geom-cache] ${file}:`, e instanceof Error ? e.message : e); return null; }
+  } catch (e) {
+    // not a failure: an entry that will not read is a miss, and is decoded again.
+    if (process.env.H5E_CACHE_DEBUG) console.warn(`[geom-cache] ${file}:`, e instanceof Error ? e.message : e);
+    return null;
+  }
   return { entry: { ...read.header, geom }, geom };
 }
 
@@ -352,7 +361,7 @@ export function pruneGeomCache(dir: string, budget: number): number {
   let removed = 0;
   for (const sub of [dir, join(dir, 'shared')]) {
     let names: string[];
-    try { names = readdirSync(sub); } catch { continue; }
+    try { names = readdirSync(sub); } catch (e) { if (!isMissing(e)) noteFailure(`listing ${sub}`, e); continue; }
     for (const n of names) {
       if (!/\.h5[gs]$/.test(n)) continue;
       const path = join(sub, n);
@@ -360,7 +369,7 @@ export function pruneGeomCache(dir: string, budget: number): number {
         const s = statSync(path);
         if (versionOf(path) !== DECODER_VERSION) { unlinkSync(path); removed += s.size; continue; }
         files.push({ path, size: s.size, mtime: s.mtimeMs });
-      } catch { /* gone, or in use: next time */ }
+      } catch { /* not a failure: gone, or in use — the trim tries again next time */ }
     }
   }
   let total = files.reduce((n, f) => n + f.size, 0);
@@ -368,12 +377,13 @@ export function pruneGeomCache(dir: string, budget: number): number {
   files.sort((a, b) => a.mtime - b.mtime);
   for (const f of files) {
     if (total <= budget) break;
-    try { unlinkSync(f.path); total -= f.size; removed += f.size; } catch { /* in use: next time */ }
+    try { unlinkSync(f.path); total -= f.size; removed += f.size; } catch { /* not a failure: in use — the trim tries again next time */ }
   }
   return removed;
 }
 
 /** The decoder version a blob file was written by — its header's `v`; -1 for a file that is not one. */
 function versionOf(file: string): number {
-  try { return (readHead<{ v: number }>(file).rest as { v?: number }).v ?? -1; } catch { return -1; }
+  try { return (readHead<{ v: number }>(file).rest as { v?: number }).v ?? -1; }
+  catch { /* not a failure: a file that is not a blob has no version, and goes */ return -1; }
 }

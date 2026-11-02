@@ -278,7 +278,7 @@ function namesUs(exe: string): boolean {
   let imported = false;
   try {
     imported = imports(readFileSync(exe)).includes(EXTENSION_DLL.toLowerCase());
-  } catch { /* not something we can read — so not something that names us */ }
+  } catch { /* not a failure: unreadable, so it names nothing — the reads that need it fail loudly */ }
   importedCache.set(exe, { key, imported });
   return imported;
 }

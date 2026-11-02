@@ -17,6 +17,8 @@
 // keeps the sidecar and the map in step.
 
 import { $, $input, $select } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
+import { UnknownFailure } from '#src/failure.ts';
 import { api } from '#core/ipc.ts';
 import { roster } from '#core/rosters.ts';
 import { markDirty } from '#core/dirty.ts';
@@ -39,7 +41,7 @@ const dialog = (): HTMLDialogElement => $('pandora') as HTMLDialogElement;
  *  the side that knows what a box's shared document is. */
 export async function pandoraState(id: string): Promise<PandoraGetResult> {
   try { return await api.pandoraGet(id); }
-  catch { return { isBox: false }; }
+  catch (e) { throw new UnknownFailure('asking whether the object is a box of ours', e); }
 }
 
 /** Open the contents of one placed box. */
@@ -189,7 +191,9 @@ async function save(): Promise<void> {
     markDirty(true);
     dialog().close();
   } catch (e) {
-    note(e instanceof Error ? e.message : String(e));
+    note('');
+    failed('saving the box', e, 'pb-note');
+    $('pb-note').classList.add('warn');
   }
 }
 

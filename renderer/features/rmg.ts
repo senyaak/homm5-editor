@@ -31,6 +31,7 @@
 // from that archive — so from the moment it exists it is a map like any other.
 
 import { $, $button, $input, $select, fillSelect } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import type { RmgChoicesResult, RmgGenerateResult, RmgTemplateEntry } from '#electron/ipc.ts';
@@ -266,7 +267,7 @@ async function open(): Promise<void> {
   try {
     await fill();
   } catch (e) {
-    $('rmg-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the random map window', e, 'rmg-err');
   }
   $input('rmg-name').select();
 }
@@ -338,7 +339,7 @@ async function submit(open: (path: string, archive: string) => Promise<void>, re
     refresh();
   } catch (e) {
     // Stay open on failure — a name clash is fixed by editing the name.
-    $('rmg-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the random map window', e, 'rmg-err');
   } finally {
     $('rmg-busy').hidden = true;
     ok.disabled = false;
@@ -378,7 +379,7 @@ export function initRmg(openMap: (path: string, archive: string) => Promise<void
     void openTemplateEditor(chosen === RANDOM ? undefined : chosen, source());
   };
   // Another install to read: the lists come from it, so they are read again.
-  $input('rmg-mods').addEventListener('change', () => { void fill().catch((e) => { $('rmg-err').textContent = e instanceof Error ? e.message : String(e); }); });
+  $input('rmg-mods').addEventListener('change', () => { void fill().catch((e) => { failed('the random map window', e, 'rmg-err'); }); });
   $('rmg-ok').onclick = () => { void submit(openMap, refresh); };
   $input('rmg-name').addEventListener('input', updateWhere);
   $select('rmg-size').addEventListener('change', () => { void refreshTemplates(); });

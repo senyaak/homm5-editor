@@ -17,6 +17,7 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { isMissing, noteFailure } from '../failure.ts';
 
 /** One place an artifact is named. */
 export interface ArtifactUse {
@@ -36,11 +37,11 @@ export interface ArtifactUse {
 function mapDocuments(root: string, out: string[] = [], depth = 0): string[] {
   if (depth > 6) return out;
   let entries: string[];
-  try { entries = readdirSync(root); } catch { return out; }
+  try { entries = readdirSync(root); } catch (e) { if (!isMissing(e)) noteFailure(`listing ${root}`, e); return out; }
   for (const name of entries) {
     const path = join(root, name);
     let dir = false;
-    try { dir = statSync(path).isDirectory(); } catch { continue; }
+    try { dir = statSync(path).isDirectory(); } catch (e) { if (!isMissing(e)) noteFailure(`reading ${path}`, e); continue; }
     if (dir) mapDocuments(path, out, depth + 1);
     else if (name === 'map.xdb') out.push(path);
   }
@@ -82,7 +83,7 @@ function findUses(mapsRoot: string, ids: readonly string[], elements: readonly s
 
   for (const path of mapDocuments(mapsRoot)) {
     let text: string;
-    try { text = readFileSync(path, 'latin1'); } catch { continue; }
+    try { text = readFileSync(path, 'latin1'); } catch (e) { noteFailure(`reading ${path}`, e); continue; }
     // The root list sits outside <objects>; anything after it belongs to a hero.
     const objectsEnd = text.indexOf('</objects>');
     for (const id of ids) {
@@ -123,7 +124,7 @@ export function findHeroUses(mapsRoot: string, hrefs: readonly string[]): Map<st
   if (!hrefs.length) return found;
   for (const path of mapDocuments(mapsRoot)) {
     let text: string;
-    try { text = readFileSync(path, 'latin1'); } catch { continue; }
+    try { text = readFileSync(path, 'latin1'); } catch (e) { noteFailure(`reading ${path}`, e); continue; }
     const objectsEnd = text.indexOf('</objects>');
     for (const href of hrefs) {
       const hits: Record<'allowed' | 'hero', number> = { allowed: 0, hero: 0 };

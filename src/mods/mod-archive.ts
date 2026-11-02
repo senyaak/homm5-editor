@@ -10,6 +10,7 @@
 
 
 import { closeSync, copyFileSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { noteFailure, UnknownFailure } from '../failure.ts';
 import { basename, dirname, join } from 'node:path';
 import { extract, readEntries, readEntryFrom, readIndex, writeArchive } from '../format/pak.ts';
 import { MOD_DIR, ensureModDir, modFile } from '../game/mod-paths.ts';
@@ -253,8 +254,9 @@ function readManifest(bytes: Buffer): CreatureMod | null {
   let mod: CreatureMod;
   try {
     mod = JSON.parse(bytes.toString('utf8')) as CreatureMod;
-  } catch {
-    return null;
+  } catch (e) {
+    // Never read as "not ours": the next build would start a new mod over it.
+    throw new UnknownFailure("reading the mod's manifest", e);
   }
   if (mod.version !== 1 || !Array.isArray(mod.creatures)) return null;
   if (!Array.isArray(mod.dwellings)) mod.dwellings = [];
@@ -292,8 +294,9 @@ export function findCreatureMods(gameRoot: string): FoundMod[] {
     try {
       const found = readCreatureMod(join(dir, name));
       if (found) out.push(found);
-    } catch {
-      // Not a readable archive. Not our business to complain about it here.
+    } catch (e) {
+      // Not a readable archive: the others are still listed, and this one is said.
+      noteFailure(`reading ${name}`, e);
     }
   }
   return out;
@@ -346,7 +349,7 @@ export function unpackCached(archivePath: string, cacheDir: string): string {
   let have = '';
   try {
     have = (JSON.parse(readFileSync(stamp, 'utf8')) as { of: string }).of;
-  } catch { /* never unpacked, or the stamp is unreadable */ }
+  } catch { /* not a failure: never unpacked, or a stamp that will not read — it is unpacked again */ }
   if (have !== want) {
     rmSync(root, { recursive: true, force: true });
     mkdirSync(root, { recursive: true });

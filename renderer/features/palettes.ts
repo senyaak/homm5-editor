@@ -22,6 +22,7 @@ import { setShowObjects } from '#features/shell.ts';
 import { groundAt, tileCenter } from '#core/coords.ts';
 import { markDirty } from '#core/dirty.ts';
 import { $, $select } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { saveUiPrefs, uiPrefs } from '#core/prefs.ts';
 import { activeFloor, state } from '#core/state.ts';
@@ -101,8 +102,8 @@ export function initObjectPalette(): Promise<void> {
       renderObjGrid();
     } catch (e) {
       catalogLoad = null; // let a later open retry a scan that failed
-      $('obj-grid').innerHTML = `<div style="color:#f85149;font-size:11px">${
-        e instanceof Error ? e.message : String(e)}</div>`;
+      $('obj-grid').innerHTML = '<div style="color:#f85149;font-size:11px"></div>';
+      failed('scanning the object catalogue', e, $('obj-grid').firstElementChild as HTMLElement);
     }
   })();
   return catalogLoad;
@@ -202,7 +203,10 @@ async function setIcon(img: HTMLImageElement, path: string): Promise<void> {
     const uri = await api.objectIcon(path);
     iconCache.set(path, uri);
     if (uri) img.src = uri;
-  } catch { iconCache.set(path, null); }
+  } catch (e) {
+    iconCache.set(path, null);
+    failed(`drawing the icon of ${path}`, e);
+  }
 }
 
 export function setObjPalette(open: boolean): void {
@@ -270,7 +274,7 @@ export async function placeAt(tile: { x: number; y: number }): Promise<void> {
       // map to copy, only the shared fields were written.
       : `placed ${o.label} at ${tile.x}, ${tile.y} — no ${o.type} to copy from this map or the game's, so type-specific fields are missing`;
   } catch (e) {
-    $('hud').textContent = 'could not place: ' + (e instanceof Error ? e.message : String(e));
+    failed('placing the object', e);
   }
 }
 
@@ -352,7 +356,7 @@ async function addTileLayer(t: TileInfo): Promise<void> {
     renderPalette();
     $('hud').textContent = `${t.name} added — paint away`;
   } catch (e) {
-    $('hud').textContent = 'could not add the tile: ' + (e instanceof Error ? e.message : String(e));
+    failed('adding the tile', e);
   }
 }
 
@@ -418,8 +422,8 @@ async function initPalette() {
     renderPalCats();
     renderPalette();
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    $('pal-grid').innerHTML = `<div style="color:#f85149;font-size:11px">${msg}</div>`;
+    $('pal-grid').innerHTML = '<div style="color:#f85149;font-size:11px"></div>';
+    failed('listing the ground tiles', e, $('pal-grid').firstElementChild as HTMLElement);
   }
 }
 

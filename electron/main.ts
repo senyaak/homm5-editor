@@ -11,13 +11,14 @@
 // Everything file-format lives in ../src, shared with the CLI tools. Nothing
 // here decodes anything.
 
-import { app, BrowserWindow, ipcMain, Menu, screen } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen } from 'electron';
 import type { IpcMainInvokeEvent } from 'electron';
 import { dirname } from 'node:path';
 import { buildScene } from '#src/scene/scene.ts';
 import { initProject } from '#src/map/project.ts';
 import { isConfigured, mountedAssets, preloadPath, readSettings, rendererFile, reportRoots } from '#electron/paths.ts';
 import { closeSetup, runSetup } from '#electron/setup.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /**
  * Dev mode: `electron . --dev` (`npm run start:dev`) or HOMM5_DEV=1. The one
@@ -148,6 +149,20 @@ function createWindow(): void {
   w.loadFile(rendererFile('index.html'));
 }
 
+// A throw nothing caught in the main process, in the terminal under one marker
+// the e2e harness fails a test on (e2e/failures.ts). Electron's own handling is
+// a modal error box: kept for a person, but under test it would be a window
+// nobody closes, so there the line is the whole report.
+{
+  const report = (what: string, e: unknown): void => {
+    const text = e instanceof Error ? (e.stack ?? e.message) : String(e);
+    console.error(`[main error] ${what}: ${text}`);
+    if (!process.env.HOMM5_E2E) dialog.showErrorBox('A JavaScript error occurred in the main process', text);
+  };
+  process.on('uncaughtException', (e) => report('uncaught exception', e));
+  process.on('unhandledRejection', (e) => report('unhandled rejection', e));
+}
+
 // Every channel says how long it took, and says so again while it is still
 // going. The main process is single-threaded: one slow handler stops the
 // window, and from outside that is indistinguishable from a crash — which cost
@@ -243,7 +258,7 @@ async function runSmoke(mapPath: string): Promise<void> {
     const placed = scene.floors.reduce((a, f) => a + f.instances.length, 0);
     console.log(`SMOKE ok: ${map.tileX}x${map.tileY}, geoms ${scene.geoms.length}, floors ${scene.floors.length}, placed ${placed}, skipped ${skipped.length}`);
     app.exit(0);
-  } catch (e) { console.error('SMOKE fail:', e instanceof Error ? e.message : String(e)); app.exit(1); }
+  } catch (e) { mainFailed('the smoke run', e); app.exit(1); }
 }
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

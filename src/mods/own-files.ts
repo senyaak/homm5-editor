@@ -14,6 +14,7 @@
 // repointed. Nothing downstream knows the difference.
 
 import { createHash } from 'node:crypto';
+import { isMissing, UnknownFailure } from '../failure.ts';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { copyArt } from './mod-art.ts';
@@ -43,8 +44,9 @@ export function mountOwn(read: DataReader, file: string): { read: DataReader; re
   const fromDisk = (p: string): Buffer | null => {
     try {
       return statSync(p).isFile() ? readFileSync(p) : null;
-    } catch {
-      return null;
+    } catch (e) {
+      if (isMissing(e)) return null;
+      throw new UnknownFailure(`reading ${p}`, e);
     }
   };
   // The folder alone, by the mounted path or by the plain one.

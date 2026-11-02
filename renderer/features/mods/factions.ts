@@ -21,6 +21,7 @@
 // not written out here.
 
 import { $, $button, $input, $select, fillSelect } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { ask, modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { requireFilled } from '#core/form-gate.ts';
@@ -338,7 +339,7 @@ async function removeFaction(f: ModFactionDTO): Promise<void> {
     await api.removeFaction({ file: f.file });
     await refreshFactions();
   } catch (e) {
-    $('fac-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the factions window', e, 'fac-err');
   }
 }
 
@@ -461,7 +462,7 @@ async function openFactionForm(existing: ModFactionDTO | null): Promise<void> {
     tree = trees.get($select('fac-donor').value) ?? null;
     if (existing && existing.tree !== 'empty') edits = asEmptyTree(edits, existing.donor, (existing as { magic?: string }).magic === 'none');
   } catch (e) {
-    $('fac-form-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the faction form', e, 'fac-form-err');
   }
   drawGrid();
   drawCellEditor();
@@ -1589,7 +1590,7 @@ async function loadPreset(town: string): Promise<void> {
     drawCellEditor();
     formGate().check();
   } catch (e) {
-    $('fac-form-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the faction form', e, 'fac-form-err');
   }
 }
 
@@ -1696,7 +1697,7 @@ async function submitFaction(): Promise<void> {
     await refreshFactions();
     modDialog('facedit').close();
   } catch (e) {
-    $('fac-form-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the faction form', e, 'fac-form-err');
   } finally {
     ok.disabled = false;
   }
@@ -1706,7 +1707,7 @@ async function submitFaction(): Promise<void> {
 export function initFactionsMod(): void {
   $('facbtn').onclick = () => {
     void openFactions().catch((e: unknown) => {
-      $('fac-err').textContent = e instanceof Error ? e.message : String(e);
+      failed('the factions window', e, 'fac-err');
     });
   };
   $('fac-close').onclick = () => modDialog('facmod').close();
@@ -1715,7 +1716,7 @@ export function initFactionsMod(): void {
   $('fac-form-cancel').onclick = () => modDialog('facedit').close();
   $('fac-new').onclick = () => {
     void openFactionForm(null).catch((e: unknown) => {
-      $('fac-err').textContent = e instanceof Error ? e.message : String(e);
+      failed('the factions window', e, 'fac-err');
     });
   };
   $('fac-ok').onclick = () => { void submitFaction(); };

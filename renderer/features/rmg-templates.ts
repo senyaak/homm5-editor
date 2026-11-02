@@ -24,6 +24,7 @@
 // game's: a game template opened here and saved under its own name shadows it.
 
 import { $, $button, $input, $select, fillSelect } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { ask, modDialog } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import type { PlaceableObject, RmgTemplateEntry } from '#electron/ipc.ts';
@@ -772,7 +773,7 @@ async function load(name: string): Promise<void> {
     const r = await api.rmgTemplateRead({ file: name, ...readFrom });
     take(r.template, r.file, r.source);
   } catch (e) {
-    $('rte-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the template editor', e, 'rte-err');
   }
 }
 
@@ -797,7 +798,7 @@ async function save(): Promise<void> {
     updateWhere();
     onChanged();
   } catch (e) {
-    $('rte-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the template editor', e, 'rte-err');
   }
 }
 
@@ -814,7 +815,7 @@ async function remove(): Promise<void> {
     else if (list.length) await load(list[0]!.file);
     else take(starterTemplate(), 'New Template', 'new');
   } catch (e) {
-    $('rte-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the template editor', e, 'rte-err');
   }
 }
 
@@ -835,7 +836,7 @@ export async function openTemplateEditor(name?: string, from: { mods: boolean } 
   try {
     await loadList();
   } catch (e) {
-    $('rte-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the template editor', e, 'rte-err');
     return;
   }
   if (takes !== taken) return;

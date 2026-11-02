@@ -34,6 +34,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { extract, writeArchive, listDirFiles, readEntries } from '../format/pak.ts';
 import type { ExtractedFile, PackResult, WriteOptions, ZipEntry } from '../format/pak.ts';
+import { noteFailure } from '../failure.ts';
 
 export const MANIFEST_NAME = 'project.json';
 
@@ -208,7 +209,7 @@ export function editorVersion(): string {
     const parsed = JSON.parse(readFileSync(pkg, 'utf8')) as { version?: string };
     return parsed.version || '0.0.0';
   }
-  catch { return '0.0.0'; }
+  catch (e) { noteFailure(`reading the editor version from ${pkg}`, e); return '0.0.0'; }
 }
 
 const sha1 = (buf: Buffer): string => createHash('sha1').update(buf).digest('hex');

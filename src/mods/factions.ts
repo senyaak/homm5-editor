@@ -141,7 +141,8 @@ export function factionProblems(spec: FactionSpec): string[] {
     if (!t.name.trim()) out.push(`named town ${t.file} has no name`);
   }
   for (const key of Object.keys(spec.buildings ?? {})) {
-    try { parseBuildingKey(key); } catch (e) { out.push(e instanceof Error ? e.message : String(e)); }
+    try { parseBuildingKey(key); }
+    catch (e) { /* not a failure: a bad key is one of the problems this check returns */ out.push(e instanceof Error ? e.message : String(e)); }
   }
   for (const [tier, d] of Object.entries(spec.dwellings ?? {})) {
     if (!d) continue;

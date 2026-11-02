@@ -18,6 +18,7 @@
 //   writeNetFile(gameRoot, net)    write it, comments and all
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { isMissing, UnknownFailure } from '../failure.ts';
 import { dirname, join } from 'node:path';
 
 export const NET_FILE = 'bin/homm5-editor-net.txt';
@@ -65,8 +66,10 @@ export function readNet(gameRoot: string): NetSettings {
   let text = '';
   try {
     text = readFileSync(netPath(gameRoot), 'utf8');
-  } catch {
-    return out;
+  } catch (e) {
+    // No file is no settings; a file that will not read is a failure.
+    if (isMissing(e)) return out;
+    throw new UnknownFailure(`reading ${netPath(gameRoot)}`, e);
   }
   for (const line of text.split(/\r?\n/)) {
     const trimmed = line.trim();

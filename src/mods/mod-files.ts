@@ -7,6 +7,7 @@
 // that no builder has to import another builder for it.
 
 import { statSync, readFileSync } from 'node:fs';
+import { isMissing, UnknownFailure } from '../failure.ts';
 import { join } from 'node:path';
 
 
@@ -44,8 +45,9 @@ export function dataReader(root: string): DataReader {
     const p = join(root, rel);
     try {
       return statSync(p).isFile() ? readFileSync(p) : null;
-    } catch {
-      return null;
+    } catch (e) {
+      if (isMissing(e)) return null;
+      throw new UnknownFailure(`reading ${p}`, e);
     }
   };
 }

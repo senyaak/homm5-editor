@@ -30,6 +30,7 @@ import { join } from 'node:path';
 import { readIndex } from '../format/pak.ts';
 import type { ZipIndexEntry } from '../format/pak.ts';
 import { modDir } from '../game/mod-paths.ts';
+import { isMissing, UnknownFailure } from '../failure.ts';
 
 /** One scene found in a file. */
 export interface SceneSource {
@@ -114,7 +115,7 @@ export function listScenesIn(file: string): FileScenes {
 const archivesIn = (dir: string): string[] => {
   try {
     return readdirSync(dir).filter((f) => MOUNTABLE.test(f)).sort().map((f) => join(dir, f));
-  } catch { return []; }
+  } catch (e) { if (isMissing(e)) return []; throw new UnknownFailure(`listing ${dir}`, e); }
 };
 
 /** Where the game keeps its own archives, relative to the install. */

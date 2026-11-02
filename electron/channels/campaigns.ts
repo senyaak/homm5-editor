@@ -17,6 +17,7 @@ import { missionMapDir, packCampaign } from '#src/campaign/campaign-pack.ts';
 import { CAMPAIGN_TEXTS, addMission, buildNewCampaignProject, handOnTo, hasEntryPoint, heroScriptName, loadCampaignProject, missionTexts, missions, placedHeroes, readBonuses, readHeroesPool, readProjectText, removeMission, saveCampaignProject, writeBonuses, writeHeroesPool, writeProjectText } from '#src/campaign/campaign-project.ts';
 import { modFile } from '#src/game/mod-paths.ts';
 import { childText, find, setText } from '#src/format/xml.ts';
+import { mainFailed } from '#electron/failure.ts';
 
 /** Where campaign projects live, mirroring <data>/Maps for map projects. */
 const campaignsDir = (): string => join(gameData(), 'Campaigns');
@@ -100,7 +101,8 @@ export function registerCampaigns(): void {
       if (!existsSync(join(dir, 'campaign.xdb'))) continue;
       try {
         campaigns.push({ name: e, dir, missions: missions(loadCampaignProject(dir)).length });
-      } catch { /* not a campaign we can read — leave it out of the list */ }
+      // One that cannot be read is left out of the list — and said.
+      } catch (err) { mainFailed(`reading the campaign ${e}`, err); }
     }
     return { campaigns };
   });

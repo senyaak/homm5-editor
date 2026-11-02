@@ -11,6 +11,7 @@
 // later pass, so structured refs stay pick-or-create for now.
 
 import { $, $input } from '#core/dom.ts';
+import { failed } from '#core/failure.ts';
 import { api } from '#core/ipc.ts';
 import { canCreateClass, forgetClass, objectsOfClass } from '#core/rosters.ts';
 import { state } from '#core/state.ts';
@@ -132,7 +133,8 @@ export function openCreate(title: string, typeLabel: string | null, nameLabel: s
  *  Prefills a free `Class_00N` handle so it is never empty or a duplicate. */
 async function createEntity(className: string): Promise<string | null> {
   let suggested = '';
-  try { suggested = (await api.suggestName(className)).name; } catch { /* prefill is optional */ }
+  // The prefill is a convenience: without it the form opens empty — and says why.
+  try { suggested = (await api.suggestName(className)).name; } catch (e) { failed('suggesting a name', e); }
   return openCreate(`Create New <${className}> Object`, className, 'Name',
     (name) => api.newEntity({ className, name }).then((r) => { forgetClass(className); return r.href; }), suggested);
 }
@@ -169,7 +171,7 @@ function submitNew(): void {
   const { submit, resolve } = creating;
   void submit(name)
     .then((href) => { creating = null; newDialog().close(); resolve(href); })
-    .catch((err: unknown) => { $('on-err').textContent = err instanceof Error ? err.message : String(err); });
+    .catch((err: unknown) => { failed('creating the object', err, 'on-err'); });
 }
 function cancelNew(): void { const c = creating; creating = null; newDialog().close(); if (c) c.resolve(null); }
 
@@ -195,7 +197,6 @@ let eeClassName = '';
 // resolves to `${type}Shared`.
 let eeRoot: HasDefs = mapSchema;
 let eeObjType = '';
-const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** Open the entity editor for `href`. `onRepoint` (from the ref control) lets a
  *  read-only library entity be copied into the map and the ref re-pointed. */
@@ -218,7 +219,7 @@ async function loadEntity(href: string): Promise<void> {
   $('ee-copy').style.display = 'none';
   let res;
   try { res = await api.readEntity(href); }
-  catch (e) { host.innerHTML = ''; note.textContent = 'could not read: ' + errMsg(e); return; }
+  catch (e) { host.innerHTML = ''; failed(`reading ${href}`, e, note); return; }
   if (eeHref !== href) return; // a later load won the race
   const sc = schemaForClass(res.className);
   eeRoot = sc?.root ?? mapSchema;
@@ -243,13 +244,13 @@ async function copyEntityToMap(): Promise<void> {
     if (eeRepoint) eeRepoint(r.href);
     markDirty(true);
     await loadEntity(r.href);
-  } catch (e) { $('ee-note').textContent = 'copy failed: ' + errMsg(e); }
+  } catch (e) { failed('copying the object into the map', e, 'ee-note'); }
 }
 
 /** Commit one entity field to disk, then reflect dirty. */
 async function entitySet(path: TreePath, value: string): Promise<void> {
   try { await api.setEntityPath({ href: eeHref, path, value }); markDirty(true); $('hud').textContent = `${path.join('.')} = ${value || '(empty)'}`; }
-  catch (e) { $('hud').textContent = 'entity edit failed: ' + errMsg(e); }
+  catch (e) { failed(`setting ${path.join('.')}`, e); }
 }
 
 /** Fill a container with an entity object's fields, schema-typed, recursing into

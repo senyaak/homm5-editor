@@ -12,6 +12,8 @@
 // type, its value from the map tree (map:tree). Edits go through the same path
 // API as the tree, so dialog and tree stay in sync.
 import { $ } from '#core/dom.ts';
+import { failing } from '#core/failure.ts';
+import { UnknownFailure } from '#src/failure.ts';
 import { api } from '#core/ipc.ts';
 import { roster } from '#core/rosters.ts';
 import { dataAt, leafRow, setMapPath } from '#features/inspector/tree.ts';
@@ -59,8 +61,9 @@ function buildMpTabs(): void {
 
 /** Read the whole map tree (values) plus the resolved name/description. */
 async function loadMpData(): Promise<void> {
-  try { mpData = (await api.mapTree()).tree as TreeData; } catch { mpData = {}; }
-  try { const r = await api.mapProps(); mpNameDesc = { name: r.name, description: r.description }; } catch { /* keep */ }
+  try { mpData = (await api.mapTree()).tree as TreeData; } catch (e) { throw new UnknownFailure('reading the map tree', e); }
+  try { const r = await api.mapProps(); mpNameDesc = { name: r.name, description: r.description }; }
+  catch (e) { throw new UnknownFailure("reading the map's name and description", e); }
 }
 /** Re-read after a structural edit (a rumour added/removed), then re-render. */
 async function mpReload(): Promise<void> { await loadMpData(); renderMpTab(); }
@@ -258,7 +261,7 @@ function nameFileRow(label: string, hrefField: string, which: 'name' | 'descript
       markDirty(true);
       if (which === 'name') mpNameDesc.name = text; else mpNameDesc.description = text;
       $('hud').textContent = `saved ${href}`;
-    }).catch((e: unknown) => { $('hud').textContent = 'save failed: ' + (e instanceof Error ? e.message : String(e)); });
+    }).catch(failing(`saving ${href}`));
   });
   box.appendChild(input);
   return box;

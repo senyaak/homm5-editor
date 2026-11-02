@@ -13,6 +13,7 @@
 // that piece changes.
 
 import { $, $input, $select, $button } from '#core/dom.ts';
+import { failed, failing } from '#core/failure.ts';
 import { modDialog, openOnTop } from '#core/dialog.ts';
 import { api } from '#core/ipc.ts';
 import { pickPreset } from '#features/mods/preset.ts';
@@ -135,7 +136,7 @@ async function submitUnitsMod(): Promise<void> {
     modDialog('unitedit').close();
   } catch (e) {
     // The form's own line, not the list's behind it — see openOnTop.
-    $('ue-err').textContent = e instanceof Error ? e.message : String(e);
+    failed('the creature form', e, 'ue-err');
   } finally {
     ok.disabled = false;
   }
@@ -296,7 +297,7 @@ export function initUnitsMod(): void {
       void (async () => {
         const picked = await api.pickHeroFile({ id: $input('um-file').value.trim(), slot: target });
         if (picked.from) $input(target).value = picked.from;
-      })().catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
+      })().catch((e) => { failed('the creature form', e, 'ue-err'); });
     };
   }
   $('um-donor-pick').onclick = () => {
@@ -307,10 +308,10 @@ export function initUnitsMod(): void {
       })), (id, label) => {
         $input('um-donor').value = id;
         $('um-donor-name').textContent = label;
-        void loadUnitPreset().then(() => gateUnits().check()).catch(() => {});
+        void loadUnitPreset().then(() => gateUnits().check()).catch(failing('filling the creature preset', 'ue-err'));
         gateUnits().check();
       });
-    })().catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
+    })().catch((e) => { failed('the creature form', e, 'ue-err'); });
   };
 
   $('um-look-pick').onclick = () => {
@@ -318,14 +319,14 @@ export function initUnitsMod(): void {
       const creatures = (await api.modFormData()).donors;
       pickPreset('Look like', creatures.map((c) => ({ id: c.id, label: c.name || c.id })), (id, label) => {
         void loadUnitLook(id, label).then(() => gateUnits().check())
-          .catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
+          .catch((e) => { failed('the creature form', e, 'ue-err'); });
       });
-    })().catch((e) => { $('ue-err').textContent = e instanceof Error ? e.message : String(e); });
+    })().catch((e) => { failed('the creature form', e, 'ue-err'); });
   };
 
   $('unitsbtn').onclick = () => { openModDialog('unitsmod', loadUnitPreset); };
   $('um-new').onclick = () => {
-    void newCreature().catch((e) => { $('um-err').textContent = e instanceof Error ? e.message : String(e); });
+    void newCreature().catch((e) => { failed('the units window', e, 'um-err'); });
   };
   $('unitedit-x').onclick = () => modDialog('unitedit').close();
   $('unitedit-cancel').onclick = () => modDialog('unitedit').close();
