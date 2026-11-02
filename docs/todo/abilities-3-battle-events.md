@@ -13,6 +13,6 @@ each trigger fires where the engine applies, not where it plans.
 `script-api-ours.ts`; each native site checked by `test-native-anchors`; a
 test map's battle script logs every trigger.
 
-**Depends on.** none.
+**Depends on.** abilities-0-how-shipped-abilities-work (its approved design may reshape this item).
 
 **Needs.** The owner fights the test battle.

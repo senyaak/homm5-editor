@@ -27,6 +27,7 @@ their number.
 
 ## 2. Creature abilities of our own, through Lua
 
+- [abilities-0-how-shipped-abilities-work.md](todo/abilities-0-how-shipped-abilities-work.md) — research first: kinds, moments, readers, how activated ones are offered; a design for the owner to approve
 - [abilities-1-tab.md](todo/abilities-1-tab.md) — abilities as a list of the mod, authored in a tab of the Units window
 - [abilities-2-lua-has-ability.md](todo/abilities-2-lua-has-ability.md) — a Lua function: does this creature have that ability
 - [abilities-3-battle-events.md](todo/abilities-3-battle-events.md) — battle triggers with their unit: turn, hit, death, spell

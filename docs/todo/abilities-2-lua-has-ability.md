@@ -12,7 +12,7 @@ and `npm run build-api` rerun (`test-our-api` green); its native site checked
 by `test-native-anchors`; a Lua test map asks about a shipped ability and one
 of ours.
 
-**Depends on.** abilities-1-tab.
+**Depends on.** abilities-0-how-shipped-abilities-work, abilities-1-tab.
 
 **Needs.** The owner runs the test map's battle and reads the two answers on
 screen.

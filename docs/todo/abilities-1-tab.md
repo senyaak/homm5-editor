@@ -14,4 +14,4 @@ while a creature holds it.
 both back from the built archive (`types.xml` enum and table size,
 `CombatAbilities.xdb`); the editor's own refuse removal through the window.
 
-**Depends on.** none.
+**Depends on.** abilities-0-how-shipped-abilities-work (its approved design may reshape this item).
