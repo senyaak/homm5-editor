@@ -26,7 +26,8 @@ import { modFile } from '../src/game/mod-paths.ts';
 import { userTemplateFile } from '../src/rmg/user-templates.ts';
 import { DATA, REPO_ROOT, closeEditor, launchEditor } from './launch.ts';
 import type { Launched } from './launch.ts';
-import { bar, openBarMenu } from './bar.ts';
+import { openBarMenu } from './bar.ts';
+import { press, pressBar } from './press.ts';
 import { REAL_GAME } from './mods.ts';
 import { MADE } from './artifacts.ts';
 
@@ -56,23 +57,6 @@ function cleanup(): void {
     for (const d of ourFolders(name)) rmSync(d, { recursive: true, force: true });
   }
   rmSync(userTemplateFile(GAME, TEMPLATE), { force: true });
-}
-
-/**
- * Wait for the dialog to close on success — or fail the moment it reports an
- * error or the renderer throws, instead of sitting out the whole allowance.
- */
-async function untilGenerated(ed: Launched, timeoutMs: number): Promise<void> {
-  const page = ed.page;
-  const started = Date.now();
-  for (;;) {
-    const err = (await page.locator('#rmg-err').textContent())?.trim();
-    if (err) throw new Error(`the dialog reports: ${err}`);
-    if (ed.errors.length) throw new Error(`the renderer threw: ${ed.errors.join(' | ')}`);
-    if (await page.locator('#rmg').isHidden()) return;
-    if (Date.now() - started > timeoutMs) throw new Error(`the dialog is still open after ${timeoutMs / 1000}s`);
-    await page.waitForTimeout(500);
-  }
 }
 
 /** How the main process behaved while the dialog's lists were read. */
@@ -226,16 +210,10 @@ test('generates a tiny map through the dialog and opens it', { tag: '@game' }, a
   await page.locator('#rmg-pick-list .rmg-pick-hero', { hasText: orrinName }).click();
   await expect(page.locator('#rmg-white .rmg-hero')).toHaveCount(1);
   await expect(page.locator('#rmg-where')).toContainText(`${NAME}.h5m`);
-  await page.locator('#rmg-ok').click();
-
-  // The dialog closes only on success; an error would leave it open with a
-  // message, so this also asserts the generation did not fail — and FAILS
-  // FAST on the message rather than sitting out the four minutes a large
-  // map is allowed: a dialog that is still open with an error in it is a
-  // verdict already, and a renderer throw before the order even left (a
-  // missing element, once) looked like a hang for exactly that long.
-  await untilGenerated(ed, 4 * 60_000);
-  await expect(page.locator('#title')).toContainText(NAME, { timeout: 60_000 });
+  // Generating and opening the map, as one action: it ends when the map is on
+  // screen, and a failure or a refusal ends it at once with what it said.
+  await press(page, page.locator('#rmg-ok'));
+  await expect(page.locator('#title')).toContainText(NAME);
   await expect(page.locator('#pack')).toBeEnabled();
   // And it ran where it was meant to: in a child of its own, not in main.
   const line = ed.log.find((l) => l.includes('[rmg] ') && l.includes(`${NAME}.h5m`));
@@ -266,15 +244,15 @@ test('generates a tiny map through the dialog and opens it', { tag: '@game' }, a
 
 test('a name already taken is refused and the dialog stays open', { tag: '@game' }, async () => {
   const { page } = ed;
-  await bar(page, '#rmgbtn');
+  await pressBar(page, '#rmgbtn');
   // The second opening reads nothing: the lists are there before the spinner could show.
   await expect(page.locator('#rmg-loading')).toBeHidden();
   await expect(page.locator('#rmg-size option')).toHaveCount(8);
   expect(mounts(ed)).toBe(1);
   await page.locator('#rmg-size').selectOption('0');
   await page.locator('#rmg-name').fill(NAME);
-  await page.locator('#rmg-ok').click();
-  await expect(page.locator('#rmg-err')).toContainText('already exists', { timeout: 30_000 });
+  await press(page, page.locator('#rmg-ok'), { refused: /already exists/ });
+  await expect(page.locator('#rmg-err')).toContainText('already exists');
   await expect(page.locator('#rmg')).toBeVisible();
   await page.locator('#rmg-cancel').click();
   await expect(page.locator('#rmg')).toBeHidden();
@@ -284,8 +262,8 @@ test('a fixed template with everything else random draws a size it fits', { tag:
   test.setTimeout(5 * 60_000);
   const { page } = ed;
   cleanup();
-  await bar(page, '#rmgbtn');
-  await page.locator('#rmg-random').click();
+  await pressBar(page, '#rmgbtn');
+  await press(page, page.locator('#rmg-random'));
   await expect(page.locator('#rmg-template')).toHaveValue('random');
   await expect(page.locator('#rmg-players')).toHaveValue('random');
   // The tiny reference template again, so the drawn size is Tiny or Small and
@@ -293,12 +271,11 @@ test('a fixed template with everything else random draws a size it fits', { tag:
   // with two levels only Tiny (2×5 = 10).
   await page.locator('#rmg-template').selectOption('S1P2Z2M1');
   await page.locator('#rmg-name').fill(NAME);
-  await page.locator('#rmg-ok').click();
-  await expect(page.locator('#rmg')).toBeHidden({ timeout: 4 * 60_000 });
-  await expect(page.locator('#title')).toContainText(NAME, { timeout: 60_000 });
-  // The title comes before the scene: wait for the whole load, or the next
-  // test's cleanup takes the map's folder away while it is still being read.
-  await expect(page.locator('#loading'), 'the map has finished loading').not.toHaveClass(/(^|\s)on(\s|$)/, { timeout: 60_000 });
+  // Ends when the map is loaded through — so the next test's clean-up never
+  // takes its folder away while it is still being read.
+  await press(page, page.locator('#rmg-ok'));
+  await expect(page.locator('#rmg')).toBeHidden();
+  await expect(page.locator('#title')).toContainText(NAME);
   const line = ed.log.filter((l) => l.includes('[rmg] ') && l.includes(`${NAME}.h5m`)).pop();
   expect(line).toBeDefined();
   expect(line).toMatch(/S1P2Z2M1 (72×72|96×96)/);
@@ -313,7 +290,7 @@ test('the template editor: a template drawn, saved, and generated from', { tag: 
   cleanup();
 
   // The door: from the generator's dialog, over it.
-  await bar(page, '#rmgbtn');
+  await pressBar(page, '#rmgbtn');
   await page.locator('#rmg-templates').click();
   await expect(page.locator('#rte')).toBeVisible();
   // The list is the generator's: the game's 22 and the editor's Jebus, each
@@ -424,9 +401,8 @@ test('the template editor: a template drawn, saved, and generated from', { tag: 
   await page.locator('#rmg-towns').selectOption('0');
   await page.locator('#rmg-name').fill(NAME_FROM_TEMPLATE);
   await page.locator('#rmg-seed').fill('1785351845');
-  await page.locator('#rmg-ok').click();
-  await untilGenerated(ed, 4 * 60_000);
-  await expect(page.locator('#title')).toContainText(NAME_FROM_TEMPLATE, { timeout: 60_000 });
+  await press(page, page.locator('#rmg-ok'));
+  await expect(page.locator('#title')).toContainText(NAME_FROM_TEMPLATE);
   const xdb = readFileSync(join(ourFolders(NAME_FROM_TEMPLATE)[0]!, 'map.xdb'), 'latin1');
   expect(xdb).toContain(`<Template href="/RMG/Templates/${TEMPLATE}.h5et`);
   // Three zones with a town each: three towns on the map.

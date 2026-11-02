@@ -17,12 +17,15 @@ proper error, and any error nobody expected fails the whole test.
    ([working/failures.md](../working/failures.md), `test-silent-catches`):
    no catch swallows. Pass two: each `UnknownFailure` (33) gets a kind and a
    message of its own as the runs show where they land.
-4. **A guard against bare clicks.** A nodata suite that reads every spec and
-   fails on `.click(` outside the harness helpers, with an allowlist of the
-   specs not yet moved that may only shrink.
-5. **Specs moved to a checked press**: a helper that clicks and asserts the
-   gesture's visible outcome; timeouts over 15 s carry their reason or come
-   down.
+4. **Every gesture a spec touches is an action** ([working/e2e.md](../working/e2e.md)
+   "Press an action"). Done for the random map dialog (open, all random,
+   generate) and `rmg.spec`, proven by `e2e/press.spec.ts`; `rmg.spec`'s
+   "fixed template" went from 8.5–9.9 s to 5.0 s. The rest, window by window:
+   each window's controls through `onAct`, its spec through `press`.
+5. **A guard**: a nodata suite failing on `.onclick =` in `renderer/` outside
+   `onAct`, and on a bare `.click()` in a spec, each with an allowlist of what
+   is not moved yet that may only shrink. Then the default expect timeout comes
+   down from 15 s: after a press nothing is left to wait for.
 
 **Source.** [docs/working/e2e.md](../working/e2e.md), [docs/working/testing.md](../working/testing.md)
 "A test fails at the moment something goes wrong".

@@ -32,6 +32,8 @@
 
 import { $, $button, $input, $select, fillSelect } from '#core/dom.ts';
 import { failed } from '#core/failure.ts';
+import { onAct } from '#core/actions.ts';
+import { Refusal } from '#src/failure.ts';
 import { api } from '#core/ipc.ts';
 import { requireFilled } from '#core/form-gate.ts';
 import type { RmgChoicesResult, RmgGenerateResult, RmgTemplateEntry } from '#electron/ipc.ts';
@@ -259,6 +261,7 @@ async function fill(): Promise<void> {
   await refreshTemplates();
 }
 
+/** Open the dialog with its lists filled; a failure is the action's (onAct shows it in rmg-err). */
 async function open(): Promise<void> {
   $('rmg-err').textContent = '';
   $('rmg-busy').hidden = true;
@@ -266,10 +269,9 @@ async function open(): Promise<void> {
   dialog().showModal();
   try {
     await fill();
-  } catch (e) {
-    failed('the random map window', e, 'rmg-err');
+  } finally {
+    $input('rmg-name').select();
   }
-  $input('rmg-name').select();
 }
 
 /** Every list to Random; the name, the seed and the minimap stay. */
@@ -302,8 +304,7 @@ async function submit(open: (path: string, archive: string) => Promise<void>, re
   const seedText = $input('rmg-seed').value.trim();
   const seed = seedText ? Number(seedText) : undefined;
   if (seed !== undefined && (!Number.isInteger(seed) || seed < 1 || seed > 2147483647)) {
-    $('rmg-err').textContent = 'the seed is a whole number from 1 to 2147483647, or blank for a random one';
-    return;
+    throw new Refusal('the seed is a whole number from 1 to 2147483647, or blank for a random one');
   }
   ok.disabled = true;
   $('rmg-err').textContent = '';
@@ -337,9 +338,8 @@ async function submit(open: (path: string, archive: string) => Promise<void>, re
     const warned = r.warnings.length ? ` · ⚠ ${r.warnings.length === 1 ? r.warnings[0] : `${r.warnings.length} warnings (see console)`}` : '';
     $('hud').textContent = `random map → ${r.archive} · ${describe(r)} · seed ${r.seed} · ${r.objects} objects in ${(r.ms / 1000).toFixed(1)}s${warned}`;
     refresh();
-  } catch (e) {
-    // Stay open on failure — a name clash is fixed by editing the name.
-    failed('the random map window', e, 'rmg-err');
+    // A failure is the action's: the dialog stays open on it (a name clash is
+    // fixed by editing the name) and onAct shows it in rmg-err.
   } finally {
     $('rmg-busy').hidden = true;
     ok.disabled = false;
@@ -367,11 +367,15 @@ export function initRmg(openMap: (path: string, archive: string) => Promise<void
     ok: 'rmg-ok', missing: 'rmg-missing',
     fields: { name: 'rmg-name', template: 'rmg-template' },
   });
-  $('rmgbtn').onclick = () => { void open(); };
-  $('rmg2').onclick = () => { void open(); };
+  // The first opening of a session reads the install — its archives,
+  // templates and some sixty heroes — which is seconds; every later one is
+  // immediate (src/rmg/service.ts keeps the lists).
+  const OPEN_BUDGET_MS = 10_000;
+  onAct('rmgbtn', 'rmg: open', open, { budget: OPEN_BUDGET_MS, line: 'rmg-err' });
+  onAct('rmg2', 'rmg: open', open, { budget: OPEN_BUDGET_MS, line: 'rmg-err' });
   $('rmg-close').onclick = () => dialog().close();
   $('rmg-cancel').onclick = () => dialog().close();
-  $('rmg-random').onclick = () => { void allRandom(); };
+  onAct('rmg-random', 'rmg: all random', allRandom, { line: 'rmg-err' });
   // The door to the template editor, on the template chosen here — over this
   // dialog, which stays as it was and picks up what was saved.
   $('rmg-templates').onclick = () => {
@@ -380,7 +384,9 @@ export function initRmg(openMap: (path: string, archive: string) => Promise<void
   };
   // Another install to read: the lists come from it, so they are read again.
   $input('rmg-mods').addEventListener('change', () => { void fill().catch((e) => { failed('the random map window', e, 'rmg-err'); }); });
-  $('rmg-ok').onclick = () => { void submit(openMap, refresh); };
+  // Generating AND opening what was made: done means the map is on screen.
+  // Small and medium maps take seconds; a huge two-level one, most of a minute.
+  onAct('rmg-ok', 'rmg: generate', () => submit(openMap, refresh), { budget: 60_000, line: 'rmg-err' });
   $input('rmg-name').addEventListener('input', updateWhere);
   $select('rmg-size').addEventListener('change', () => { void refreshTemplates(); });
   $select('rmg-two').addEventListener('change', () => { void refreshTemplates(); });

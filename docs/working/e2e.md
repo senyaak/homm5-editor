@@ -21,6 +21,21 @@ How a playwright spec is written. Running the suite: [testing.md](testing.md).
 - An external tool: "exit 1 with a report" is data, "died without one" is an
   error.
 
+## Press an action, wait for its end
+
+- A control a spec presses is bound with `onAct(id, name, work, { budget })`
+  (`renderer/core/actions.ts`): its click starts an action that ends once, as
+  done, refused or failed, on the window's action list. A budget over the
+  default 1 s carries its reason beside the number; going over is a console
+  error, so the test fails with the action's name.
+- The spec presses it with `press(page, locator)` / `pressBar(page, sel)`
+  (`e2e/press.ts`): a click that starts no action fails at once; otherwise the
+  press waits for that action's end, however long, and the outcome must be
+  `done` — or the refusal the spec names, `{ refused: /already exists/ }`.
+- After the press, one check of what the person sees; it waits for nothing.
+- An action's end covers everything the person waits for (generating AND
+  opening the map), so nothing is left running into the next test.
+
 ## Build through the window
 
 - A map in a spec is built with the palette: `pickObject(page, shared)` +
