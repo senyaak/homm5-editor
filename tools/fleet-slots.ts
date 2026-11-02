@@ -13,7 +13,7 @@
 // file pre-allows everything a role does, and sets HOMM5_GAME to the slot's own
 // game for every command. Kept out of git: its paths are this machine's.
 
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
@@ -82,8 +82,7 @@ function makeSlot(root: string, n: number, main: string, gameFrom: string | unde
     mkdirSync(slot, { recursive: true });
     git(main, 'worktree', 'add', '--detach', editor, 'origin/main');
     console.log('  npm ci ...');
-    execFileSync('npm', ['ci', '--no-audit', '--no-fund', '--loglevel=error'],
-      { cwd: editor, stdio: 'inherit', shell: true });
+    execSync('npm ci --no-audit --no-fund --loglevel=error', { cwd: editor, stdio: 'inherit' });
     console.log('  editor made');
   }
 
