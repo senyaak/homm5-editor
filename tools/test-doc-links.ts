@@ -8,10 +8,15 @@
 // `[text](target)` whose target is not a URL. Fragments are compared with the
 // heading slugs GitHub makes, since GitHub is where the docs are read.
 //
+// A target git ignores is broken too, though it may be on this disk: a built
+// page, an unpacked archive, a scratch file. It is not in a clone, so the link
+// leads nowhere on GitHub and in CI — and passes in every checkout that built
+// it, which is how one stayed red in CI while every local run was green.
+//
 //   node tools/test-doc-links.ts            # the whole repo
 //   node tools/test-doc-links.ts --list     # every link, checked or not
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
@@ -73,13 +78,32 @@ export function linksOf(file: string, text: string): Link[] {
   return out;
 }
 
-/** What is wrong with a link, or null. */
-export function problemOf(link: Link, read: (path: string) => string | null): string | null {
+/** The repo-relative path a link points at, forward slashes, as git names it. */
+export function targetOf(link: Link): string {
+  const pathPart = link.target.split('#', 2)[0];
+  const path = pathPart ? join(dirname(link.file), decodeURIComponent(pathPart)) : link.file;
+  return path.replace(/\\/g, '/');
+}
+
+/** Which of these repo-relative paths git ignores — one `git check-ignore` for all of them. */
+export function ignoredOf(paths: string[]): Set<string> {
+  if (!paths.length) return new Set();
+  const r = spawnSync('git', ['check-ignore', '-z', '--stdin'], {
+    cwd: ROOT, input: paths.join('\0'), encoding: 'utf8',
+  });
+  // Exit 1 is the answer "none of them": only a status past that is a failure.
+  if (r.status === null || r.status > 1) throw new Error(`git check-ignore failed (exit ${r.status}): ${r.stderr}`);
+  return new Set(r.stdout.split('\0').filter(Boolean));
+}
+
+/** What is wrong with a link, or null. `ignored` holds the targets git ignores (`ignoredOf`). */
+export function problemOf(link: Link, read: (path: string) => string | null, ignored: ReadonlySet<string>): string | null {
   const [pathPart, fragment] = link.target.split('#', 2);
   const path = pathPart ? join(dirname(link.file), decodeURIComponent(pathPart)) : link.file;
   if (pathPart) {
     const full = join(ROOT, path);
     if (!existsSync(full)) return `no such file: ${path}`;
+    if (ignored.has(targetOf(link))) return `ignored by git, so a clone does not have it: ${path}`;
     if (statSync(full).isDirectory()) return fragment ? `a fragment on a folder: ${path}` : null;
   }
   if (!fragment || !path.endsWith('.md')) return null;
@@ -103,24 +127,24 @@ function main(): void {
     }
     return cache.get(path) ?? null;
   };
-  let links = 0;
-  const bad: string[] = [];
+  const all: Link[] = [];
   for (const file of trackedMarkdown()) {
     const text = read(file);
-    if (text === null) continue;
-    for (const link of linksOf(file, text)) {
-      links++;
-      const problem = problemOf(link, read);
-      if (list) console.log(`${problem ? 'BAD' : 'ok '} ${link.file}:${link.line} ${link.target}`);
-      if (problem) bad.push(`${relative(ROOT, join(ROOT, link.file))}:${link.line}  ${link.target}  — ${problem}`);
-    }
+    if (text !== null) all.push(...linksOf(file, text));
+  }
+  const ignored = ignoredOf([...new Set(all.filter((l) => l.target.split('#', 2)[0]).map(targetOf))]);
+  const bad: string[] = [];
+  for (const link of all) {
+    const problem = problemOf(link, read, ignored);
+    if (list) console.log(`${problem ? 'BAD' : 'ok '} ${link.file}:${link.line} ${link.target}`);
+    if (problem) bad.push(`${relative(ROOT, join(ROOT, link.file))}:${link.line}  ${link.target}  — ${problem}`);
   }
   if (bad.length) {
     console.error(bad.join('\n'));
-    console.error(`\ntest-doc-links: ${bad.length} broken of ${links} links`);
+    console.error(`\ntest-doc-links: ${bad.length} broken of ${all.length} links`);
     process.exit(1);
   }
-  console.log(`test-doc-links: all ${links} links land`);
+  console.log(`test-doc-links: all ${all.length} links land`);
 }
 
 if (import.meta.main) main();
