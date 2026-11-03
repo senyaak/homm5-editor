@@ -17,6 +17,38 @@ section. `release.yml` finds its section by version number. A version with a
 
 > New entries are files under `changes/`, one per change — see `changes/README.md`.
 
+## 0.12.0-alpha.1 — 2026-11-03
+
+**Still an alpha, for the same reason as before.** The multiplayer half is as
+0.10.0-alpha.1 left it: two players from two different home networks announce
+the same address and port, and the lobby refuses the second. One household,
+one LAN, or one player per network. This release is a faction of your own: a
+town type authored in the **Factions** window — its race, its building tree
+put together cell by cell from any town's buildings or loaded whole, its
+dwellings hiring its own creatures, its heroes and classes, its town screen,
+exterior, music and scripts — and played in the game as a ninth town. Around
+it, the mod windows grew what a faction needs (upgrades between creatures, a
+creature that looks like another, files of your own) and got faster: with a
+faction in the mod a save took four seconds and now takes under two, the
+first save after starting the editor no longer stalls for up to twenty-five,
+and placing a new kind of object on a map no longer pauses.
+
+- **Placing a kind of object for the first time no longer pauses.** A new
+  object takes its fields from one of the game's own maps, and finding it
+  listed every map of the game again — about 0.4 s for each kind placed the
+  first time on a map with none of it. The list is now kept, and listed
+  again only when a map was added or removed.
+- **The mod windows answer faster.** Opening a form, saving a creature or
+  a building and recolouring one each did work again that had not changed
+  since the last click — the game's rosters, its files, the executable's
+  tables, the whole mod archive for a creature's few textures. With a
+  faction in the mod a save took about four seconds; most of that is gone.
+- **Saving anything in the mod windows no longer stalls the editor on the first
+  save.** Every save writes the whole mod, and the editor compressed all of it:
+  with a faction in the mod, the first save after starting the editor took
+  15–25 seconds, the later ones a second more than they needed. The mod is now
+  written uncompressed, which the game reads as it reads its own archives; the
+  file on disk is about twice as large.
 - The Factions window has no "Magic" choice any more: the magic guild is a
   building of the tree like any other. A town has a guild when you put one,
   and its two schools are offered while it stands. A town without one, taken
