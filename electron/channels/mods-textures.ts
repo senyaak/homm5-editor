@@ -10,12 +10,12 @@ import type { IpcMainInvokeEvent } from 'electron';
 import type { ModsRecolorPayload, ModsRecolorResult, ModsTexturesPayload, ModsTexturesResult } from '#electron/ipc.ts';
 import { buildAndInstall, ourMod } from '#electron/mod-install.ts';
 import { gameRoot, isConfigured } from '#electron/paths.ts';
-import { readFileSync } from 'node:fs';
+import { closeSync, fstatSync, openSync } from 'node:fs';
 import { findCreatureMods } from '#src/mods/mod-archive.ts';
 import type { ModCreature } from '#src/mods/mod-model.ts';
 import { decodeDDSBuffer } from '#src/format/dds.ts';
 import { MOD_DIR, modFile } from '#src/game/mod-paths.ts';
-import { readEntries } from '#src/format/pak.ts';
+import { readEntryFrom, readIndex } from '#src/format/pak.ts';
 import { extractPalette, isIdentity } from '#src/format/recolor.ts';
 import { pngDataUri } from '#src/format/png.ts';
 
@@ -60,12 +60,20 @@ export function registerModTextures(): void {
     const { archive, prefix } = texturePrefix(g, p);
     const textures: ModsTexturesResult['textures'] = [];
     const pixels: Uint8Array[] = [];
-    for (const e of readEntries(readFileSync(archive))) {
-      const name = e.name.replace(/\\/g, '/');
-      if (!name.startsWith(prefix) || !name.toLowerCase().endsWith('.dds')) continue;
-      const img = decodeDDSBuffer(e.data);
-      pixels.push(img.rgba);
-      textures.push({ path: name, width: img.width, height: img.height, png: pngDataUri(img.width, img.height, img.rgba) });
+    // Through the index, reading only this entry's own textures: the archive is
+    // the whole mod — a faction's is a hundred megabytes — and one creature's
+    // textures are a handful of its thousands of members.
+    const fd = openSync(archive, 'r');
+    try {
+      for (const e of readIndex(fd, fstatSync(fd).size)) {
+        const name = e.name.replace(/\\/g, '/');
+        if (!name.startsWith(prefix) || !name.toLowerCase().endsWith('.dds')) continue;
+        const img = decodeDDSBuffer(readEntryFrom(fd, e));
+        pixels.push(img.rgba);
+        textures.push({ path: name, width: img.width, height: img.height, png: pngDataUri(img.width, img.height, img.rgba) });
+      }
+    } finally {
+      closeSync(fd);
     }
     return { textures, palette: extractPalette(pixels) };
   });
