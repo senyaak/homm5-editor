@@ -20,11 +20,15 @@ import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join, normalize } from 'node:path'
 
 const root = process.argv[2] ?? '.'
+// `ls-files -c` still names a tracked file deleted from the tree until the
+// deletion is staged — the state right after a doc is moved or split, which is
+// when this check is wanted most. Such a file is no longer a doc: it is skipped,
+// and a link still pointing at it is reported like any other.
 const files = execFileSync('git', ['-C', root, 'ls-files', '-z', '-co', '--exclude-standard', '*.md'], {
   encoding: 'utf8',
 })
   .split('\0')
-  .filter(Boolean)
+  .filter((file) => file && existsSync(join(root, file)))
 
 const link = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g
 const broken = []

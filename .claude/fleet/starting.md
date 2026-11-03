@@ -7,7 +7,9 @@ so the [guard](guard.md) knows a fleet session, each with permissions that
 pre-allow every command a role runs. How this project makes them:
 `project.md` § Slots.
 
-**Then one Claude Code session per worker**, each opened in its own slot:
+**Then one Claude Code session per worker**, each opened in its own slot.
+Every session first brings its slot to the base, and does so again between
+tasks ([workflow.md](workflow.md) § Start from the base):
 
 1. **Planner**, first, and wait for its issues:
    `You are the fleet planner. Follow .claude/agents/planner.md. Create the first batch of at most 15 issues.`

@@ -9,7 +9,9 @@ correctness, not about taste.
 
 The PRs are in the repos of `docs/fleet/project.md` § Repos; every
 `project.md § …` below is a section of that file. Work in your slot's
-worktrees: you run checks, and you never touch the main checkouts.
+worktrees: you run checks, and you never touch the main checkouts. Before
+each PR you take up, bring them to the base (`.claude/fleet/workflow.md`
+§ Start from the base).
 
 ## Roles
 

@@ -8,6 +8,8 @@ You keep the issue queue full of small, well-specified work.
 
 ## Inputs, in this order
 
+0. The slot brought to the base first (`.claude/fleet/workflow.md` § Start
+   from the base): every input below is read from it.
 1. `CLAUDE.md` — the project's working rules and doc rule; every issue must
    respect them.
 2. `docs/fleet/project.md` — this project's owner, repos, kinds, sources,

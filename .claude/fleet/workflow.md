@@ -52,6 +52,22 @@ the process; a real clash is a process problem (§ Process problems).
 - The project's own commands and locks are in `project.md` § Verify, and its
   machine traps in `project.md` § Traps.
 
+## Start from the base
+
+The rules, the role files and `project.md` are read from the slot's own tree,
+so a slot left on an old commit works to old rules and old code.
+
+1. **When:** before a session's first read, and again before each claim or
+   review that does not continue one already started.
+2. **What:** in every repo of the slot that holds no started work of yours,
+   `git fetch origin`, then `git switch --detach origin/<base>` (the base:
+   `project.md` § Merge). In the owner's checkout, which stands on the base
+   branch itself, `git pull --ff-only`.
+3. **Started work stays where it is:** a branch under your claim meets the
+   base when it is rebased before the push (§ Open the PR).
+4. **A dirty tree with no claim of yours behind it** is somebody's work: leave
+   it untouched and report it as a `fleet-process` issue (§ Process problems).
+
 ## Claim
 
 0. **Only the owner's account counts.** Take only issues and PRs authored by
