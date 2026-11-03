@@ -124,24 +124,45 @@ export function listStockMaps(gameRoot: string | null): MapSource[] {
  * handful of samples.
  */
 export function mapFilesUnder(dir: string, cap = Infinity): string[] {
-  const out: string[] = [];
+  return mapTreeUnder(dir, cap).maps;
+}
+
+/** The `map.xdb` files under a folder, and every folder the walk went through. */
+export interface MapTree { maps: string[]; dirs: string[] }
+
+/**
+ * The walk itself, keeping the folders too: a caller that holds on to the list
+ * asks those folders whether anything was added or removed since (a folder's
+ * date moves when an entry in it comes or goes), which is far cheaper than
+ * walking again.
+ *
+ * Entries are typed by the listing itself rather than statted one by one: the
+ * game's Maps folder holds 4700 files, and a stat each was 337 ms of a walk
+ * that takes 47 without them. A link is still statted, to follow it.
+ */
+export function mapTreeUnder(dir: string, cap = Infinity): MapTree {
+  const maps: string[] = [];
+  const dirs: string[] = [];
   const walk = (at: string): void => {
-    if (out.length >= cap) return;
-    let names: string[];
-    try { names = readdirSync(at); }
+    if (maps.length >= cap) return;
+    let entries;
+    try { entries = readdirSync(at, { withFileTypes: true }); }
     catch (e) { if (!isMissing(e)) noteFailure(`listing ${at}`, e); return; }
-    for (const name of names) {
-      if (out.length >= cap) return;
-      const full = join(at, name);
-      let st;
-      try { st = statSync(full); }
-      catch (e) { if (!isMissing(e)) noteFailure(`reading ${full}`, e); continue; }
-      if (st.isDirectory()) walk(full);
-      else if (name.toLowerCase() === 'map.xdb') out.push(full);
+    dirs.push(at);
+    for (const entry of entries) {
+      if (maps.length >= cap) return;
+      const full = join(at, entry.name);
+      let isDir = entry.isDirectory();
+      if (entry.isSymbolicLink()) {
+        try { isDir = statSync(full).isDirectory(); }
+        catch (e) { if (!isMissing(e)) noteFailure(`reading ${full}`, e); continue; }
+      }
+      if (isDir) walk(full);
+      else if (entry.name.toLowerCase() === 'map.xdb') maps.push(full);
     }
   };
   walk(dir);
-  return out;
+  return { maps, dirs };
 }
 
 /** Every archive the game mounts from `data/`, in the order it finds them. */

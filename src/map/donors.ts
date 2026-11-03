@@ -17,9 +17,9 @@
 // rejected: 21 object types with fields we have not decoded, against a source
 // that is correct by construction.
 
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { mapFilesUnder } from './map-source.ts';
+import { mapTreeUnder } from './map-source.ts';
 import { noteFailure } from '../failure.ts';
 
 /** One `<Item …><AdvMapX>…</AdvMapX></Item>` fragment, as text. */
@@ -28,9 +28,43 @@ export type DonorXml = string;
 /** Cached per type, negatives included, so a fruitless scan happens once. */
 const cache = new Map<string, DonorXml | null>();
 
+/**
+ * The maps last listed, and the date of every folder the listing walked.
+ *
+ * Listing the Maps folder is a walk of 290 folders and 4700 files, and it ran
+ * for every type placed for the first time — most of the 0.4 s each such
+ * placement took. Kept, it is checked instead: a folder's date moves when an
+ * entry in it comes or goes, so the 290 dates say whether a map was added or
+ * removed anywhere below, at a fraction of a walk. When one moved, the maps
+ * are listed again and every "no map has one" goes with the old list: a type
+ * no map had may have one now. A template found stays — it is text, good
+ * whatever becomes of the map it came from.
+ */
+let listed: { root: string; maps: string[]; dates: Map<string, number> } | null = null;
+
 /** Every map.xdb under the game's Maps folder, nearest first. */
 function mapFiles(gameData: string): string[] {
-  return mapFilesUnder(join(gameData, 'Maps'));
+  const root = join(gameData, 'Maps');
+  if (listed?.root === root && unchanged(listed.dates)) return listed.maps;
+  const tree = mapTreeUnder(root);
+  const dates = new Map<string, number>();
+  for (const dir of tree.dirs) {
+    const at = statSync(dir, { throwIfNoEntry: false });
+    if (at) dates.set(dir, at.mtimeMs);
+  }
+  listed = { root, maps: tree.maps, dates };
+  for (const [type, donor] of cache) if (donor === null) cache.delete(type);
+  return tree.maps;
+}
+
+/** No folder of a listing gained or lost an entry since its date was taken. */
+function unchanged(dates: ReadonlyMap<string, number>): boolean {
+  for (const [dir, date] of dates) {
+    const now = statSync(dir, { throwIfNoEntry: false });
+    // A folder gone is a change like any other.
+    if (!now || now.mtimeMs !== date) return false;
+  }
+  return true;
 }
 
 /**
@@ -42,10 +76,14 @@ function mapFiles(gameData: string): string[] {
  * naive pattern backtracks badly on it.
  */
 export function donorFor(gameData: string, type: string): DonorXml | null {
+  // A template found is good whatever becomes of its map: it is kept as text.
+  // "No map has one" is asked again, of a listing that knows if maps came.
   const hit = cache.get(type);
-  if (hit !== undefined) return hit;
+  if (hit) return hit;
+  const files = mapFiles(gameData);
+  if (cache.get(type) === null) return null;
 
-  for (const file of mapFiles(gameData)) {
+  for (const file of files) {
     let xml: string;
     try { xml = readFileSync(file, 'latin1'); } catch (e) { noteFailure(`reading ${file}`, e); continue; }
     const open = `<${type}>`;
@@ -69,4 +107,4 @@ export function donorFor(gameData: string, type: string): DonorXml | null {
 }
 
 /** Forget everything, so a different installation can be pointed at. */
-export function clearDonorCache(): void { cache.clear(); }
+export function clearDonorCache(): void { cache.clear(); listed = null; }
