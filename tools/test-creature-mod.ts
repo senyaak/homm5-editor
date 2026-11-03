@@ -32,12 +32,12 @@ import { dataPath, repaint } from '../src/mods/mod-art.ts';
 import { writeDDS } from '../src/format/texture.ts';
 import type { RecolorOps } from '../src/format/recolor.ts';
 import { SHARPSHOOTER_LUA, TRAINABLE, questionFor } from '../src/mods/sharpshooter-training.ts';
-import { MOD_MANIFEST, dataReader } from '../src/mods/mod-files.ts';
+import { MOD_MANIFEST, REF_TABLE, dataReader, keptReader } from '../src/mods/mod-files.ts';
 import { assets } from '../src/game/assets.ts';
 import { Registry, raiseTable } from '../src/schema/registry.ts';
 import { findEditorRoot, listPlaceable } from '../src/map/objects.ts';
 import type { CreatureMod } from '../src/mods/mod-model.ts';
-import type { DataReader, ModFile } from '../src/mods/mod-files.ts';
+import type { BuildReport, DataReader, ModFile } from '../src/mods/mod-files.ts';
 import { blankStats, creatureRoot, readStats, SHIPPED_CREATURES } from '../src/mods/creatures.ts';
 import { readEntries } from '../src/format/pak.ts';
 import { dataDir } from './game-dir.ts';
@@ -616,6 +616,26 @@ if (!existsSync(join(dataRoot, 'types.xml'))) {
   const realBuilt = buildCreatureMod(real, read);
   const realFiles = byPath(realBuilt.files);
   check('the ceiling is the shipped count plus one', realBuilt.limit === SHIPPED_CREATURES + 1);
+  // A reader that keeps what it read builds the same mod, twice, and what it
+  // kept is still the file on disk afterwards: a builder that wrote into a
+  // buffer it was handed would change every later build's input.
+  {
+    const asked: string[] = [];
+    const kept = keptReader((rel) => { asked.push(rel); return read(rel); });
+    const once = buildCreatureMod(real, kept);
+    const firstAsks = asked.length;
+    const twice = buildCreatureMod(real, kept);
+    const same = (a: BuildReport, b: BuildReport): boolean => a.files.length === realBuilt.files.length
+      && a.files.every((f, i) => f.path === b.files[i]!.path && f.data.equals(b.files[i]!.data));
+    check('a kept reader builds the same files as a plain one', same(once, realBuilt) && same(twice, realBuilt));
+    check('and the second build reads nothing from disk', firstAsks > 0 && asked.length === firstAsks, `${asked.length - firstAsks} more reads`);
+    const touched = [...new Set(asked)].filter((rel) => { const k = kept(rel); return k !== null && !k.equals(read(rel)!); });
+    check('and every kept file is still what is on disk', touched.length === 0, touched.slice(0, 3).join(', '));
+    const before = asked.length;
+    const counted = keptReader((rel) => { asked.push(rel); return read(rel); }, 1);
+    counted('types.xml'); counted(REF_TABLE); counted('types.xml');
+    check('past its budget it keeps no more than the last file', asked.length - before === 3);
+  }
   // THE SPELL'S SCRIPT RIDES WITH THE CREATURE IT TRAINS INTO — which is the
   // whole point of the change: until this, it reached the game through a tool
   // run by hand, so nobody who rebuilt the mod got it.

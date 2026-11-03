@@ -26,6 +26,7 @@ import { listDirFiles } from '#src/format/pak.ts';
 import { initProject, MANIFEST_NAME, openProject, packProject, pickMapRel, readManifest, status, writeManifest } from '#src/map/project.ts';
 import { History } from '#src/map/history.ts';
 import { Registry } from '#src/schema/registry.ts';
+import { shippedRegistry } from '#electron/shipped.ts';
 import { buildScene } from '#src/scene/scene.ts';
 import { loadMap } from '#src/map/map.ts';
 import { compressedTexturesOn, TEXTURE_CAP } from '#src/scene/materials.ts';
@@ -284,7 +285,7 @@ export function registerMaps(): void {
 
     // The enabled-spell and artifact lists are the game's own, so they follow the
     // installed data (and any mod) rather than a list frozen into the source.
-    const registry = new Registry(gameData());
+    const registry = shippedRegistry();
     const files = buildNewMapProject({
       name,
       tiles: p.tiles,

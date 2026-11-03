@@ -7,7 +7,6 @@
 // it, install it — so that tail lives here rather than in each handler.
 
 import type { ModsInstallSetPayload } from '#electron/ipc.ts';
-import { gameData } from '#electron/paths.ts';
 import { rmSync } from 'node:fs';
 import { basename } from 'node:path';
 import { EFFECT_STATS } from '#src/mods/artifact-effects.ts';
@@ -23,7 +22,8 @@ import { findCreatureMods, installCreatureMod, installFactionSide, packCreatureM
 // arrived — installing the first class of a mod deleted the archive and
 // reported success.
 import { modIsEmpty, newCreatureMod } from '#src/mods/mod-model.ts';
-import { MOD_STEM, dataReader } from '#src/mods/mod-files.ts';
+import { MOD_STEM } from '#src/mods/mod-files.ts';
+import { shippedReader } from '#electron/shipped.ts';
 import type { CreatureMod } from '#src/mods/mod-model.ts';
 import type { Installed } from '#src/mods/mod-archive.ts';
 import type { BuildReport } from '#src/mods/mod-files.ts';
@@ -72,14 +72,14 @@ export function buildAndInstall(g: string, mod: CreatureMod): { installed: Insta
       report: { files: [], limit: 0, art: {}, missing: [] },
     };
   }
-  const report = buildCreatureMod(mod, dataReader(gameData()));
+  const report = buildCreatureMod(mod, shippedReader());
   const archive = packCreatureMod(report);
   const installed = installCreatureMod(g, mod, archive, report.factions);
   // From the whole manifest, in one place, so a kind of row added tomorrow is
   // written by every caller — see writeModEffectsFile. The names a mod uses for
   // things it does not own (a shipped artifact in a set, an ability a spell
   // spares) are numbers only types.xml knows, which is why it is handed over.
-  writeModEffectsFile(g, mod, dataReader(gameData())('types.xml')?.toString('latin1') ?? '');
+  writeModEffectsFile(g, mod, shippedReader()('types.xml')?.toString('latin1') ?? '');
   return { installed, report };
 }
 

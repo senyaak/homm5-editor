@@ -19,7 +19,8 @@ import { assets } from '#src/game/assets.ts';
 import { findCreatureMods } from '#src/mods/mod-archive.ts';
 import { builtDll, extensionState, installExtension } from '#src/mods/extension.ts';
 import { HERO_CLASS, artChoices } from '#src/mods/heroes.ts';
-import { Registry, artifactPreset, creatureAbilities, creatureAbilityNames, creaturePreset } from '#src/schema/registry.ts';
+import { artifactPreset, creatureAbilities, creatureAbilityNames, creaturePreset } from '#src/schema/registry.ts';
+import { shippedRegistry } from '#electron/shipped.ts';
 
 /** Wire this domain onto ipcMain. Called once, from main. */
 export function registerModsList(): void {
@@ -96,7 +97,7 @@ export function registerModsList(): void {
 
   ipcMain.handle('mods:form-data', async (): Promise<ModsFormDataResult> => {
     if (!isConfigured()) throw new Error('no data root configured');
-    const r = new Registry(gameData());
+    const r = shippedRegistry();
     return {
       donors: r.creatures(),
       artifactDonors: r.artifacts(),

@@ -35,7 +35,7 @@ import { TYPES } from '#src/mods/mod-files.ts';
 import { refPath } from '#src/mods/dwellings.ts';
 import { HERO_DIR, artOf, heroHref, heroPaths, takenHeroIds } from '#src/mods/heroes.ts';
 import type { HeroSpec, Mastery } from '#src/mods/heroes.ts';
-import { Registry } from '#src/schema/registry.ts';
+import { shippedRegistry } from '#electron/shipped.ts';
 
 // Rosters and presets come from the plain data root, not the mounted chain:
 // install resolves the donor's documents there, so offering a mod's own
@@ -184,7 +184,7 @@ export function registerModHeroes(): void {
     // Every identifier already spoken for, the game's 118 included: one string
     // names him in a campaign, in a script and on disk, so it has to be his.
     const data = assets([gameData()]);
-    const taken = takenHeroIds(new Registry(gameData()).heroes(), (rel) => data.text(rel));
+    const taken = takenHeroIds(shippedRegistry().heroes(), (rel) => data.text(rel));
     const spec = addHero(mod, heroSpecOf(p), taken);
 
     const { installed } = buildAndInstall(g, mod);
@@ -352,7 +352,7 @@ export function registerModHeroes(): void {
     const data = assets([gameData()]);
     const classTable = data.text(CLASS_TABLE) ?? '';
     const skillTable = data.text(SKILL_TABLE) ?? '';
-    const registry = new Registry(gameData());
+    const registry = shippedRegistry();
     const named = new Map(registry.skills().map((s) => [s.id, s.name || s.id]));
     const perks = readPerks(skillTable);
     const perkIds = new Set(perks.map((p) => p.id));

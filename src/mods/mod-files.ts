@@ -52,6 +52,38 @@ export function dataReader(root: string): DataReader {
   };
 }
 
+/**
+ * A reader that keeps what it read, for a root that does not change under it.
+ *
+ * Every install rebuilds the whole mod, and a faction's build reads some four
+ * thousand of the game's files — 120 MB, half a second of stat-open-read-close
+ * per click, for bytes that were the same the click before. Kept as read, a
+ * missing file too; least recently read goes first past `budget` bytes. The
+ * buffers are shared: a builder copies what it changes (repaint, setHref), it
+ * never writes into what it was handed.
+ */
+export function keptReader(read: DataReader, budget = 256 * 1024 * 1024): DataReader {
+  const kept = new Map<string, Buffer | null>();
+  let bytes = 0;
+  return (rel) => {
+    if (kept.has(rel)) {
+      const hit = kept.get(rel)!;
+      kept.delete(rel);
+      kept.set(rel, hit);
+      return hit;
+    }
+    const data = read(rel);
+    kept.set(rel, data);
+    bytes += data?.length ?? 0;
+    for (const [k, v] of kept) {
+      if (bytes <= budget) break;
+      kept.delete(k);
+      bytes -= v?.length ?? 0;
+    }
+    return data;
+  };
+}
+
 import type { FactionRows } from './faction-files.ts';
 
 // --- building the mod ---------------------------------------------------------

@@ -14,7 +14,7 @@ import { join } from 'node:path';
 import { describeUses, findArtifactUses } from '#src/mods/artifact-usage.ts';
 import type { ArtifactRank, ArtifactSlot, ArtifactSpec, HeroStats } from '#src/mods/artifacts.ts';
 import { addArtifact, addArtifactSet, artifactLimit, removeArtifact, removeArtifactSet, updateArtifact, updateArtifactSet } from '#src/mods/mod-model.ts';
-import { Registry } from '#src/schema/registry.ts';
+import { shippedRegistry } from '#electron/shipped.ts';
 
 /** The spec an artifact payload describes, shared by install and update. */
 function artifactSpecOf(p: ModsInstallArtifactPayload): ArtifactSpec {
@@ -145,7 +145,7 @@ export function registerModArtifacts(): void {
     const mod = ourMod(g);
     const known = new Set([
       ...(mod.artifacts ?? []).map((a) => a.id),
-      ...new Registry(gameData()).artifacts().map((a) => a.id),
+      ...shippedRegistry().artifacts().map((a) => a.id),
     ]);
     const members = p.artifacts.map((id) => id.trim()).filter(Boolean);
     // Caught here rather than at build time: a misspelt member produces a set

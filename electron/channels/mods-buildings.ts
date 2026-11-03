@@ -21,7 +21,7 @@ import {
 import type { BuildingSpec } from '#src/mods/buildings.ts';
 import { buildingPreset, listBuildingDonors } from '#src/mods/building-presets.ts';
 import { addBuilding, removeBuilding, updateBuilding } from '#src/mods/mod-model.ts';
-import { Registry } from '#src/schema/registry.ts';
+import { shippedRegistry } from '#electron/shipped.ts';
 import { enumValues } from '#electron/spec.ts';
 import { readTypeSpec, typesXmlPath } from '#src/schema/typespec.ts';
 import type { SpecType } from '#src/schema/typespec.ts';
@@ -76,7 +76,7 @@ export function registerModBuildings(): void {
       required: [...requiredFields(c.shared)],
       slots: [...messageSlots(c.shared)],
     }));
-    const r = new Registry(gameData());
+    const r = shippedRegistry();
     return {
       classes,
       donors: listBuildingDonors(data),

@@ -23,7 +23,8 @@ import type { FactionSpec } from '#src/mods/factions.ts';
 import { EXTERIOR_STAGES, SHIPPED_TOWN_ORDINALS, buildingLevelCeiling } from '#src/mods/town-files.ts';
 import { readTownTree } from '#src/mods/town-tree.ts';
 import { TOWN_BUILDINGS } from '#src/mods/town-button.ts';
-import { Registry, gameText } from '#src/schema/registry.ts';
+import { gameText } from '#src/schema/registry.ts';
+import { shippedRegistry } from '#electron/shipped.ts';
 import { assets } from '#src/game/assets.ts';
 import { SKILL_TABLE } from '#src/mods/hero-skills.ts';
 import { readSkillAiRows } from '#src/mods/skill-values.ts';
@@ -91,7 +92,7 @@ function exeWords(installed: Installed): string {
 export function registerModFactions(): void {
   ipcMain.handle('mods:faction-data', async (): Promise<ModsFactionDataResult> => {
     if (!isConfigured()) throw new Error('no data root configured');
-    const r = new Registry(gameData());
+    const r = shippedRegistry();
     const g = gameRoot();
     const mod = g ? ourMod(g) : null;
     // The shipped table and the mod's own skills after it, the way the class
