@@ -19,7 +19,7 @@ import { netPath, readNet, writeNetFile } from '#src/mods/net-config.ts';
 import { removeQolArchive, writeQolArchive } from '#src/mods/qol-ui.ts';
 import { removeGameplayArchive, writeGameplayArchive } from '#src/mods/gameplay.ts';
 import { profilesRoot, setResolution, setWindowed } from '#src/game/video-config.ts';
-import { extensionState, installExtension } from '#src/mods/extension.ts';
+import { builtDll, extensionState, installExtension } from '#src/mods/extension.ts';
 import { heldByRunningGame } from '#src/game/running.ts';
 import { MOD_DIR } from '#src/game/mod-paths.ts';
 import { PATCHED_EXE } from '#src/exe/creature-limit.ts';
@@ -116,6 +116,11 @@ export function registerQol(): void {
       extension = extensionState(g).installed;
       notes.push(`the game is running and has ${held} open — the settings are saved,`
         + ' but nothing in the install was touched. Close the game and apply again.');
+    } else if (!existsSync(builtDll(APP_ROOT))) {
+      // A checkout that has not built the extension is a state, as the mods
+      // windows show it (`unbuilt`), not a failed install: there is nothing to
+      // install yet, and the note says how to make it.
+      notes.push('the extension has not been built — run npm run build-native');
     } else {
       try {
         extension = installExtension(g, APP_ROOT).installed;
