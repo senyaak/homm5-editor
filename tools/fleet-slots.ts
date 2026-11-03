@@ -1,4 +1,4 @@
-// The fleet's working slots (docs/fleet/README.md § Slots): per slot a worktree
+// The fleet's working slots (docs/fleet/project.md § Slots): per slot a worktree
 // and a game copy of its own, side by side.
 //
 //   node tools/fleet-slots.ts <count> --root <dir> [--game-from <install>]
@@ -10,8 +10,10 @@
 // What exists is left alone; only each slot's .claude/settings.local.json is
 // rewritten, so the script is run again to add slots or to change what every
 // slot may do. A fleet session has nobody to answer a permission prompt, so the
-// file pre-allows everything a role does, and sets HOMM5_GAME to the slot's own
-// game for every command. Kept out of git: its paths are this machine's.
+// file pre-allows everything a role does, sets HOMM5_GAME to the slot's own
+// game for every command, and FLEET_SLOT, by which the fleet's guard
+// (.claude/fleet/guard.md) knows a fleet session. Kept out of git: its paths
+// are this machine's.
 
 import { execFileSync, execSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -56,7 +58,7 @@ function copyGame(from: string, to: string): void {
   if (r.status === null || r.status >= 8) throw new Error(`robocopy failed (exit ${r.status})`);
 }
 
-function settings(slot: string, game: string, data: string): string {
+function settings(n: number, slot: string, game: string, data: string): string {
   return JSON.stringify({
     permissions: {
       additionalDirectories: [fwd(slot), fwd(data)],
@@ -65,7 +67,7 @@ function settings(slot: string, game: string, data: string): string {
         ...BASH_ALLOWED.map((c) => `Bash(${c}:*)`),
       ],
     },
-    env: { HOMM5_GAME: fwd(game) },
+    env: { HOMM5_GAME: fwd(game), FLEET_SLOT: String(n) },
   }, null, 2) + '\n';
 }
 
@@ -103,7 +105,7 @@ function makeSlot(root: string, n: number, main: string, gameFrom: string | unde
   }
 
   mkdirSync(join(editor, '.claude'), { recursive: true });
-  writeFileSync(join(editor, '.claude', 'settings.local.json'), settings(slot, game, data));
+  writeFileSync(join(editor, '.claude', 'settings.local.json'), settings(n, slot, game, data));
   console.log('  settings written');
 }
 

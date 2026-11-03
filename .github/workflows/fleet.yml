@@ -1,0 +1,27 @@
+# The shared fleet's own checks: the files of .claude/fleet/, .claude/agents/
+# and .claude/rules/ are those of the pinned release (fleet.lock.json), and
+# every relative link in the markdown lands. Both need only the checkout and
+# no install, so they run on every change, docs included.
+
+name: fleet
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  fleet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - run: node .claude/fleet/fleet.mjs verify
+
+      - run: node .claude/fleet/links.mjs

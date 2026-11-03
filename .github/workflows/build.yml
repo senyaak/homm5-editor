@@ -10,7 +10,7 @@
 name: build
 
 # On every pull request, and on a push to main that touches more than docs.
-# Fleet work lands through pull requests (docs/fleet/README.md), so a PR's run
+# Fleet work lands through pull requests (.claude/fleet/README.md), so a PR's run
 # is the gate the reviewer and the merger wait for; the push run watches main
 # after a merge. What reads the data or an install is run locally.
 on:

@@ -13,7 +13,7 @@ reads a legally installed game; nothing of the game is committed. The repo is
 - [docs/working/](docs/working/README.md) — how work is done here: tests, e2e, the game, design, mods, native, reverse engineering, git
 - [docs/README.md](docs/README.md) — formats, the map document, mods and content, what was read out of the executable
 - [docs/todo.md](docs/todo.md) — the work list: one file per open item
-- [docs/fleet/](docs/fleet/README.md) — the agent fleet: roles, slots, claiming, review and merge through GitHub
+- [.claude/fleet/](.claude/fleet/README.md) — the agent fleet, shared from `senyaak/claude-fleet`; this project's part in [docs/fleet/project.md](docs/fleet/project.md)
 - [ROADMAP.md](ROADMAP.md) — the plan and its history; `SLICE_*.md` at the root — designs in flight
 - [CHANGELOG.md](CHANGELOG.md) — what changed, as people read it on GitHub
 - [LOG.md](LOG.md) — what the extension's development build writes
@@ -36,13 +36,9 @@ a shared change or a release; the C1M1 reconstruction only before a release
   two things to see ([the-game.md](docs/working/the-game.md)).
 - **An install is shared by every session that points at it.** Install only
   into a copy of your own; a copy of your own is expendable.
-- **Every new test is broken on purpose once** and must go red; a check made in
-  a console goes into a test in the same commit.
-- **e2e: every gesture is followed by a check that nothing threw**, and maps
-  are built through the palette, never under the UI ([e2e.md](docs/working/e2e.md)).
-- **No failure is swallowed**: every catch hands the error on, reports it
-  through its layer's reporter, or is marked `not a failure: <why>`; an
-  unclassified one is `UnknownFailure` ([failures.md](docs/working/failures.md)).
+- **e2e: maps are built through the palette**, never under the UI; a control a
+  spec presses is an action ([e2e.md](docs/working/e2e.md)). The failure
+  reporters, `Refusal` and `UnknownFailure`: [failures.md](docs/working/failures.md).
 - **Separate what is proven from what is assumed.** Proven about the file is
   not proven about the engine; "found nothing" is a property of the tool.
 - **Read the code, not the picture**; docs and the web before the disassembler
@@ -54,17 +50,10 @@ a shared change or a release; the C1M1 reconstruction only before a release
   code, never the middle of the engine's ([mods-and-the-engine.md](docs/working/mods-and-the-engine.md)).
 - **Files are changed with Edit/Write**, never by shell rewrites; code with a
   backslash never goes through a heredoc ([shell-and-files.md](docs/working/shell-and-files.md)).
-- **Commit and push each verified change**: author the owner, committer the
-  running Claude model via `GIT_COMMITTER_*`, no `Co-Authored-By`; stage your
-  own files only; never rewrite pushed history; a user-visible change adds its
-  changelog entry as a file under `changes/` in the same commit — never an
-  edit of CHANGELOG.md ([git.md](docs/working/git.md)).
-- **Everything in the repo and on GitHub is English.** Only the chat with the
-  owner is Russian.
-- **A task does what it says**; a neighbouring bug is named, small stale
-  comments in our code are fixed in passing ([scope-and-docs.md](docs/working/scope-and-docs.md)).
-- **One subject per file**, split past about 500 lines; a correction replaces
-  the wrong text.
+- **Commit and push each verified change**; never rewrite pushed history; a
+  user-visible change adds its changelog entry as a file under `changes/` in
+  the same commit — never an edit of CHANGELOG.md ([git.md](docs/working/git.md)).
+- **Small stale comments in our code are fixed in passing** ([scope-and-docs.md](docs/working/scope-and-docs.md)).
 
 ## Traps worth knowing before touching the code
 
@@ -78,5 +67,4 @@ a shared change or a release; the C1M1 reconstruction only before a release
 - `Math.hypot` is inexact; the map editor's FPU runs single precision, round toward zero — [numbers.md](docs/working/numbers.md)
 - Playwright restarts the worker after a failure: a cleanup in `beforeAll` wipes the chain — [e2e.md](docs/working/e2e.md)
 - A probe launching the app runs the BUILT renderer: `npm run build:renderer` first — [e2e.md](docs/working/e2e.md)
-- Never `| tail` a test run: the log keeps only what passed the pipe — [testing.md](docs/working/testing.md)
 - `test-heroes` takes the data directory positionally; `--game ..` makes it skip — [testing.md](docs/working/testing.md)
