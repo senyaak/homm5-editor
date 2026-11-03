@@ -31,7 +31,7 @@ import { SHIPPED_CREATURES, creatureRoot, readStats } from './creatures.ts';
 import { artifactLimit, creatureLimit } from './mod-model.ts';
 import { MOD_MANIFEST, MOD_STEM, REF_TABLE, TYPES } from './mod-files.ts';
 import { hrefOf } from './xml-edit.ts';
-import type { DeflateCache, ZipEntry, ZipIndexEntry } from '../format/pak.ts';
+import type { ZipEntry, ZipIndexEntry } from '../format/pak.ts';
 import type { ArtifactExeResult } from '../exe/artifact-limit.ts';
 import type { TableExeResult } from '../exe/table-limit.ts';
 import type { ExeResult } from '../exe/creature-limit.ts';
@@ -56,17 +56,16 @@ export function writeCreatureMod(dir: string, report: BuildReport): void {
  * several mounted archives the game takes the newest member, so a mod stamped
  * with the ZIP epoch loses every file to the game's own 2007 copies and is read
  * and then silently ignored. writeArchive defaults to now; this only says so.
+ *
+ * Every member is STORED, not deflated. Every install packs the WHOLE mod, and
+ * deflating it was nearly all of an install's time — a faction's 136 MB took
+ * 15 s on the first pack — for an archive the game reads stored just as well
+ * (its own data.pak and texts.pak hold stored members).
  */
 export function packCreatureMod(report: BuildReport, when = new Date()): Buffer {
   const entries: ZipEntry[] = report.files.map((f) => ({ name: f.path.replace(/\\/g, '/'), data: f.data }));
-  return writeArchive(entries, { mtime: when, reuse: lastPacked });
+  return writeArchive(entries, { mtime: when, store: () => true });
 }
-
-/**
- * The last mod packed, deflated — every install rebuilds the WHOLE mod, and
- * one edit changes a few of its thousands of files (see `WriteOptions.reuse`).
- */
-const lastPacked: DeflateCache = new Map();
 
 /** Where an installed mod went, and what the executable now says. */
 export interface Installed {
