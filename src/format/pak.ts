@@ -20,7 +20,9 @@
 
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, statSync, readSync } from 'node:fs';
 import { dirname, join, relative, sep } from 'node:path';
-import { deflateRawSync, inflateRawSync } from 'node:zlib';
+// zlib's own CRC-32 (IEEE, as ZIP requires): a mod is packed whole on every
+// install, and a byte loop in JS took 200 ms over its 120 MB where this takes 27.
+import { crc32, deflateRawSync, inflateRawSync } from 'node:zlib';
 
 /** One archive member: a ZIP-style forward-slash path plus its raw bytes. */
 export interface ZipEntry {
@@ -50,22 +52,6 @@ export interface WriteOptions {
 export interface PackResult {
   entries: number;
   bytes: number;
-}
-
-// ---- CRC-32 (IEEE, as ZIP requires) ----
-const CRC_TABLE = (() => {
-  const t = new Uint32Array(256);
-  for (let n = 0; n < 256; n++) {
-    let c = n;
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-    t[n] = c >>> 0;
-  }
-  return t;
-})();
-function crc32(buf: Buffer): number {
-  let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
 }
 
 // ZIP signatures.

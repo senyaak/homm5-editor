@@ -35,6 +35,23 @@ ok(rebuilt.length === orig.length, `round-trip entry count (${orig.length})`);
 const om = new Map(orig.map((e) => [e.name, sha1(e.data)]));
 ok(rebuilt.every((e) => om.get(e.name) === sha1(e.data)), 'round-trip content identical for every file');
 
+// Every member's CRC as the central directory states it — the game's own
+// archive is the reference for what ours must say about the same bytes.
+const crcs = (buf) => {
+  const eocd = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  const end = buf.readUInt32LE(eocd + 16) + buf.readUInt32LE(eocd + 12);
+  const out = new Map();
+  for (let at = buf.readUInt32LE(eocd + 16); at < end;) {
+    const nameLen = buf.readUInt16LE(at + 28);
+    out.set(buf.toString('utf8', at + 46, at + 46 + nameLen), buf.readUInt32LE(at + 16));
+    at += 46 + nameLen + buf.readUInt16LE(at + 30) + buf.readUInt16LE(at + 32);
+  }
+  return out;
+};
+const shippedCrc = crcs(readFileSync(PAK));
+const ourCrc = crcs(writeArchive(orig));
+ok(orig.every((e) => shippedCrc.get(e.name) === ourCrc.get(e.name)), 'every member\'s CRC is the one the game\'s archive states');
+
 // --- 2 & 3. Project lifecycle ---
 const dir = join(tmpdir(), 'homm5_test_project');
 rmSync(dir, { recursive: true, force: true });
