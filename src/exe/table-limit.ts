@@ -316,10 +316,12 @@ export function findCountAccessor(buf: Buffer, table: TableSpec): CountAccessor 
     throw new Error(`${candidates.size} count accessors sit beside readers of the ${table.what} table — cannot tell which is its`);
   }
 
+  // Every E8 byte of every section, found by indexOf: a loop over each byte in
+  // JS was a tenth of a second per table, and an install asks about five.
   const callers = new Map<number, number>();
   for (const s of at) {
-    for (let i = s.raw; i <= ends.get(s)! - 5; i++) {
-      if (buf[i] !== 0xe8) continue;
+    const last = ends.get(s)! - 5;
+    for (let i = buf.indexOf(0xe8, s.raw); i >= 0 && i <= last; i = buf.indexOf(0xe8, i + 1)) {
       const from = address(i);
       if (from === null) continue;
       const target = (from + 5 + buf.readInt32LE(i + 1)) >>> 0;
