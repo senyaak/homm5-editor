@@ -201,9 +201,9 @@ the game — and rewrites each slot's `.claude/settings.local.json`: a Bash
 allow list, `HOMM5_GAME` pointing at the slot's game, and `FLEET_SLOT` for the
 guard. Safe to run again.
 
-Three slots exist. Developers and the reviewer each take one; the planner and
-the merger need none and run in the main checkout. A worker session is opened
-in its slot's `editor`.
+Four slots exist. Developers and the reviewer each take one of `slot-1` to
+`slot-3`; the merger has `slot-4` to itself; the planner needs none and runs in
+the main checkout. A worker session is opened in its slot's `editor`.
 
 ## Traps
 

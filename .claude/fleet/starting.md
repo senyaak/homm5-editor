@@ -17,7 +17,7 @@ tasks ([workflow.md](workflow.md) § Start from the base):
    `You are fleet <role> #<n>. Loop until no ready issue of your kind or changes-requested PR remains: claim one as in .claude/fleet/workflow.md § Claim, then spawn the '<role>' subagent with the issue number and branch to do the work, check its report, take the next. Keep this conversation small.`
 3. **Reviewers**, two sessions, each in a slot of its own (they run checks):
    `You are fleet reviewer #<n>. Follow .claude/agents/reviewer.md. Loop over open fleet PRs until none is reviewable. Then report.`
-4. **Merger**, exactly one session:
+4. **Merger**, exactly one session, in a slot of its own (the owner's checkout is the owner's, and the guard knows a slot):
    `You are the fleet merger. Follow .claude/agents/reviewer.md § Merger. Loop until told STOP.`
 
 One subagent per issue gives every task a fresh context: the session stays a

@@ -8,7 +8,8 @@
 //
 // Two scopes. EVERY session in a project that has the fleet installed keeps the
 // commit rules: they are the owner's rules wherever the fleet is. A FLEET
-// session also keeps master to the merger's form and stays off PowerShell. A
+// session also pushes nothing forced, leaves master to the merger's GitHub
+// merge, throws away no work in the tree, and stays off PowerShell. A
 // session is a fleet session when FLEET_SLOT is set, when it runs in a slot
 // (`<anything>-fleet-<n>`), when the hook fires inside one of the fleet's
 // role subagents, or when it is a cloud session (CLAUDE_CODE_REMOTE=true) of a
@@ -141,6 +142,34 @@ function ghApiMerge(words) {
   return String(method).toUpperCase() === 'PUT' && positional.some((p) => /(^|\/)pulls\/[^/]+\/merge\/?(\?.*)?$/.test(p))
 }
 
+// The merge_method a REST merge names; GitHub's default, absent, is a merge.
+function ghApiMergeMethod(words) {
+  for (let i = 2; i < words.length; i++) {
+    const a = words[i]
+    let field = null
+    if (a === '-f' || a === '-F' || a === '--field' || a === '--raw-field') field = words[++i] ?? ''
+    else if (a.startsWith('--field=')) field = a.slice(8)
+    else if (a.startsWith('--raw-field=')) field = a.slice(12)
+    const m = /^merge_method=(.*)$/s.exec(field ?? '')
+    if (m) return m[1]
+  }
+  return 'merge'
+}
+
+const MERGE_ONLY = "Merge a PR with --merge only: a squash or a rebase rewrites the work's commits, which keep Claude as the committer (reviewer.md § Merger)."
+
+function ghMergeReason(words) {
+  if (words[0] === 'gh' && words[1] === 'pr' && words[2] === 'merge') {
+    const flags = words.slice(3)
+    return flags.includes('--merge') || flags.includes('-m') ? null : MERGE_ONLY
+  }
+  if (words[0] === 'gh' && words[1] === 'pr' && words[2] === 'update-branch') {
+    return words.includes('--rebase') ? 'Update a PR with a merge of the base, not --rebase: nothing in the fleet is rewritten (reviewer.md § Merger).' : null
+  }
+  if (ghApiMerge(words)) return ghApiMergeMethod(words) === 'merge' ? null : MERGE_ONLY
+  return null
+}
+
 function messages(args, cwd) {
   const found = []
   for (let i = 0; i < args.length; i++) {
@@ -169,7 +198,7 @@ function committerReason(sub, args, config, env, processEnv) {
   } else if (!COMMITTING.has(sub)) return null
   const passive = ['--abort', '--quit', '--skip', '--edit-todo', '--show-current-patch']
   if (args.some((a) => passive.includes(a))) return null
-  if (sub === 'merge' && args.includes('--ff-only')) return null
+  if (sub === 'merge' && (args.includes('--ff-only') || args.includes('--no-commit'))) return null
   const name = env.GIT_COMMITTER_NAME ?? processEnv.GIT_COMMITTER_NAME
   const email = env.GIT_COMMITTER_EMAIL ?? processEnv.GIT_COMMITTER_EMAIL
   if (!name || !/^Claude\b/.test(name) || email !== 'noreply@anthropic.com') {
@@ -192,32 +221,51 @@ function pushReason(args) {
   if (flags.some((f) => f === '--mirror' || f === '--all')) {
     return 'git push --mirror/--all is never a fleet push: push your own branch by name.'
   }
-  const plainForce = flags.some((f) => f === '--force' || f === '-f' || /^-[a-zA-Z]*f/.test(f) && !f.startsWith('--'))
-  if (plainForce) {
-    return 'A plain --force push is refused: use --force-with-lease=<branch>:<the head you expect>, and only while you hold the fix claim (.claude/fleet/workflow.md § Branch).'
+  const forced =
+    flags.some((f) => f === '--force' || f.startsWith('--force-with-lease') || f.startsWith('--force-if-includes') || /^-[a-zA-Z]*f/.test(f) && !f.startsWith('--')) ||
+    positional.slice(1).some((spec) => spec.startsWith('+'))
+  if (forced) {
+    return 'No forced push in the fleet: bring the base in with git merge, and push plainly (.claude/fleet/workflow.md § Branch).'
   }
-  const leased = flags.some((f) => f.startsWith('--force-with-lease') || f.startsWith('--force-if-includes'))
   const deleting = flags.some((f) => f === '--delete' || f === '-d')
   for (const spec of positional.slice(1)) {
-    const plus = spec.startsWith('+')
-    const [src, dst] = spec.replace(/^\+/, '').includes(':') ? spec.replace(/^\+/, '').split(':') : [spec, spec]
+    const [src, dst] = spec.includes(':') ? spec.split(':') : [spec, spec]
     const target = (dst || '').replace(/^refs\/heads\//, '')
     if (!BASES.has(target)) continue
     if (deleting || src === '') return `Deleting ${target} is refused.`
-    if (plus || leased) return `${target} only ever moves forward: no forced push to it.`
-    if (!/^[0-9a-f]{7,40}$/.test(src)) {
-      return `Only the merger pushes ${target}, and only as a fast-forward of an approved head: git push origin <head-sha>:${target} (reviewer.md § Merger).`
-    }
+    return `Only the merger moves ${target}, and through GitHub: gh pr merge <n> --merge (reviewer.md § Merger).`
   }
   return null
+}
+
+// git commands that throw away work in the tree, which may be another
+// session's: refused in a fleet session, where there is nobody to ask.
+function discardReason(sub, args) {
+  const short = (letter) => args.some((a) => /^-[a-zA-Z]+$/.test(a) && a.includes(letter))
+  // taking one side of a merge conflict keeps work, it does not drop it
+  if ((sub === 'checkout' || sub === 'restore') && args.some((a) => a === '--ours' || a === '--theirs')) return null
+  let what = null
+  if (sub === 'reset' && args.includes('--hard')) what = 'git reset --hard'
+  else if (sub === 'clean' && (short('f') || args.includes('--force')) && !(short('n') || args.includes('--dry-run'))) what = 'git clean -f'
+  else if (sub === 'branch' && (args.includes('-D') || ((short('d') || args.includes('--delete')) && (short('f') || args.includes('--force'))))) what = 'git branch -D'
+  else if (sub === 'checkout' && (args.includes('--') || args.includes('.') || args.includes('-f') || args.includes('--force'))) what = 'git checkout of files'
+  else if (sub === 'restore') {
+    const staged = args.includes('--staged') || args.includes('-S')
+    const worktree = args.includes('--worktree') || args.includes('-W')
+    if (!staged || worktree) what = 'git restore'
+  } else if (sub === 'switch' && args.some((a) => a === '-f' || a === '--force' || a === '--discard-changes')) what = 'git switch --discard-changes'
+  else if (sub === 'stash' && (args[0] === 'drop' || args[0] === 'clear')) what = `git stash ${args[0]}`
+  if (!what) return null
+  return `${what} throws away work in the tree, which may be another session's. Undo your own edit with the Edit tool, or put it aside with git stash push -- <files>; a tree that must be thrown away is a fleet-process report (.claude/fleet/workflow.md § Process problems).`
 }
 
 function bashReasons(command, cwd, fleet, processEnv) {
   const reasons = []
   for (const words of simpleCommands(command)) {
     const { env, rest } = splitEnv(words)
-    if ((rest[0] === 'gh' && rest[1] === 'pr' && rest[2] === 'merge') || ghApiMerge(rest)) {
-      reasons.push('A GitHub merge commits as GitHub, not as Claude: the merger fast-forwards instead (reviewer.md § Merger).')
+    const merge = ghMergeReason(rest)
+    if (merge) {
+      reasons.push(merge)
       continue
     }
     const git = gitCall(rest)
@@ -240,6 +288,10 @@ function bashReasons(command, cwd, fleet, processEnv) {
     if (fleet && sub === 'push') {
       const push = pushReason(args)
       if (push) reasons.push(push)
+    }
+    if (fleet) {
+      const discard = discardReason(sub, args)
+      if (discard) reasons.push(discard)
     }
   }
   return reasons

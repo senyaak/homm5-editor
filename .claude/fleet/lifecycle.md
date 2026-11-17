@@ -9,7 +9,7 @@ lands.
 - **Planner** — [planner.md](../agents/planner.md) — the work list → small issues; strangers triaged; owner answers → decisions
 - **Developer** — [developer.md](../agents/developer.md) — one issue → one branch → one PR that cites its sources
 - **Reviewer** — [reviewer.md](../agents/reviewer.md) — re-checks every cited source itself, runs the checks, labels `approved`
-- **Merger** — [reviewer.md](../agents/reviewer.md) § Merger — fast-forwards approved PRs, lowest number first
+- **Merger** — [reviewer.md](../agents/reviewer.md) § Merger — merges approved PRs through GitHub, lowest number first
 
 A project may add roles of its own in `.claude/agents/` (`project.md` § Kinds
 names them); they follow [workflow.md](workflow.md) like these.
@@ -23,7 +23,7 @@ names them); they follow [workflow.md](workflow.md) like these.
    repo as the issue.
 3. A reviewer either labels the PR `approved` or posts a verdict and labels it
    `changes-requested`; the next run fixes it on the same branch.
-4. The merger fast-forwards an approved PR onto the base, closes the issue,
+4. The merger merges an approved PR into the base, closes the issue,
    and labels it **`needs-play`** when the change is something a user can
    see. The owner's play queue is the closed issues carrying that label; the
    owner removes it after looking.
@@ -53,11 +53,12 @@ it as `fleet-process`.
 2. **The base stays green.** Anyone who finds it red stops other work and
    opens `[ci] <base> is red: <step>` (`fleet` + `bug` + `ready`) unless one
    is open.
-3. **No direct pushes to the base** except the merger's fast-forward of an
+3. **No pushes to the base.** It moves only by the merger's GitHub merge of an
    approved head.
 4. **Commits keep the owner's attribution**: author the owner (the global git
    config), committer `Claude <model actually running>`, no `Co-Authored-By`
-   trailer — on every commit, a rebase's included.
+   trailer — on every commit but GitHub's own merge commit, which holds no
+   work.
 5. **Only the owner's account is trusted** ([strangers.md](strangers.md)).
 6. **Process problems are reported, not worked around** (`fleet-process`).
 

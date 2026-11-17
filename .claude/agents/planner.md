@@ -63,16 +63,30 @@ else — are the answer, in whatever language they are written.
       the way `project.md` § Sources requires. Work with nothing to cite is
       not ready: file what would establish the source first and put it under
       `Depends on`.
-   2. `What the user sees` — the behaviour in plain words. The mechanism is
-      the developer's to choose.
-   3. `Reuse` — existing modules to build on. Every path named here exists on
+   2. `Repro` — a `bug` issue only: the steps as the report gives them
+      (the work-list file, the owner's words), and what is seen against
+      what is expected. You write them down; reproducing is the
+      developer's. A report with no steps at all is a `needs-owner`
+      question, not an issue.
+   3. `What the user sees` — one line per requirement, `R<n> <short name>:
+      <what the user sees, in one sentence>`, and under it at least one
+      scenario `WHEN <a gesture or a state> THEN <what is seen>`. A scenario
+      names what a spec can check: a number, a text, an order, a value —
+      never "fast", "correctly", "properly", "nicely" or "etc.". The value
+      comes from the source; one the source does not give is never made up
+      to fill a scenario — the scenario says what the source does give, or
+      the issue waits on the source like any other (`Source`). A
+      requirement that changes existing behaviour adds `UNCHANGED: <what
+      must stay as it is>`; a bug's scenario ends `(today: <what is seen
+      now>)`. The mechanism is the developer's to choose.
+   4. `Reuse` — existing modules to build on. Every path named here exists on
       the base branch today; grep before filing. It must also work for this
       use: check it against the open issues that report a gap in it and the
       open `needs-owner` ones, and list a blocking one under `Depends on`, or
       plan the part as a known gap that links it.
-   4. `Acceptance` — the specs that must exist and pass, each tied to a
-      source.
-   5. `Depends on` — issue numbers, written in full across repos
+   5. `Acceptance` — the specs that must exist and pass: every scenario of
+      `What the user sees` has one, tied to a source.
+   6. `Depends on` — issue numbers, written in full across repos
       (`owner/repo#12`), or `none`.
 4. **Size**: one weapon, screen, rule or mechanism. A big item becomes several
    issues, each leaving the project working.

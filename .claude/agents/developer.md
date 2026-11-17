@@ -50,6 +50,18 @@ Never fill the gap with a plausible number or behaviour.
    be fixed here with its own spec, under `## Also fixed` in the PR body.
 8. **Three strikes.** The same check failing three times with the same error
    stops you (`.claude/fleet/workflow.md` § Three strikes).
+9. **A bug starts with its repro.** Before any fix, write the spec that fails
+   the way the issue's `Repro` says, and see it fail; it stays as the
+   regression spec. A bug only the screen shows, which no spec of the
+   project's harness can catch, is reproduced by its steps instead, and the
+   steps go under `## Play` with what is seen before and after the fix. Then
+   find the root cause — file and line, and why — and fix that. A bug that
+   does not reproduce from the issue gets a comment of what was tried, with
+   which data, and the label `blocked`; nothing is fixed on a guess.
+10. **The requirements are the planner's.** The `R<n>` lines and scenarios
+    of the issue are what you build to, never what you adjust to the code. A
+    requirement you find wrong or impossible goes back as a comment on the
+    issue for the planner, and the issue `blocked`.
 
 ## Verify — all of it, before the PR
 
@@ -63,8 +75,19 @@ Open the PR with `Closes #<n>` and these sections:
 
 - `## Sources` — every behaviour the PR builds, one line each, with its
   citation.
-- `## Specs` — the specs added or changed, and the result of each check (the
-  counts of passed and failed, from the log files).
+- `## Requirements` — every `R<n>` of the issue, one line each, with the
+  spec that proves each of its scenarios. A bug adds `Root cause:` — file
+  and line, and why. An issue filed before the `R<n>` form has none, and
+  its PR leaves this section out.
+- `## Specs` — the specs added or changed, and every check of `project.md`
+  § Verify in one line with one of these, from the log files:
+  - `EXECUTED green` — ran, with its counts of passed and failed;
+  - `EXECUTED red` — ran and failed, with the counts and what failed;
+  - `COMPILED ONLY` — built or type-checked, its tests not run;
+  - `NOT EXECUTED (<why>)` — not run at all.
+
+  A check is never reported in other words ("works", "verified", "should
+  pass"), and a check that did not run is never left out.
 - `## Play` — what the owner should look at, in plain words, and what a bug
   would look like against what is deliberate. Empty if nothing is visible.
   The merger labels the issue `needs-play` when it is not empty.
